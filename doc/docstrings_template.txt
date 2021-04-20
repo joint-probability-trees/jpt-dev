@@ -1,0 +1,122 @@
+###########
+# DEFAULT #
+###########
+
+"""[Summary]
+
+:param [ParamName]: [ParamDescription], defaults to [DefaultParamVal]
+:type [ParamName]: [ParamType](, optional)
+...
+:raises [ErrorType]: [ErrorDescription]
+...
+:return: [ReturnDescription]
+:rtype: [ReturnType]
+"""
+
+###########
+# EXAMPLE #
+###########
+
+"""Blafasel, refer to parameters of function as ``x`` (will be printed in red), to other classes
+as :class:`matcalo.utils.utils.SInterval` (will be printed in bold red), to other functions as :func:`union` (also
+bold red but with opening/closing brackets). Highlight text in single quotes `I am italic`.
+
+:param x: the features
+:type x: list of matcalo.database.models.Feature
+:param t: the targets
+:type t: list of matcalo.database.models.Feature
+:param identifier: can be used for debugging - identifies the training example
+:type identifier: str
+:returns: a mapping of target name to target value
+:rtype: dict
+"""
+
+
+########
+# CODE #
+########
+
+"""
+.. highlight:: python
+.. code-block:: python
+
+    import sys
+    ...
+"""
+
+
+############
+# FORMULAS #
+############
+
+r"""Calculate the mean squared error for the data set `xmpls`, i.e.
+
+.. math:: MSE = \frac{1}{n} · \sum_{i=1}^{n} (y_i - \hat{y}_i)^2
+    :label: mse
+
+or write math stuff inline as :math:`P(x1,x2,x5|\mu_1 \leq x3 \leq \mu_2,x4=A)`.
+
+Reference to first equation :eq:`mse`
+"""
+
+
+#########
+# NOTES #
+#########
+
+"""This is how a note box is defined (objects in double quotes will be red)
+
+
+.. note::
+    Accepts the following string representations of types of intervals:
+      - closed intervals ``[a,b]``
+      - half-closed intervals ``]a,b] or (a,b] and [a,b[ or [a,b)``
+      - open intervals ``]a,b[ or (a,b)``
+
+    ``a`` and ``b`` can be of type int or float (also: scientific notation) or {+-} :math:`∞`
+"""
+
+
+############
+# EXAMPLES #
+############
+
+"""This is how an example is defined which looks like what is printed in a console
+
+:Example:
+
+>>> from matcalo.utils.intervals import Interval
+>>> i1 = Interval.fromstring('[0,1]')
+>>> i2 = Interval.fromstring('[2,5]')
+>>> i3 = Interval.fromstring('[3,4]')
+>>> i1.isempty()
+False
+>>> i1.intersects(i2)
+False
+>>> i2.intersects(i3)
+True
+>>> i2.intersection(i3)
+<Interval=[<SInterval=[3.0,3.0]>]>
+>>> print(i2.intersection(i3))
+[3.0,3.0]
+>>> i4 = i1.union(i2)
+>>> print(i4)
+[[0.0,1.0]; [2.0,3.0]]
+>>> i5 = i4.union(Interval.fromstring('[0.5,3]'))
+>>> print(i5)
+[0.0,5.0]
+"""
+
+
+###########
+# SEEALSO #
+###########
+
+"""Make a seealso-reference to another class
+
+.. seealso:: :class:`Interval`
+"""
+
+########
+# MISC #
+########
