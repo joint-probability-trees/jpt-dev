@@ -11,10 +11,10 @@ from matplotlib import style
 import dnutils
 from dnutils import edict, first, out
 from dnutils.stats import Gaussian
-from trees.intervals import Interval, EXC, INC
-from trees.probs import GenericBayesFoo
-from trees.example import SymbolicFeature, BooleanFeature, Example, NumericFeature
-from constants import plotstyle, orange, green
+from .intervals import Interval, EXC, INC
+from .probs import GenericBayesFoo
+from .example import SymbolicFeature, BooleanFeature, Example, NumericFeature
+from ..constants import plotstyle, orange, green
 
 logger = dnutils.getlogger(name='TreeLogger', level=dnutils.ERROR)
 

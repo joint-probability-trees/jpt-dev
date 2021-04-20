@@ -12,10 +12,10 @@ from scipy.stats import multivariate_normal
 
 import dnutils
 from dnutils import out
-from constants import avalailable_colormaps, plotstyle, ddarkblue
-from trees.gaussian import MultiVariateGaussian
-from trees.example import BooleanFeature, SymbolicFeature, NumericFeature
-from trees.intervals import Interval
+from ..constants import avalailable_colormaps, plotstyle, ddarkblue
+from .gaussian import MultiVariateGaussian
+from .example import BooleanFeature, SymbolicFeature, NumericFeature
+from .intervals import Interval
 
 logger = dnutils.getlogger(name='ProbsLogger', level=dnutils.ERROR)
 style.use(plotstyle)
