@@ -6,6 +6,7 @@ BOOL = Domain(['T', 'F'])
 
 
 def sample(dist):
+    pass
 
 
 def main(*args):
@@ -46,10 +47,8 @@ def main(*args):
     P_J_A['F']['F'] = .95
 
     for i in range(100):
-
-
+        pass
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     main('PyCharm')
-
