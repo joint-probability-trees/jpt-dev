@@ -1,4 +1,7 @@
 */__pycache__/*
 *.pyc
 *.pyo
-
+*.idea/
+*.project
+*.settings/
+*.pydevproject
