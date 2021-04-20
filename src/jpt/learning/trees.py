@@ -71,7 +71,7 @@ class Leaf(Node):
 
 
 class Tree:
-    """Custom wrapper around regression trees. We store a Gaussian distribution
+    """Custom wrapper around regression learning. We store a Gaussian distribution
     induced by its training samples in the nodes so we can later make statements
     about the confidence of the prediction."""
 
@@ -213,7 +213,7 @@ class StructLeaf(StructNode):
 
 
 class StructRegTree(Tree):
-    """Custom wrapper around regression trees. We store multiple multivariate Gaussian distribution
+    """Custom wrapper around regression learning. We store multiple multivariate Gaussian distribution
     induced by its training samples in the nodes so we can later make statements
     about the confidence of the prediction.
     """
@@ -620,7 +620,7 @@ class StructRegTree(Tree):
         """
 
         if directory is None:
-            directory = os.path.join('..', 'plots')
+            directory = os.path.join('../..', 'plots')
         dot = Digraph(format='svg', name=self.name,
                       directory=directory,
                       filename=filename)

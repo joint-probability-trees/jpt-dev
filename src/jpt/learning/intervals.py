@@ -36,7 +36,7 @@ class Interval:
 
     :Example:
 
-        >>> from trees.intervals import Interval
+        >>> from jpt.learning import Interval
         >>> i1 = Interval.fromstring('[0,1]')
         >>> i2 = Interval.fromstring('[2,5]')
         >>> i3 = Interval.fromstring('[3,4]')

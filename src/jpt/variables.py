@@ -1,11 +1,8 @@
-import math
-
 from dnutils import ifnone, first
 
-from sampling import wchoice, wsample
-import numpy as np
+from jpt.sampling import wsample
 
-from utils import mapstr, prod
+from jpt.utils import mapstr, prod
 
 
 def P(space):

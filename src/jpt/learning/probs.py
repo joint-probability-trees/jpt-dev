@@ -12,7 +12,7 @@ from scipy.stats import multivariate_normal
 
 import dnutils
 from dnutils import out
-from ..constants import avalailable_colormaps, plotstyle, ddarkblue
+from jpt.constants import avalailable_colormaps, plotstyle, ddarkblue
 from .gaussian import MultiVariateGaussian
 from .example import BooleanFeature, SymbolicFeature, NumericFeature
 from .intervals import Interval
