@@ -316,7 +316,8 @@ class StructRegTree(Tree):
                 node.add_trainingsample(s)
 
             # inherit path from parent
-            node.path = node.parent.path.copy()
+            if node.parent is not None:
+                node.path = node.parent.path.copy()
 
             # as datasets have been split before, take an arbitrary example and look up the value
             node.threshold = None if parent is None else data[0].x[self.features.index(parent.dec_criterion)].value if parent.t_dec_criterion in (SymbolicFeature, BooleanFeature) else data[0].x[self.features.index(parent.dec_criterion)].value <= parent.dec_criterion_val
@@ -402,7 +403,7 @@ class StructRegTree(Tree):
     def _p(self, root, indent):
         return "{}{}\n{}".format(" " * indent, str(root), ''.join([self._p(r, indent + 5) for r in root.children]) if hasattr(root, 'children') else 'None')
 
-    def learn(self, data=None, tr=0.8):
+    def learn(self, data=None, tr=0.0):
         """Fits the ``data`` into a regression tree.
 
         :param data: The training examples containing features and targets
@@ -608,7 +609,7 @@ class StructRegTree(Tree):
     def fitted(self):
         return hasattr(self.regressor, 'tree_')
 
-    def plot(self, filename='regtree', directory=None, view=True):
+    def plot(self, filename='regtree', directory='/tmp', view=True):
         """Generates an SVG representation of the generated regression tree.
 
         :param filename: the name of the Tree (will also be used as filename; extension will be added automatically)
@@ -618,9 +619,6 @@ class StructRegTree(Tree):
         :param view: whether the generated SVG file will be opened automatically
         :type view: bool
         """
-
-        if directory is None:
-            directory = os.path.join('../..', 'plots')
         dot = Digraph(format='svg', name=self.name,
                       directory=directory,
                       filename=filename)
