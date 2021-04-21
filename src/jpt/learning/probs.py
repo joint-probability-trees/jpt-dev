@@ -11,9 +11,9 @@ from matplotlib.backends.backend_pdf import PdfPages
 from scipy.stats import multivariate_normal
 
 import dnutils
-from dnutils import out
+from dnutils import out, stop
 from jpt.constants import avalailable_colormaps, plotstyle, ddarkblue
-from .gaussian import MultiVariateGaussian
+from .distributions import MultiVariateGaussian
 from .example import BooleanFeature, SymbolicFeature, NumericFeature
 from .intervals import Interval
 
@@ -143,12 +143,11 @@ class GenericBayesFoo:  # aka Node-Distribution
         if not view:
             plt.ioff()
 
-        numdists = len(self.training_dists)
+        numdists = max(1, len(self.training_dists))
         r, c = [round(math.sqrt(numdists)), math.ceil(math.sqrt(numdists))]
-        figuretitle = f'(Multivariate) Gaussian Distribution{"s" if numdists > 1 else ""} for Leaf #{self.leaf}'
-        fig, axs = plt.subplots(r, c)
-        fig.canvas.set_window_title(figuretitle)
-        # fig.suptitle(figuretitle)
+        logger.debug(f'Creating {r}x{c} subplots for {numdists} dists')
+        figuretitle = f'Distribution{"s" if numdists > 1 else ""} for Leaf #{self.leaf}'
+        fig, axs = plt.subplots(r, c, num=figuretitle)
         for i, (symb, dist) in enumerate(self.training_dists.items()):
             # TODO remove. Randomly choose 3d or contour plot (filled or not) with random colormap
             filled = random.choice([True, False])
@@ -157,7 +156,6 @@ class GenericBayesFoo:  # aka Node-Distribution
             plotcolormap = random.choice(avalailable_colormaps)
             plotcolormap = 'viridis'
             if logger.level < dnutils.ERROR:
-                out(logger.level, dnutils.ERROR)
                 out(f'Chosen settings for leaf {self.leaf}: filled={filled}, contour={contour}, randcol={plotcolormap}')
 
             plottitle = f'Distribution for \n{[f"{k}={v}" for k, v in zip(self.symbolics, symb)]}: N{dist.mean_, dist.cov_}'
@@ -241,17 +239,20 @@ class GenericBayesFoo:  # aka Node-Distribution
                         ax.set_ylabel(self.numerics[max_pair[1]])
                         ax.set_zlabel('PDF')
             except np.linalg.LinAlgError:
-                logger.warning(f'Could not generate plot for distribution N{dist.mean_, dist.cov_} of leaf {self.leaf} (Singular Matrix)')
+                out(f'Could not generate plot for distribution N{dist.mean_, dist.cov_} of leaf {self.leaf} (Singular Matrix)')
 
         # remove excess axes
         for p in range(r*c-numdists):
+            logger.debug(f'removing axis {[-1, numdists % c + p - 1] if c > 1 and r > 1 else axs[numdists % c + p - 1]}')
             (axs[-1, numdists % c + p - 1] if c > 1 and r > 1 else axs[numdists % c + p - 1]).remove()
 
         # save figure as PDF or PNG
         if pdf:
+            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{self.name}.pdf')}")
             with PdfPages(os.path.join(directory, f'{self.name}.pdf')) as pdf:
                 pdf.savefig(fig)
         else:
+            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{self.name}.png')}")
             plt.savefig(os.path.join(directory, f'{self.name}.png'))
 
         if view:
