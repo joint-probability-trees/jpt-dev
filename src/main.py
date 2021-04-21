@@ -1,36 +1,18 @@
-from collections import deque
+import csv
+import os
+import re
+import traceback
+from collections import deque, defaultdict
 
-from dnutils import out
 from numpy import iterable
 
+from dnutils import out
+from jpt.learning.distributions import Multinomial, Bool, Histogram
+from jpt.learning.intervals import Interval
+
 from jpt.sampling import wsample, wchoice
-from jpt.learning.example import Example, BooleanFeature
+from jpt.learning.example import Example, BooleanFeature, SymbolicFeature, NumericFeature
 from jpt.learning.trees import StructRegTree
-
-
-class Multinomial:
-
-    values = None
-
-    def __init__(self, p):
-        if not iterable(p):
-            raise ValueError('Probabilities must be an iterable with at least 2 elements, got %s' % p)
-        # if len(values) != len(p):
-        #     raise ValueError('Number of values and probabilities must coincide.')
-        self.p = p
-        # self.values = values
-
-    def sample(self, n):
-        return wsample(self.values, self.p, n)
-
-    def sample_one(self):
-        return wchoice(self.values, self.p)
-
-    def __getitem__(self, value):
-        return self.p[self.values.index(value)]
-
-    def __setitem__(self, value, p):
-        self.p[self.values.index(value)] = p
 
 
 def SymbolicType(name, values):
@@ -39,21 +21,10 @@ def SymbolicType(name, values):
     return t
 
 
-class Bool(Multinomial):
-
-    values = [True, False]
-
-    def __init__(self, p):
-        if not iterable(p):
-            p = [p, 1 - p]
-        super().__init__(p)
-
-    def __getitem__(self, v):
-        return self.p[v]
-
-    def __setitem__(self, v, p):
-        self.p[v] = p
-        self.p[1 - v] = 1 - p
+def HistogramType(name, values, d=1):
+    t = type(name, (Histogram,), {"d": d})
+    t.values = list(values)
+    return t
 
 
 class Conditional:
@@ -125,12 +96,32 @@ def main(*args):
                   BooleanFeature(j, 'J')]
         data.append(Example(
             x=vector,
-            t=vector
+            t=vector,
+            identifier=str(i)
         ))
         print(data[-1])
 
     tree = StructRegTree()
     tree.learn(data)
+    tree.plot(view=True)
+
+    # ----------------------
+
+    X = HistogramType('YesNo', ['Y', 'N'])
+    mn1 = X([20, 30], d=100)
+    out('MN1', mn1, mn1.p, mn1.d)
+
+    mn2 = X([10, 12], d=200)
+    out('MN2', mn2, mn2.p, mn2.d)
+
+    mn3 = mn1 + mn2
+    out('MN3 as merge of MN1 and MN2', mn3, mn3.p, mn3.d)
+
+    mn2 += mn1
+    out('MN2 after adding MN1', mn2, mn2.p, mn2.d)
+    out(mn2 == mn3)
+
+    # ----------------------
 
 
 # Press the green button in the gutter to run the script.

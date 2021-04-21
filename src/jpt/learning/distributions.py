@@ -9,7 +9,11 @@ from dnutils.stats import Gaussian as Gaussian_, _matshape
 from scipy.stats import multivariate_normal, mvn, norm
 
 import numpy as np
+from numpy import iterable
+
 import matplotlib.pyplot as plt
+
+from jpt.sampling import wsample, wchoice
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
 
@@ -414,3 +418,98 @@ class MultiVariateGaussian(Gaussian):
             ax.set_ylabel('Y')
             ax.set_zlabel('Z')
             plt.show()
+
+
+class Multinomial:
+
+    values = None
+
+    def __init__(self, p):
+        if not iterable(p):
+            raise ValueError('Probabilities must be an iterable with at least 2 elements, got %s' % p)
+        if len(self.values) != len(p):
+            raise ValueError('Number of values and probabilities must coincide.')
+        self._p = np.array(p)  # either probabilities or counters
+
+    @property
+    def p(self):
+        return self._p
+
+    @p.setter
+    def p(self, p):
+        self._p = p
+
+    def sample(self, n):
+        return wsample(self.values, self.p, n)
+
+    def sample_one(self):
+        return wchoice(self.values, self.p)
+
+    def __add__(self, other):
+        if type(self) is not type(other):
+            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
+        m = type(self, ((self.p + other.p) / 2))
+        m.values = self.values
+        return m
+
+    def __iadd__(self, other):
+        if type(self) is not type(other):
+            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
+        self._p = (self.p + other.p) / 2
+        return self
+
+    def __getitem__(self, value):
+        return self.p[self.values.index(value)]
+
+    def __setitem__(self, value, p):
+        self.p[self.values.index(value)] = p
+
+    def __eq__(self, other):
+        return type(self) is type(other) and (self.p == other.p).all() and self.values == other.values
+
+
+class Histogram(Multinomial):
+
+    values = Multinomial.values
+
+    def __init__(self, p, d=1):
+        self.d = d  # denominator (default 1)
+        super().__init__(p)
+
+    @Multinomial.p.getter
+    def p(self):
+        return self._p / self.d
+
+    def __add__(self, other):
+        if type(self) is not type(other):
+            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}')
+        h = type(self)((self.p + other.p), d=self.d + other.d)
+        h.values = self.values
+        return h
+
+    def __iadd__(self, other):
+        if type(self) is not type(other):
+            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
+        self.p += other.p
+        self.d += other.d
+        return self
+
+    def __eq__(self, other):
+        return super().__eq__(other) and self.d == other.d
+
+
+class Bool(Multinomial):
+
+    values = [True, False]
+
+    def __init__(self, p):
+        if not iterable(p):
+            p = [p, 1 - p]
+        super().__init__(p)
+
+    def __getitem__(self, v):
+        return self.p[v]
+
+    def __setitem__(self, v, p):
+        self.p[v] = p
+        self.p[1 - v] = 1 - p
