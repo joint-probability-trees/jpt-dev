@@ -1,6 +1,7 @@
 import html
 import os
 import pickle
+import pprint
 from collections import defaultdict
 
 import numpy as np
@@ -10,13 +11,13 @@ from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error
 
 import dnutils
-from dnutils import edict, first, out
+from dnutils import edict, first, out, stop
 from .distributions import Distribution, Bool, Multinomial
 from .example import SymbolicFeature, BooleanFeature, Example, NumericFeature
 from .intervals import Interval, EXC, INC
 from ..constants import plotstyle, orange, green
 
-logger = dnutils.getlogger(name='TreeLogger', level=dnutils.ERROR)
+logger = dnutils.getlogger(name='TreeLogger', level=dnutils.DEBUG)
 
 style.use(plotstyle)
 
@@ -55,12 +56,11 @@ class Node:
     def set_trainingssamples(self, examples):
         self.numsamples = len(examples)
         # generate dist
-        self.distributions
+        # self.distributions
 
     @property
     def str_node(self):
-        return f'{self.dec_criterion}' if self.t_dec_criterion in [SymbolicFeature,
-                                                                   BooleanFeature] else f'{self.dec_criterion}<={self.dec_criterion_val:.2f}'
+        return f'{self.dec_criterion.__class__.__name__}' if isinstance(self.t_dec_criterion, (Multinomial, Bool)) else f'{self.dec_criterion.__class__.__name__}<={self.dec_criterion_val:.2f}'
 
     @property
     def str_edge(self):
@@ -76,7 +76,7 @@ class Node:
     #          self.distributions.items()])
 
     def __str__(self):
-        return f'Node<id: {self.idx}; criterion: {self.dec_criterion}; parent: {f"Node< id:{self.parent.idx}>" if self.parent else None}; #children: {len(self.children)}>'
+        return f'Node<id: {self.idx}; criterion: {self.dec_criterion.__class__.__name__}; parent: {f"Node< id:{self.parent.idx}>" if self.parent else None}; #children: {len(self.children)}>'
 
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
@@ -146,7 +146,7 @@ class JPT:
         # assuming all Examples have identical indices for their targets
         tgt_idx = self._variables.index(tgt)
 
-        if isinstance(self._variables[tgt_idx], Bool) or isinstance(self._variables[tgt_idx], Multinomial):
+        if isinstance(self._variables[tgt_idx], (Multinomial, Bool)):
             # case categorical targets
             # tgts_plain = np.array([xmpl.tplain() for xmpl in xmpls]).T[tgt_idx]
             tgts_plain = np.array(xmpls).T[tgt_idx]
@@ -196,7 +196,7 @@ class JPT:
         fts_plain = np.array(xmpls).T[ft_idx]
         distinct = sorted(list(set(fts_plain)))
 
-        if isinstance(self._variables[ft_idx], Bool) or isinstance(self._variables[ft_idx], Multinomial):
+        if isinstance(self._variables[ft_idx], (Multinomial, Bool)):
             # count occurrences for each value of given feature and determine their probability; [(ftval, count)]
             probs_ft = [(distinctfeatval, float(list(fts_plain).count(distinctfeatval)) / len(fts_plain)) for distinctfeatval in distinct]
 
@@ -220,6 +220,7 @@ class JPT:
         return r_a
 
     def c45(self, data, parent, ft_idx=None, tr=0.0):
+        # stop('c45 call', data, parent)
         if not data:
             logger.warning('No data left. Returning parent', parent)
             return parent
@@ -254,7 +255,6 @@ class JPT:
                     ft_best = ft
                     max_gain = hm
 
-        out(self._variables, ft_best)
         ft_best_idx = self._variables.index(ft_best)
 
         # BASE CASE 1: all samples belong to the same class --> create leaf node for these targets
@@ -271,7 +271,7 @@ class JPT:
                 node.path = node.parent.path.copy()
 
             # as datasets have been split before, take an arbitrary example and look up the value
-            node.threshold = None if parent is None else data[0][self._variables.index(parent.dec_criterion)].value if isinstance(parent.t_dec_criterion, Multinomial) or isinstance(parent.t_dec_criterion, Bool) else data[0][self._variables.index(parent.dec_criterion)].value <= parent.dec_criterion_val
+            node.threshold = None if parent is None else data[0][self._variables.index(parent.dec_criterion)].value if isinstance(parent.t_dec_criterion, (Multinomial, Bool)) else data[0][self._variables.index(parent.dec_criterion)].value <= parent.dec_criterion_val
 
             # update path
             self._update_path(node, data)
@@ -287,30 +287,31 @@ class JPT:
             return node
 
         # divide examples into distinct sets for each value of ft_best
-        split_data = defaultdict(list)
-        if isinstance(ft_best, Bool) or isinstance(ft_best, Multinomial):
+        split_data = {val: [] for val in ft_best.values}
+        if isinstance(ft_best, (Multinomial, Bool)):
             # CASE SPLIT VARIABLE IS SYMBOLIC
-            # thresh = None if parent is None else data[0][self.features.index(parent.dec_criterion)] if parent.t_dec_criterion in (SymbolicFeature, BooleanFeature) else data[0].x[self.features.index(parent.dec_criterion)].value <= parent.dec_criterion_val
-            thresh = None if parent is None else data[0][self._variables.index(parent.dec_criterion)] if isinstance(parent.t_dec_criterion, Multinomial) or isinstance(parent.t_dec_criterion, Bool) else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
 
             # split examples into distinct sets for each value of the selected feature
             for d in data:
                 split_data[d[ft_best_idx]].append(d)
 
             dec_criterion_val = list(split_data.keys())
+            # pprint.pprint(split_data)
+            # stop('splitdata')
         else:
             # CASE SPLIT VARIABLE IS NUMERIC
             dec_criterion_val = sp_best
-            thresh = None if parent is None else data[0][self._variables.index(parent.dec_criterion)] if isinstance(parent.t_dec_criterion, Multinomial) or isinstance(parent.t_dec_criterion, Bool) else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
 
             # split examples into distinct sets for smaller and higher values of the selected feature than the selected split value
             for d in data:
                 split_data[f'{ft_best}{"<=" if d[ft_best_idx] <= sp_best else ">"}{sp_best}'].append(d)
 
+        thresh = None if parent is None else data[0][self._variables.index(parent.dec_criterion)] if isinstance(parent.t_dec_criterion, (Multinomial, Bool)) else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
+
         # create decision node splitting on ft_best or leaf node if min_samples_leaf criterion is not met
         if any([len(d) < self.min_samples_leaf for d in split_data.values()]):
             node = Leaf(idx=len(self.allnodes), parent=parent, treename=self.name)
-            node.threshold = None if parent is None else data[0].x[ft_idx].value if parent.t_dec_criterion in (SymbolicFeature, BooleanFeature) else data[0].x[ft_idx].value <= parent.dec_criterion_val
+            node.threshold = None if parent is None else data[0][ft_idx] if isinstance(parent.t_dec_criterion, (Multinomial, Bool)) else data[0][ft_idx] <= parent.dec_criterion_val
 
             # TODO: generate distribution and store NUMBER of examples instead of storing examples
             node.set_trainingssamples(data)
@@ -339,7 +340,7 @@ class JPT:
             return
 
         node.path = node.parent.path.copy()
-        if isinstance(node.parent.t_dec_criterion, Multinomial) or isinstance(node.parent.t_dec_criterion, Bool):
+        if isinstance(node.parent.t_dec_criterion, (Multinomial, Bool)):
             node.path[node.parent.dec_criterion] = node.threshold
         else:
             low = all([d[self._variables.index(node.parent.dec_criterion)] <= node.parent.dec_criterion_val for d in data])
@@ -596,11 +597,11 @@ class JPT:
                             {samples if numsamples < 5 else ""}
                             <TR>
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>value:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{[f"{vname}: {dist.expectation()}" for vname, dist in n.distributions.items()]}</TD>
+                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{[f"{vname.__class__.__name__}: {dist.expectation()}" for vname, dist in n.distributions.items()]}</TD>
                             </TR>
                             <TR>
                                 <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{sep.join([f"{k}: {v}" for k, v in n.path.items()])}</TD>
+                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{sep.join([f"{k.__class__.__name__}: {v}" for k, v in n.path.items()])}</TD>
                             </TR>
                             """
 
