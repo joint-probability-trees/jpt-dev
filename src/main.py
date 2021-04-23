@@ -154,7 +154,7 @@ def main(*args):
     fo = Food([.1, .2, .4, .3])
     wa = WaitEst([.3, .4, .2, .1])
 
-    numsamples = 1000
+    numsamples = 500
     # variables = [Alternative, Bar, Friday, Hungry, Patrons, Price, Rain, Reservation, Food, WaitEst]
     variables = [al, ba, fr, hu, pa, pr, ra, re, fo, wa]
 
