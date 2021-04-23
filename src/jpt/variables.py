@@ -5,6 +5,23 @@ from jpt.sampling import wsample
 from jpt.utils import mapstr, prod
 
 
+class Variable:
+    def __init__(self, name, vtype):
+        self._name = name
+        self._vtype = vtype
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def vtype(self):
+        return self._vtype
+
+    def __str__(self):
+        return f'Variable: {self.name} ({self.vtype})'
+
+
 def P(space):
     if type(space) is MultinomialRV:
         return JPT([space])
