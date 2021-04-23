@@ -154,9 +154,7 @@ def main(*args):
     fo = Food([.1, .2, .4, .3])
     wa = WaitEst([.3, .4, .2, .1])
 
-    out('var', al.__class__.__name__)
-
-    numsamples = 3
+    numsamples = 50
     # variables = [Alternative, Bar, Friday, Hungry, Patrons, Price, Rain, Reservation, Food, WaitEst]
     variables = [al, ba, fr, hu, pa, pr, ra, re, fo, wa]
 
@@ -166,11 +164,9 @@ def main(*args):
     # data = [al.sample(numsamples), ba.sample(numsamples), fr.sample(numsamples), hu.sample(numsamples), pa.sample(numsamples),
     #         pr.sample(numsamples), ra.sample(numsamples), re.sample(numsamples), fo.sample(numsamples), wa.sample(numsamples)]
 
-    out(data)
     jpt = JPT(variables)
-    out(jpt)
     jpt.learn(data)
-    # jpt.plot(directory='/home/mareike/Desktop/sebaimages', view=True)
+    jpt.plot(directory='/home/mareike/Desktop/sebaimages', view=True)
 
 
 # Press the green button in the gutter to run the script.
