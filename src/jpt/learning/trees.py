@@ -34,7 +34,7 @@ class Node:
         :type threshold:        float
         :param threshold:
         :param dec_criterion:   the split feature name
-        :type dec_criterion:    str
+        :type dec_criterion:    jpt.learning.distributions.Distribution
         :param parent:          the parent node
         :type parent:           jpt.learning.trees.Node
         :param treename:        the name of the decision tree
@@ -47,14 +47,14 @@ class Node:
         self.t_dec_criterion = None
         self.parent = parent
         self.path = edict({})
-        self.samples = []
+        self.samples = 0.
         self.treename = treename
         self.children = []
         self.distributions = defaultdict(Distribution)
 
 
     def set_trainingssamples(self, examples):
-        self.numsamples = len(examples)
+        self.samples = len(examples)
         # generate dist
         # self.distributions
 
@@ -580,11 +580,6 @@ class JPT:
                             </TR>"""
 
             # content for leaf labels
-            numsamples = len(n.samples) if isinstance(n.samples, list) else n.samples
-            samples = f"""<TR>
-                              <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>samples:</B></TD>
-                              <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{sep.join([s.identifier for s in n.samples])}</TD>
-                          </TR>"""
 
             leaflabel = f"""{nodelabel}
                             <TR>
@@ -594,7 +589,6 @@ class JPT:
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{len(n.samples) if isinstance(n.samples, list) else n.samples}</TD>
                             </TR>
-                            {samples if numsamples < 5 else ""}
                             <TR>
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>value:</B></TD>
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{[f"{vname.__class__.__name__}: {dist.expectation()}" for vname, dist in n.distributions.items()]}</TD>

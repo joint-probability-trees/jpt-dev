@@ -154,7 +154,7 @@ def main(*args):
     fo = Food([.1, .2, .4, .3])
     wa = WaitEst([.3, .4, .2, .1])
 
-    numsamples = 50
+    numsamples = 1000
     # variables = [Alternative, Bar, Friday, Hungry, Patrons, Price, Rain, Reservation, Food, WaitEst]
     variables = [al, ba, fr, hu, pa, pr, ra, re, fo, wa]
 
@@ -164,8 +164,9 @@ def main(*args):
     # data = [al.sample(numsamples), ba.sample(numsamples), fr.sample(numsamples), hu.sample(numsamples), pa.sample(numsamples),
     #         pr.sample(numsamples), ra.sample(numsamples), re.sample(numsamples), fo.sample(numsamples), wa.sample(numsamples)]
 
-    jpt = JPT(variables)
+    jpt = JPT(variables, min_samples_leaf=5)
     jpt.learn(data)
+    out(jpt)
     jpt.plot(directory='/home/mareike/Desktop/sebaimages', view=True)
 
 
