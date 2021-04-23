@@ -44,14 +44,12 @@ class Node:
         self.threshold = threshold
         self.dec_criterion = dec_criterion
         self.dec_criterion_val = None
-        self.t_dec_criterion = None
         self.parent = parent
         self.path = edict({})
         self.samples = 0.
         self.treename = treename
         self.children = []
         self.distributions = defaultdict(Distribution)
-
 
     def set_trainingssamples(self, examples):
         self.samples = len(examples)
@@ -60,7 +58,7 @@ class Node:
 
     @property
     def str_node(self):
-        return f'{self.dec_criterion.__class__.__name__}' if isinstance(self.t_dec_criterion, (Multinomial, Bool)) else f'{self.dec_criterion.__class__.__name__}<={self.dec_criterion_val:.2f}'
+        return f'{self.dec_criterion.__class__.__name__}' if isinstance(self.dec_criterion, (Multinomial, Bool)) else f'{self.dec_criterion.__class__.__name__}<={self.dec_criterion_val:.2f}'
 
     @property
     def str_edge(self):
@@ -260,6 +258,7 @@ class JPT:
         # BASE CASE 1: all samples belong to the same class --> create leaf node for these targets
         # BASE CASE 2: None of the features provides any information gain --> create leaf node higher up in tree using expected value of the class
         # BASE CASE 3: Instance of previously-unseen class encountered --> create a decision node higher up the tree using the expected value
+
         if max_gain < tr:
             node = Leaf(idx=len(self.allnodes), parent=parent, treename=self.name)
 
@@ -271,7 +270,7 @@ class JPT:
                 node.path = node.parent.path.copy()
 
             # as datasets have been split before, take an arbitrary example and look up the value
-            node.threshold = None if parent is None else data[0][self._variables.index(parent.dec_criterion)].value if isinstance(parent.t_dec_criterion, (Multinomial, Bool)) else data[0][self._variables.index(parent.dec_criterion)].value <= parent.dec_criterion_val
+            node.threshold = None if parent is None else data[0][self._variables.index(parent.dec_criterion)].value if isinstance(parent.dec_criterion, (Multinomial, Bool)) else data[0][self._variables.index(parent.dec_criterion)].value <= parent.dec_criterion_val
 
             # update path
             self._update_path(node, data)
@@ -296,8 +295,6 @@ class JPT:
                 split_data[d[ft_best_idx]].append(d)
 
             dec_criterion_val = list(split_data.keys())
-            # pprint.pprint(split_data)
-            # stop('splitdata')
         else:
             # CASE SPLIT VARIABLE IS NUMERIC
             dec_criterion_val = sp_best
@@ -306,12 +303,12 @@ class JPT:
             for d in data:
                 split_data[f'{ft_best}{"<=" if d[ft_best_idx] <= sp_best else ">"}{sp_best}'].append(d)
 
-        thresh = None if parent is None else data[0][self._variables.index(parent.dec_criterion)] if isinstance(parent.t_dec_criterion, (Multinomial, Bool)) else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
+        thresh = None if parent is None else data[0][self._variables.index(parent.dec_criterion)] if isinstance(parent.dec_criterion, (Multinomial, Bool)) else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
 
         # create decision node splitting on ft_best or leaf node if min_samples_leaf criterion is not met
         if any([len(d) < self.min_samples_leaf for d in split_data.values()]):
             node = Leaf(idx=len(self.allnodes), parent=parent, treename=self.name)
-            node.threshold = None if parent is None else data[0][ft_idx] if isinstance(parent.t_dec_criterion, (Multinomial, Bool)) else data[0][ft_idx] <= parent.dec_criterion_val
+            node.threshold = None if parent is None else data[0][ft_idx] if isinstance(parent.dec_criterion, (Multinomial, Bool)) else data[0][ft_idx] <= parent.dec_criterion_val
 
             # TODO: generate distribution and store NUMBER of examples instead of storing examples
             node.set_trainingssamples(data)
@@ -322,7 +319,6 @@ class JPT:
 
         else:
             node = Node(idx=len(self.allnodes), threshold=thresh, dec_criterion=ft_best, parent=parent, treename=self.name)
-            node.t_dec_criterion = node.dec_criterion
             node.dec_criterion_val = dec_criterion_val
 
             # update path
@@ -340,7 +336,7 @@ class JPT:
             return
 
         node.path = node.parent.path.copy()
-        if isinstance(node.parent.t_dec_criterion, (Multinomial, Bool)):
+        if isinstance(node.parent.dec_criterion, (Multinomial, Bool)):
             node.path[node.parent.dec_criterion] = node.threshold
         else:
             low = all([d[self._variables.index(node.parent.dec_criterion)] <= node.parent.dec_criterion_val for d in data])
@@ -591,7 +587,7 @@ class JPT:
                             </TR>
                             <TR>
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>value:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{[f"{vname.__class__.__name__}: {dist.expectation()}" for vname, dist in n.distributions.items()]}</TD>
+                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{[f"{vname.__class__.__name__}: {dist.expectation()}" for vname, dist in n.value.items()]}</TD>
                             </TR>
                             <TR>
                                 <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
