@@ -10,29 +10,29 @@ own inference task conveniently in your own applications.
 |project|
 *********
 
-.. automodule:: src.trees.trees
-    :members: Tree, StructRegTree
+.. automodule:: jpt.learning.trees
+    :members: JPT, Node, Leaf
 
 Algorithms
 **********
 
-.. automodule:: src.trees.gaussian
-    :members: MultiVariateGaussian
+.. automodule:: jpt.learning.distributions
+    :members: MultiVariateGaussian, Distribution, Multinomial, Histogram, Bool
 
-.. automodule:: src.trees.probs
+.. automodule:: jpt.learning.probs
     :members: GenericBayesFoo
 
 
 Utils
 *****
 
-.. automodule:: src.trees.intervals
+.. automodule:: jpt.learning.intervals
     :members: SInterval, Interval
 
 
-Example
-*******
+Variable
+********
 
-.. automodule:: src.trees.example
-    :members: Example, Feature, NumericFeature, SymbolicFeature, BooleanFeature
+.. automodule:: jpt.variables
+    :members: Variable
 
