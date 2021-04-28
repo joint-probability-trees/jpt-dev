@@ -1,3 +1,7 @@
+sepcomma = ',\n'
+sepsemi = ';\n'
+sepn = '\n'
+
 #################
 # TIME AND DATE #
 #################
