@@ -2,6 +2,7 @@ import copy
 import math
 import numbers
 import os
+import re
 from operator import itemgetter
 
 from matplotlib.backends.backend_pdf import PdfPages
@@ -17,6 +18,7 @@ from numpy import iterable
 
 import matplotlib.pyplot as plt
 
+from jpt.constants import sepcomma
 from jpt.sampling import wsample, wchoice
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
@@ -429,7 +431,11 @@ class Distribution:
     values = None
 
     def __init__(self):
-        pass
+        # used for str and repr methods to be able to print actual type of Distribution when created with jpt.variables.Variable
+        self._cl = f'{self.__class__.__name__}' + (f' ({self.__class__.__mro__[1].__name__})' if self.__module__ != __name__ else '')
+
+    def __hash__(self):
+        return hash(self.values)
 
     def sample(self, n):
         raise NotImplementedError
@@ -438,6 +444,9 @@ class Distribution:
         raise NotImplementedError
 
     def expectation(self):
+        raise NotImplementedError
+
+    def set_data(self, data):
         raise NotImplementedError
 
     def plot(self, name=None, directory='/tmp', pdf=False, view=False, **kwargs):
@@ -455,21 +464,66 @@ class Distribution:
         '''
         raise NotImplementedError
 
-    def __hash__(self):
-        return hash(self.values)
-
 
 class Multinomial(Distribution):
 
     values = None
 
-    def __init__(self, p):
+    def __init__(self, p=None):
         super().__init__()
-        if not iterable(p):
-            raise ValueError('Probabilities must be an iterable with at least 2 elements, got %s' % p)
-        if len(self.values) != len(p):
-            raise ValueError('Number of values and probabilities must coincide.')
-        self._p = np.array(p)  # either probabilities or counters
+        if p is not None:
+            if not iterable(p):
+                raise ValueError(f'Probabilities must be an iterable with {len(self.values)} elements, got {p}')
+            if len(self.values) != len(p):
+                raise ValueError('Number of values and probabilities must coincide.')
+            self._p = np.array(p)  # either probabilities or counters
+        else:
+            self._p = None
+
+    def __contains__(self, item):
+        return item in self.values
+
+    def __add__(self, other):
+        if type(self) is not type(other):
+            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
+        if self._p is not None:
+            m = type(self, ((self.p + other.p) / 2))
+            m.values = self.values
+        else:
+            m = type(self, other.p)
+            m.values = self.values
+        return m
+
+    def __iadd__(self, other):
+        if type(self) is not type(other):
+            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
+        if self._p is not None:
+            self._p = (self.p + other.p) / 2
+        else:
+            self._p = other.p
+        return self
+
+    def __getitem__(self, value):
+        return self.p[self.values.index(value)]
+
+    def __setitem__(self, value, p):
+        self.p[self.values.index(value)] = p
+
+    def __eq__(self, other):
+        return type(self) is type(other) and (self.p == other.p).all()
+
+    def __hash__(self):
+        return hash(f'{self._cl}{self.values}')
+
+    def __str__(self):
+        if self.p is None:
+            return f'{self._cl}<p=None>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p}" for v, p in zip(self.values, self._p)])}]>'
+
+    def __repr__(self):
+        if self.p is None:
+            return f'{self._cl}<p=None>'
+        return f'\n{self._cl}<p=[\n{sepcomma.join([f"{v}={p}"for v, p in zip(self.values, self.p)])}]>;'
 
     @property
     def p(self):
@@ -487,6 +541,9 @@ class Multinomial(Distribution):
 
     def expectation(self):
         return max([(v, p) for v, p in zip(self.values, self.p)], key=itemgetter(1))
+
+    def set_data(self, data):
+        self._p = [list(data).count(x) / len(data) for x in self.values]
 
     def plot(self, name=None, directory='/tmp', pdf=False, view=False, horizontal=False):
         """
@@ -509,19 +566,20 @@ class Multinomial(Distribution):
         if not view:
             plt.ioff()
 
+        vals = [re.escape(str(x)) for x in self.values]
         x = np.arange(len(self.values))  # the label locations
         width = 0.35  # the width of the bars
         err = [.02]*len(self.values)
 
         fig, ax = plt.subplots()
-        ax.set_title(f'{name or f"Distribution of {self.__class__.__name__}"}')
+        ax.set_title(f'{name or f"Distribution of {self._cl}"}')
 
         if horizontal:
             bars = ax.barh(x, self.p, width, xerr=err, color='cornflowerblue', label='%', align='center')
 
             ax.set_xlabel('%')
             ax.set_yticks(x)
-            ax.set_yticklabels(self.values)
+            ax.set_yticklabels(vals)
 
             ax.invert_yaxis()
             ax.set_xlim(left=0., right=1.)
@@ -530,7 +588,7 @@ class Multinomial(Distribution):
 
             ax.set_ylabel('%')
             ax.set_xticks(x)
-            ax.set_xticklabels(self.values)
+            ax.set_xticklabels(vals)
 
             ax.set_ylim(bottom=0., top=1.)
 
@@ -549,54 +607,72 @@ class Multinomial(Distribution):
         if view:
             plt.show()
 
-    def __add__(self, other):
-        if type(self) is not type(other):
-            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
-        m = type(self, ((self.p + other.p) / 2))
-        m.values = self.values
-        return m
-
-    def __iadd__(self, other):
-        if type(self) is not type(other):
-            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
-        self._p = (self.p + other.p) / 2
-        return self
-
-    def __getitem__(self, value):
-        return self.p[self.values.index(value)]
-
-    def __setitem__(self, value, p):
-        self.p[self.values.index(value)] = p
-
-    def __eq__(self, other):
-        return type(self) is type(other) and (self.p == other.p).all()
-
-    def __hash__(self):
-        return hash(f'{self.__class__.__name__}{self.values}')
-
 
 class Histogram(Multinomial):
 
     values = Multinomial.values
 
-    def __init__(self, p):
+    def __init__(self, p=None):
         super().__init__(p)
-        self._d = sum(p)  # denominator (default 1)
+        self._d = sum(p) if self._p is not None else None
 
-    @Multinomial.p.getter
-    def p(self):
-        return self._p / self._d
+    def __add__(self, other):
+        if type(self) is not type(other):
+            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}')
+        if self._p is None:
+            self._p = [0.]*len(self.values)
+        if other._p is None:
+            raise TypeError('Should not happen.')
+        h = type(self)((self._p + other._p))
+        return h
 
-    @property
-    def d(self):
-        return self._d
+    def __iadd__(self, other):
+        if type(self) is not type(other):
+            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
+        if self._p is None:
+            self._p = np.zeros(len(self.values))
+            self._d = 0.
+        if other._p is None or other._d is None:
+            raise TypeError('Should not happen.')
+
+        self._p += other._p
+        self._d += other.d
+        return self
+
+    def __eq__(self, other):
+        return super().__eq__(other) and self.d == other.d
+
+    def __str__(self):
+        if self.p is None:
+            return f'{self._cl}<d=None; p=None>'
+        return f'{self._cl}<d={self._d}; p=[{",".join([f"{v}={p}" + (f" ({p_})" if self._d != 1. else "") for v, p, p_ in zip(self.values, self._p, self.p)])}]>'
+
+    def __repr__(self):
+        if self.p is None:
+            return f'{self._cl}<d=None; p=None>'
+        return f'\n{self._cl}<d={self._d}; p=[\n{sepcomma.join([f"{v}={p}" + (f" ({p_})" if self._d != 1. else "") for v, p, p_ in zip(self.values, self._p, self.p)])}]>'
 
     def __setitem__(self, value, p):
         self._p[self.values.index(value)] = p
         self._d = sum(p)
 
+    @Multinomial.p.getter
+    def p(self):
+        if self._p is not None:
+            return np.array(self._p) / self._d
+        else:
+            return None
+
+    @property
+    def d(self):
+        return self._d
+
     def expectation(self):
         return max([(v, p) for v, p in zip(self.values, self._p)], key=itemgetter(1))
+
+    def set_data(self, data):
+        self._p = [list(data).count(x) for x in self.values]
+        self._d = len(data)
 
     def plot(self, name=None, directory='/tmp', pdf=False, view=False, horizontal=False):
         """
@@ -669,36 +745,18 @@ class Histogram(Multinomial):
         if view:
             plt.show()
 
-    def __add__(self, other):
-        if type(self) is not type(other):
-            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}')
-        h = type(self)((self._p + other._p))
-        # h.values = self.values
-        return h
 
-    def __iadd__(self, other):
-        if type(self) is not type(other):
-            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
-        self._p += other._p
-        self._d += other.d
-        return self
-
-    def __eq__(self, other):
-        return super().__eq__(other) and self.d == other.d
-
-
-class Bool(Multinomial):
+class Bool(Histogram):
 
     values = [True, False]
 
-    def __init__(self, p):
-        if not iterable(p):
+    def __init__(self, p=None):
+        if p is not None and not iterable(p):
             p = [p, 1 - p]
         super().__init__(p)
 
-    def __getitem__(self, v):
-        return self.p[v]
-
     def __setitem__(self, v, p):
-        self.p[v] = p
-        self.p[1 - v] = 1 - p
+        if not iterable(p):
+            p = np.array([p, 1-p])
+        self._p[self.values.index(v)] = p
+        self._d = sum(p)
