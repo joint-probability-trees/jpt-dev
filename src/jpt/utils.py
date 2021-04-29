@@ -11,6 +11,7 @@ def mapstr(seq, format=None):
 def prod(iterable):
     return reduce(lambda x, y: x * y, iterable)
 
+
 def tojson(obj):
     """Recursively generate a JSON representation of the object ``obj``."""
     if hasattr(obj, 'tojson'):

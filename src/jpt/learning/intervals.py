@@ -1,3 +1,5 @@
+'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
+'''
 import numbers
 from operator import attrgetter
 
@@ -19,9 +21,9 @@ OPEN = 4
 
 
 class Interval:
-    """Wrapper class for intervals providing convenience functions such as :func:`sample`, :func:`intersects` and
+    '''Wrapper class for intervals providing convenience functions such as :func:`sample`, :func:`intersects` and
     :func:`union`. An Instance of this type actually represents a complex range of values (possibly with gaps) by
-    wrapping around multiple intervals (:class:`matcalo.utils.utils.SInterval`). Overlapping SIntervals will be
+    wrapping around multiple intervals (:class:`jpt.learning.intervals.SInterval`). Overlapping SIntervals will be
     merged.
     A range of values with gaps can occur for example by unifying two intervals that do not intersects (e.g. [0, 1] and
     [3, 4]).
@@ -57,13 +59,13 @@ class Interval:
         >>> print(i5)
         [0.0,5.0]
 
-    """
+    '''
 
     def __init__(self, lower, upper, left=INC, right=INC):
         self._intervals = [SInterval(lower, upper, left=left, right=right)]
 
     def __contains__(self, value):
-        """Checks if `value` lies in interval"""
+        '''Checks if ``value`` lies in interval'''
         return any([value in i for i in self._intervals])
 
     def __repr__(self):
@@ -100,7 +102,7 @@ class Interval:
 
     @staticmethod
     def r_interval():
-        """Represents ℝ"""
+        '''Represents ℝ'''
         return Interval(-np.inf, np.inf, EXC, EXC)
 
     @property
@@ -113,29 +115,29 @@ class Interval:
 
     @property
     def lower(self):
-        """The lower bound.
+        '''The lower bound.
 
         :returns: the lowermost bound of the value range
         :rtype: float
-        """
+        '''
         return np.min([i.lower for i in self._intervals])
 
     @property
     def upper(self):
-        """The upper bound.
+        '''The upper bound.
 
         :returns: the uppermost bound of the value range
         :rtype: float
-        """
+        '''
         return np.min([i.upper for i in self._intervals])
 
     def sample(self):
-        """Chooses an element from self.intervals proportionally to their sizes, then returns a uniformly sampled
+        '''Chooses an element from self.intervals proportionally to their sizes, then returns a uniformly sampled
         value from that Interval.
 
         :returns: a value from the represented value range
         :rtype: float
-        """
+        '''
         weights = [abs(i.upper - i.lower) for i in self._intervals]
 
         # normalize if none of the weights is (-)infinity
@@ -148,31 +150,31 @@ class Interval:
                 return self._intervals[i].sample()
 
     def contains(self, value):
-        """Checks if ``value`` lies in interval.
+        '''Checks if ``value`` lies in interval.
 
         :param value: The element to be checked if it lies in the interval.
         :type value: float
         :return: True if the value lies in the interval, False otherwise
         :rtype: bool
-        """
+        '''
         return any([value in i for i in self._intervals])
 
     def contains_value(self, value):
-        """Checks if ``value`` lies in interval"""
+        '''Checks if ``value`` lies in interval'''
         for s in self.intervals:
             if s.contains_value(value):
                 return True
         return False
 
     def contains_interval(self, other):
-        """Checks if ``value`` lies in interval"""
+        '''Checks if ``value`` lies in interval'''
         for s in self.intervals:
             if s.contains_interval(other):
                 return True
         return False
 
     def isempty(self):
-        """Checks whether this interval contains values.
+        '''Checks whether this interval contains values.
 
         :returns: True if this is interval is empty, i.e. does not contain any values, False otherwise
         :rtype: bool
@@ -184,28 +186,28 @@ class Interval:
             >>> Interval.fromstring(']1,1]').isempty()
             True
 
-        """
+        '''
         return all([i.isempty() for i in self._intervals])
 
     def intersects(self, other):
-        """Checks whether the this interval intersects with ``other``.
+        '''Checks whether the this interval intersects with ``other``.
 
         :param other: the other interval
-        :type other: matcalo.utils.utils.Interval
+        :type other: jpt.learning.intervals.Interval
         :returns: True if the two intervals intersects, False otherwise
         :rtype: bool
 
-        """
+        '''
         return any([i.intersects(o) for i in self._intervals for o in other.intervals])
 
     def intersection(self, other):
-        """Computes the intersection of this value range with ``other``.
+        '''Computes the intersection of this value range with ``other``.
 
         :param other: the other value range Interval
-        :type other: matcalo.utils.utils.Interval
+        :type other: jpt.learning.intervals.Interval
         :returns: the intersection of this interval with ``other``
-        :rtype: matcalo.utils.utils.Interval
-        """
+        :rtype: jpt.learning.intervals.Interval
+        '''
         nint = Interval(0, 0, EXC, EXC)
         if not self.intersects(other):
             nint.intervals = [self.emptyinterval()]
@@ -225,13 +227,13 @@ class Interval:
         return nint
 
     def union(self, other):
-        """Unifies this value range with ``other``.
+        '''Unifies this value range with ``other``.
 
         :param other: the other value range Interval
-        :type other: matcalo.utils.utils.Interval
+        :type other: jpt.learning.intervals.Interval
         :returns: the union of this interval with ``other``
-        :rtype: matcalo.utils.utils.Interval
-        """
+        :rtype: jpt.learning.intervals.Interval
+        '''
         nint = Interval(0, 0, EXC, EXC)
         q = self._intervals + other.intervals
         ivals = []
@@ -249,10 +251,10 @@ class Interval:
 
 
 class SInterval:
-    """Actual Interval representation. Wrapped by :class:`Interval` to allow more complex intervals with gaps.
+    '''Actual Interval representation. Wrapped by :class:`Interval` to allow more complex intervals with gaps.
 
     .. seealso:: :class:`Interval`
-    """
+    '''
 
     def __init__(self, lower=np.nan, upper=np.nan, left=INC, right=INC):
         self.lower = lower
@@ -306,11 +308,19 @@ class SInterval:
         return s
 
     def contains_value(self, value):
-        """Checks if ``value`` lies in interval"""
+        '''Checks if ``value`` lies in interval
+
+        :param value:   the value that may or may not be contained in the interval.
+        :type value:    jpt.learning.intervals.SInterval
+        '''
         return self.intersects(SInterval(value, value))
 
     def contains_interval(self, other):
-        """Checks if ``value`` lies in interval"""
+        '''Checks if ``other`` lies in interval
+        
+        :param other:   the other interval
+        :type other:    jpt.learning.intervals.SInterval
+        '''
         if self.lower > other.lower or self.upper < other.upper:
             return False
         if self.lower == other.lower and self.left == EXC:
@@ -320,6 +330,10 @@ class SInterval:
         return True
 
     def contiguous(self, other):
+        '''
+        :param other:   the other interval
+        :type other:    jpt.learning.intervals.SInterval
+        '''
         if self.lower == other.upper and (other.right + self.left == HALFOPEN):
             return True
         if self.upper == other.lower and (self.right + other.left == HALFOPEN):
@@ -327,13 +341,13 @@ class SInterval:
         return False
 
     def intersects(self, other):
-        """Checks whether the this interval intersects with ``other``.
+        '''Checks whether the this interval intersects with ``other``.
 
         :param other: the other interval
-        :type other: matcalo.utils.utils.SInterval
+        :type other: jpt.learning.intervals.SInterval
         :returns: True if the two intervals intersects, False otherwise
         :rtype: bool
-        """
+        '''
         if other.lower > self.upper or other.upper < self.lower:
             return False
         if self.lower == other.upper and (other.right == EXC or self.left == EXC):

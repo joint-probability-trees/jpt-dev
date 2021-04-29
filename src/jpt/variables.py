@@ -1,18 +1,14 @@
-from dnutils import ifnone, first
-
-from jpt.sampling import wsample
-
-from jpt.utils import mapstr, prod
-
-
+'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
+'''
 class Variable:
+    '''Wrapper class for a variable name along with its distribution class type.
+    '''
     def __init__(self, name, domain):
-        '''Wrapper class for a variable name along with its distribution class type.
-
+        '''
         :param name:    name of the variable
         :type name:     str
         :param domain:  the class type (not an instance!) of the represented Distribution
-        :type domain:   class type jpt.learning.distributions.Distribution
+        :type domain:   class type of jpt.learning.distributions.Distribution
         '''
         self._name = name
         self._domain = domain

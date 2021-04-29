@@ -1,3 +1,5 @@
+'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
+'''
 import random
 
 from dnutils import first

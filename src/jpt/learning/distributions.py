@@ -1,3 +1,5 @@
+'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
+'''
 import copy
 import math
 import numbers
@@ -35,7 +37,7 @@ class Gaussian(Gaussian_):
         :param mean:    the mean of the Gaussian. May be a scalar (univariante) or an array (multivariate).
         :param cov:     the covariance of the Gaussian. May be a scalar (univariate) or a matrix (multivariate).
         :param data:    if ``mean`` and ``cov`` are not provided, ``data`` may be a data set (matrix) from which
-                        the parameters of the distribution are estimated.
+        the parameters of the distribution are estimated.
         :param weight:  [optional] weights for the data points. The weight do not need to be normalized.
         '''
         self._sum_w = 0  # ifnot(weights, 0, sum)
@@ -158,6 +160,7 @@ class Gaussian(Gaussian_):
                     ``b`` - the intercept of the line
                     ``rss`` - the residual sum-of-squares error
                     ``noise`` - the square of the sample correlation coefficient ``r^2``
+
         References:
             - https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#In_least_squares_regression_analysis
             - https://milnepublishing.geneseo.edu/natural-resources-biometrics/chapter/chapter-7-correlation-and-simple-linear-regression/
@@ -288,19 +291,20 @@ class Gaussian(Gaussian_):
 
 
 class MultiVariateGaussian(Gaussian):
-    """A Multivariate Gaussian distribution that can be incrementally updated with new samples
-    """
+
 
     def __init__(self, mean=None, cov=None, data=None, ignore=-6000000):
+        '''A Multivariate Gaussian distribution that can be incrementally updated with new samples
+        '''
         self.ignore = ignore
         super(MultiVariateGaussian, self).__init__(mean=mean, cov=cov, data=data)
 
     def cdf(self, intervals):
-        """Computes the CDF for a multivariate normal distribution.
+        '''Computes the CDF for a multivariate normal distribution.
 
         :param intervals: the boundaries of the integral
         :type intervals: list of matcalo.utils.utils.Interval
-        """
+        '''
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], self.mean, self.cov))
 
     def pdf(self):
@@ -309,32 +313,32 @@ class MultiVariateGaussian(Gaussian):
 
     @property
     def mvg(self):
-        """Computes the multivariate Gaussian distribution.
-        """
+        '''Computes the multivariate Gaussian distribution.
+        '''
         return multivariate_normal(self.mean, self.cov, allow_singular=True)
 
     @property
     def dim(self):
-        """Returns the dimension of the distribution.
-        """
+        '''Returns the dimension of the distribution.
+        '''
         if self._mean is None:
             raise ValueError('no dimensionality specified yet.')
         return len(self._mean) if hasattr(self.mean, '__len__') else 1
 
     @property
     def cov_(self):
-        """Returns the covariance matrix for prettyprinting (precision .2).
-        """
+        '''Returns the covariance matrix for prettyprinting (precision .2).
+        '''
         return list([round(c, 2) for c in r] for r in self.cov) if hasattr(self.cov, '__len__') else round(self.cov, 2)
 
     @property
     def mean_(self):
-        """Returns the mean vector for prettyprinting (precision .2).
-        """
+        '''Returns the mean vector for prettyprinting (precision .2).
+        '''
         return list([round(c, 2) for c in self.mean]) if hasattr(self.mean, '__len__') else round(self.mean, 2)
 
     def conditional(self, given):
-        r"""Returns a distribution conditioning on the variables in ``given`` following the calculations described
+        r'''Returns a distribution conditioning on the variables in ``given`` following the calculations described
         in `Conditional distributions <https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions>`_,
         i.e., after determining the partitions of :math:`\mu`, i.e. :math:`\mu_{1}` and :math:`\mu_{2}` as well as
         the partitions of :math:`\Sigma`, i.e. :math:`\Sigma_{11}, \Sigma_{12}, \Sigma_{21} \text{ and } \Sigma_{22}`, we
@@ -350,7 +354,7 @@ class MultiVariateGaussian(Gaussian):
 
         :param given: the variables the returned distribution conditions on (mapping indices to values or Intervals of values)
         :type given: dict
-        """
+        '''
         indices = sorted(list(given.keys()))
         k = self.dim - len(indices)
         a = np.array([given[i] for i in indices])
@@ -380,13 +384,13 @@ class MultiVariateGaussian(Gaussian):
         return MultiVariateGaussian(mean=mu_, cov=sigma_)
 
     def plot(self):
-        """
+        '''
         .. highlight:: python
         .. code-block:: python
 
             import sys
             self.dim==1
-        """
+        '''
         if self.dim == 1:
             x = np.linspace(self.mean - 2 * self.cov, self.mean + 2 * self.cov, 500)
             y = multivariate_normal.pdf(x, mean=self.mean, cov=self.cov)
@@ -546,7 +550,7 @@ class Multinomial(Distribution):
         self._p = [list(data).count(x) / len(data) for x in self.values]
 
     def plot(self, name=None, directory='/tmp', pdf=False, view=False, horizontal=False):
-        """
+        '''
 
         :param name:        the name of the disribution (used for the generated filename)
         :type name:         str
@@ -561,7 +565,7 @@ class Multinomial(Distribution):
         :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
         :type horizontal:   bool
         :return:            None
-        """
+        '''
         # Only save figures, do not show
         if not view:
             plt.ioff()
@@ -675,7 +679,7 @@ class Histogram(Multinomial):
         self._d = len(data)
 
     def plot(self, name=None, directory='/tmp', pdf=False, view=False, horizontal=False):
-        """
+        '''
 
         :param name:        the name of the disribution (used for the generated filename)
         :type name:         str
@@ -690,7 +694,7 @@ class Histogram(Multinomial):
         :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
         :type horizontal:   bool
         :return:            None
-        """
+        '''
         # Only save figures, do not show
         if not view:
             plt.ioff()

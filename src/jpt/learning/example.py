@@ -1,3 +1,5 @@
+'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
+'''
 import numpy as np
 from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error

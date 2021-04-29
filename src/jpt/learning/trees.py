@@ -1,3 +1,5 @@
+'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
+'''
 import html
 import math
 import os
@@ -14,7 +16,6 @@ from sklearn.metrics import mean_squared_error
 import dnutils
 from dnutils import edict, first, out, stop
 from .distributions import Distribution, Bool, Multinomial
-from .example import SymbolicFeature, BooleanFeature, Example, NumericFeature
 from .intervals import Interval, EXC, INC
 from ..constants import plotstyle, orange, green, sepcomma
 
@@ -24,23 +25,22 @@ style.use(plotstyle)
 
 
 class Node:
-    """Represents an internal decision node of the matcalo.core.algorithms.StructRegTree."""
+    '''Represents an internal decision node of the matcalo.core.algorithms.StructRegTree.
+    '''
 
     def __init__(self, idx, threshold, dec_criterion, parent=None, treename=None):
-        """
-        `gbf' represents the distributions in this node that allows for reasoning over the data
+        '''
         :param idx:             the identifier of a node
         :type idx:              int
         :param threshold:       the threshold at which the data for the decision criterion are separated
         :type threshold:        float
-        :param threshold:
         :param dec_criterion:   the split feature name
-        :type dec_criterion:    jpt.learning.distributions.Distribution
+        :type dec_criterion:    jpt.variables.Variable
         :param parent:          the parent node
         :type parent:           jpt.learning.trees.Node
         :param treename:        the name of the decision tree
         :type treename:         str
-        """
+        '''
         self.idx = idx
         self.threshold = threshold
         self.dec_criterion = dec_criterion
@@ -86,9 +86,10 @@ class Node:
 
 
 class Leaf(Node):
-    """Represents a leaf node of the matcalo.core.algorithms.StructRegTree."""
 
     def __init__(self, idx, parent, treename=None):
+        '''Represents a leaf node of the :class:`~jpt.learning.trees.JPT`.
+        '''
         Node.__init__(self, idx, None, None, parent=parent, treename=treename)
 
     @property
@@ -107,15 +108,15 @@ class Leaf(Node):
 
 
 class JPT:
-    """Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
-    induced by its training samples in the nodes so we can later make statements
-    about the confidence of the prediction.
-    """
 
     def __init__(self, variables, name=None, min_samples_leaf=1):
-        '''
+        '''Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
+        induced by its training samples in the nodes so we can later make statements
+        about the confidence of the prediction.
+        has children :class:`~jpt.learning.trees.Node`.
+
         :param variables:           the variable declarations of the data being processed by this tree
-        :type variables:            <jpt.variables.Variable>
+        :type variables:            [jpt.variables.Variable]
         :param name:                the name of the tree
         :type name:                 str
         :param min_samples_leaf:    the minimum number of samples required to generate a leaf node
@@ -131,11 +132,11 @@ class JPT:
         self.root = None
 
     def impurity(self, xmpls, tgt):
-        r"""Calculate the mean squared error for the data set `xmpls`, i.e.
+        r'''Calculate the mean squared error for the data set `xmpls`, i.e.
 
         .. math::
             MSE = \frac{1}{n} · \sum_{i=1}^{n} (y_i - \hat{y}_i)^2
-        """
+        '''
         if not xmpls:
             return 0.
 
@@ -166,7 +167,7 @@ class JPT:
             return sqerr
 
     def gains(self, xmpls, ft, tgt):
-        r"""Calculate the impurity for the data set after selection of feature `ft`, i.e.
+        r'''Calculate the impurity for the data set after selection of feature `ft`, i.e.
 
         :param xmpls:
         :type xmpls:
@@ -177,7 +178,7 @@ class JPT:
         .. math::
             R(ft) = \sum_{i=1}^{v}\frac{p_i + n_i}{p+n} · I(\frac{p_i}{p_i + n_i}, \frac{n_i}{p_i + n_i})
 
-        """
+        '''
 
         if not xmpls:
             return {None: 0.}
@@ -353,13 +354,13 @@ class JPT:
         return "{}{}\n{}".format(" " * indent, str(root), ''.join([self._p(r, indent + 5) for r in root.children]) if hasattr(root, 'children') else 'None')
 
     def learn(self, data=None, tr=0.0):
-        """Fits the ``data`` into a regression tree.
+        '''Fits the ``data`` into a regression tree.
 
         :param data:    The training examples containing features and targets
         :type data:     list of lists of variable type (according to `self.variables`)
         :param tr:      The threshold for the gain in the feature selection
         :type tr:       float
-        """
+        '''
         self.c45(data, None, ft_idx=None, tr=tr)
 
         # build up tree
@@ -376,7 +377,7 @@ class JPT:
             out(self)
 
     def infer(self, query, evidence=None):
-        r"""For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
+        r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
             P(query|evidence) = \frac{p_q}{p_e}
@@ -401,7 +402,7 @@ class JPT:
         :type query:        dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
-        """
+        '''
         if evidence:
             p_e = self.infer(query=evidence)
         else:
@@ -421,13 +422,13 @@ class JPT:
         return p_q / p_e
 
     # def predict(self, sample):
-    #     """Predicts value of ``sample`` for the learned tree.
+    #     '''Predicts value of ``sample`` for the learned tree.
     #
     #     :param sample: if dict: {featname: featvalue} or {featname: Interval.fromstring([x,y])}
     #     :type sample: dict or matcalo.utils.example.Example
     #     :returns: a mapping of target name to target value
     #     :rtype: dict
-    #     """
+    #     '''
     #     if isinstance(sample, dict):
     #         sample = Example(x=[ftype(value=self.sample(sample, feat), name=feat) for feat, ftype in self.f_types.items()])
     #     cand = self.apply(sample)
@@ -437,8 +438,8 @@ class JPT:
     #         return {}
     #
     # def predict_us(self, sample):
-    #     """predict underspecified: only certain variables along the path are given; multiple answers are therefore
-    #     possible"""
+    #     '''predict underspecified: only certain variables along the path are given; multiple answers are therefore
+    #     possible'''
     #     cands = self.apply_us(sample)
     #     if cands:
     #         return {c: dict([(t, v) for t, v in zip(self.targets, c.value)]) for c in cands}
@@ -505,13 +506,13 @@ class JPT:
             return iv
 
     def reverse(self, query):
-        """Determines the leaf nodes that match query best and returns their respective paths to the root node.
+        '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
 
         :param query: a mapping from featurenames to either numeric value intervals or an iterable of categorical values
         :type query: dict
         :returns: a mapping from probabilities to lists of matcalo.core.algorithms.JPT.Node (path to root)
         :rtype: dict
-        """
+        '''
 
         # if none of the target variables is present in the query, there is no match possible
         if set(query.keys()).isdisjoint(set(self.targets)):
@@ -520,7 +521,7 @@ class JPT:
         numerics = []
         cat = []
         for i, tgt in enumerate(self.targets):
-            if self.t_types[tgt] == NumericFeature:
+            if issubclass(self._variables[tgt], Distribution):
                 lower = np.NINF
                 upper = np.PINF
 
@@ -569,7 +570,7 @@ class JPT:
         return paths
 
     def plot(self, filename='regtree', directory='/tmp', plotvars=None, view=True):
-        """Generates an SVG representation of the generated regression tree.
+        '''Generates an SVG representation of the generated regression tree.
 
         :param filename: the name of the JPT (will also be used as filename; extension will be added automatically)
         :type filename: str
@@ -579,7 +580,7 @@ class JPT:
         :type plotvars: <jpt.variables.Variable>
         :param view: whether the generated SVG file will be opened automatically
         :type view: bool
-        """
+        '''
         if plotvars == None:
             plotvars = []
 
@@ -615,12 +616,12 @@ class JPT:
                                 '''
 
             # content for node labels
-            nodelabel = f"""<TR>
+            nodelabel = f'''<TR>
                                 <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{"Leaf" if isinstance(n, Leaf) else "Node"} #{n.idx}</B><BR/>{html.escape(n.str_node)}</TD>
-                            </TR>"""
+                            </TR>'''
 
             # content for leaf labels
-            leaflabel = f"""{nodelabel}{imgs}
+            leaflabel = f'''{nodelabel}{imgs}
                             <TR>
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{len(n.samples) if isinstance(n.samples, list) else n.samples}</TD>
@@ -633,12 +634,12 @@ class JPT:
                                 <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
                                 <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{sep.join([f"{k.name}: {v}" for k, v in n.path.items()])}</TD>
                             </TR>
-                            """
+                            '''
 
             # stitch together
-            lbl = f"""<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
+            lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
                             {leaflabel if isinstance(n, Leaf) else nodelabel}
-                      </TABLE>>"""
+                      </TABLE>>'''
 
             if isinstance(n, Leaf):
                 dot.node(str(idx),
@@ -663,21 +664,21 @@ class JPT:
         dot.render(view=view, cleanup=False)
 
     def pickle(self, fpath):
-        """Pickles the fitted regression tree to a file at the given location ``fpath``.
+        '''Pickles the fitted regression tree to a file at the given location ``fpath``.
 
         :param fpath: the location for the pickled file
         :type fpath: str
-        """
+        '''
         with open(os.path.abspath(fpath), 'wb') as f:
             pickle.dump(self, f)
 
     @staticmethod
     def load(fpath):
-        """Loads the pickled regression tree from the file at the given location ``fpath``.
+        '''Loads the pickled regression tree from the file at the given location ``fpath``.
 
         :param fpath: the location of the pickled file
         :type fpath: str
-        """
+        '''
         with open(os.path.abspath(fpath), 'rb') as f:
             try:
                 logger.info(f'Loading JPT {os.path.abspath(fpath)}')
@@ -688,7 +689,7 @@ class JPT:
 
     @staticmethod
     def calcnorm(sigma, mu, intervals):
-        """Computes the CDF for a multivariate normal distribution.
+        '''Computes the CDF for a multivariate normal distribution.
 
         :param sigma: the standard deviation
         :param mu: the expected value
@@ -696,7 +697,7 @@ class JPT:
         :type sigma: float
         :type mu: float
         :type intervals: list of matcalo.utils.utils.Interval
-        """
+        '''
         from scipy.stats import mvn
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], mu, sigma))
 

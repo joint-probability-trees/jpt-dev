@@ -1,3 +1,5 @@
+'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
+'''
 import itertools
 import math
 import os
@@ -14,7 +16,6 @@ import dnutils
 from dnutils import out, stop
 from jpt.constants import avalailable_colormaps, plotstyle, ddarkblue
 from .distributions import MultiVariateGaussian
-from .example import BooleanFeature, SymbolicFeature, NumericFeature
 from .intervals import Interval
 
 logger = dnutils.getlogger(name='ProbsLogger', level=dnutils.ERROR)
