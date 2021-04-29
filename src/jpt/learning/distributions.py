@@ -469,6 +469,37 @@ class Distribution:
         raise NotImplementedError
 
 
+class Numeric(Distribution):
+    values = []
+
+    def __init__(self, cdf=None):
+        super().__init__()
+        self._cdf = cdf
+
+    @property
+    def cdf(self):
+        return self._cdf
+
+    @cdf.setter
+    def cdf(self, cdf):
+        self._cdf = cdf
+
+    def sample(self, n):
+        raise NotImplementedError
+
+    def sample_one(self):
+        raise NotImplementedError
+
+    def expectation(self):
+        raise NotImplementedError
+
+    def set_data(self, data):
+        raise NotImplementedError
+
+    def p(self, interval):
+        raise NotImplementedError
+
+
 class Multinomial(Distribution):
 
     values = None
