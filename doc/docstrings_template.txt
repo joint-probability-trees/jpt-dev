@@ -11,6 +11,11 @@
 ...
 :return: [ReturnDescription]
 :rtype: [ReturnType]
+...
+:paramref:`~jpt.learning.probs.GenericBayesFoo.plot.directory`
+(creates a link to the parameter "directory" in the function "plot" of the GenericBayesFoo class. The text will only
+show "directory", because the path is prepended with "~", otherwise the entire path will be shown.)
+:class:`~jpt.learning.trees.JPT`
 """
 
 ###########

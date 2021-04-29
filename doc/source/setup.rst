@@ -46,8 +46,6 @@ This will generate a number of executable python scripts, i.e.:
 - matcalolearn
 - matcalotest
 
-See :doc:`matcalotools` for their respective usage.
-
 Install via PyPi
 ----------------
 

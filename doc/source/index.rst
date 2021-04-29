@@ -14,21 +14,17 @@ materials. |project| combines modern machine learning techniques with machine-in
 to model representations of relationships between materials, processes and properties and allow reasoning about them.
 Given a requirement profile, the system generates suggestions on how these criteria can be achieved.
 
-You can integrate |project| in your own `Python` project. If you are a developer, see :doc:`developers` for
-examples how to execute learning and reasoning and :doc:`apidoc` for further documentation.
+You can integrate |project| in your own `Python` project. If you are a developer, see :doc:`setup` for
+examples how to execute learning and reasoning and :doc:`setup` for further documentation.
 
-If you are a user, go to :doc:`users` to find out how to use the online tools in |project|'s web interface and
-:doc:`matcalotools` for help with the command-line tools.
+If you are a user, go to :doc:`setup` to find out how to use the online tools in |project|'s web interface for help with the command-line tools.
 
 ****
 
 Release notes
 -------------
-
-  * Release |release| (XX.YY.2019)
-
-
-    * *Initial Release*
+    * Release |release| (XX.YY.2019)
+        * *Initial Release*
 
 ****
 
@@ -54,20 +50,25 @@ The following Bibtex entry can be used for documents based on LaTeX: ::
         url = "http://matcalo.open-ease.org/",
     }
 
-
 ****
 
 Contents:
 ---------
  
 .. toctree::
-   :maxdepth: 2
+    :maxdepth: 2
 
-   setup
-   developers
-   users
-   matcalotools
-   apidoc
+    setup
+
+.. toctree::
+    :maxdepth: 1
+
+    api
+..
+    Either include autoapi/jpt/index or apidoc.
+    If apidoc, set autoapi_generate_api_docs in conf.py to True
+    if autoapi/jpt/index, set it to False
+    apidoc
 
 ****
 
@@ -122,4 +123,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-

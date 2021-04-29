@@ -20,19 +20,26 @@ import sphinx_bootstrap_theme
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 # sys.path.insert(0, os.path.abspath('.'))
-sys.path.insert(0, os.path.abspath('../../src'))
 sys.path.append('.')
-# sys.path.append('..')
-# sys.path.append('../..')
-print('syspath', sys.path)
+sys.path.insert(0, os.path.abspath('../../src'))
+
+# def skip_util_classes(app, what, name, obj, skip, options):
+#     if name == "__init__":
+#        skip = False
+#
+#     if skip:
+#         print('==========================================SKIPPING', app, what, name, obj, options)
+#     return skip
 
 
 def setup(app):
     app.add_css_file('css/custom_styles.css')
+    # app.connect("autodoc-skip-member", skip_util_classes)
+
 
 try:
     from sphinxcontrib import bibtex
-except:
+except (ImportError, ModuleNotFoundError):
     print('ERROR: bibtex extension for sphinx not found. Install with')
     print()
     print('   pip install sphinxcontrib-bibtex')
@@ -46,12 +53,50 @@ except:
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc',
+extensions = ['autoapi.extension',
               'sphinx.ext.doctest',
               'sphinx.ext.coverage',
               'sphinx.ext.mathjax',
               'sphinxcontrib.bibtex',
-              'sphinx_numfig.numfig']
+              'sphinx_numfig.numfig',
+              'sphinx_paramlinks'
+              ]
+
+# type of files to be documented
+autoapi_type = 'python'
+
+# Paths (relative or absolute) to the source code
+autoapi_dirs = ['../../src']
+
+# Path to output the generated AutoAPI files into,
+autoapi_root = 'autoapi'
+
+# keep generated files (use this when apidoc reports weird indentation/formatting warnings in generated files
+autoapi_keep_files = True
+
+# A list of patterns to ignore when finding files.
+# Any file matched by these patterns will be disregarded completely by apidoc which means that (!!!) other modules
+# importing anything from that file will cause "Cannot resolve import of unknown module" warnings for that file.
+# The reason for this behavior is that apidoc is dumb as shit.
+autoapi_ignore = ['*migrations*', '*main.py', '*example.py']
+
+# Options for display of the generated documentation.
+autoapi_options = ['members',                   # Display children of an object
+                   'inherited-members',         # Display children of an object that have been inherited from a base class.
+                   # 'undoc-members',             # Display objects that have no docstring
+                   'private-members',           # Display private objects (eg. _foo in Python)
+                   # 'special-members',           # Display special objects (eg. __foo__ in Python)
+                   # 'show-inheritance',          # Display a list of base classes below the class signature.
+                   'show-inheritance-diagram',  # Display a list of base classes below the class signature. (makes a fancy graphviz picture)
+                   # 'show-module-summary',       # Whether to include autosummary directives in generated module documentation.
+                   # 'imported-members'           # Display objects imported from the same top level package or module. The default module template does not include imported objects, even with this option enabled. The default package template does.
+                   ]
+
+# Use the concatentation of the class docstring and the __init__ docstring
+autoapi_python_class_content = 'both'
+
+autoapi_add_toctree_entry = False
+autoapi_generate_api_docs = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
