@@ -28,9 +28,11 @@ def test_muesli():
 
     quantiles = Quantiles(data_, epsilon=.0001)
     cdf = quantiles.cdf()
+    print(cdf.pfmt())
     pdf = quantiles.pdf()
     plt.plot(data_, np.cumsum([1] * len(data_)) / len(data_), label='CumSum($\mathcal{D}$)', linewidth=2)
     plt.plot(data_, cdf.multi_eval(data_), linewidth=2, label='Piecewise linear PDF')
+
     plt.show()
 
 
