@@ -2,10 +2,12 @@
 '''
 import html
 import math
+import operator
 import os
 import pickle
 import pprint
 from collections import defaultdict
+from functools import reduce
 
 import numpy as np
 from graphviz import Digraph
@@ -217,7 +219,6 @@ class JPT:
         return r_a
 
     def c45(self, data, parent, ft_idx=None, tr=0.0):
-        # stop('c45 call', data, parent)
         if not data:
             logger.warning('No data left. Returning parent', parent)
             return parent
@@ -294,11 +295,16 @@ class JPT:
             dec_criterion_val = list(split_data.keys())
         else:
             # CASE SPLIT VARIABLE IS NUMERIC
+            out(sp_best)
             dec_criterion_val = sp_best
 
             # split examples into distinct sets for smaller and higher values of the selected feature than the selected split value
             for d in data:
-                split_data[f'{ft_best}{"<=" if d[ft_best_idx] <= sp_best else ">"}{sp_best}'].append(d)
+                kv = f'{ft_best.name}{"<=" if d[ft_best_idx] <= sp_best else ">"}{sp_best}'
+                if kv in split_data:
+                    split_data[kv].append(d)
+                else:
+                    split_data[kv] = [d]
 
         thresh = None if parent is None else data[0][self._variables.index(parent.dec_criterion)] if issubclass(parent.dec_criterion.domain, Multinomial) else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
 
@@ -337,6 +343,8 @@ class JPT:
         if issubclass(node.parent.dec_criterion.domain, Multinomial):
             node.path[node.parent.dec_criterion] = node.threshold
         else:
+            out(node.parent.dec_criterion, node.parent.dec_criterion.domain, node.parent.dec_criterion_val)
+            stop(node.path, self._variables)
             low = all([d[self._variables.index(node.parent.dec_criterion)] <= node.parent.dec_criterion_val for d in data])
             i = Interval(-np.Inf if low else node.parent.dec_criterion_val, node.parent.dec_criterion_val if low else np.Inf, left=EXC, right=INC if low else EXC)
             if node.parent.dec_criterion in node.path:
@@ -411,15 +419,20 @@ class JPT:
 
         query.update(evidence)
 
-        c = 0.
+        p_q = 0.
         for l in self.apply(query):
             freevars = set(query.keys()) - set(l.path.keys())
-            if not freevars:
-                c += l.samples
-            else:
-                c += math.prod([l.distributions[var].p[l.distributions[var].values.index(query[var])] for var in freevars]) * l.samples
-        p_q = c/self.root.samples
+            prod = []
+
+            for var in freevars:
+                if issubclass(var.domain, Multinomial):
+                    prod.append(l.distributions[var].p[l.distributions[var].values.index(query[var])])
+                else:
+                    prod.append(l.distributions[var].p(query[var].intersect(l.path[var])))
+
+            p_q += reduce(operator.mul, prod, 1) * (l.samples/self.root.samples)
         return p_q / p_e
+
 
     # def predict(self, sample):
     #     '''Predicts value of ``sample`` for the learned tree.
@@ -457,8 +470,16 @@ class JPT:
         # - lie in the interval of the numeric value in the path
         # -> return leaf that matches query
         for k, l in self.leaves.items():
-            if all([l.path.get(var) == query.get(var) if issubclass(var.domain, Multinomial) else False for var in set(query.keys()).intersection(set(l.path.keys()))]):
+            for var in set(query.keys()).intersection(set(l.path.keys())):
+                if issubclass(var.domain, Multinomial):
+                    if not all([l.path.get(var) == query.get(var)]):
+                        break
+                else:
+                    if not l.path.get(var).intersects(query.get(var)):
+                        break
+            else:
                 yield l
+
 
     # def apply_us(self, sample):
     #     # if the sample doesn't match the features of the tree, there is no valid prediction possible

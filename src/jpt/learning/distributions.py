@@ -1,5 +1,7 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
+import pyximport
+pyximport.install()
 import copy
 import math
 import numbers
@@ -21,6 +23,7 @@ from numpy import iterable
 import matplotlib.pyplot as plt
 
 from jpt.constants import sepcomma
+from jpt.learning.intervals import Interval
 from jpt.sampling import wsample, wchoice
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
@@ -497,7 +500,34 @@ class Numeric(Distribution):
         raise NotImplementedError
 
     def p(self, interval):
-        raise NotImplementedError
+        out(interval, interval.upper, interval.lower, interval.upper == np.nan)
+        return (self._cdf.eval(interval.upper) if interval.upper != np.nan else 1.) - (self._cdf.eval(interval.lower) if interval.lower != np.nan else 0.)
+
+    def plot(self, name=None, directory='/tmp', pdf=False, view=False, **kwargs):
+        if not view:
+            plt.ioff()
+
+        fig, ax = plt.subplots()
+        ax.set_title(f'{name or f"Piecewise linear CDF of {self._cl}"}')
+        ax.set_xlabel('value')
+        ax.set_ylabel('%')
+        bounds = np.array([v.upper for v in self._cdf.intervals[:-2]] + [self._cdf.intervals[-1].lower])
+
+        ax.plot(bounds, self._cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', label='Piecewise CDF from bounds', linewidth=2, markersize=12)
+        ax.legend()  # do we need a legend with only one plotted line?
+        fig.tight_layout()
+
+        # save figure as PDF or PNG
+        if pdf:
+            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{name or self.__class__.__name__}.pdf')}")
+            with PdfPages(os.path.join(directory, f'{name or self.__class__.__name__}.pdf')) as pdf:
+                pdf.savefig(fig)
+        else:
+            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{name or self.__class__.__name__}.png')}")
+            plt.savefig(os.path.join(directory, f'{name or self.__class__.__name__}.png'))
+
+        if view:
+            plt.show()
 
 
 class Multinomial(Distribution):
@@ -765,7 +795,7 @@ class Histogram(Multinomial):
             ax.set_ylim(bottom=0., top=1.)
             ax2.set_ylim(bottom=0., top=self.d)
 
-        ax.bar_label(bars, labels=[f'{v} ({round(v/self.d*100, 2)}%)' for v in self._p], label_type='edge')
+        # ax.bar_label(bars, labels=[f'{v} ({round(v/self.d*100, 2)}%)' for v in self._p], label_type='edge')
         fig.tight_layout()
 
         # save figure as PDF or PNG

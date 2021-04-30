@@ -1,12 +1,20 @@
+import pyximport
+pyximport.install()
+
 import os
+import pickle
+import pprint
 
 import numpy as np
+from matplotlib import pyplot as plt
 from numpy import iterable
 
 from dnutils import out
-from jpt.learning.distributions import Multinomial, Bool, Histogram
+from jpt.learning.distributions import Multinomial, Bool, Histogram, Numeric
+from jpt.learning.intervals import Interval
 from jpt.learning.trees import JPT
 from jpt.variables import Variable
+from quantiles import Quantiles
 
 
 def SymbolicType(name, values):
@@ -191,12 +199,77 @@ def test_dists():
     print(repr(Bool()))
 
 
+def test_muesli():
+    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
+
+    data = []
+    with open(f, 'rb') as fi:
+        data = np.array(pickle.load(fi))
+    data_ = np.array(sorted([float(x) for x in data.T[0]]))
+
+    quantiles = Quantiles(data_, epsilon=.0001)
+    cdf_ = quantiles.cdf()
+    d = Numeric(cdf=cdf_)
+
+    interval = Interval(-2.05, -2.0)
+    p = d.p(interval)
+    out('query', interval, p)
+
+    print(d.cdf.pfmt())
+    d.plot(name='Müsli Beispiel', view=True)
+
+
+def muesli_tree():
+    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
+
+    data = []
+    with open(f, 'rb') as fi:
+        data = pickle.load(fi)
+
+    unique, counts = np.unique(data[2], return_counts=True)
+
+    ObjectType = HistogramType('ObjectType', unique)
+
+    x = Variable('PosX', Numeric)
+    y = Variable('PosY', Numeric)
+    o = Variable('Object', ObjectType)
+
+    out('got data', data)
+
+    jpt = JPT([x, y, o], name="Müslitree")
+    jpt.learn(list(zip(*data)))
+
+    jpt.plot()
+
+
+def picklemuesli():
+    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
+
+    data = []
+    with open(f, 'rb') as fi:
+        data = np.array(pickle.load(fi))
+
+    transformed = []
+    for c in data.T:
+        try:
+            transformed.append(np.array(c, dtype=float))
+        except:
+            transformed.append(np.array(c))
+
+    print(transformed)
+    with open(f, 'wb+') as fi:
+        pickle.dump(transformed, fi)
+
+
 def main(*args):
 
     # test_merge()
     # test_dists()
     # restaurant()
-    alarm()
+    # test_muesli()
+    muesli_tree()
+    # picklemuesli()
+    # alarm()
 
 
 # Press the green button in the gutter to run the script.
