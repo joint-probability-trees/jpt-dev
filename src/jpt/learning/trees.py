@@ -19,7 +19,7 @@ import dnutils
 from dnutils import edict, first, out, stop, ifnone
 
 from .distributions import Distribution, Bool, Multinomial, Numeric
-from intervals import ContinuousSet as Interval, EXC, INC
+from intervals import ContinuousSet as Interval, EXC, INC, R
 from ..constants import plotstyle, orange, green, sepcomma
 from ..utils import rel_entropy
 
@@ -50,7 +50,14 @@ class Node:
         self.samples = 0.
         self.treename = treename
         self.children = None
-        self.path = OrderedDict()
+        self._path = []
+
+    @property
+    def path(self):
+        res = OrderedDict()
+        for var, vals in self._path:
+            res[var] = res.get(var, set(var.domain.values) if var.symbolic else R).intersection(vals)
+        return res
 
     def set_trainingssamples(self, examples, variables):
         '''
@@ -111,8 +118,8 @@ class DecisionNode(Node):
 
     def set_child(self, idx, node):
         self.children[idx] = node
-        node.path.update(self.path)
-        node.path[self.dec_criterion] = self.splits[idx]
+        node._path = list(self._path)
+        node._path.append((self.dec_criterion, self.splits[idx]))
 
     def str_edge(self, idx):
         # return f'{self.threshold}'
@@ -243,8 +250,10 @@ class JPT:
             probs = counts / len(indices)
             # divide examples into distinct sets for each value of ft [[Example]]
             partition = [[i for i in indices if self.data[i][ft_idx] == val] for val in distinct]
+            if not all(len(p) >= self.min_samples_leaf for p in partition):
+                return {None: 0}
             # determine overall impurity after selection of ft by multiplying probability for each feature value with its impurity,
-            r_a = {None: impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])}
+            gain = {None: impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])}
 
         if self._variables[ft_idx].numeric:
             # determine split points of dataset
@@ -254,12 +263,14 @@ class JPT:
             examples_ft = [(spp,
                             [i for i in indices if self.data[i][ft_idx] <= spp],
                             [i for i in indices if self.data[i][ft_idx] > spp]) for spp in opts]
+            # examples_ft = [(spp, left, right) for spp, left, right in examples_ft
+            #                if len(left) >= self.min_samples_leaf and len(right) >= self.min_samples_leaf]
 
             # the squared errors for the left and right datasets of each split value
-            r_a = {mv: impurity - (self.impurity(left, tgt) * len(left) / len(indices) +
-                                   self.impurity(right, tgt) * len(right)) / len(indices)
-                   for mv, left, right in examples_ft}
-        return r_a
+            gain = {mv: impurity - (self.impurity(left, tgt) * len(left) / len(indices) +
+                                    self.impurity(right, tgt) * len(right)) / len(indices) if len(left) >= self.min_samples_leaf and len(right) >= self.min_samples_leaf else 0
+                    for mv, left, right in examples_ft}
+        return gain
 
     def c45(self, indices, parent, child_idx):
         data = [self.data[i] for i in indices]

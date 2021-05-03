@@ -225,7 +225,7 @@ def muesli_tree():
 
     out('got data', data)
 
-    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=1)
+    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=10)
     jpt.learn(list(zip(*data)))
 
     jpt.plot()
