@@ -207,7 +207,7 @@ class JPT:
             # calculate mean for target tgt
             ft_mean = np.mean(tgts_sklearn)
             # calculate normalized mean squared error for target tgt
-            sqerr = mean_squared_error(tgts_sklearn, [ft_mean]*len(tgts_sklearn))
+            sqerr = mean_squared_error(tgts_sklearn, [ft_mean] * len(tgts_sklearn))
 
             # calculate actual impurity for target tgt
             return sqerr
@@ -239,14 +239,14 @@ class JPT:
         fts_plain = np.array([self.data[i][ft_idx] for i in indices])
         distinct, counts = np.unique(fts_plain, return_counts=True)
 
-        if issubclass(self._variables[ft_idx].domain, Multinomial):
+        if self._variables[ft_idx].symbolic:
             probs = counts / len(indices)
             # divide examples into distinct sets for each value of ft [[Example]]
             partition = [[i for i in indices if self.data[i][ft_idx] == val] for val in distinct]
             # determine overall impurity after selection of ft by multiplying probability for each feature value with its impurity,
             r_a = {None: impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])}
 
-        if issubclass(self._variables[ft_idx].domain, Numeric):
+        if self._variables[ft_idx].numeric:
             # determine split points of dataset
             opts = [(a + b) / 2 for a, b in zip(distinct[:-1], distinct[1:])] if len(distinct) > 1 else distinct
 
@@ -686,6 +686,11 @@ class JPT:
                 land = '<BR/>\u2227'
                 element = ' \u2208 '
                 # content for leaf labels
+            # content for node labels
+            nodelabel = f'''<TR>
+                                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{"Leaf" if isinstance(n, Leaf) else "Node"} #{n.idx}</B><BR/>{html.escape(n.str_node)}</TD>
+                            </TR>'''
+            if isinstance(n, Leaf):
                 nodelabel = f'''{nodelabel}{imgs}
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
@@ -700,11 +705,6 @@ class JPT:
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{land.join([f"{k.name} {'=' if k.symbolic else element} {v}" for k, v in n.path.items()])}</TD>
                                 </TR>
                                 '''
-            else:
-                # content for node labels
-                nodelabel = f'''<TR>
-                                    <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{"Leaf" if isinstance(n, Leaf) else "Node"} #{n.idx}</B><BR/>{html.escape(n.str_node)}</TD>
-                                </TR>'''
             # stitch together
             lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
                             {nodelabel}
