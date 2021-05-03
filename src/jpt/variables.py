@@ -1,5 +1,9 @@
-'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
+© Copyright 2021, Mareike Picklum, Daniel Nyga.
+'''
+from jpt.learning.distributions import Multinomial, Numeric
+
+
 class Variable:
     '''Wrapper class for a variable name along with its distribution class type.
     '''
@@ -25,7 +29,18 @@ class Variable:
         return self._domain(params)
 
     def __str__(self):
-        return f'{self.name}<{self.domain}>'
+        return f'{self.name}[{self.domain.__name__}]'
+
+    def __repr__(self):
+        return '<Variable %s @%x>' % (self, id(self))
+
+    @property
+    def symbolic(self):
+        return issubclass(self.domain, Multinomial)
+
+    @property
+    def numeric(self):
+        return issubclass(self.domain, Numeric)
 #
 #
 # def P(space):
