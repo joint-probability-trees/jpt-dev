@@ -357,7 +357,7 @@ class JPT:
 
             # split examples into distinct sets for each value of the selected feature
             for i, d in zip(indices, data):
-                split_data[d[ft_best_idx]].append(i)
+                split_data[ft_best.domain.val2idx[d[ft_best_idx]]].append(i)
 
             dec_criterion_val = list(ft_best.domain.values)
             splits = [{v} for v in ft_best.domain.values]

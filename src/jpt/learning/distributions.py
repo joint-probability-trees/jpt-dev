@@ -656,7 +656,7 @@ class Multinomial(Distribution):
         ax.set_title(f'{name or f"Distribution of {self._cl}"}')
 
         if horizontal:
-            bars = ax.barh(x, self.p, width, xerr=err, color='cornflowerblue', label='%', align='center')
+            bars = ax.barh(x, self._p, width, xerr=err, color='cornflowerblue', label='%', align='center')
 
             ax.set_xlabel('%')
             ax.set_yticks(x)
@@ -665,7 +665,7 @@ class Multinomial(Distribution):
             ax.invert_yaxis()
             ax.set_xlim(left=0., right=1.)
         else:
-            bars = ax.bar(x, self.p, width, yerr=err, color='cornflowerblue', label='%')
+            bars = ax.bar(x, self._p, width, yerr=err, color='cornflowerblue', label='%')
 
             ax.set_ylabel('%')
             ax.set_xticks(x)

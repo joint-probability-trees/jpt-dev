@@ -124,7 +124,7 @@ def alarm():
     tree.learn(data)
     out(tree)
     # tree.plot(directory=os.path.abspath('/tmp'), plotvars=[E, B, A, M, J], view=False)
-    tree.plot()
+    tree.plot(plotvars=[E, B, A, M, J])
     # conditional
     # q = {A: True}
     # e = {E: False, B: True}
@@ -256,9 +256,9 @@ def main(*args):
     # test_dists()
     # restaurant()
     # test_muesli()
-    muesli_tree()
+    # muesli_tree()
     # picklemuesli()
-    # alarm()
+    alarm()
 
 
 # Press the green button in the gutter to run the script.
