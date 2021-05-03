@@ -10,23 +10,11 @@ from matplotlib import pyplot as plt
 from numpy import iterable
 
 from dnutils import out
-from jpt.learning.distributions import Multinomial, Bool, Histogram, Numeric
-from jpt.learning.intervals import Interval
+from jpt.learning.distributions import Multinomial, Bool, Histogram, Numeric, HistogramType, SymbolicType
+from intervals import ContinuousSet as Interval
 from jpt.learning.trees import JPT
 from jpt.variables import Variable
 from quantiles import Quantiles
-
-
-def SymbolicType(name, values):
-    t = type(name, (Multinomial,), {})
-    t.values = list(values)
-    return t
-
-
-def HistogramType(name, values):
-    t = type(name, (Histogram,), {})
-    t.values = list(values)
-    return t
 
 
 class Conditional:
@@ -132,11 +120,11 @@ def alarm():
         unique, counts = np.unique(x, return_counts=True)
         out(var.name, list(zip(unique, counts, counts/sum(counts))))
 
-    tree = JPT([E, B, A, M, J])
+    tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
     tree.learn(data)
     out(tree)
     # tree.plot(directory=os.path.abspath('/tmp'), plotvars=[E, B, A, M, J], view=False)
-
+    tree.plot()
     # conditional
     # q = {A: True}
     # e = {E: False, B: True}
@@ -148,7 +136,8 @@ def alarm():
     # diagnostic
     q = {A: True}
     e = {M: True}
-    out(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}{",".join([f"{k.name}={v}" for k, v in e.items()])})', tree.infer(q, e))
+    out(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
+        f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) =', tree.infer(q, e))
 
 
 def test_merge():
@@ -228,15 +217,15 @@ def muesli_tree():
 
     unique, counts = np.unique(data[2], return_counts=True)
 
-    ObjectType = HistogramType('ObjectType', unique)
+    ObjectType = SymbolicType('ObjectType', unique)
 
-    x = Variable('PosX', Numeric)
-    y = Variable('PosY', Numeric)
+    x = Variable('X', Numeric)
+    y = Variable('Y', Numeric)
     o = Variable('Object', ObjectType)
 
     out('got data', data)
 
-    jpt = JPT([x, y, o], name="Müslitree")
+    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=1)
     jpt.learn(list(zip(*data)))
 
     jpt.plot()
