@@ -1,2 +1,5 @@
 dnutils
 graphviz
+Cython
+scipy
+sklearn
