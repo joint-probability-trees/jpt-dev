@@ -2,6 +2,9 @@
 '''
 import pyximport
 pyximport.install()
+
+from quantiles import Quantiles
+
 import copy
 import math
 import numbers
@@ -23,7 +26,7 @@ from numpy import iterable
 import matplotlib.pyplot as plt
 
 from jpt.constants import sepcomma
-from jpt.learning.intervals import Interval
+from intervals import ContinuousSet as Interval
 from jpt.sampling import wsample, wchoice
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
@@ -295,7 +298,6 @@ class Gaussian(Gaussian_):
 
 class MultiVariateGaussian(Gaussian):
 
-
     def __init__(self, mean=None, cov=None, data=None, ignore=-6000000):
         '''A Multivariate Gaussian distribution that can be incrementally updated with new samples
         '''
@@ -488,20 +490,28 @@ class Numeric(Distribution):
         self._cdf = cdf
 
     def sample(self, n):
-        raise NotImplementedError
+        raise NotImplemented()
 
     def sample_one(self):
-        raise NotImplementedError
+        raise NotImplemented()
 
     def expectation(self):
-        raise NotImplementedError
+        e = 0
+        singular = True
+        for i, f in zip(self.cdf.intervals, self.cdf.functions):
+            if i.lower == np.NINF or i.upper == np.PINF:
+                continue
+            e += f.m * (i.upper - i.lower) * (i.upper + i.lower) / 2
+            singular = False
+        return e if not singular else i.lower
 
     def set_data(self, data):
-        raise NotImplementedError
+        d = np.array(data, dtype=np.float64)
+        self._cdf = Quantiles(d).cdf()
+        return self
 
     def p(self, interval):
-        out(interval, interval.upper, interval.lower, interval.upper == np.nan)
-        return (self._cdf.eval(interval.upper) if interval.upper != np.nan else 1.) - (self._cdf.eval(interval.lower) if interval.lower != np.nan else 0.)
+        return (self._cdf.eval(interval.upper) if interval.upper != np.PINF else 1.) - (self._cdf.eval(interval.lower) if interval.lower != np.NINF else 0.)
 
     def plot(self, name=None, directory='/tmp', pdf=False, view=False, **kwargs):
         if not view:
