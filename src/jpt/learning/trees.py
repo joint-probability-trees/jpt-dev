@@ -6,7 +6,7 @@ import operator
 import os
 import pickle
 import pprint
-from collections import defaultdict
+from collections import defaultdict, deque, ChainMap, OrderedDict
 from functools import reduce
 
 import numpy as np
@@ -16,102 +16,146 @@ from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error
 
 import dnutils
-from dnutils import edict, first, out, stop
-from .distributions import Distribution, Bool, Multinomial
-from .intervals import Interval, EXC, INC
+from dnutils import edict, first, out, stop, ifnone
+
+from .distributions import Distribution, Bool, Multinomial, Numeric
+from intervals import ContinuousSet as Interval, EXC, INC
 from ..constants import plotstyle, orange, green, sepcomma
+from ..utils import rel_entropy
 
 logger = dnutils.getlogger(name='TreeLogger', level=dnutils.DEBUG)
 
 style.use(plotstyle)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 class Node:
-    '''Represents an internal decision node of the matcalo.core.algorithms.StructRegTree.
+    '''
+    Represents an internal decision node of the matcalo.core.algorithms.StructRegTree.
     '''
 
-    def __init__(self, idx, threshold, dec_criterion, parent=None, treename=None):
+    def __init__(self, idx, parent=None, treename=None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
-        :param threshold:       the threshold at which the data for the decision criterion are separated
-        :type threshold:        float
-        :param dec_criterion:   the split feature name
-        :type dec_criterion:    jpt.variables.Variable
         :param parent:          the parent node
         :type parent:           jpt.learning.trees.Node
         :param treename:        the name of the decision tree
         :type treename:         str
         '''
         self.idx = idx
-        self.threshold = threshold
-        self.dec_criterion = dec_criterion
-        self.dec_criterion_val = None
         self.parent = parent
-        self.path = edict({})
         self.samples = 0.
         self.treename = treename
-        self.children = []
-        self.distributions = defaultdict(Distribution)
+        self.children = None
+        self.path = OrderedDict()
 
-    def set_trainingssamples(self, examples, vars):
+    def set_trainingssamples(self, examples, variables):
         '''
         :param examples:    tba
         :type examples:     tba
-        :param vars:        tba
-        :type vars:         tba
+        :param variables:        tba
+        :type variables:         tba
         '''
         self.samples = len(examples)
         xmples_tp = np.array(examples).T
 
-        for i, v in enumerate(vars):
+        for i, v in enumerate(variables):
             # TODO: update Distributions such that they do not necessarily get probs but data (move counting into class)
-            self.distributions[v] = v.dist([list(xmples_tp[i]).count(x) for x in v.domain.values])
+            self.distributions[v] = v.dist().set_data(xmples_tp[i])
 
     @property
     def str_node(self):
-        return f'{self.dec_criterion.name}' if issubclass(self.dec_criterion.domain, Multinomial) else f'{self.dec_criterion.name}<={self.dec_criterion_val:.2f}'
+        leq = '\u2264'
+        return (f'{self.dec_criterion.name}')
+                # if self.dec_criterion.symbolic
+                # else f'{self.dec_criterion.name}{leq}{self.dec_criterion_val:.2f}')
+
+    # def str_edge(self, idx):
+    #     # return f'{self.threshold}'
+    #     return self.splits[idx]
+
+    def __str__(self):
+        return (f'Node<ID: {self.idx}; '
+                f'CRITERION: {self.dec_criterion.__class__.__name__}; '
+                f'PARENT: {f"Node<ID: {self.parent.idx}>" if self.parent else None}; '
+                f'#CHILDREN: {len(self.children)}>')
+
+    def __repr__(self):
+        return f'Node<{self.idx}> object at {hex(id(self))}'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+class DecisionNode(Node):
+    '''
+    Represents an inner (decision) node of the tree.
+    '''
+
+    def __init__(self, idx, splits, dec_criterion, parent=None, treename=None):
+        '''
+        :param threshold:       the threshold at which the data for the decision criterion are separated
+        :type threshold:        float
+        :param dec_criterion:   the split feature name
+        :type dec_criterion:    jpt.variables.Variable
+        '''
+        self.splits = splits
+        self.dec_criterion = dec_criterion
+        self.dec_criterion_val = None
+        self.splits = splits
+        super().__init__(idx, parent=parent, treename=treename)
+        self.children = [None] * len(self.splits)
+
+    def set_child(self, idx, node):
+        self.children[idx] = node
+        node.path.update(self.path)
+        node.path[self.dec_criterion] = self.splits[idx]
+
+    def str_edge(self, idx):
+        # return f'{self.threshold}'
+        return str(self.splits[idx])
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+class Leaf(Node):
+
+    def __init__(self, idx, parent=None, treename=None):
+        super().__init__(idx, parent=parent, treename=treename)
+        self.distributions = defaultdict(Distribution)
 
     @property
-    def str_edge(self):
-        return f'{self.threshold}'
+    def str_node(self):
+        return ""
+
+    # @property
+    # def str_edge(self):
+    #     return f'{self.threshold}'
 
     @property
     def value(self):
         return self.distributions
 
     def __str__(self):
-        return f'Node<ID: {self.idx}; CRITERION: {self.dec_criterion.__class__.__name__}; PARENT: {f"Node<ID: {self.parent.idx}>" if self.parent else None}; #CHILDREN: {len(self.children)}>'
-
-    def __repr__(self):
-        return f'Node<{self.idx}> object at {hex(id(self))}'
-
-
-class Leaf(Node):
-
-    def __init__(self, idx, parent, treename=None):
-        '''Represents a leaf node of the :class:`~jpt.learning.trees.JPT`.
-        '''
-        Node.__init__(self, idx, None, None, parent=parent, treename=treename)
-
-    @property
-    def str_node(self):
-        return ""
-
-    @property
-    def str_edge(self):
-        return f'{self.threshold}'
-
-    def __str__(self):
-        return f'Leaf<ID: {self.idx}; THR: {self.threshold}; VALUE: {",".join([f"{var.name}: {str(dist)}" for var, dist in self.distributions.items()])}; PARENT: {f"Node<ID: {self.parent.idx}>" if self.parent else None}>'
+        return (f'Leaf<ID: {self.idx}; '
+                # f'THR: {self.threshold}; '
+                f'VALUE: {",".join([f"{var.name}: {str(dist)}" for var, dist in self.distributions.items()])}; '
+                f'PARENT: {f"Node<ID: {self.parent.idx}>" if self.parent else None}>')
 
     def __repr__(self):
         return f'Leaf<{self.idx}> object at {hex(id(self))}'
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 class JPT:
 
-    def __init__(self, variables, name=None, min_samples_leaf=1):
+    def __init__(self, variables, name=None, min_samples_leaf=1, min_impurity_improvement=None):
         '''Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -126,49 +170,49 @@ class JPT:
         '''
         self._variables = variables
         self.min_samples_leaf = min_samples_leaf
+        self.min_impurity_improvement = min_impurity_improvement
         self.name = name or self.__class__.__name__
         self._numsamples = 0
         self.leaves = {}
         self.innernodes = {}
-        self.allnodes = {}
+        self.allnodes = ChainMap(self.innernodes, self.leaves)
         self.root = None
+        self.data = None
+        self.c45queue = deque()
 
-    def impurity(self, xmpls, tgt):
+    def impurity(self, indices, tgt):
         r'''Calculate the mean squared error for the data set `xmpls`, i.e.
 
         .. math::
             MSE = \frac{1}{n} · \sum_{i=1}^{n} (y_i - \hat{y}_i)^2
         '''
-        if not xmpls:
+        if not indices:
             return 0.
 
         # assuming all Examples have identical indices for their targets
         tgt_idx = self._variables.index(tgt)
 
-        if issubclass(self._variables[tgt_idx].domain, Multinomial):
+        if issubclass(tgt.domain, Multinomial):
             # case categorical targets
-            # tgts_plain = np.array([xmpl.tplain() for xmpl in xmpls]).T[tgt_idx]
-            tgts_plain = np.array(xmpls).T[tgt_idx]
-
+            tgts_plain = np.array([self.data[i][tgt_idx] for i in indices])
             # count occurrences for each value of target tgt and determine their probability
-            prob = [float(list(tgts_plain).count(distincttgtval)) / len(tgts_plain) for distincttgtval in list(set(tgts_plain))]
-
+            _, counts = np.unique(tgts_plain, return_counts=True)
+            probs = counts / tgts_plain.shape[0]
             # calculate actual impurity target tgt
-            return entropy(prob, base=2)
+            return rel_entropy(probs)
+
         else:
             # case numeric targets
-            tgts_sklearn = np.array(np.array(xmpls).T[tgt_idx], dtype=np.float32)
-
+            tgts_sklearn = np.array([self.data[i][tgt_idx] for i in indices])
             # calculate mean for target tgt
             ft_mean = np.mean(tgts_sklearn)
-
             # calculate normalized mean squared error for target tgt
             sqerr = mean_squared_error(tgts_sklearn, [ft_mean]*len(tgts_sklearn))
 
             # calculate actual impurity for target tgt
             return sqerr
 
-    def gains(self, xmpls, ft, tgt):
+    def gains(self, indices, ft, tgt):
         r'''Calculate the impurity for the data set after selection of feature `ft`, i.e.
 
         :param xmpls:
@@ -182,57 +226,59 @@ class JPT:
 
         '''
 
-        if not xmpls:
+        if not indices:
             return {None: 0.}
 
-        impurity = self.impurity(xmpls, tgt)
+        impurity = self.impurity(indices, tgt)
 
         # assuming all Examples have identical indices for their features
         ft_idx = self._variables.index(ft)
 
         # sort by ft values for easier dataset split
-        xmpls = sorted(xmpls, key=lambda xmpl: xmpl[ft_idx])
-        fts_plain = np.array(xmpls).T[ft_idx]
-        distinct = sorted(list(set(fts_plain)))
+        indices = sorted(indices, key=lambda i: self.data[i][ft_idx])
+        fts_plain = np.array([self.data[i][ft_idx] for i in indices])
+        distinct, counts = np.unique(fts_plain, return_counts=True)
 
         if issubclass(self._variables[ft_idx].domain, Multinomial):
-            # count occurrences for each value of given feature and determine their probability; [(ftval, count)]
-            probs_ft = [(distinctfeatval, float(list(fts_plain).count(distinctfeatval)) / len(fts_plain)) for distinctfeatval in distinct]
-
+            probs = counts / len(indices)
             # divide examples into distinct sets for each value of ft [[Example]]
-            datasets_ft = [[e for e in xmpls if ft[0] in (e[ft_idx], str(e[ft_idx]))] for ft in probs_ft]
-
+            partition = [[i for i in indices if self.data[i][ft_idx] == val] for val in distinct]
             # determine overall impurity after selection of ft by multiplying probability for each feature value with its impurity,
-            r_a = {None: impurity - sum([ft[1] * self.impurity(ds, tgt) for ft, ds in zip(probs_ft, datasets_ft)])}
-        else:
-            distinct = np.array(distinct, dtype=np.float32)
+            r_a = {None: impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])}
+
+        if issubclass(self._variables[ft_idx].domain, Numeric):
             # determine split points of dataset
-            opts = [(a + b) / 2 for a, b in zip(sorted(distinct)[:-1], sorted(distinct)[1:])] if len(distinct) > 1 else distinct
+            opts = [(a + b) / 2 for a, b in zip(distinct[:-1], distinct[1:])] if len(distinct) > 1 else distinct
 
             # divide examples into distinct sets for the left (ft <= value) and right (ft > value) of ft [[Example]]
             examples_ft = [(spp,
-                            [e for e in xmpls if e[ft_idx] <= spp],
-                            [e for e in xmpls if e[ft_idx] > spp]) for spp in opts]
+                            [i for i in indices if self.data[i][ft_idx] <= spp],
+                            [i for i in indices if self.data[i][ft_idx] > spp]) for spp in opts]
 
             # the squared errors for the left and right datasets of each split value
-            r_a = {mv: impurity - (self.impurity(left, tgt) * len(left) + self.impurity(right, tgt) * len(right))/len(xmpls) for mv, left, right in examples_ft}
+            r_a = {mv: impurity - (self.impurity(left, tgt) * len(left) / len(indices) +
+                                   self.impurity(right, tgt) * len(right)) / len(indices)
+                   for mv, left, right in examples_ft}
         return r_a
 
-    def c45(self, data, parent, ft_idx=None, tr=0.0):
-        if not data:
+    def c45(self, indices, parent, child_idx):
+        data = [self.data[i] for i in indices]
+        if not indices:
             logger.warning('No data left. Returning parent', parent)
-            return parent
+            return
+
+        # --------------------------------------------------------------------------------------------------------------
 
         # calculate gains for each feature/target combination and normalize over targets
         gains_tgt = defaultdict(dict)
         for tgt in self._variables:
             maxval = 0.
             for ft in self._variables:
-                gains_tgt[tgt][ft] = self.gains(data, ft, tgt)
+                gains_tgt[tgt][ft] = self.gains(indices, ft, tgt)
                 maxval = max(maxval, *gains_tgt[tgt][ft].values())
 
             # normalize gains for comparability
-            gains_tgt[tgt] = {ft: {v: g/maxval if maxval > 0. else 0 for v, g in gains_tgt[tgt][ft].items()} for ft in self._variables}
+            gains_tgt[tgt] = {ft: {v: g / maxval if maxval > 0. else 0 for v, g in gains_tgt[tgt][ft].items()} for ft in self._variables}
 
         # determine (harmonic) mean of target gains
         gains_ft_hm = defaultdict(lambda: defaultdict(dict))
@@ -255,111 +301,149 @@ class JPT:
 
         ft_best_idx = self._variables.index(ft_best)
 
+        # --------------------------------------------------------------------------------------------------------------
         # BASE CASE 1: all samples belong to the same class --> create leaf node for these targets
         # BASE CASE 2: None of the features provides any information gain --> create leaf node higher up in tree using expected value of the class
         # BASE CASE 3: Instance of previously-unseen class encountered --> create a decision node higher up the tree using the expected value
-        if max_gain < tr:
-            node = Leaf(idx=len(self.allnodes), parent=parent, treename=self.name)
+        min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
+        # if max_gain <= min_impurity_improvement:
+        #     leaf = Leaf(idx=len(self.allnodes),
+        #                 parent=parent,
+        #                 treename=self.name)
+        #
+        #     leaf.set_trainingssamples(data, self._variables)
+        #
+        #     # inherit path from parent
+        #     if parent is not None:
+        #         leaf.path = parent.path.copy()
+        #
+        #     # as datasets have been split before, take an arbitrary example and look up the value
+        #     # node.threshold = None if parent is None else data[0][self._variables.index(parent.dec_criterion)].value \
+        #     #     if issubclass(parent.dec_criterion.domain, Multinomial) \
+        #     #     else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
+        #
+        #     # update path
+        #     self._update_path(leaf, data)
+        #
+        #     self.leaves[leaf.idx] = leaf
+        #
+        #     if logger.level >= 20:
+        #         if max_gain < self.min_impurity_improvement:
+        #             logger.warning('BASE CASE 2: None of the features provides a high'
+        #                            ' enough information gain. Returning leaf node', leaf.idx)
+        #         else:
+        #             logger.warning('BASE CASE 3: Instance of previously-unseen class '
+        #                            'encountered. Returning leaf node', leaf.idx)
+        #     return
 
-            node.set_trainingssamples(data, self._variables)
-
-            # inherit path from parent
-            if node.parent is not None:
-                node.path = node.parent.path.copy()
-
-            # as datasets have been split before, take an arbitrary example and look up the value
-            node.threshold = None if parent is None else data[0][self._variables.index(parent.dec_criterion)].value if issubclass(parent.dec_criterion.domain, Multinomial) else data[0][self._variables.index(parent.dec_criterion)].value <= parent.dec_criterion_val
-
-            # update path
-            self._update_path(node, data)
-
-            self.allnodes[node.idx] = node
-
-            if logger.level >= 20:
-                if max_gain < tr:
-                    logger.warning('BASE CASE 2: None of the features provides a high enough information gain. Returning leaf node', node.idx)
-                else:
-                    logger.warning('BASE CASE 3: Instance of previously-unseen class encountered. Returning leaf node', node.idx)
-
-            return node
+        # --------------------------------------------------------------------------------------------------------------
 
         # divide examples into distinct sets for each value of ft_best
-        split_data = {val: [] for val in ft_best.domain.values}
-        if issubclass(ft_best.domain, Multinomial):
+        split_data = None  # {val: [] for val in ft_best.domain.values}
+        if ft_best.symbolic:
             # CASE SPLIT VARIABLE IS SYMBOLIC
+            split_data = [[] for val in ft_best.domain.values]
 
             # split examples into distinct sets for each value of the selected feature
-            for d in data:
-                split_data[d[ft_best_idx]].append(d)
+            for i, d in zip(indices, data):
+                split_data[d[ft_best_idx]].append(i)
 
-            dec_criterion_val = list(split_data.keys())
-        else:
+            dec_criterion_val = list(ft_best.domain.values)
+            splits = [{v} for v in ft_best.domain.values]
+        elif ft_best.numeric:
             # CASE SPLIT VARIABLE IS NUMERIC
-            out(sp_best)
+            split_data = [[], []]
+            splits = [Interval(np.NINF, sp_best, EXC, INC),
+                      Interval(sp_best, np.PINF, EXC, EXC)]
             dec_criterion_val = sp_best
 
             # split examples into distinct sets for smaller and higher values of the selected feature than the selected split value
-            for d in data:
-                kv = f'{ft_best.name}{"<=" if d[ft_best_idx] <= sp_best else ">"}{sp_best}'
-                if kv in split_data:
-                    split_data[kv].append(d)
-                else:
-                    split_data[kv] = [d]
+            for i, d in zip(indices, data):
+                split_data[d[ft_best_idx] > sp_best].append(i)
 
-        thresh = None if parent is None else data[0][self._variables.index(parent.dec_criterion)] if issubclass(parent.dec_criterion.domain, Multinomial) else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
+        # thresh = None if parent is None else data[0][self._variables.index(parent.dec_criterion)] \
+        #     if issubclass(parent.dec_criterion.domain, Multinomial) \
+        #     else data[0][self._variables.index(parent.dec_criterion)] <= parent.dec_criterion_val
+
+        # --------------------------------------------------------------------------------------------------------------
 
         # create decision node splitting on ft_best or leaf node if min_samples_leaf criterion is not met
-        if any([len(d) < self.min_samples_leaf for d in split_data.values()]):
+        if any([len(d) < self.min_samples_leaf for d in split_data]) or max_gain <= min_impurity_improvement:
 
-            node = Leaf(idx=len(self.allnodes), parent=parent, treename=self.name)
-            node.threshold = None if parent is None else data[0][ft_idx] if issubclass(parent.dec_criterion.domain, Multinomial) else data[0][ft_idx] <= parent.dec_criterion_val
-
-            node.set_trainingssamples(data, self._variables)
+            leaf = Leaf(idx=len(self.allnodes), parent=parent, treename=self.name)
+            leaf.set_trainingssamples(data, self._variables)
+            # node.threshold = None if parent is None \
+            #     else data[0][ft_idx] \
+            #     if issubclass(parent.dec_criterion.domain, Multinomial) \
+            #     else data[0][ft_idx] <= parent.dec_criterion_val
+            if parent is not None:
+                parent.set_child(child_idx, leaf)
+                # leaf.path = parent.path.copy()
+                # parent.children[splitidx] = leaf
 
             # update path
-            self._update_path(node, data)
-            self.allnodes[node.idx] = node
+            # self._update_path(leaf, data)
+            self.leaves[leaf.idx] = leaf
 
         else:
-            node = Node(idx=len(self.allnodes), threshold=thresh, dec_criterion=ft_best, parent=parent, treename=self.name)
-            node.dec_criterion_val = dec_criterion_val
+            node = DecisionNode(idx=len(self.allnodes),
+                                splits=splits,
+                                dec_criterion=ft_best,
+                                parent=parent,
+                                treename=self.name)
+            if parent is not None:
+                parent.set_child(child_idx, node)
+            # node.dec_criterion_val = dec_criterion_val
             node.samples = len(data)
 
             # update path
-            self._update_path(node, data)
-            self.allnodes[node.idx] = node
+            # self._update_path(node, data)
+            self.innernodes[node.idx] = node
 
             # recurse on sublists
-            for _, d_ft in split_data.items():
-                node.children.append(self.c45(d_ft, node, ft_idx=ft_best_idx))
+            for i, d_ft in enumerate(split_data):
+                self.c45queue.append((d_ft, node, i))
 
-        return node
+        return
 
-    def _update_path(self, node, data):
-        if node.parent is None:
-            return
-
-        node.path = node.parent.path.copy()
-        if issubclass(node.parent.dec_criterion.domain, Multinomial):
-            node.path[node.parent.dec_criterion] = node.threshold
-        else:
-            out(node.parent.dec_criterion, node.parent.dec_criterion.domain, node.parent.dec_criterion_val)
-            stop(node.path, self._variables)
-            low = all([d[self._variables.index(node.parent.dec_criterion)] <= node.parent.dec_criterion_val for d in data])
-            i = Interval(-np.Inf if low else node.parent.dec_criterion_val, node.parent.dec_criterion_val if low else np.Inf, left=EXC, right=INC if low else EXC)
-            if node.parent.dec_criterion in node.path:
-                node.path[node.parent.dec_criterion] = node.path[node.parent.dec_criterion].intersection(i)
-            else:
-                node.path[node.parent.dec_criterion] = i
+    # def _update_path(self, node, data):
+    #     if node.parent is None:
+    #         return
+    #
+    #     node.path = node.parent.path.copy()
+    #     if node.parent.dec_criterion.symbolic:
+    #         node.path[node.parent.dec_criterion] = node.threshold
+    #         out(node.parent.dec_criterion, node.parent.dec_criterion.domain, node.parent.dec_criterion_val)
+    #     else:
+    #         out(node.parent.dec_criterion, node.parent.dec_criterion.domain, node.parent.dec_criterion_val)
+    #         # stop(node.path, self._variables)
+    #         low = all([d[self._variables.index(node.parent.dec_criterion)] <= node.parent.dec_criterion_val for d in data])
+    #         i = Interval(-np.Inf if low else node.parent.dec_criterion_val, node.parent.dec_criterion_val if low else np.Inf, left=EXC, right=INC if low else EXC)
+    #         if node.parent.dec_criterion in node.path:
+    #             node.path[node.parent.dec_criterion] = node.path[node.parent.dec_criterion].intersection(i)
+    #         else:
+    #             node.path[node.parent.dec_criterion] = i
 
     def __str__(self):
-        return f'{self.__class__.__name__}<{self.name}>:\n{"="*(len(self.name)+7)}\n\n{self._p(self.root, 0)}\nJPT stats: #innernodes = {len(self.innernodes)}, #leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n'
+        return (f'{self.__class__.__name__}<{self.name}>:\n'
+                f'{"=" * (len(self.name) + 7)}\n\n'
+                f'{self._p(self.root, 0)}\n'
+                f'JPT stats: #innernodes = {len(self.innernodes)}, '
+                f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def __repr__(self):
-        return f'{self.__class__.__name__}<{self.name}>:\n{"="*(len(self.name)+7)}\n\n{self._p(self.root, 0)}\nJPT stats: #innernodes = {len(self.innernodes)}, #leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n'
+        return (f'{self.__class__.__name__}<{self.name}>:\n' 
+                f'{"=" * (len(self.name) + 7)}\n\n' 
+                f'{self._p(self.root, 0)}\n' 
+                f'JPT stats: #innernodes = {len(self.innernodes)}, ' 
+                f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def _p(self, root, indent):
-        return "{}{}\n{}".format(" " * indent, str(root), ''.join([self._p(r, indent + 5) for r in root.children]) if hasattr(root, 'children') else 'None')
+        return "{}{}\n{}".format(" " * indent,
+                                 str(root),
+                                 ''.join([self._p(r, indent + 5) for r in ifnone(root.children, [])]))
+                                 # if hasattr(root, 'children')
+                                 # else 'None')
 
     def learn(self, data=None, tr=0.0):
         '''Fits the ``data`` into a regression tree.
@@ -369,11 +453,15 @@ class JPT:
         :param tr:      The threshold for the gain in the feature selection
         :type tr:       float
         '''
-        self.c45(data, None, ft_idx=None, tr=tr)
+        self.data = data
+        # self.c45(list(range(len(data))), None, ft_idx=None, tr=tr)
+        self.c45queue.append((list(range(len(data))), None, None))
+        while self.c45queue:
+            self.c45(*self.c45queue.popleft())
 
         # build up tree
-        self.innernodes = {n.idx: n for i, n in self.allnodes.items() if type(n) == Node}
-        self.leaves = {n.idx: n for i, n in self.allnodes.items() if type(n) == Leaf}
+        # self.innernodes = {n.idx: n for i, n in self.allnodes.items() if type(n) == Node}
+        # self.leaves = {n.idx: n for i, n in self.allnodes.items() if type(n) == Leaf}
         if self.innernodes:
             self.root = self.innernodes[0]
         elif self.leaves:
@@ -417,52 +505,28 @@ class JPT:
             p_e = 1.
             evidence = {}
 
+        query = query.copy()
         query.update(evidence)
 
         p_q = 0.
-        for l in self.apply(query):
-            freevars = set(query.keys()) - set(l.path.keys())
+        for leaf in self.apply(query):
+            freevars = set(query.keys()) - set(leaf.path.keys())
             prod = []
 
             for var in freevars:
                 if issubclass(var.domain, Multinomial):
-                    prod.append(l.distributions[var].p[l.distributions[var].values.index(query[var])])
+                    prod.append(leaf.distributions[var].p(query[var]))
                 else:
-                    prod.append(l.distributions[var].p(query[var].intersect(l.path[var])))
+                    prod.append(leaf.distributions[var].p(query[var].intersect(leaf.path[var])))
 
-            p_q += reduce(operator.mul, prod, 1) * (l.samples/self.root.samples)
+            p_q += reduce(operator.mul, prod, 1) * leaf.samples / self.root.samples
         return p_q / p_e
-
-
-    # def predict(self, sample):
-    #     '''Predicts value of ``sample`` for the learned tree.
-    #
-    #     :param sample: if dict: {featname: featvalue} or {featname: Interval.fromstring([x,y])}
-    #     :type sample: dict or matcalo.utils.example.Example
-    #     :returns: a mapping of target name to target value
-    #     :rtype: dict
-    #     '''
-    #     if isinstance(sample, dict):
-    #         sample = Example(x=[ftype(value=self.sample(sample, feat), name=feat) for feat, ftype in self.f_types.items()])
-    #     cand = self.apply(sample)
-    #     if cand is not None:
-    #         return cand.idx, cand.value  # TODO: do not return cand.idx. Only for debugging!
-    #     else:
-    #         return {}
-    #
-    # def predict_us(self, sample):
-    #     '''predict underspecified: only certain variables along the path are given; multiple answers are therefore
-    #     possible'''
-    #     cands = self.apply_us(sample)
-    #     if cands:
-    #         return {c: dict([(t, v) for t, v in zip(self.targets, c.value)]) for c in cands}
-    #     else:
-    #         return {}
 
     def apply(self, query):
         # if the sample doesn't match the features of the tree, there is no valid prediction possible
         if not set(query.keys()).issubset(set(self._variables)):
-            raise TypeError(f'Invalid query. Query contains variables that are not represented by this tree: {[v for v in query.keys() if v not in self._variables]}')
+            raise TypeError(f'Invalid query. Query contains variables that are not '
+                            f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}')
 
         # find the leaf (or the leaves) that have each variable either
         # - not occur in the path to this node OR
@@ -471,32 +535,14 @@ class JPT:
         # -> return leaf that matches query
         for k, l in self.leaves.items():
             for var in set(query.keys()).intersection(set(l.path.keys())):
-                if issubclass(var.domain, Multinomial):
-                    if not all([l.path.get(var) == query.get(var)]):
+                if var.symbolic:
+                    if not all([query.get(var) in l.path.get(var)]):
                         break
                 else:
                     if not l.path.get(var).intersects(query.get(var)):
                         break
             else:
                 yield l
-
-
-    # def apply_us(self, sample):
-    #     # if the sample doesn't match the features of the tree, there is no valid prediction possible
-    #     if set(sample.keys()).isdisjoint(set(self.features)):
-    #         return []
-    #
-    #     # find the leaf (or the leaves) that have each variable either
-    #     # - not occur in the path to this node OR
-    #     # - match the boolean/symbolic value in the path OR
-    #     # - lie in the interval of the numeric value in the path
-    #     sims = []
-    #     for k, l in self.leaves.items():
-    #         if all([True if feat not in l.path else l.path.get(feat) == val if ftype in (SymbolicFeature, BooleanFeature) else l.path.get(feat).contains(val) for feat, val, ftype in zip(sample.keys(), sample.values(), [self.f_types[k] for k in sample.keys()])]):
-    #             sims.append(l)
-    #
-    #     # return (possibly empty) list of matching leaves
-    #     return sims
 
     @staticmethod
     def sample(sample, ft):
@@ -636,30 +682,32 @@ class JPT:
                                 </TR>
                                 '''
 
-            # content for node labels
-            nodelabel = f'''<TR>
-                                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{"Leaf" if isinstance(n, Leaf) else "Node"} #{n.idx}</B><BR/>{html.escape(n.str_node)}</TD>
-                            </TR>'''
 
-            # content for leaf labels
-            leaflabel = f'''{nodelabel}{imgs}
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{len(n.samples) if isinstance(n.samples, list) else n.samples}</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>value:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f"{vname.name}: {dist.expectation()}" for vname, dist in n.value.items()])}</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{sep.join([f"{k.name}: {v}" for k, v in n.path.items()])}</TD>
-                            </TR>
-                            '''
-
+                land = '<BR/>\u2227'
+                element = ' \u2208 '
+                # content for leaf labels
+                nodelabel = f'''{nodelabel}{imgs}
+                                <TR>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{len(n.samples) if isinstance(n.samples, list) else n.samples}</TD>
+                                </TR>
+                                <TR>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join(['%s = %s' % (v.name, ('%s' if v.symbolic else '%.2f') % dist.expectation()) for v, dist in n.value.items()])}</TD>
+                                </TR>
+                                <TR>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{land.join([f"{k.name} {'=' if k.symbolic else element} {v}" for k, v in n.path.items()])}</TD>
+                                </TR>
+                                '''
+            else:
+                # content for node labels
+                nodelabel = f'''<TR>
+                                    <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{"Leaf" if isinstance(n, Leaf) else "Node"} #{n.idx}</B><BR/>{html.escape(n.str_node)}</TD>
+                                </TR>'''
             # stitch together
             lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
-                            {leaflabel if isinstance(n, Leaf) else nodelabel}
+                            {nodelabel}
                       </TABLE>>'''
 
             if isinstance(n, Leaf):
@@ -676,9 +724,9 @@ class JPT:
                          fillcolor=orange)
 
         # create edges
-        for idx, n in self.allnodes.items():
-            for c in n.children:
-                dot.edge(str(n.idx), str(c.idx), label=c.str_edge)
+        for idx, n in self.innernodes.items():
+            for i, c in enumerate(n.children):
+                dot.edge(str(n.idx), str(c.idx), label=n.str_edge(i))
 
         # show graph
         logger.info(f'Saving rendered image to {os.path.join(directory, filename)}')
