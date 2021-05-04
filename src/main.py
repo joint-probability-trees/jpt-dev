@@ -47,10 +47,10 @@ class Conditional:
 
 def restaurant():
     # declare variable types
-    PatronsType = HistogramType('Patrons', ['3', '10', '20'])
-    PriceType = HistogramType('Price', ['$', '$$', '$$$'])
-    FoodType = HistogramType('Food', ['French', 'Thai', 'Burger', 'Italian'])
-    WaitEstType = HistogramType('WaitEstimate', ['10', '30', '60', '120'])
+    PatronsType = SymbolicType('Patrons', ['3', '10', '20'])
+    PriceType = SymbolicType('Price', ['$', '$$', '$$$'])
+    FoodType = SymbolicType('Food', ['French', 'Thai', 'Burger', 'Italian'])
+    WaitEstType = SymbolicType('WaitEstimate', ['10', '30', '60', '120'])
 
     # define probs
     al = Variable('Alternatives', Bool)  # Alternatives(.2)
@@ -65,19 +65,33 @@ def restaurant():
     wa = Variable('WaitEst', WaitEstType)  # WaitEst([.3, .4, .2, .1])
 
     numsamples = 500
-    variables = [ba, ra, re]  # [al, ba, fr, hu, pa, pr, ra, re, fo, wa]
+    # variables = [ba, ra, re]
+    variables = [al, ba, fr, hu, pa, pr, ra, re, fo, wa]
 
-    data = [[ba.dist(.2).sample_one(), ra.dist(.3).sample_one(), re.dist(.2).sample_one()] for _ in range(numsamples)]
-    # data = [[ba.dist(.2).sample_one(), pa.dist([.2, .6, .2]).sample_one(), pr.dist([.1, .7, .2]).sample_one(), ra.dist(.3).sample_one(),
-    #          re.dist(.1).sample_one(), fo.dist([.1, .2, .4, .3]).sample_one(), wa.dist([.3, .4, .2, .1]).sample_one()] for _ in range(numsamples)]
+    # data = [[ba.dist(.2).sample_one(), ra.dist(.3).sample_one(), re.dist(.2).sample_one()] for _ in range(numsamples)]
 
-    jpt = JPT(variables, min_samples_leaf=5)
+    data = [[al.dist(.2).sample_one(),
+             ba.dist(.2).sample_one(),
+             fr.dist(1/7.).sample_one(),
+             hu.dist(.8).sample_one(),
+             pa.dist([.2, .6, .2]).sample_one(),
+             pr.dist([.1, .7, .2]).sample_one(),
+             ra.dist(.3).sample_one(),
+             re.dist(.1).sample_one(),
+             fo.dist([.1, .2, .4, .3]).sample_one(),
+             wa.dist([.3, .4, .2, .1]).sample_one()] for _ in range(numsamples)]
+
+    jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(data)
     out(jpt)
-    jpt.plot(directory='/home/mareike/Desktop/sebaimages', plotvars=[ba, ra, re], view=True)
+    jpt.plot(plotvars=variables, view=True)
     # candidates = jpt.apply({ba: True, re: False})
-    candidates = jpt.infer({ba: True, re: False}, {ra: False})
-    out(candidates)
+    q = {ba: True, re: False}
+    e = {ra: False}
+    res = jpt.infer(q, e)
+    out(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
+        f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) = {res.result}')
+    print(res.explain())
 
 
 def alarm():
@@ -254,11 +268,11 @@ def main(*args):
 
     # test_merge()
     # test_dists()
-    # restaurant()
+    restaurant()
     # test_muesli()
     # muesli_tree()
     # picklemuesli()
-    alarm()
+    # alarm()
 
 
 # Press the green button in the gutter to run the script.
