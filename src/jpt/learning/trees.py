@@ -7,6 +7,7 @@ import os
 import pickle
 import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
+import datetime
 from functools import reduce
 
 import numpy as np
@@ -16,7 +17,7 @@ from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error
 
 import dnutils
-from dnutils import edict, first, out, stop, ifnone
+from dnutils import edict, first, out, stop, ifnone, ifnot
 
 from .distributions import Distribution, Bool, Multinomial, Numeric
 from intervals import ContinuousSet as Interval, EXC, INC, R
@@ -68,7 +69,6 @@ class Node:
         '''
         self.samples = len(examples)
         xmples_tp = np.array(examples).T
-
         for i, v in enumerate(variables):
             # TODO: update Distributions such that they do not necessarily get probs but data (move counting into class)
             self.distributions[v] = v.dist().set_data(xmples_tp[i])
@@ -382,13 +382,13 @@ class JPT:
         if any([len(d) < self.min_samples_leaf for d in split_data]) or max_gain <= min_impurity_improvement:
 
             leaf = Leaf(idx=len(self.allnodes), parent=parent, treename=self.name)
-            leaf.set_trainingssamples(data, self._variables)
             # node.threshold = None if parent is None \
             #     else data[0][ft_idx] \
             #     if issubclass(parent.dec_criterion.domain, Multinomial) \
             #     else data[0][ft_idx] <= parent.dec_criterion_val
             if parent is not None:
                 parent.set_child(child_idx, leaf)
+            leaf.set_trainingssamples(data, self._variables)
                 # leaf.path = parent.path.copy()
                 # parent.children[splitidx] = leaf
 
@@ -456,7 +456,7 @@ class JPT:
                                  # if hasattr(root, 'children')
                                  # else 'None')
 
-    def learn(self, data=None, tr=0.0):
+    def learn(self, data=None):
         '''Fits the ``data`` into a regression tree.
 
         :param data:    The training examples containing features and targets
@@ -464,6 +464,9 @@ class JPT:
         :param tr:      The threshold for the gain in the feature selection
         :type tr:       float
         '''
+        started = datetime.datetime.now()
+        logger.info('Started learning of %s x %s at %s' % (len(data), ifnot(data, 'n/a', lambda x: len(x[0])), started))
+
         self.data = data
         # self.c45(list(range(len(data))), None, ft_idx=None, tr=tr)
         self.c45queue.append((list(range(len(data))), None, None))
@@ -480,6 +483,7 @@ class JPT:
         else:
             self.root = None
 
+        logger.info('Learning took %s' % (datetime.datetime.now() - started))
         if logger.level >= 20:
             out(self)
 
@@ -676,9 +680,10 @@ class JPT:
                 rc = math.ceil(math.sqrt(len(plotvars)))
                 img = ''
                 for i, pvar in enumerate(plotvars):
-                    n.distributions[pvar].plot(name=pvar.name, directory=directory, view=False)
+                    img_name = '%s-%d' % (pvar.name, idx)
+                    n.distributions[pvar].plot(name=img_name, directory=directory, view=False)
                     img += (f'''{"<TR>" if i % rc == 0 else ""}
-                                        <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{pvar.name}.png")}"/></TD>
+                                        <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
                                 {"</TR>" if i % rc == rc-1 or i == len(plotvars) - 1 else ""}
                                 ''')
 
