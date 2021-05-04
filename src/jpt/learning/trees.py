@@ -52,6 +52,7 @@ class Node:
         self.treename = treename
         self.children = None
         self._path = []
+        self.distributions = {}
 
     @property
     def path(self):
@@ -68,10 +69,8 @@ class Node:
         :type variables:         tba
         '''
         self.samples = len(examples)
-        xmples_tp = np.array(examples).T
         for i, v in enumerate(variables):
-            # TODO: update Distributions such that they do not necessarily get probs but data (move counting into class)
-            self.distributions[v] = v.dist().set_data(xmples_tp[i])
+            self.distributions[v] = v.dist().set_data([row[i] for row in examples])
 
     @property
     def str_node(self):
@@ -139,9 +138,18 @@ class Leaf(Node):
     def str_node(self):
         return ""
 
-    # @property
-    # def str_edge(self):
-    #     return f'{self.threshold}'
+    def applies(self, query):
+        '''Checks whether this leaf is consistent with the given ``query``.'''
+        for var in set(query.keys()).intersection(set(self.path.keys())):
+            if var.symbolic:
+                out(query.get(var), self.path.get(var))
+                if not query.get(var) in self.path.get(var):
+                    return False
+            else:
+                if not self.path.get(var).intersects(query.get(var)):
+                    return False
+        else:
+            return True
 
     @property
     def value(self):
@@ -514,28 +522,41 @@ class JPT:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
-        if evidence:
-            p_e = self.infer(query=evidence)
-        else:
-            p_e = 1.
-            evidence = {}
+        r = Result()
 
-        query = query.copy()
-        query.update(evidence)
+        # if evidence:
+        #     p_e = self.infer(query=evidence)
+        # else:
+        #     p_e = 1.
+        #     evidence = {}
+        #
+        # query = query.copy()
+        # query.update(evidence)
 
         p_q = 0.
-        for leaf in self.apply(query):
+        p_e = 1.
+        for leaf in self.apply(evidence):
             freevars = set(query.keys()) - set(leaf.path.keys())
             prod = []
 
             for var in freevars:
-                if issubclass(var.domain, Multinomial):
+                if var.symbolic:
                     prod.append(leaf.distributions[var].p(query[var]))
                 else:
                     prod.append(leaf.distributions[var].p(query[var].intersect(leaf.path[var])))
 
-            p_q += reduce(operator.mul, prod, 1) * leaf.samples / self.root.samples
-        return p_q / p_e
+            w = leaf.samples / self.root.samples
+            p_m = reduce(operator.mul, prod, 1) * w
+            p_e += p_m
+
+            if leaf.applies(query):
+                p_q += p_m
+
+                r.candidates.append(leaf)
+                r.weights.append(p_m)
+
+        r.result = p_q / p_e
+        return r
 
     def apply(self, query):
         # if the sample doesn't match the features of the tree, there is no valid prediction possible
@@ -548,16 +569,7 @@ class JPT:
         # - match the boolean/symbolic value in the path OR
         # - lie in the interval of the numeric value in the path
         # -> return leaf that matches query
-        for k, l in self.leaves.items():
-            for var in set(query.keys()).intersection(set(l.path.keys())):
-                if var.symbolic:
-                    if not all([query.get(var) in l.path.get(var)]):
-                        break
-                else:
-                    if not l.path.get(var).intersects(query.get(var)):
-                        break
-            else:
-                yield l
+        yield from [l for l in self.leaves.values() if l.applies(query)]
 
     @staticmethod
     def sample(sample, ft):
@@ -680,8 +692,8 @@ class JPT:
                 rc = math.ceil(math.sqrt(len(plotvars)))
                 img = ''
                 for i, pvar in enumerate(plotvars):
-                    img_name = '%s-%d' % (pvar.name, idx)
-                    n.distributions[pvar].plot(name=img_name, directory=directory, view=False)
+                    img_name = f'{pvar.name}-{idx}'
+                    n.distributions[pvar].plot(title=pvar.name, fname=img_name, directory=directory, view=False)
                     img += (f'''{"<TR>" if i % rc == 0 else ""}
                                         <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
                                 {"</TR>" if i % rc == rc-1 or i == len(plotvars) - 1 else ""}
@@ -698,14 +710,14 @@ class JPT:
                                 </TR>
                                 '''
 
+            land = '<BR/>\u2227'
+            element = ' \u2208 '
 
-                land = '<BR/>\u2227'
-                element = ' \u2208 '
-                # content for leaf labels
             # content for node labels
             nodelabel = f'''<TR>
                                 <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{"Leaf" if isinstance(n, Leaf) else "Node"} #{n.idx}</B><BR/>{html.escape(n.str_node)}</TD>
                             </TR>'''
+
             if isinstance(n, Leaf):
                 nodelabel = f'''{nodelabel}{imgs}
                                 <TR>
@@ -714,7 +726,7 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join(['%s = %s' % (v.name, ('%s' if v.symbolic else '%.2f') % dist.expectation()) for v, dist in n.value.items()])}</TD>
+g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{v.name} = {dist.expectation()!r:{"s" if v.symbolic else ".2f"}}' for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
@@ -786,3 +798,38 @@ class JPT:
         from scipy.stats import mvn
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], mu, sigma))
 
+
+class Result:
+
+    def __init__(self, res=None, cand=None, w=None):
+        self._res = ifnone(res, [])
+        self._cand = ifnone(cand, [])
+        self._w = ifnone(w, [])
+
+    @property
+    def result(self):
+        return self._res
+
+    @result.setter
+    def result(self, res):
+        self._res = res
+
+    @property
+    def candidates(self):
+        return self._cand
+
+    @candidates.setter
+    def candidates(self, cand):
+        self._cand = cand
+
+    @property
+    def weights(self):
+        return self._w
+
+    @weights.setter
+    def weights(self, w):
+        self._w = w
+
+    def explain(self):
+        sep = ',\n'
+        return f'{sep.join([f"{w}: {c.path}" for c, w in zip(self.candidates, self.weights)])}'
