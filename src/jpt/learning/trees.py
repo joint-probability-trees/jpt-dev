@@ -62,7 +62,7 @@ class Node:
         return res
 
     def format_path(self):
-        return ' ^ '.join(['%s = %s' % (var.name, val if var.numeric else var.domain.values[first(val)]) for var, val in self.path.items()])
+        return ' ^ '.join(['%s = %s' % (var.name, val if var.numeric else var.domain.labels[first(val)]) for var, val in self.path.items()])
 
     # def set_trainingssamples(self, examples, variables):
     #     '''
@@ -425,7 +425,7 @@ class JPT:
 
         data = np.ndarray(shape=shape, dtype=np.float32)
         for i, (var, col) in enumerate(zip(self.variables, columns)):
-            data[:, i] = col if var.numeric else [var.domain.val2idx[v] for v in col]
+            data[:, i] = col if var.numeric else [var.domain.labels.index(v) for v in col]
 
         self.data = data
 
@@ -479,11 +479,11 @@ class JPT:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
-        r = Result(query, evidence)
-
         # Transform into internal values (symbolic values to their indices)
-        evidence_ = {var: val if var.numeric else var.domain.val2idx[val] for var, val in evidence.items()}
-        query_ = {var: val if var.numeric else var.domain.val2idx[val] for var, val in query.items()}
+        evidence_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in evidence.items()}
+        query_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in query.items()}
+
+        r = Result(query_, evidence_)
 
         p_q = 0.
         p_e = 0.
@@ -493,7 +493,7 @@ class JPT:
             p_m = 1
             for var in set(evidence_.keys()) - set(leaf.path.keys()):
                 if var.symbolic:
-                    p_m *= leaf.distributions[var].p_by_idx(evidence_[var])
+                    p_m *= leaf.distributions[var].p(evidence_[var])
                 else:
                     p_m *= leaf.distributions[var].p(evidence_[var].intersect(leaf.path[var]))
 
@@ -506,7 +506,7 @@ class JPT:
 
                 r.candidates.append(leaf)
                 r.weights.append(p_m)
-        out(p_q, p_e)
+
         r.result = p_q / p_e
         return r
 
@@ -678,11 +678,11 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{v.name} = {dist.expectation()!r:{"s" if v.symbolic else ".2f"}}' for v, dist in n.value.items()])}</TD>
+g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{v.name} = {v.domain.labels[dist.expectation()]!r:{"s" if v.symbolic else ".2f"}}' for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{land.join([f"{k.name}{element}{v}" for k, v in n.path.items()])}</TD>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{land.join([var.str_by_idx(val) for var, val in n.path.items()])}</TD>
                                 </TR>
                                 '''
             # stitch together
@@ -785,9 +785,9 @@ class Result:
         self._w = w
 
     def explain(self):
-        # sep = ',\n'
-        # return f'{sep.join([f"{w}: {c.path}" for c, w in zip(self.candidates, self.weights)])}'
-        print(f'P({",".join([f"{k.name}={v}" for k, v in self.query.items()])}{" | " if self.evidence else ""}'
-              f'{",".join([f"{k.name}={v}" for k, v in self.evidence.items()])}) =', self.result)
+        print(f'P({",".join([f"{k.name}={k.domain.labels[v]}" for k, v in self.query.items()])}'
+              f'{" | " if self.evidence else ""}'
+              f'{",".join([f"{k.name}={k.domain.labels[v]}" for k, v in self.evidence.items()])}) = '
+              f'{self.result}')
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            print('%.3f %%:' % weight, leaf.format_path())
+            print(f'{weight:.3f}%: {leaf.format_path()}')

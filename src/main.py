@@ -13,7 +13,7 @@ from dnutils import out
 from jpt.learning.distributions import Multinomial, Bool, Histogram, Numeric, HistogramType, SymbolicType
 from intervals import ContinuousSet as Interval
 from jpt.learning.trees import JPT
-from jpt.variables import Variable
+from jpt.variables import Variable, SymbolicVariable
 from quantiles import Quantiles
 
 
@@ -53,16 +53,16 @@ def restaurant():
     WaitEstType = SymbolicType('WaitEstimate', ['10', '30', '60', '120'])
 
     # define probs
-    al = Variable('Alternatives', Bool)  # Alternatives(.2)
-    ba = Variable('Bar', Bool)  # Bar(.2)
-    fr = Variable('Friday', Bool)  # Friday(1/7.)
-    hu = Variable('Hungry', Bool)  # Hungry(.8)
-    pa = Variable('Patrons', PatronsType)  # PatronsType([.2, .6, .2])
-    pr = Variable('Price', PriceType)  # Price([.1, .7, .2])
-    ra = Variable('Rain', Bool)  # Rain(.3)
-    re = Variable('Reservation', Bool)  # Reservation(.1)
-    fo = Variable('Food', FoodType)  # Food([.1, .2, .4, .3])
-    wa = Variable('WaitEst', WaitEstType)  # WaitEst([.3, .4, .2, .1])
+    al = SymbolicVariable('Alternatives', Bool)  # Alternatives(.2)
+    ba = SymbolicVariable('Bar', Bool)  # Bar(.2)
+    fr = SymbolicVariable('Friday', Bool)  # Friday(1/7.)
+    hu = SymbolicVariable('Hungry', Bool)  # Hungry(.8)
+    pa = SymbolicVariable('Patrons', PatronsType)  # PatronsType([.2, .6, .2])
+    pr = SymbolicVariable('Price', PriceType)  # Price([.1, .7, .2])
+    ra = SymbolicVariable('Rain', Bool)  # Rain(.3)
+    re = SymbolicVariable('Reservation', Bool)  # Reservation(.1)
+    fo = SymbolicVariable('Food', FoodType)  # Food([.1, .2, .4, .3])
+    wa = SymbolicVariable('WaitEst', WaitEstType)  # WaitEst([.3, .4, .2, .1])
 
     numsamples = 500
     # variables = [ba, ra, re]
@@ -70,16 +70,16 @@ def restaurant():
 
     # data = [[ba.dist(.2).sample_one(), ra.dist(.3).sample_one(), re.dist(.2).sample_one()] for _ in range(numsamples)]
 
-    data = [[al.dist(.2).sample_one(),
-             ba.dist(.2).sample_one(),
-             fr.dist(1/7.).sample_one(),
-             hu.dist(.8).sample_one(),
-             pa.dist([.2, .6, .2]).sample_one(),
-             pr.dist([.1, .7, .2]).sample_one(),
-             ra.dist(.3).sample_one(),
-             re.dist(.1).sample_one(),
-             fo.dist([.1, .2, .4, .3]).sample_one(),
-             wa.dist([.3, .4, .2, .1]).sample_one()] for _ in range(numsamples)]
+    data = [[al.dist(.2).sample_one_label(),
+             ba.dist(.2).sample_one_label(),
+             fr.dist(1/7.).sample_one_label(),
+             hu.dist(.8).sample_one_label(),
+             pa.dist([.2, .6, .2]).sample_one_label(),
+             pr.dist([.1, .7, .2]).sample_one_label(),
+             ra.dist(.3).sample_one_label(),
+             re.dist(.1).sample_one_label(),
+             fo.dist([.1, .2, .4, .3]).sample_one_label(),
+             wa.dist([.3, .4, .2, .1]).sample_one_label()] for _ in range(numsamples)]
 
     jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(data)
@@ -96,11 +96,11 @@ def restaurant():
 
 def alarm():
 
-    E = Variable('Earthquake', Bool)  # .02
-    B = Variable('Burglary', Bool)  # Bool(.01)
-    A = Variable('Alarm', Bool)
-    M = Variable('MaryCalls', Bool)
-    J = Variable('JohnCalls', Bool)
+    E = SymbolicVariable('Earthquake', Bool)  # .02
+    B = SymbolicVariable('Burglary', Bool)  # Bool(.01)
+    A = SymbolicVariable('Alarm', Bool)
+    M = SymbolicVariable('MaryCalls', Bool)
+    J = SymbolicVariable('JohnCalls', Bool)
 
     A_ = Conditional(Bool, [E.domain, B.domain])
     A_[True, True] = Bool(.95)
@@ -116,42 +116,53 @@ def alarm():
     J_[True] = Bool(.9)
     J_[False] = Bool(.05)
 
-    # Construct the CSV for learning
-    data = []
-    for i in range(1000):
-        e = E.dist(.2).sample_one()
-        b = B.dist(.1).sample_one()
-        a = A_.sample_one([e, b])
-        m = M_.sample_one(a)
-        j = J_.sample_one(a)
+    c = 0.
+    t = 10
+    for i in range(t):
 
-        data.append([e, b, a, m, j])
+        # Construct the CSV for learning
+        data = []
+        for i in range(1000):
+            e = E.dist(.2).sample_one()
+            b = B.dist(.1).sample_one()
+            a = A_.sample_one([e, b])
+            m = M_.sample_one(a)
+            j = J_.sample_one(a)
 
-    # sample check
-    out('Probabilities as determined by sampled data')
-    d = np.array(data).T
-    for var, x in zip([E, B, A, M, J], d):
-        unique, counts = np.unique(x, return_counts=True)
-        out(var.name, list(zip(unique, counts, counts/sum(counts))))
+            data.append([e, b, a, m, j])
+
+        # sample check
+        out('Probabilities as determined by sampled data')
+        d = np.array(data).T
+        for var, x in zip([E, B, A, M, J], d):
+            unique, counts = np.unique(x, return_counts=True)
+            out(var.name, list(zip(unique, counts, counts/sum(counts))))
+
+        tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
+        tree.learn(data)
+        # tree.plot(directory=os.path.abspath('/tmp'), plotvars=[E, B, A, M, J], view=False)
+        # tree.plot(plotvars=[E, B, A, M, J])
+        # conditional
+        # q = {A: True}
+        # e = {E: False, B: True}
+
+        # joint
+        # q = {A: True, E: False, B: True}
+        # e = {}
+
+        # diagnostic
+        q = {A: True}
+        e = {M: True}
+
+        c += tree.infer(q, e).result
+
 
     tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
     tree.learn(data)
     out(tree)
-    # tree.plot(directory=os.path.abspath('/tmp'), plotvars=[E, B, A, M, J], view=False)
-    tree.plot(plotvars=[E, B, A, M, J])
-    # conditional
-    # q = {A: True}
-    # e = {E: False, B: True}
-
-    # joint
-    # q = {A: True, E: False, B: True}
-    # e = {}
-
-    # diagnostic
-    q = {A: True}
-    e = {M: True}
-    out(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
-        f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) =', tree.infer(q, e))
+    res = tree.infer(q, e)
+    res.explain()
+    print('AVG', c/t)
 
 
 def test_merge():

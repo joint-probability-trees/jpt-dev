@@ -1,5 +1,7 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
+import abc
+
 import pyximport
 
 from jpt.utils import classproperty
@@ -546,9 +548,12 @@ class Numeric(Distribution):
 
 
 class Multinomial(Distribution):
+    '''
+    Abstract supertype of all symbolic domains and distributions.
+    '''
 
     values = None
-    val2idx = None
+    labels = None
 
     def __init__(self, p=None):
         super().__init__()
@@ -560,6 +565,8 @@ class Multinomial(Distribution):
             self._p = np.array(p)
         else:
             self._p = None
+        if not issubclass(type(self), Multinomial) or type(self) is Multinomial:
+            raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
 
     @classproperty
     def n_values(self):
@@ -576,7 +583,7 @@ class Multinomial(Distribution):
         return self.p(value)
 
     def __setitem__(self, value, p):
-        self._p[self.val2idx[value]] = p
+        self._p[self.values[value]] = p
 
     def __eq__(self, other):
         return type(self) is type(other) and (self._p == other._p).all()
@@ -588,28 +595,27 @@ class Multinomial(Distribution):
     def __str__(self):
         if self.p is None:
             return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p}" for v, p in zip(self.values, self._p)])}]>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p}" for v, p in zip(self.labels, self._p)])}]>'
 
     def __repr__(self):
         if self.p is None:
             return f'{self._cl}<p=n/na>'
-        return f'\n{self._cl}<p=[\n{sepcomma.join([f"{v}={p}"for v, p in zip(self.values, self._p)])}]>;'
+        return f'\n{self._cl}<p=[\n{sepcomma.join([f"{v}={p}"for v, p in zip(self.labels, self._p)])}]>;'
 
     def p(self, value):
-        return self._p[self.val2idx[value]]
-
-    def p_by_idx(self, i):
-        return self._p[i]
-
-    # @p.setter
-    # def p(self, p):
-    #     self._p = p
+        return self._p[self.values[value]]
 
     def sample(self, n):
         return wsample(self.values, self._p, n)
 
     def sample_one(self):
         return wchoice(self.values, self._p)
+
+    def sample_labels(self, n):
+        return [self.labels[i] for i in wsample(self.values, self._p, n)]
+
+    def sample_one_label(self):
+        return self.labels[wchoice(self.values, self._p)]
 
     def expectation(self):
         return max([(v, p) for v, p in zip(self.values, self._p)], key=itemgetter(1))[0]
@@ -618,7 +624,7 @@ class Multinomial(Distribution):
         self._p = [list(data).count(x) / len(data) for x in self.values]
         return self
 
-    def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=True):
+    def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
         '''
 
         :param title:       the name of the variable this distribution represents
@@ -641,7 +647,7 @@ class Multinomial(Distribution):
         if not view:
             plt.ioff()
 
-        vals = [re.escape(str(x)) for x in self.values]
+        vals = [re.escape(str(x)) for x in self.labels]
         x = np.arange(len(self.values))  # the label locations
         width = 0.35  # the width of the bars
         err = [.015] * len(self.values)
@@ -700,7 +706,8 @@ class Multinomial(Distribution):
 class Histogram(Multinomial):
 
     values = Multinomial.values
-    val2idx = Multinomial.val2idx
+    labels = Multinomial.labels
+    # val2idx = Multinomial.val2idx
 
     def __init__(self, p=None):
         super().__init__(p)
@@ -734,15 +741,15 @@ class Histogram(Multinomial):
     def __str__(self):
         if self.p is None:
             return f'{self._cl}<d=None; p=None>'
-        return f'{self._cl}<d={self._d}; p=[{",".join([f"{v}={p}" + (f" ({self.p(v)})" if self._d != 1. else "") for v, p in zip(self.values, self._p)])}]>'
+        return f'{self._cl}<d={self._d}; p=[{",".join([f"{self.labels[v]}={p}" + (f" ({self.p(v)})" if self._d != 1. else "") for v, p in zip(self.values, self._p)])}]>'
 
     def __repr__(self):
         if self.p is None:
             return f'{self._cl}<d=None; p=None>'
-        return f'\n{self._cl}<d={self._d}; p=[\n{sepcomma.join([f"{v}={p}" + (f" ({p_})" if self._d != 1. else "") for v, p, p_ in zip(self.values, self._p, self.p)])}]>'
+        return f'\n{self._cl}<d={self._d}; p=[\n{sepcomma.join([f"{self.labels[v]}={p}" + (f" ({self.p(v)})" if self._d != 1. else "") for v, p in zip(self.values, self._p)])}]>'
 
     def __setitem__(self, value, p):
-        self._p[self.val2idx[value]] = p
+        self._p[self.values[value]] = p
         self._d = sum(p)
 
     # @Multinomial.p.getter
@@ -787,7 +794,7 @@ class Histogram(Multinomial):
         if not view:
             plt.ioff()
 
-        vals = [re.escape(str(x)) for x in self.values]
+        vals = [re.escape(str(x)) for x in self.labels]
         x = np.arange(len(self.values))  # the label locations
         width = 0.35  # the width of the bars
         err = [.015]*len(self.values)
@@ -850,13 +857,17 @@ class Histogram(Multinomial):
 
 class Bool(Multinomial):
 
-    values = (True, False)
-    val2idx = {True: 0, False: 1}
+    values = (1, 0)
+    labels = (True, False)
+    # val2idx = {True: 0, False: 1}
 
     def __init__(self, p=None):
         if p is not None and not iterable(p):
             p = [p, 1 - p]
-        super().__init__(p)
+        try:
+            super().__init__(p)
+        except Exception:
+            pass
 
     def __setitem__(self, v, p):
         if not iterable(p):
@@ -866,13 +877,13 @@ class Bool(Multinomial):
 
 def HistogramType(name, values):
     t = type(name, (Histogram,), {})
-    t.values = tuple(values)
-    t.val2idx = {v: i for i, v in enumerate(values)}
+    t.values = tuple(range(len(values)))
+    t.labels = tuple(values)
     return t
 
 
 def SymbolicType(name, values):
     t = type(name, (Multinomial,), {})
-    t.values = tuple(values)
-    t.val2idx = {v: i for i, v in enumerate(values)}
+    t.values = tuple(range(len(values)))
+    t.labels = tuple(values)
     return t

@@ -68,7 +68,7 @@ class SymbolicVariable(Variable):
     def str_by_idx(self, assignment):
         if type(assignment) is not set:
             assignment = {assignment}
-        return self.str({self.domain.values[a] for a in assignment})
+        return self.str({self.domain.labels[a] for a in assignment})
 
 
 #
