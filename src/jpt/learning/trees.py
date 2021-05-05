@@ -5,23 +5,20 @@ import math
 import operator
 import os
 import pickle
-import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
-from functools import reduce
 
 import numpy as np
 from graphviz import Digraph
 from matplotlib import style
-from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error
 
 import dnutils
-from dnutils import edict, first, out, stop, ifnone, ifnot
+from dnutils import first, out, ifnone
 
-from .distributions import Distribution, Bool, Multinomial, Numeric
+from .distributions import Distribution
 from intervals import ContinuousSet as Interval, EXC, INC, R
-from ..constants import plotstyle, orange, green, sepcomma
+from ..constants import plotstyle, orange, green
 from ..utils import rel_entropy
 
 logger = dnutils.getlogger(name='TreeLogger', level=dnutils.DEBUG)
