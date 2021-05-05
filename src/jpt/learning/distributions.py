@@ -1,6 +1,9 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import pyximport
+
+from jpt.utils import classproperty
+
 pyximport.install()
 
 from quantiles import Quantiles
@@ -557,6 +560,10 @@ class Multinomial(Distribution):
             self._p = np.array(p)
         else:
             self._p = None
+
+    @classproperty
+    def n_values(self):
+        return len(self.values)
 
     def __contains__(self, item):
         return item in self.values
