@@ -3,17 +3,15 @@ pyximport.install()
 
 import os
 import pickle
-import pprint
 
 import numpy as np
-from matplotlib import pyplot as plt
 from numpy import iterable
 
 from dnutils import out
-from jpt.learning.distributions import Multinomial, Bool, Histogram, Numeric, HistogramType, SymbolicType
+from jpt.learning.distributions import Bool, Numeric, HistogramType, SymbolicType
 from intervals import ContinuousSet as Interval
 from jpt.learning.trees import JPT
-from jpt.variables import Variable, SymbolicVariable
+from jpt.variables import Variable, SymbolicVariable, NumericVariable
 from quantiles import Quantiles
 
 
@@ -140,7 +138,6 @@ def alarm():
 
         tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
         tree.learn(data)
-        # tree.plot(directory=os.path.abspath('/tmp'), plotvars=[E, B, A, M, J], view=False)
         # tree.plot(plotvars=[E, B, A, M, J])
         # conditional
         # q = {A: True}
@@ -156,13 +153,13 @@ def alarm():
 
         c += tree.infer(q, e).result
 
-
     tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
     tree.learn(data)
     out(tree)
     res = tree.infer(q, e)
     res.explain()
     print('AVG', c/t)
+    tree.plot(plotvars=[E, B, A, M, J])
 
 
 def test_merge():
@@ -244,16 +241,16 @@ def muesli_tree():
 
     ObjectType = SymbolicType('ObjectType', unique)
 
-    x = Variable('X', Numeric)
-    y = Variable('Y', Numeric)
-    o = Variable('Object', ObjectType)
-
-    out('got data', data)
+    x = NumericVariable('X', Numeric)
+    y = NumericVariable('Y', Numeric)
+    o = SymbolicVariable('Object', ObjectType)
 
     jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=10)
     jpt.learn(list(zip(*data)))
 
-    jpt.plot()
+    # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
+    # --> only for testing
+    jpt.plot(plotvars=[x, y, o])
 
 
 def picklemuesli():
@@ -270,7 +267,6 @@ def picklemuesli():
         except:
             transformed.append(np.array(c))
 
-    print(transformed)
     with open(f, 'wb+') as fi:
         pickle.dump(transformed, fi)
 
@@ -279,11 +275,11 @@ def main(*args):
 
     # test_merge()
     # test_dists()
-    restaurant()
+    # restaurant()  # for bools and strings
     # test_muesli()
-    # muesli_tree()
+    muesli_tree()  # for numerics and strings
     # picklemuesli()
-    # alarm()
+    # alarm()  # for bools
 
 
 # Press the green button in the gutter to run the script.
