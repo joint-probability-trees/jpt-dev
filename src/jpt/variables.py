@@ -4,6 +4,7 @@
 from dnutils import first
 
 from jpt.learning.distributions import Multinomial, Numeric
+from jpt.utils import SYMBOL
 
 
 class Variable:
@@ -44,10 +45,31 @@ class Variable:
     def numeric(self):
         return issubclass(self.domain, Numeric)
 
-    # def tostr(self, val_idx):
-    #     if self.symbolic:
-    #         valstr = str(self.domain.values[val_idx])
-    #     return '%s=%s' % (self.name, valstr)
+    def str(self, assignment):
+        if type(assignment) is set:
+            if len(assignment) == 1:
+                valstr = str(first(assignment))
+            else:
+                valstr = f'{{{",".join(map(str, assignment))}}}'
+        else:
+            valstr = str(assignment)
+        return f'{self.name} {SYMBOL.IN} {valstr}'
+
+
+class NumericVariable(Variable):
+
+    def __init__(self, name, domain):
+        super().__init__(name, domain)
+
+    def str(self, assignment):
+        if type(assignment) is set:
+            if len(assignment) == 1:
+                valstr = str(first(assignment))
+            else:
+                valstr = f'{{{",".join(map(str, assignment))}}}'
+        else:
+            valstr = str(assignment)
+        return f'{self.name} {SYMBOL.IN} {valstr}'
 
 
 class SymbolicVariable(Variable):
@@ -60,10 +82,10 @@ class SymbolicVariable(Variable):
             if len(assignment) == 1:
                 valstr = str(first(assignment))
             else:
-                valstr = '{%s}' % ','.join(map(str, assignment))
+                valstr = f'{{{",".join(map(str, assignment))}}}'
         else:
             valstr = str(assignment)
-        return '%s=%s' % (self.name, valstr)
+        return f'{self.name}={valstr}'
 
     def str_by_idx(self, assignment):
         if type(assignment) is not set:

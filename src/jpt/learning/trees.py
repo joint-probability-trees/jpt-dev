@@ -684,7 +684,7 @@ g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDL
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{land.join([var.str_by_idx(val) for var, val in n.path.items()])}</TD>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f" {land} ".join([(var.str_by_idx(val) if var.symbolic else f'{var.str(val)}') for var, val in n.path.items()])}</TD>
                                 </TR>
                                 '''
             # stitch together
