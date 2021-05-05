@@ -680,7 +680,7 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{v.name} = {v.domain.labels[dist.expectation()]!r:{"s" if v.symbolic else ".2f"}}' for v, dist in n.value.items()])}</TD>
+g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{v.name} = {v.domain.labels[dist.expectation()] if v.symbolic else dist.expectation():{"s" if v.symbolic else ".2f"}}' for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
