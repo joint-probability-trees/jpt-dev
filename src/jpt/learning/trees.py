@@ -164,7 +164,7 @@ class Leaf(Node):
 
 class JPT:
 
-    def __init__(self, variables, name=None, min_samples_leaf=1, min_impurity_improvement=None):
+    def __init__(self, variables, name='regtree', min_samples_leaf=1, min_impurity_improvement=None):
         '''Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -401,10 +401,12 @@ class JPT:
     def learn(self, data=None, rows=None, columns=None):
         '''Fits the ``data`` into a regression tree.
 
-        :param data:    The training examples containing features and targets
-        :type data:     list of lists of variable type (according to `self.variables`)
-        :param tr:      The threshold for the gain in the feature selection
-        :type tr:       float
+        :param data:    The training examples (assumed in row-shape)
+        :type data:     [[str or float or bool]]; (according to `self.variables`)
+        :param rows:    The training examples (assumed in row-shape)
+        :type rows:     [[str or float or bool]]; (according to `self.variables`)
+        :param columns: The training examples (assumed in row-shape)
+        :type columns:  [[str or float or bool]]; (according to `self.variables`)
         '''
 
         # --------------------------------------------------------------------------------------------------------------
@@ -615,7 +617,7 @@ class JPT:
 
         return paths
 
-    def plot(self, filename='regtree', directory='/tmp', plotvars=None, view=True):
+    def plot(self, filename=None, directory='/tmp', plotvars=None, view=True):
         '''Generates an SVG representation of the generated regression tree.
 
         :param filename: the name of the JPT (will also be used as filename; extension will be added automatically)
@@ -630,9 +632,9 @@ class JPT:
         if plotvars == None:
             plotvars = []
 
-        dot = Digraph(format='svg', name=self.name,
+        dot = Digraph(format='svg', name=filename or self.name,
                       directory=directory,
-                      filename=filename)
+                      filename=f'{filename or self.name}')
 
         # create nodes
         sep = ",<BR/>"
@@ -709,7 +711,7 @@ g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDL
                 dot.edge(str(n.idx), str(c.idx), label=n.str_edge(i))
 
         # show graph
-        logger.info(f'Saving rendered image to {os.path.join(directory, filename)}')
+        logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
         dot.render(view=view, cleanup=False)
 
     def pickle(self, fpath):
