@@ -649,7 +649,7 @@ class Multinomial(Distribution):
 
         vals = [re.escape(str(x)) for x in self.labels]
         x = np.arange(len(self.values))  # the label locations
-        width = 0.35  # the width of the bars
+        width = .35  # the width of the bars
         err = [.015] * len(self.values)
 
         fig, ax = plt.subplots()
@@ -665,11 +665,11 @@ class Multinomial(Distribution):
             ax.invert_yaxis()
             ax.set_xlim(left=0., right=1.)
 
-            for i in ax.patches:
-                h = i.get_width() - .12 if i.get_width() >= .9 else i.get_width() + .03
-                plt.text(h, i.get_y() + i.get_height()/2,
-                         f'{i.get_width():.2f}',
-                         fontsize=10, color='black')
+            for p in ax.patches:
+                h = p.get_width() - .09 if p.get_width() >= .9 else p.get_width() + .03
+                plt.text(h, p.get_y() + width/2,
+                         f'{p.get_width():.2f}',
+                         fontsize=10, color='black', verticalalignment='center')
         else:
             bars = ax.bar(x, self._p, width=width, yerr=err, color='cornflowerblue', label='%')
 
@@ -680,13 +680,11 @@ class Multinomial(Distribution):
             ax.set_ylim(bottom=0., top=1.)
 
             # print precise value labels on bars
-            for i in ax.patches:
-                h = i.get_height() - .12 if i.get_height() >= .9 else i.get_height() + .03
-                plt.text(i.get_x() + i.get_width()/2, h,
-                         f'{i.get_height():.2f}',
-                         rotation=90, fontsize=10, color='black')
-
-                # plt.text(i.get_x() + width / 2 - 0.017, min(0.9, max(0.03, i.get_height() + 0.03)),
+            for p in ax.patches:
+                h = p.get_height() - .09 if p.get_height() >= .9 else p.get_height() + .03
+                plt.text(p.get_x() + width/2, h,
+                         f'{p.get_height():.2f}',
+                         rotation=90, fontsize=10, color='black', horizontalalignment='center')
 
         fig.tight_layout()
 
@@ -818,10 +816,11 @@ class Histogram(Multinomial):
             ax2.set_xlim(left=0., right=self.d)
 
             # print precise value labels on bars
-            for i, v in zip(ax.patches, self._p):
-                plt.text(min(0.92, max(0.07, i.get_width())), i.get_y() + width/2 + 0.02,
+            for p, v in zip(ax.patches, self._p):
+                h = p.get_width() - .09 if p.get_width() >= .9 else p.get_width() + .03
+                plt.text(h, p.get_y() + width / 2,
                          f'{v} ({round(v/self.d*100, 2)}%)',
-                         fontsize=10, color='black')
+                         fontsize=10, color='black', verticalalignment='center')
         else:
             ax2 = ax.twinx()
 
@@ -836,10 +835,11 @@ class Histogram(Multinomial):
             ax2.set_ylim(bottom=0., top=self.d)
 
             # print precise value labels on bars
-            for i, v in zip(ax.patches, self._p):
-                plt.text(i.get_x() + width/2 - 0.015, min(0.92, max(0.07, i.get_height())),
+            for p, v in zip(ax.patches, self._p):
+                h = p.get_height() - .09 if p.get_height() >= .9 else p.get_height() + .03
+                plt.text(p.get_x() + width/2, h,
                          f'{v} ({round(v/self.d*100, 2)}%)',
-                         rotation=90, fontsize=10, color='black')
+                         rotation=90, fontsize=10, color='black', horizontalalignment='center')
         fig.tight_layout()
 
         # save figure as PDF or PNG
