@@ -60,26 +60,8 @@ class Node:
     def format_path(self):
         return ' ^ '.join(['%s = %s' % (var.name, val if var.numeric else var.domain.labels[first(val)]) for var, val in self.path.items()])
 
-    # def set_trainingssamples(self, examples, variables):
-    #     '''
-    #     :param examples:    tba
-    #     :type examples:     tba
-    #     :param variables:        tba
-    #     :type variables:         tba
-    #     '''
-    #     self.samples = len(examples)
-    #     for i, v in enumerate(variables):
-    #         self.distributions[v] = v.dist().set_data(examples[:, i])
-
-    @property
-    def str_node(self):
-        return self.dec_criterion.name
-
     def __str__(self):
-        return (f'Node<ID: {self.idx}; '
-                f'CRITERION: {self.dec_criterion.__class__.__name__}; '
-                f'PARENT: {f"Node<ID: {self.parent.idx}>" if self.parent else None}; '
-                f'#CHILDREN: {len(self.children)}>')
+        return (f'Node<{self.idx}>')
 
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
@@ -115,6 +97,19 @@ class DecisionNode(Node):
     def str_edge(self, idx):
         return str(self.splits[idx])
 
+    @property
+    def str_node(self):
+        return self.dec_criterion.name
+
+    def __str__(self):
+        return (f'DecisionNode<ID:{self.idx}; '
+                f'CRITERION: {self.dec_criterion.name}; '
+                f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}; '
+                f'#CHILDREN: {len(self.children)}>')
+
+    def __repr__(self):
+        return f'Node<{self.idx}> object at {hex(id(self))}'
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -149,12 +144,12 @@ class Leaf(Node):
         return self.distributions
 
     def __str__(self):
-        return (f'Leaf<ID: {self.idx}; '
+        return (f'LeafNode<ID: {self.idx}; '
                 f'VALUE: {",".join([f"{var.name}: {str(dist)}" for var, dist in self.distributions.items()])}; '
-                f'PARENT: {f"Node<ID: {self.parent.idx}>" if self.parent else None}>')
+                f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}>')
 
     def __repr__(self):
-        return f'Leaf<{self.idx}> object at {hex(id(self))}'
+        return f'LeafNode<{self.idx}> object at {hex(id(self))}'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -644,8 +639,8 @@ class JPT:
                 rc = math.ceil(math.sqrt(len(plotvars)))
                 img = ''
                 for i, pvar in enumerate(plotvars):
-                    img_name = f'{pvar.name}-{idx}'
-                    n.distributions[pvar].plot(title=pvar.name, fname=img_name, directory=directory, view=False)
+                    img_name = html.escape(f'{pvar.name}-{idx}')
+                    n.distributions[pvar].plot(title=html.escape(pvar.name), fname=img_name, directory=directory, view=False)
                     img += (f'''{"<TR>" if i % rc == 0 else ""}
                                         <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
                                 {"</TR>" if i % rc == rc-1 or i == len(plotvars) - 1 else ""}
@@ -662,7 +657,7 @@ class JPT:
                                 </TR>
                                 '''
 
-            land = '<BR/>\u2227'
+            land = '<BR/>\u2227 '
             element = ' \u2208 '
 
             # content for node labels
@@ -678,13 +673,14 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{v.name}=' + (f'{v.domain.labels[dist.expectation()]!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{html.escape(v.name)}=' + (f'{html.escape(str(v.domain.labels[dist.expectation()]))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f" {land} ".join([(var.str_by_idx(val) if var.symbolic else f'{var.str(val)}') for var, val in n.path.items()])}</TD>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([(html.escape(var.str_by_idx(val)) if var.symbolic else f'{var.str(val)}') for var, val in n.path.items()])}</TD>
                                 </TR>
                                 '''
+
             # stitch together
             lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
                             {nodelabel}
