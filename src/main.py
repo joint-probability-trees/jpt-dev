@@ -214,10 +214,9 @@ def test_muesli():
 
     data = []
     with open(f, 'rb') as fi:
-        data = np.array(pickle.load(fi))
-    data_ = np.array(sorted([float(x) for x in data.T[0]]))
+        data = pickle.load(fi)
 
-    quantiles = Quantiles(data_, epsilon=.0001)
+    quantiles = Quantiles(data[0], epsilon=.0001)
     cdf_ = quantiles.cdf()
     d = Numeric(cdf=cdf_)
 
@@ -252,24 +251,6 @@ def muesli_tree():
     jpt.plot(plotvars=[x, y, o])
 
 
-def picklemuesli():
-    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
-
-    data = []
-    with open(f, 'rb') as fi:
-        data = np.array(pickle.load(fi))
-
-    transformed = []
-    for c in data.T:
-        try:
-            transformed.append(np.array(c, dtype=float))
-        except:
-            transformed.append(np.array(c))
-
-    with open(f, 'wb+') as fi:
-        pickle.dump(transformed, fi)
-
-
 def main(*args):
 
     # test_merge()
@@ -277,7 +258,6 @@ def main(*args):
     restaurant()  # for bools and strings
     # test_muesli()
     # muesli_tree()  # for numerics and strings
-    # picklemuesli()
     # alarm()  # for bools
 
 
