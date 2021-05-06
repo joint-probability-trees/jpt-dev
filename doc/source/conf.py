@@ -78,7 +78,7 @@ autoapi_keep_files = True
 # Any file matched by these patterns will be disregarded completely by apidoc which means that (!!!) other modules
 # importing anything from that file will cause "Cannot resolve import of unknown module" warnings for that file.
 # The reason for this behavior is that apidoc is dumb as shit.
-autoapi_ignore = ['*migrations*', '*main.py', '*example.py']
+autoapi_ignore = ['*migrations*', '*main.py', '*example.py', '*probs.py']
 
 # Options for display of the generated documentation.
 autoapi_options = ['members',                   # Display children of an object

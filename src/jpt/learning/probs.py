@@ -16,7 +16,6 @@ import dnutils
 from dnutils import out, stop
 from jpt.constants import avalailable_colormaps, plotstyle, ddarkblue
 from .distributions import MultiVariateGaussian
-from .intervals import Interval
 
 logger = dnutils.getlogger(name='ProbsLogger', level=dnutils.ERROR)
 style.use(plotstyle)

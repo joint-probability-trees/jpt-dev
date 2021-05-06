@@ -31,9 +31,8 @@ style.use(plotstyle)
 
 class Node:
     '''
-    Represents an internal decision node of the matcalo.core.algorithms.StructRegTree.
+    Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     '''
-
     def __init__(self, idx, parent=None, treename=None):
         '''
         :param idx:             the identifier of a node
@@ -91,7 +90,7 @@ class Node:
 
 class DecisionNode(Node):
     '''
-    Represents an inner (decision) node of the tree.
+    Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
 
     def __init__(self, idx, splits, dec_criterion, parent=None, treename=None):
@@ -121,7 +120,9 @@ class DecisionNode(Node):
 
 
 class Leaf(Node):
-
+    '''
+    Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
+    '''
     def __init__(self, idx, parent=None, treename=None):
         super().__init__(idx, parent=parent, treename=treename)
         self.distributions = defaultdict(Distribution)
