@@ -498,6 +498,11 @@ class Numeric(Distribution):
         super().__init__()
         self._cdf = cdf
 
+    def __str__(self):
+        if self.p is None:
+            return f'{self._cl}<p=n/a>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
+
     @property
     def cdf(self):
         return self._cdf
@@ -618,7 +623,7 @@ class Multinomial(Distribution):
     def __str__(self):
         if self.p is None:
             return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p}" for v, p in zip(self.labels, self._p)])}]>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
 
     def __repr__(self):
         if self.p is None:
@@ -894,6 +899,11 @@ class Bool(Multinomial):
             super().__init__(p)
         except Exception:
             pass
+
+    def __str__(self):
+        if self.p is None:
+            return f'{self._cl}<p=n/a>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
 
     def __setitem__(self, v, p):
         if not iterable(p):
