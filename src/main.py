@@ -45,40 +45,39 @@ class Conditional:
 
 def restaurant():
     # declare variable types
-    PatronsType = SymbolicType('Patrons', ['3', '10', '20'])
+    PatronsType = SymbolicType('Patrons', ['some', 'full', 'none'])
     PriceType = SymbolicType('Price', ['$', '$$', '$$$'])
     FoodType = SymbolicType('Food', ['French', 'Thai', 'Burger', 'Italian'])
-    WaitEstType = SymbolicType('WaitEstimate', ['10', '30', '60', '120'])
+    WaitEstType = SymbolicType('WaitEstimate', ['0-10', '10-30', '30-60', '>60'])
+
+    # create variables
+    al = SymbolicVariable('Alternatives', Bool)
+    ba = SymbolicVariable('Bar', Bool)
+    fr = SymbolicVariable('Friday', Bool)
+    hu = SymbolicVariable('Hungry', Bool)
+    pa = SymbolicVariable('Patrons', PatronsType)
+    pr = SymbolicVariable('Price', PriceType)
+    ra = SymbolicVariable('Rain', Bool)
+    re = SymbolicVariable('Reservation', Bool)
+    fo = SymbolicVariable('Food', FoodType)
+    we = SymbolicVariable('WaitEst', WaitEstType)
+    wa = SymbolicVariable('WillWait', Bool)
 
     # define probs
-    al = SymbolicVariable('Alternatives', Bool)  # Alternatives(.2)
-    ba = SymbolicVariable('Bar', Bool)  # Bar(.2)
-    fr = SymbolicVariable('Friday', Bool)  # Friday(1/7.)
-    hu = SymbolicVariable('Hungry', Bool)  # Hungry(.8)
-    pa = SymbolicVariable('Patrons', PatronsType)  # PatronsType([.2, .6, .2])
-    pr = SymbolicVariable('Price', PriceType)  # Price([.1, .7, .2])
-    ra = SymbolicVariable('Rain', Bool)  # Rain(.3)
-    re = SymbolicVariable('Reservation', Bool)  # Reservation(.1)
-    fo = SymbolicVariable('Food', FoodType)  # Food([.1, .2, .4, .3])
-    wa = SymbolicVariable('WaitEst', WaitEstType)  # WaitEst([.3, .4, .2, .1])
-
     numsamples = 500
-    # variables = [ba, ra, re]
-    variables = [al, ba, fr, hu, pa, pr, ra, re, fo, wa]
+    data = [[al.dist(6/12.).sample_one_label(),
+             ba.dist(6/12.).sample_one_label(),
+             fr.dist(5/12.).sample_one_label(),
+             hu.dist(7/12.).sample_one_label(),
+             pa.dist([4/12., 6/12., 2/12.]).sample_one_label(),
+             pr.dist([7/12., 2/12., 3/12.]).sample_one_label(),
+             ra.dist(4/12.).sample_one_label(),
+             re.dist(5/12.).sample_one_label(),
+             fo.dist([2/12., 4/12., 4/12., 2/12.]).sample_one_label(),
+             we.dist([6/12., 2/12., 2/12., 2/12.]).sample_one_label(),
+             wa.dist(.5).sample_one_label()] for _ in range(numsamples)]
 
-    # data = [[ba.dist(.2).sample_one(), ra.dist(.3).sample_one(), re.dist(.2).sample_one()] for _ in range(numsamples)]
-
-    data = [[al.dist(.2).sample_one_label(),
-             ba.dist(.2).sample_one_label(),
-             fr.dist(1/7.).sample_one_label(),
-             hu.dist(.8).sample_one_label(),
-             pa.dist([.2, .6, .2]).sample_one_label(),
-             pr.dist([.1, .7, .2]).sample_one_label(),
-             ra.dist(.3).sample_one_label(),
-             re.dist(.1).sample_one_label(),
-             fo.dist([.1, .2, .4, .3]).sample_one_label(),
-             wa.dist([.3, .4, .2, .1]).sample_one_label()] for _ in range(numsamples)]
-
+    variables = [al, ba, fr, hu, pa, pr, ra, re, fo, we, wa]
     jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(data)
     out(jpt)
@@ -275,9 +274,9 @@ def main(*args):
 
     # test_merge()
     # test_dists()
-    # restaurant()  # for bools and strings
+    restaurant()  # for bools and strings
     # test_muesli()
-    muesli_tree()  # for numerics and strings
+    # muesli_tree()  # for numerics and strings
     # picklemuesli()
     # alarm()  # for bools
 
