@@ -117,7 +117,7 @@ class DecisionNode(Node):
         node._path.append((self.dec_criterion, self.splits[idx]))
 
     def str_edge(self, idx):
-        return str(self.splits[idx])
+        return str(self.dec_criterion.str(self.splits[idx], fmt='logic'))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
