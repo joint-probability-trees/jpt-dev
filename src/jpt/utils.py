@@ -8,6 +8,10 @@ from dnutils import ifnone
 class SYMBOL:
     LAND = '\u2227'
     IN = '\u2208'
+    LT = '<'
+    GT = '>'
+    LTE = '\u2264'
+    GTE = '\u2265'
 
 
 def mapstr(seq, format=None):
