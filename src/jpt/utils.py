@@ -1,6 +1,7 @@
 import math
 from functools import reduce
 
+import numpy as np
 from dnutils import ifnone
 
 
@@ -28,6 +29,9 @@ def tojson(obj):
         return {str(k): tojson(v) for k, v in obj.items()}
     return obj
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Entropy calculation
 
 def entropy(p):
     '''Compute the entropy of the multinomial probability distribution ``p``.
@@ -59,6 +63,18 @@ def rel_entropy(p):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+# Gini index
+
+
+def gini(p):
+    '''Compute the Gini impurity for the distribution ``p``.'''
+    if isinstance(p, dict):
+        p = list(p.values())
+    return np.mean([p_i * (1 - p_i) for p_i in p])
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 
 class ClassPropertyDescriptor(object):
 
