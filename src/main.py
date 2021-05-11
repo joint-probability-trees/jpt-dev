@@ -1,4 +1,7 @@
+import pandas as pd
 import pyximport
+from dnutils.stats import print_stopwatches
+
 pyximport.install()
 
 import os
@@ -115,7 +118,7 @@ def alarm():
     J_[False] = Bool(.05)
 
     c = 0.
-    t = 10
+    t = 1
     for i in range(t):
 
         # Construct the CSV for learning
@@ -138,6 +141,7 @@ def alarm():
 
         tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
         tree.learn(data)
+        tree.sklearn_tree()
         # tree.plot(plotvars=[E, B, A, M, J])
         # conditional
         # q = {A: True}
@@ -153,13 +157,15 @@ def alarm():
 
         c += tree.infer(q, e).result
 
-    tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
-    tree.learn(data)
-    out(tree)
+    # tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
+    # tree.learn(data)
+    # out(tree)
     res = tree.infer(q, e)
     res.explain()
+
+    print_stopwatches()
     print('AVG', c/t)
-    tree.plot(plotvars=[E, B, A, M, J])
+    # tree.plot(plotvars=[E, B, A, M, J])
 
 
 def test_merge():
@@ -231,22 +237,26 @@ def test_muesli():
 
 
 def muesli_tree():
-    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
+    # f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
 
     data = []
-    with open(f, 'rb') as fi:
-        data = pickle.load(fi)
-
-    unique, counts = np.unique(data[2], return_counts=True)
-
-    ObjectType = SymbolicType('ObjectType', unique)
+    # with open(f, 'rb') as fi:
+    #     data = pickle.load(fi)
+    data = pd.read_pickle('../examples/data/human_muesli.dat')
+    # unique, counts = np.unique(data[2], return_counts=True)
+    print(data)
+    ObjectType = SymbolicType('ObjectType', data['Class'].unique())
 
     x = NumericVariable('X', Numeric)
     y = NumericVariable('Y', Numeric)
     o = SymbolicVariable('Object', ObjectType)
 
-    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=10)
-    jpt.learn(list(zip(*data)))
+    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=5)
+    jpt.learn(columns=data.values.T)
+
+    for clazz in data['Class'].unique():
+        print(jpt.infer(query={o: clazz}, evidence={x: .9, y: [None, .45]}))
+
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
@@ -269,6 +279,9 @@ def picklemuesli():
 
     with open(f, 'wb+') as fi:
         pickle.dump(transformed, fi)
+
+
+
 
 
 def main(*args):
