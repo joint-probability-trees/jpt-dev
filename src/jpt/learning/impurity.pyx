@@ -51,7 +51,7 @@ class Impurity:
         np.sum(buffer, axis=0, out=buf2)
         buf2 /= n_samples * n_samples
         buf2 -= 1
-        buf2 /= -self.symbols
+        buf2 /= -self.symbols * 1/4
         return sum(buf2) / len(self.symbolic_vars)
 
     def col_is_constant(self, indices, col):
@@ -94,8 +94,9 @@ class Impurity:
 
         # with stopwatch('new'):
         gini_total = self.gini_impurity(self.symbols_total, n_samples)
-        impurity_total = (np.mean(variances_total) + gini_total) / 2
-        out(impurity_total)
+        impurity_total = (len(self.numeric_vars) * np.mean(variances_total) +
+                          len(self.symbolic_vars) * gini_total) / (2 * len(self.variables))
+        # out(impurity_total)
         # out(self.indices)
         # with stopwatch('old'):
         #     gini_total_ = np.sum(4 / self.symbols * (1 - np.sum(self.symbols_total ** 2, axis=0) / n_samples ** 2)) / len(self.symbolic_vars)
@@ -135,7 +136,7 @@ class Impurity:
                     samples_right = n_samples - samples_left
 
 
-                if numeric and split_pos == n_samples:
+                if numeric and split_pos == n_samples - 1:
                     break
 
                 # Compute the numeric impurity by variance approximation
@@ -148,11 +149,12 @@ class Impurity:
 
                 if self.symbolic_vars:
                     # Compute the symbolic impurity by the Gini index
-                    for v_idx in self.symbolic_vars:
-                        self.symbols_left[int(data[sample, v_idx]), :] += 1
+                    for i, v_idx in enumerate(self.symbolic_vars):
+                        self.symbols_left[int(data[sample, v_idx]), i] += 1
                     self.symbols_right = self.symbols_total - self.symbols_left
 
-                if split_pos < n_samples - 1 and data[split_pos, variable] == data[split_pos + 1, variable]:
+                if (split_pos < n_samples - 1 and symbolic or
+                        split_pos < n_samples and numeric) and data[split_pos, variable] == data[split_pos + 1, variable]:
                     continue
 
                 if numeric:
@@ -165,32 +167,35 @@ class Impurity:
                     variance_improvements = (variances_total - (samples_left * variances_left + samples_right * variances_right) / n_samples) / variances_total
                     avg_variance_improvement = np.mean(variance_improvements)
                     # out(variances_total, variances_left, variances_right, variance_improvements, avg_variance_improvement)
-                    impurity_improvement += avg_variance_improvement if numeric else (np.mean(variances_left) * samples[int(data[sample, variable])] / n_samples)
-                    out(variable, 'numeric improvement', impurity_improvement)
+                    impurity_improvement += avg_variance_improvement if numeric else (np.mean(variances_left) * samples[int(data[sample, variable])] * len(self.numeric_vars) / (n_samples * len(self.variables)))
+                    # out(variable, 'numeric improvement', impurity_improvement)
                     denom += 1
 
                 if self.symbolic_vars:
-                    gini_left = self.gini_impurity(self.symbols_left, samples_left)
-                    gini_right = self.gini_impurity(self.symbols_right, samples_right)
-                    gini_improvement = (gini_total - (samples_left / n_samples * gini_left +
-                                        samples_right / n_samples * gini_right)) / gini_total
-                    # out(gini_total, gini_left, gini_right, gini_improvement)
-                    impurity_improvement += gini_improvement if numeric else (gini_left * samples[int(data[sample, variable])] / n_samples)
-                    out(variable, 'symbolic improvement', impurity_improvement)
+                    if gini_total:
+                        gini_left = self.gini_impurity(self.symbols_left, samples_left)
+                        gini_right = self.gini_impurity(self.symbols_right, samples_right)
+                        gini_improvement = (gini_total - (samples_left / n_samples * gini_left +
+                                            samples_right / n_samples * gini_right)) / gini_total
+                        # out(gini_total, gini_left, gini_right, gini_improvement)
+                        impurity_improvement += gini_improvement if numeric else (gini_left * samples[int(data[sample, variable])] * len(self.symbolic_vars) / (n_samples * len(self.variables)))
+                        # out(variable, 'symbolic improvement', impurity_improvement, self.symbols_left.T)
                     denom += 1
 
-                impurity_improvement /= denom
                 if symbolic:
                     self.symbols_left[...] = 0
                     self.sums_left[...] = 0
                     self.sq_sums_left[...] = 0
                     if split_pos == n_samples - 1:
+                        impurity_improvement /= denom
+                        # out(impurity_total, 'improvement', impurity_improvement)
                         impurity_improvement = (impurity_total - impurity_improvement) / impurity_total
-                        out(samples)
+                        # out(samples)
                         if not all(not samples[i] or samples[i] >= self.min_samples_leaf for i in range(self.symbols[symbolic-1])):
                             impurity_improvement = 0
-                        out('symbolic', impurity_improvement)
+                        # out('symbolic', impurity_improvement)
                 else:
+                    impurity_improvement /= denom
                     if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
                         impurity_improvement = 0
 
@@ -199,5 +204,5 @@ class Impurity:
                     best_var = variable
                     best_split_pos = split_pos
                     best_split_val = (data[sample, best_var] + data[indices[split_pos + 1], best_var]) / 2. if numeric else None
-                    out(best_var, best_split_val, max_impurity_improvement, samples)
+                    # out('=======', best_var, best_split_val, max_impurity_improvement, samples)
         return best_var, best_split_val, max_impurity_improvement
