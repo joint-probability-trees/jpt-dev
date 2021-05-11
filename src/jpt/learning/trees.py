@@ -19,7 +19,7 @@ from dnutils import first, out, ifnone
 from .distributions import Distribution
 from intervals import ContinuousSet as Interval, EXC, INC, R
 from ..constants import plotstyle, orange, green
-from ..utils import rel_entropy
+from ..utils import rel_entropy, list2interval
 
 logger = dnutils.getlogger(name='TreeLogger', level=dnutils.DEBUG)
 
@@ -478,6 +478,9 @@ class JPT:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
+        evidence = ifnone(evidence, {})
+        query = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
+        evidence = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in evidence.items()}
         # Transform into internal values (symbolic values to their indices)
         evidence_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in evidence.items()}
         query_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in query.items()}
