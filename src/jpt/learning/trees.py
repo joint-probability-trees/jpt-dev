@@ -59,7 +59,7 @@ class Node:
         return res
 
     def format_path(self):
-        return ' ^ '.join(['%s = %s' % (var.name, val if var.numeric else var.domain.labels[first(val)]) for var, val in self.path.items()])
+        return ' ^ '.join([var.str(val, fmt='logic') for var, val in self.path.items()])
 
     # def set_trainingssamples(self, examples, variables):
     #     '''
@@ -681,7 +681,7 @@ g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDL
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f" {land} ".join([(var.str_by_idx(val) if var.symbolic else f'{var.str(val)}') for var, val in n.path.items()])}</TD>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f" {land} ".join([(var.str(val) if var.symbolic else f'{var.str(val)}') for var, val in n.path.items()])}</TD>
                                 </TR>
                                 '''
             # stitch together
@@ -759,6 +759,9 @@ class Result:
         self._cand = ifnone(cand, [])
         self._w = ifnone(w, [])
 
+    def __str__(self):
+        return self.format_result()
+
     @property
     def result(self):
         return self._res
@@ -783,10 +786,14 @@ class Result:
     def weights(self, w):
         self._w = w
 
+    def format_result(self):
+        return ('P(%s%s%s) = %.3f %%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
+                                         ' | ' if self.evidence else '',
+                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                         self.result * 100))
+
     def explain(self):
-        print(f'P({",".join([f"{k.name}={k.domain.labels[v]}" for k, v in self.query.items()])}'
-              f'{" | " if self.evidence else ""}'
-              f'{",".join([f"{k.name}={k.domain.labels[v]}" for k, v in self.evidence.items()])}) = '
-              f'{self.result}')
+        result = self.format_result()
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            print(f'{weight:.3f}%: {leaf.format_path()}')
+            result += '.3f %%: %s\n' % leaf.format_path()
+        return result
