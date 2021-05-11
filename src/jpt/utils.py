@@ -4,6 +4,8 @@ from functools import reduce
 import numpy as np
 from dnutils import ifnone
 
+from intervals import ContinuousSet
+
 
 class SYMBOL:
     LAND = '\u2227'
@@ -115,4 +117,11 @@ def classproperty(func):
 
     return ClassPropertyDescriptor(func)
 
+
 # ----------------------------------------------------------------------------------------------------------------------
+
+
+def list2interval(l):
+    lower, upper = l
+    return ContinuousSet(np.NINF if lower in (np.NINF, -float('inf'), None) else lower,
+                         np.PINF if upper in (np.PINF, float('inf'), None) else upper)
