@@ -38,18 +38,22 @@ logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
 
 
 class Gaussian(Gaussian_):
-    '''Extension of the Gaussian from dnutils.'''
+    '''Extension of :class:`dnutils.stats.Gaussian`'''
 
     PRECISION = 1e-15
 
     def __init__(self, mean=None, cov=None, data=None, weights=None):
-        '''
-        Creates a new Gaussian distribution.
-        :param mean:    the mean of the Gaussian. May be a scalar (univariante) or an array (multivariate).
-        :param cov:     the covariance of the Gaussian. May be a scalar (univariate) or a matrix (multivariate).
-        :param data:    if ``mean`` and ``cov`` are not provided, ``data`` may be a data set (matrix) from which
-        the parameters of the distribution are estimated.
-        :param weight:  [optional] weights for the data points. The weight do not need to be normalized.
+        '''Creates a new Gaussian distribution.
+
+        :param mean:    the mean of the Gaussian
+        :type mean:     float if multivariate else [float] if multivariate
+        :param cov:     the covariance of the Gaussian
+        :type cov:      float if multivariate else [[float]] if multivariate
+        :param data:    if ``mean`` and ``cov`` are not provided, ``data`` may be a data set (matrix) from which the
+                        parameters of the distribution are estimated.
+        :type data:     [[float]]
+        :param weights:  **[optional]** weights for the data points. The weight do not need to be normalized.
+        :type weights:  [float]
         '''
         self._sum_w = 0  # ifnot(weights, 0, sum)
         self._sum_w_sq = 0  # 1 / self._sum_w ** 2 * sum([w ** 2 for w in weights]) if weights else 0
@@ -85,7 +89,8 @@ class Gaussian(Gaussian_):
         Computes the deviation of ``x`` in multiples of the standard deviation.
 
         :param x:
-        :return:
+        :type x:
+        :returns:
         '''
         if isinstance(x, numbers.Number):
             raise TypeError('Argument must be a vector, got a scalar: %s' % x)
@@ -189,7 +194,7 @@ class Gaussian(Gaussian_):
         return m, b, rss, ((self.var[1] - rss) / self.var[1] if self.var[1] else 0)
 
     def update_all(self, data, weights=None):
-        '''Update the distribution with new data points given in `data`.'''
+        '''Update the distribution with new data points given in ``data``.'''
         weights = ifnone(weights, [1] * len(data))
         if len(data) != len(weights):
             raise ValueError('Weight vector must have the same length as data vector.')
@@ -203,7 +208,7 @@ class Gaussian(Gaussian_):
         return self.update_all(data=data, weights=weights)
 
     def update(self, x, w=1):
-        '''update the Gaussian distribution with a new data point `x` and weight `w`.'''
+        '''update the Gaussian distribution with a new data point ``x`` and weight ``w``.'''
         if not isinstance(x, np.ndarray):
             x = np.array(x)
         if self._mean is None or not self._mean.shape or not self._cov.shape:
@@ -347,8 +352,8 @@ class MultiVariateGaussian(Gaussian):
         '''
         return list([round(c, 2) for c in self.mean]) if hasattr(self.mean, '__len__') else round(self.mean, 2)
 
-    def conditional(self, given):
-        r'''Returns a distribution conditioning on the variables in ``given`` following the calculations described
+    def conditional(self, evidence):
+        r'''Returns a distribution conditioning on the variables in ``evidence`` following the calculations described
         in `Conditional distributions <https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions>`_,
         i.e., after determining the partitions of :math:`\mu`, i.e. :math:`\mu_{1}` and :math:`\mu_{2}` as well as
         the partitions of :math:`\Sigma`, i.e. :math:`\Sigma_{11}, \Sigma_{12}, \Sigma_{21} \text{ and } \Sigma_{22}`, we
@@ -362,12 +367,12 @@ class MultiVariateGaussian(Gaussian):
             \overline\Sigma = \Sigma_{11} + \Sigma_{12}\Sigma_{22}^{-1}\Sigma_{21}
             :label: sigma
 
-        :param given: the variables the returned distribution conditions on (mapping indices to values or Intervals of values)
-        :type given: dict
+        :param evidence: the variables the returned distribution conditions on (mapping indices to values or Intervals of values)
+        :type evidence: dict
         '''
-        indices = sorted(list(given.keys()))
+        indices = sorted(list(evidence.keys()))
         k = self.dim - len(indices)
-        a = np.array([given[i] for i in indices])
+        a = np.array([evidence[i] for i in indices])
 
         # sort conditioning variables to the bottom right corner of the covariance matrix
         order = [i for i in range(self.dim) if i not in indices] + indices
@@ -441,7 +446,9 @@ class MultiVariateGaussian(Gaussian):
 
 
 class Distribution:
-
+    '''
+    Abstract supertype of all domains and distributions
+    '''
     values = None
 
     def __init__(self):
@@ -482,6 +489,9 @@ class Distribution:
 
 
 class Numeric(Distribution):
+    '''
+    Wrapper class for numeric domains and distributions.
+    '''
     values = []
 
     def __init__(self, cdf=None):
@@ -523,6 +533,20 @@ class Numeric(Distribution):
         return (self._cdf.eval(value.upper) if value.upper != np.PINF else 1.) - (self._cdf.eval(value.lower) if value.lower != np.NINF else 0.)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
+        '''Generates a plot of the piecewise linear function representing the variable's cumulative distribution function
+
+        :param title:       the name of the variable this distribution represents
+        :type title:        str
+        :param fname:       the name of the file to be stored
+        :type fname:        str
+        :param directory:   the directory to store the generated plot files
+        :type directory:    str
+        :param pdf:         whether to store files as PDF. If false, a png is generated by default
+        :type pdf:          bool
+        :param view:        whether to display generated plots, default False (only stores files)
+        :type view:         bool
+        :return:            None
+        '''
         if not view:
             plt.ioff()
 
@@ -553,7 +577,6 @@ class Multinomial(Distribution):
     '''
     Abstract supertype of all symbolic domains and distributions.
     '''
-
     values = None
     labels = None
 
@@ -608,18 +631,23 @@ class Multinomial(Distribution):
         return self._p[self.values[value]]
 
     def sample(self, n):
+        '''Returns ``n`` sample `values` according to their respective probability'''
         return wsample(self.values, self._p, n)
 
     def sample_one(self):
+        '''Returns one sample `value` according to its probability'''
         return wchoice(self.values, self._p)
 
     def sample_labels(self, n):
+        '''Returns ``n`` sample `labels` according to their respective probability'''
         return [self.labels[i] for i in wsample(self.values, self._p, n)]
 
     def sample_one_label(self):
+        '''Returns one sample `label` according to its probability'''
         return self.labels[wchoice(self.values, self._p)]
 
     def expectation(self):
+        '''Returns the value with the highest probability for each variable'''
         return max([(v, p) for v, p in zip(self.values, self._p)], key=itemgetter(1))[0]
 
     def set_data(self, data):
@@ -627,7 +655,7 @@ class Multinomial(Distribution):
         return self
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
-        '''
+        '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
 
         :param title:       the name of the variable this distribution represents
         :type title:        str
@@ -639,8 +667,6 @@ class Multinomial(Distribution):
         :type pdf:          bool
         :param view:        whether to display generated plots, default False (only stores files)
         :type view:         bool
-        :param pdf:         whether to store files as PDF. If false, a png is generated by default
-        :type pdf:          bool
         :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
         :type horizontal:   bool
         :return:            None
@@ -704,10 +730,11 @@ class Multinomial(Distribution):
 
 
 class Histogram(Multinomial):
-
+    '''
+    Wrapper class for symbolic domains and distributions.
+    '''
     values = Multinomial.values
     labels = Multinomial.labels
-    # val2idx = Multinomial.val2idx
 
     def __init__(self, p=None):
         super().__init__(p)
@@ -772,7 +799,7 @@ class Histogram(Multinomial):
         return self
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
-        '''
+        '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
 
         :param title:       the name of the variable this distribution represents
         :type title:        str
@@ -784,8 +811,6 @@ class Histogram(Multinomial):
         :type pdf:          bool
         :param view:        whether to display generated plots, default False (only stores files)
         :type view:         bool
-        :param pdf:         whether to store files as PDF. If false, a png is generated by default
-        :type pdf:          bool
         :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
         :type horizontal:   bool
         :return:            None
@@ -858,10 +883,11 @@ class Histogram(Multinomial):
 
 
 class Bool(Multinomial):
-
+    '''
+    Wrapper class for Boolean domains and distributions.
+    '''
     values = (1, 0)
     labels = (True, False)
-    # val2idx = {True: 0, False: 1}
 
     def __init__(self, p=None):
         if p is not None and not iterable(p):
