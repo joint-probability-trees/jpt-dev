@@ -729,7 +729,7 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([(html.escape(var.str_by_idx(val)) if var.symbolic else f'{var.str(val)}') for var, val in n.path.items()])}</TD>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val)) for var, val in n.path.items()])}</TD>
                                 </TR>
                                 '''
 
@@ -845,13 +845,14 @@ class Result:
         self._w = w
 
     def format_result(self):
-        return ('P(%s%s%s) = %.3f %%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
+        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
                                          ' | ' if self.evidence else '',
                                          ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
                                          self.result * 100))
 
     def explain(self):
         result = self.format_result()
+        result += '\n'
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '.3f %%: %s\n' % leaf.format_path()
+            result += '%.3f%%: %s\n' % (weight, leaf.format_path())
         return result

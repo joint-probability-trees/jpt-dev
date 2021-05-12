@@ -164,7 +164,7 @@ def alarm():
 
     print_stopwatches()
     print('AVG', c/t)
-    # tree.plot(plotvars=[E, B, A, M, J])
+    tree.plot(plotvars=[E, B, A, M, J], view=True)
 
 
 def test_merge():
@@ -254,7 +254,7 @@ def muesli_tree():
     jpt.learn(columns=data.values.T)
 
     for clazz in data['Class'].unique():
-        print(jpt.infer(query={o: clazz}, evidence={x: .9, y: [None, .45]}))
+        print(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
 
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
