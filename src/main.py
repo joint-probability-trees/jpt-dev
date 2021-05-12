@@ -51,17 +51,18 @@ def restaurant():
     WaitEstType = SymbolicType('WaitEstimate', ['0-10', '10-30', '30-60', '>60'])
 
     # create variables
-    al = SymbolicVariable('Alternatives', Bool)
-    ba = SymbolicVariable('Bar', Bool)
-    fr = SymbolicVariable('Friday', Bool)
-    hu = SymbolicVariable('Hungry', Bool)
-    pa = SymbolicVariable('Patrons', PatronsType)
-    pr = SymbolicVariable('Price', PriceType)
-    ra = SymbolicVariable('Rain', Bool)
-    re = SymbolicVariable('Reservation', Bool)
-    fo = SymbolicVariable('Food', FoodType)
-    we = SymbolicVariable('WaitEst', WaitEstType)
-    wa = SymbolicVariable('WillWait', Bool)
+    minimp = 0.9
+    al = SymbolicVariable('Alternatives', Bool, min_impurity_improvement=minimp)
+    ba = SymbolicVariable('Bar', Bool, min_impurity_improvement=minimp)
+    fr = SymbolicVariable('Friday', Bool, min_impurity_improvement=minimp)
+    hu = SymbolicVariable('Hungry', Bool, min_impurity_improvement=minimp)
+    pa = SymbolicVariable('Patrons', PatronsType, min_impurity_improvement=minimp)
+    pr = SymbolicVariable('Price', PriceType, min_impurity_improvement=minimp)
+    ra = SymbolicVariable('Rain', Bool, min_impurity_improvement=minimp)
+    re = SymbolicVariable('Reservation', Bool, min_impurity_improvement=minimp)
+    fo = SymbolicVariable('Food', FoodType, min_impurity_improvement=minimp)
+    we = SymbolicVariable('WaitEst', WaitEstType, min_impurity_improvement=minimp)
+    wa = SymbolicVariable('WillWait', Bool, min_impurity_improvement=minimp)
 
     # define probs
     numsamples = 500
@@ -86,8 +87,6 @@ def restaurant():
     q = {ba: True, re: False}
     e = {ra: False}
     res = jpt.infer(q, e)
-    out(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
-        f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) = {res.result}')
     print(res.explain())
 
 
@@ -255,8 +254,8 @@ def main(*args):
 
     # test_merge()
     # test_dists()
-    restaurant()  # for bools and strings
     # test_muesli()
+    restaurant()  # for bools and strings
     # muesli_tree()  # for numerics and strings
     # alarm()  # for bools
 
