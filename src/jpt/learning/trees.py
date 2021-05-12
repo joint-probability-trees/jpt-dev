@@ -9,17 +9,21 @@ from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 
 import numpy as np
+from dnutils.stats import stopwatch
 from graphviz import Digraph
 from matplotlib import style
 from sklearn.metrics import mean_squared_error
 
 import dnutils
 from dnutils import first, out, ifnone, stop
+from sklearn.tree import DecisionTreeRegressor
 
 from .distributions import Distribution
 from intervals import ContinuousSet as Interval, EXC, INC, R
+
+from .impurity import Impurity
 from ..constants import plotstyle, orange, green
-from ..utils import rel_entropy
+from ..utils import rel_entropy, list2interval
 
 logger = dnutils.getlogger(name='TreeLogger', level=dnutils.DEBUG)
 
@@ -58,7 +62,7 @@ class Node:
         return res
 
     def format_path(self):
-        return ' ^ '.join(['%s = %s' % (var.name, val if var.numeric else var.domain.labels[first(val)]) for var, val in self.path.items()])
+        return ' ^ '.join([var.str(val, fmt='logic') for var, val in self.path.items()])
 
     def __str__(self):
         return (f'Node<{self.idx}>')
@@ -114,6 +118,7 @@ class DecisionNode(Node):
 
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
+        return str(self.dec_criterion.str(self.splits[idx], fmt='logic'))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -175,7 +180,7 @@ class JPT:
         :param min_samples_leaf:    the minimum number of samples required to generate a leaf node
         :type min_samples_leaf:     int
         '''
-        self._variables = variables
+        self._variables = tuple(variables)
         self.min_samples_leaf = min_samples_leaf
         self.min_impurity_improvement = min_impurity_improvement
         self.name = name or self.__class__.__name__
@@ -278,29 +283,10 @@ class JPT:
             gain = {mv: impurity - (self.impurity(left, tgt) * len(left) / len(indices) +
                                     self.impurity(right, tgt) * len(right)) / len(indices) if len(left) >= self.min_samples_leaf and len(right) >= self.min_samples_leaf else 0
                     for mv, left, right in examples_ft}
+
         return gain
 
-    def c45(self, indices, parent, child_idx):
-        '''
-
-        :param indices: the indices for the training samples used to calculate the gain
-        :type indices:      [[int]]
-        :param parent:      the parent node of the current iteration, initially the root node
-        :type parent:       jpt.variables.Variable
-        :param child_idx:   the index of the child in the current iteration
-        :type child_idx:    int
-
-        Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
-        ``indices``. The created node is put as a child with index ``child_idx`` to the children of
-        node ``parent``, if any.
-        '''
-        data = self.data[indices, :]
-        if not indices:
-            logger.warning('No data left. Returning parent', parent)
-            return
-
-        # --------------------------------------------------------------------------------------------------------------
-
+    def compute_best_split(self, indices):
         # calculate gains for each feature/target combination and normalize over targets
         gains_tgt = defaultdict(dict)
         for tgt in self.variables:
@@ -330,53 +316,88 @@ class JPT:
                     sp_best = sp
                     ft_best = ft
                     max_gain = hm
-
         ft_best_idx = self.variables.index(ft_best)
+        return ft_best_idx, sp_best, max_gain
 
+    def c45(self, indices, parent, child_idx):
+        '''
+
+        :param indices: the indices for the training samples used to calculate the gain
+        :type indices:      [[int]]
+        :param parent:      the parent node of the current iteration, initially the root node
+        :type parent:       jpt.variables.Variable
+        :param child_idx:   the index of the child in the current iteration
+        :type child_idx:    int
+
+        Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
+        ``indices``. The created node is put as a child with index ``child_idx`` to the children of
+        node ``parent``, if any.
+        '''
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
         # --------------------------------------------------------------------------------------------------------------
+        data = self.data[indices, :]
 
-        # divide examples into distinct sets for each value of ft_best
-        split_data = None  # {val: [] for val in ft_best.domain.values}
-        if ft_best.symbolic:
-            # CASE SPLIT VARIABLE IS SYMBOLIC
-            split_data = [[] for _ in range(ft_best.domain.n_values)]
-            splits = [{i_v} for i_v in range(ft_best.domain.n_values)]
+        if indices:
+            impurity = Impurity(self, indices)
+            # ft_best_idx, sp_best, max_gain = self.compute_best_split(indices)
+            ft_best_idx, sp_best, max_gain = impurity.compute_best_split()
 
-            # split examples into distinct sets for each value of the selected feature
-            for i, d in zip(indices, data):
-                split_data[int(d[ft_best_idx])].append(i)
+            if ft_best_idx is not None:
+                ft_best = self.variables[ft_best_idx]  # if ft_best_idx is not None else None
+            else:
+                ft_best = None
 
-        elif ft_best.numeric:
-            # CASE SPLIT VARIABLE IS NUMERIC
-            split_data = [[], []]
-            splits = [Interval(np.NINF, sp_best, EXC, INC),
-                      Interval(sp_best, np.PINF, EXC, EXC)]
-
-            # split examples into distinct sets for smaller and higher values of the selected feature than the selected split value
-            for i, d in zip(indices, data):
-                split_data[d[ft_best_idx] > sp_best].append(i)
-
-        # --------------------------------------------------------------------------------------------------------------
+        else:
+            max_gain = 0
+            ft_best = None
+            sp_best = None
+            ft_best_idx = None
 
         # create decision node splitting on ft_best or leaf node if min_samples_leaf criterion is not met
         if max_gain <= min_impurity_improvement:
-
             leaf = Leaf(idx=len(self.allnodes),
                         parent=parent,
                         treename=self.name)
+
             if parent is not None:
                 parent.set_child(child_idx, leaf)
 
             for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.dist().set_data(data[:, i].T)
+                leaf.distributions[v] = v.dist(data=data[:, i].T)
 
             leaf.samples = len(indices)
 
             self.leaves[leaf.idx] = leaf
 
         else:
+            # divide examples into distinct sets for each value of ft_best
+            split_data = None  # {val: [] for val in ft_best.domain.values}
+
+            if ft_best.symbolic:
+                # CASE SPLIT VARIABLE IS SYMBOLIC
+                split_data = [deque() for _ in range(ft_best.domain.n_values)]
+                splits = [{i_v} for i_v in range(ft_best.domain.n_values)]
+
+                # split examples into distinct sets for each value of the selected feature
+                for i, d in zip(indices, data):
+                    split_data[int(d[ft_best_idx])].append(i)
+
+            elif ft_best.numeric:
+                # CASE SPLIT VARIABLE IS NUMERIC
+                split_data = [deque(), deque()]
+                splits = [Interval(np.NINF, sp_best, EXC, INC),
+                          Interval(sp_best, np.PINF, EXC, EXC)]
+
+                # split examples into distinct sets for smaller and higher values of the selected feature than the selected split value
+                for i, d in zip(indices, data):
+                    split_data[d[ft_best_idx] > sp_best].append(i)
+
+            else:
+                raise TypeError('Unknown variable type: %s.' % type(ft_best).__name__)
+
+            # ----------------------------------------------------------------------------------------------------------
+
             node = DecisionNode(idx=len(self.allnodes),
                                 splits=splits,
                                 dec_criterion=ft_best,
@@ -391,7 +412,9 @@ class JPT:
 
             # recurse on sublists
             for i, d_ft in enumerate(split_data):
-                self.c45queue.append((d_ft, node, i))
+                if not d_ft:
+                    continue
+                self.c45queue.append((tuple(d_ft), node, i))
 
     def __str__(self):
         return (f'{self.__class__.__name__}<{self.name}>:\n'
@@ -431,10 +454,10 @@ class JPT:
         if data:
             rows = data
 
-        if rows:  # Transpose the rows
+        if type(rows) is list and rows or type(rows) is np.ndarray and rows.shape:  # Transpose the rows
             columns = [[row[i] for row in rows] for i in range(len(self.variables))]
 
-        if columns:
+        if type(columns) is list and columns or type(columns) is np.ndarray and columns.shape:
             shape = len(columns[0]), len(columns)
         else:
             raise ValueError('No data given.')
@@ -495,6 +518,9 @@ class JPT:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
+        evidence = ifnone(evidence, {})
+        query = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
+        evidence = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in evidence.items()}
         # Transform into internal values (symbolic values to their indices)
         evidence_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in evidence.items()}
         query_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in query.items()}
@@ -508,16 +534,21 @@ class JPT:
             # out(leaf.format_path(), 'applies', ' ^ '.join([var.str_by_idx(val) for var, val in evidence_.items()]))
             p_m = 1
             for var in set(evidence_.keys()) - set(leaf.path.keys()):
-                if var.symbolic:
-                    p_m *= leaf.distributions[var].p(evidence_[var])
-                else:
-                    p_m *= leaf.distributions[var].p(evidence_[var].intersect(leaf.path[var]))
+                evidence_val = evidence_[var]
+                if var.numeric and var in leaf.path:
+                    evidence_val = evidence_val.intersection(leaf.path[var])
+                p_m *= leaf.distributions[var].p(evidence_val)
 
             w = leaf.samples / self.root.samples
             p_m *= w
             p_e += p_m
 
             if leaf.applies(query_):
+                for var in set(query_.keys()) - set(leaf.path.keys()):
+                    query_val = query_[var]
+                    if var.numeric:
+                        query_val = query_val.intersection(leaf.path[var])
+                    p_m *= leaf.distributions[var].p(query_val)
                 p_q += p_m
 
                 r.candidates.append(leaf)
@@ -767,6 +798,15 @@ class JPT:
         from scipy.stats import mvn
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], mu, sigma))
 
+    def sklearn_tree(self):
+        assert self.data is not None, 'call learn() first to preprocess the data.'
+
+        tree = DecisionTreeRegressor(min_samples_leaf=self.min_samples_leaf,
+                                     min_impurity_decrease=self.min_impurity_improvement,
+                                     random_state=0)
+        with stopwatch('/sklearn/decisiontree'):
+            tree.fit(self.data, self.data)
+
 
 class Result:
 
@@ -776,6 +816,9 @@ class Result:
         self._res = ifnone(res, [])
         self._cand = ifnone(cand, [])
         self._w = ifnone(w, [])
+
+    def __str__(self):
+        return self.format_result()
 
     @property
     def result(self):
@@ -801,10 +844,14 @@ class Result:
     def weights(self, w):
         self._w = w
 
+    def format_result(self):
+        return ('P(%s%s%s) = %.3f %%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
+                                         ' | ' if self.evidence else '',
+                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                         self.result * 100))
+
     def explain(self):
-        print(f'P({",".join([f"{k.name}={k.domain.labels[v]}" for k, v in self.query.items()])}'
-              f'{" | " if self.evidence else ""}'
-              f'{",".join([f"{k.name}={k.domain.labels[v]}" for k, v in self.evidence.items()])}) = '
-              f'{self.result}')
+        result = self.format_result()
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            print(f'{weight:.3f}%: {leaf.format_path()}')
+            result += '.3f %%: %s\n' % leaf.format_path()
+        return result

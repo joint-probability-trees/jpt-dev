@@ -1,12 +1,19 @@
 import math
 from functools import reduce
 
+import numpy as np
 from dnutils import ifnone
+
+from intervals import ContinuousSet
 
 
 class SYMBOL:
     LAND = '\u2227'
     IN = '\u2208'
+    LT = '<'
+    GT = '>'
+    LTE = '\u2264'
+    GTE = '\u2265'
 
 
 def mapstr(seq, format=None):
@@ -28,6 +35,9 @@ def tojson(obj):
         return {str(k): tojson(v) for k, v in obj.items()}
     return obj
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Entropy calculation
 
 def entropy(p):
     '''Compute the entropy of the multinomial probability distribution ``p``.
@@ -60,6 +70,18 @@ def rel_entropy(p):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+# Gini index
+
+
+def gini(p):
+    '''Compute the Gini impurity for the distribution ``p``.'''
+    if isinstance(p, dict):
+        p = list(p.values())
+    return np.mean([p_i * (1 - p_i) for p_i in p])
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 
 class ClassPropertyDescriptor(object):
 
@@ -96,4 +118,11 @@ def classproperty(func):
 
     return ClassPropertyDescriptor(func)
 
+
 # ----------------------------------------------------------------------------------------------------------------------
+
+
+def list2interval(l):
+    lower, upper = l
+    return ContinuousSet(np.NINF if lower in (np.NINF, -float('inf'), None) else lower,
+                         np.PINF if upper in (np.PINF, float('inf'), None) else upper)

@@ -530,8 +530,10 @@ class Numeric(Distribution):
         self._cdf = Quantiles(d).cdf()
         return self
 
-    def p(self, interval):
-        return (self._cdf.eval(interval.upper) if interval.upper != np.PINF else 1.) - (self._cdf.eval(interval.lower) if interval.lower != np.NINF else 0.)
+    def p(self, value):
+        if isinstance(value, numbers.Number):
+            return 0
+        return (self._cdf.eval(value.upper) if value.upper != np.PINF else 1.) - (self._cdf.eval(value.lower) if value.lower != np.NINF else 0.)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the piecewise linear function representing the variable's cumulative distribution function

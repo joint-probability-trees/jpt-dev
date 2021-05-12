@@ -1,4 +1,7 @@
+import pandas as pd
 import pyximport
+from dnutils.stats import print_stopwatches
+
 pyximport.install()
 
 import os
@@ -51,18 +54,17 @@ def restaurant():
     WaitEstType = SymbolicType('WaitEstimate', ['0-10', '10-30', '30-60', '>60'])
 
     # create variables
-    minimp = 0.9
-    al = SymbolicVariable('Alternatives', Bool, min_impurity_improvement=minimp)
-    ba = SymbolicVariable('Bar', Bool, min_impurity_improvement=minimp)
-    fr = SymbolicVariable('Friday', Bool, min_impurity_improvement=minimp)
-    hu = SymbolicVariable('Hungry', Bool, min_impurity_improvement=minimp)
-    pa = SymbolicVariable('Patrons', PatronsType, min_impurity_improvement=minimp)
-    pr = SymbolicVariable('Price', PriceType, min_impurity_improvement=minimp)
-    ra = SymbolicVariable('Rain', Bool, min_impurity_improvement=minimp)
-    re = SymbolicVariable('Reservation', Bool, min_impurity_improvement=minimp)
-    fo = SymbolicVariable('Food', FoodType, min_impurity_improvement=minimp)
-    we = SymbolicVariable('WaitEst', WaitEstType, min_impurity_improvement=minimp)
-    wa = SymbolicVariable('WillWait', Bool, min_impurity_improvement=minimp)
+    al = SymbolicVariable('Alternatives', Bool)
+    ba = SymbolicVariable('Bar', Bool)
+    fr = SymbolicVariable('Friday', Bool)
+    hu = SymbolicVariable('Hungry', Bool)
+    pa = SymbolicVariable('Patrons', PatronsType)
+    pr = SymbolicVariable('Price', PriceType)
+    ra = SymbolicVariable('Rain', Bool)
+    re = SymbolicVariable('Reservation', Bool)
+    fo = SymbolicVariable('Food', FoodType)
+    we = SymbolicVariable('WaitEst', WaitEstType)
+    wa = SymbolicVariable('WillWait', Bool)
 
     # define probs
     numsamples = 500
@@ -87,6 +89,8 @@ def restaurant():
     q = {ba: True, re: False}
     e = {ra: False}
     res = jpt.infer(q, e)
+    out(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
+        f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) = {res.result}')
     print(res.explain())
 
 
@@ -113,7 +117,7 @@ def alarm():
     J_[False] = Bool(.05)
 
     c = 0.
-    t = 10
+    t = 1
     for i in range(t):
 
         # Construct the CSV for learning
@@ -136,6 +140,7 @@ def alarm():
 
         tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
         tree.learn(data)
+        tree.sklearn_tree()
         # tree.plot(plotvars=[E, B, A, M, J])
         # conditional
         # q = {A: True}
@@ -151,13 +156,15 @@ def alarm():
 
         c += tree.infer(q, e).result
 
-    tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
-    tree.learn(data)
-    out(tree)
+    # tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
+    # tree.learn(data)
+    # out(tree)
     res = tree.infer(q, e)
     res.explain()
+
+    print_stopwatches()
     print('AVG', c/t)
-    tree.plot(plotvars=[E, B, A, M, J])
+    # tree.plot(plotvars=[E, B, A, M, J])
 
 
 def test_merge():
@@ -213,9 +220,10 @@ def test_muesli():
 
     data = []
     with open(f, 'rb') as fi:
-        data = pickle.load(fi)
+        data = np.array(pickle.load(fi))
+    data_ = np.array(sorted([float(x) for x in data.T[0]]))
 
-    quantiles = Quantiles(data[0], epsilon=.0001)
+    quantiles = Quantiles(data_, epsilon=.0001)
     cdf_ = quantiles.cdf()
     d = Numeric(cdf=cdf_)
 
@@ -228,35 +236,61 @@ def test_muesli():
 
 
 def muesli_tree():
-    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
+    # f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
 
     data = []
-    with open(f, 'rb') as fi:
-        data = pickle.load(fi)
-
-    unique, counts = np.unique(data[2], return_counts=True)
-
-    ObjectType = SymbolicType('ObjectType', unique)
+    # with open(f, 'rb') as fi:
+    #     data = pickle.load(fi)
+    data = pd.read_pickle('../examples/data/human_muesli.dat')
+    # unique, counts = np.unique(data[2], return_counts=True)
+    print(data)
+    ObjectType = SymbolicType('ObjectType', data['Class'].unique())
 
     x = NumericVariable('X', Numeric)
     y = NumericVariable('Y', Numeric)
     o = SymbolicVariable('Object', ObjectType)
 
-    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=10)
-    jpt.learn(list(zip(*data)))
+    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=5)
+    jpt.learn(columns=data.values.T)
+
+    for clazz in data['Class'].unique():
+        print(jpt.infer(query={o: clazz}, evidence={x: .9, y: [None, .45]}))
+
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
     jpt.plot(plotvars=[x, y, o])
 
 
+def picklemuesli():
+    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
+
+    data = []
+    with open(f, 'rb') as fi:
+        data = np.array(pickle.load(fi))
+
+    transformed = []
+    for c in data.T:
+        try:
+            transformed.append(np.array(c, dtype=float))
+        except:
+            transformed.append(np.array(c))
+
+    with open(f, 'wb+') as fi:
+        pickle.dump(transformed, fi)
+
+
+
+
+
 def main(*args):
 
     # test_merge()
     # test_dists()
-    # test_muesli()
     restaurant()  # for bools and strings
+    # test_muesli()
     # muesli_tree()  # for numerics and strings
+    # picklemuesli()
     # alarm()  # for bools
 
 
