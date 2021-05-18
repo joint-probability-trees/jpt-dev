@@ -1,9 +1,7 @@
-import pandas as pd
 import pyximport
-from dnutils.stats import print_stopwatches
-
 pyximport.install()
 
+import pandas as pd
 import os
 import pickle
 
@@ -162,9 +160,9 @@ def alarm():
     res = tree.infer(q, e)
     res.explain()
 
-    print_stopwatches()
+    # print_stopwatches()
     print('AVG', c/t)
-    # tree.plot(plotvars=[E, B, A, M, J])
+    tree.plot(plotvars=[E, B, A, M, J])
 
 
 def test_merge():
@@ -254,8 +252,7 @@ def muesli_tree():
     jpt.learn(columns=data.values.T)
 
     for clazz in data['Class'].unique():
-        print(jpt.infer(query={o: clazz}, evidence={x: .9, y: [None, .45]}))
-
+        print(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
@@ -280,6 +277,28 @@ def picklemuesli():
         pickle.dump(transformed, fi)
 
 
+def tourism():
+    df = pd.read_csv('../examples/data/tourism.csv')
+    df['Price'] *= 2000
+    df['DoY'] *= 710
+
+    DestinationType = SymbolicType('DestinationType', df['Destination'].unique())
+    PersonaType = SymbolicType('PersonaType', df['Persona'].unique())
+
+    price = NumericVariable('Price', Numeric)
+    t = NumericVariable('Time', Numeric)
+    d = SymbolicVariable('Destination', DestinationType)
+    p = SymbolicVariable('Persona', PersonaType)
+
+    jpt = JPT([price, t, d, p], name="Müslitree", min_samples_leaf=15)
+    # out(df.values.T)
+    jpt.learn(columns=df.values.T[1:])
+
+    for clazz in df['Destination'].unique():
+        print(jpt.infer(query={d: clazz}, evidence={t: [150, 250], p: 'FAMILY'}))
+
+    jpt.plot()  # plotvars=[price, t]
+
 
 
 
@@ -287,11 +306,13 @@ def main(*args):
 
     # test_merge()
     # test_dists()
-    restaurant()  # for bools and strings
+    # restaurant()  # for bools and strings
     # test_muesli()
     # muesli_tree()  # for numerics and strings
     # picklemuesli()
-    # alarm()  # for bools
+    alarm()  # for bools
+    # tourism()
+    # fraport()
 
 
 # Press the green button in the gutter to run the script.
