@@ -1,7 +1,5 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-import abc
-
 import pyximport
 
 from jpt.utils import classproperty
@@ -498,6 +496,11 @@ class Numeric(Distribution):
         super().__init__()
         self._cdf = cdf
 
+    def __str__(self):
+        if self.p is None:
+            return f'{self._cl}<p=n/a>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
+
     @property
     def cdf(self):
         return self._cdf
@@ -620,7 +623,7 @@ class Multinomial(Distribution):
     def __str__(self):
         if self.p is None:
             return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p}" for v, p in zip(self.labels, self._p)])}]>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
 
     def __repr__(self):
         if self.p is None:
@@ -677,14 +680,14 @@ class Multinomial(Distribution):
 
         vals = [re.escape(str(x)) for x in self.labels]
         x = np.arange(len(self.values))  # the label locations
-        width = .35  # the width of the bars
+        # width = .35  # the width of the bars
         err = [.015] * len(self.values)
 
         fig, ax = plt.subplots()
         ax.set_title(f'{title or f"Distribution of {self._cl}"}')
 
         if horizontal:
-            bars = ax.barh(x, self._p, height=width, xerr=err, color='cornflowerblue', label='%', align='center')
+            bars = ax.barh(x, self._p, xerr=err, color='cornflowerblue', label='%', align='center')
 
             ax.set_xlabel('%')
             ax.set_yticks(x)
@@ -695,11 +698,11 @@ class Multinomial(Distribution):
 
             for p in ax.patches:
                 h = p.get_width() - .09 if p.get_width() >= .9 else p.get_width() + .03
-                plt.text(h, p.get_y() + width/2,
+                plt.text(h, p.get_y() + p.get_height()/2,
                          f'{p.get_width():.2f}',
                          fontsize=10, color='black', verticalalignment='center')
         else:
-            bars = ax.bar(x, self._p, width=width, yerr=err, color='cornflowerblue', label='%')
+            bars = ax.bar(x, self._p, yerr=err, color='cornflowerblue', label='%')
 
             ax.set_ylabel('%')
             ax.set_xticks(x)
@@ -710,7 +713,7 @@ class Multinomial(Distribution):
             # print precise value labels on bars
             for p in ax.patches:
                 h = p.get_height() - .09 if p.get_height() >= .9 else p.get_height() + .03
-                plt.text(p.get_x() + width/2, h,
+                plt.text(p.get_x() + p.get_width()/2, h,
                          f'{p.get_height():.2f}',
                          rotation=90, fontsize=10, color='black', horizontalalignment='center')
 
@@ -821,7 +824,6 @@ class Histogram(Multinomial):
 
         vals = [re.escape(str(x)) for x in self.labels]
         x = np.arange(len(self.values))  # the label locations
-        width = 0.35  # the width of the bars
         err = [.015]*len(self.values)
 
         fig, ax = plt.subplots()
@@ -830,7 +832,7 @@ class Histogram(Multinomial):
         if horizontal:
             ax2 = ax.twiny()
 
-            bars = ax.barh(x, self._p, xerr=err, wid=width, color='cornflowerblue', label='%', align='center')
+            bars = ax.barh(x, self._p, xerr=err, color='cornflowerblue', label='%', align='center')
 
             ax.set_xlabel('%')
             ax.set_yticks(x)
@@ -845,13 +847,13 @@ class Histogram(Multinomial):
             # print precise value labels on bars
             for p, v in zip(ax.patches, self._p):
                 h = p.get_width() - .09 if p.get_width() >= .9 else p.get_width() + .03
-                plt.text(h, p.get_y() + width / 2,
+                plt.text(h, p.get_y() + p.get_height() / 2,
                          f'{v} ({round(v/self.d*100, 2)}%)',
                          fontsize=10, color='black', verticalalignment='center')
         else:
             ax2 = ax.twinx()
 
-            bars = ax.bar(x, self._p, yerr=err, width=width, color='cornflowerblue', label='%')
+            bars = ax.bar(x, self._p, yerr=err, color='cornflowerblue', label='%')
 
             ax.set_ylabel('%')
             ax.set_xticks(x)
@@ -864,7 +866,7 @@ class Histogram(Multinomial):
             # print precise value labels on bars
             for p, v in zip(ax.patches, self._p):
                 h = p.get_height() - .09 if p.get_height() >= .9 else p.get_height() + .03
-                plt.text(p.get_x() + width/2, h,
+                plt.text(p.get_x() + p.get_width()/2, h,
                          f'{v} ({round(v/self.d*100, 2)}%)',
                          rotation=90, fontsize=10, color='black', horizontalalignment='center')
         fig.tight_layout()
@@ -896,6 +898,11 @@ class Bool(Multinomial):
             super().__init__(p)
         except Exception:
             pass
+
+    def __str__(self):
+        if self.p is None:
+            return f'{self._cl}<p=n/a>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
 
     def __setitem__(self, v, p):
         if not iterable(p):

@@ -12,17 +12,22 @@ from jpt.utils import SYMBOL
 
 
 class Variable:
-    '''Wrapper class for a variable name along with its distribution class type.
+    '''Abstract class for a variable name along with its distribution class type.
     '''
-    def __init__(self, name, domain):
+    def __init__(self, name, domain, min_impurity_improvement=None):
         '''
         :param name:    name of the variable
         :type name:     str
         :param domain:  the class type (not an instance!) of the represented Distribution
         :type domain:   class type of jpt.learning.distributions.Distribution
+        :param min_impurity_improvement:
+        :type min_impurity_improvement: float
         '''
         self._name = name
         self._domain = domain
+        self.min_impurity_improvement = min_impurity_improvement or 0.
+        if not issubclass(type(self), Variable) or type(self) is Variable:
+            raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
 
     @property
     def name(self):
@@ -44,7 +49,7 @@ class Variable:
         return f'{self.name}[{self.domain.__name__}]'
 
     def __repr__(self):
-        return str(self)  # '<Variable %s @%x>' % (self, id(self))
+        return str(self)
 
     @property
     def symbolic(self):
@@ -68,8 +73,8 @@ class Variable:
 
 class NumericVariable(Variable):
 
-    def __init__(self, name, domain):
-        super().__init__(name, domain)
+    def __init__(self, name, domain, min_impurity_improvement=None):
+        super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')
@@ -101,8 +106,8 @@ class NumericVariable(Variable):
 
 class SymbolicVariable(Variable):
 
-    def __init__(self, name, domain):
-        super().__init__(name, domain)
+    def __init__(self, name, domain, min_impurity_improvement=None):
+        super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')

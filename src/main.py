@@ -1,7 +1,9 @@
+import pandas as pd
 import pyximport
+from dnutils.stats import print_stopwatches
+
 pyximport.install()
 
-import pandas as pd
 import os
 import pickle
 

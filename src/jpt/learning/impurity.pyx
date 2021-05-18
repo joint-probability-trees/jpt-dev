@@ -34,6 +34,8 @@ class Impurity:
             self.sq_sums_right = np.zeros(len(self.numeric_vars), dtype=np.float64)
             self.sq_sums_total = np.zeros(len(self.numeric_vars), dtype=np.float64)
 
+        self.gini_buffer = np.ndarray(shape=self.symbols_total.shape, dtype=np.float64)
+        self.gini_buffer2 = np.ndarray(shape=self.symbols_total.shape[1], dtype=np.float64)
         self.min_samples_leaf = tree.min_samples_leaf
 
     @property
@@ -83,6 +85,7 @@ class Impurity:
 
         data = self.data
 
+        variances_total = [0]
         impurity_total = 0
 
         if self.numeric_vars:
@@ -104,10 +107,11 @@ class Impurity:
             gini_total = 0
         impurity_total /= (denom * len(self.variables))
         symbolic = 0
-
+        symbolic_idx = 0
         for variable in self.numeric_vars + self.symbolic_vars:
             indices = tuple(sorted(self.indices, key=lambda i: data[i, variable]))
-            symbolic += variable in self.symbolic_vars
+            symbolic = variable in self.symbolic_vars
+            symbolic_idx += symbolic
             numeric = not symbolic
 
             if self.col_is_constant(indices, variable):  # np.unique(data[indices, variable]).shape[0] == 1:
@@ -156,12 +160,14 @@ class Impurity:
                         self.symbols_left[int(data[sample, v_idx]), i] += 1
                     self.symbols_right = self.symbols_total - self.symbols_left
 
-                if (split_pos < n_samples - 1 and symbolic or
-                        split_pos < n_samples and numeric) and data[split_pos, variable] == data[split_pos + 1, variable]:
+                # skip calculation for identical values (i.e. until next 'real' splitpoint is reached
+                if (split_pos < n_samples - 1 and symbolic or split_pos < n_samples and numeric) \
+                        and data[indices[split_pos], variable] == data[indices[split_pos + 1], variable]:
                     continue
 
                 if numeric:
                     impurity_improvement = 0
+                denom = 0
 
                 if self.numeric_vars:
                     variances_left = (self.sq_sums_left - self.sums_left ** 2
@@ -175,7 +181,7 @@ class Impurity:
                                              / n_samples) / variances_total
 
                     avg_variance_improvement = np.mean(variance_improvements)
-                    impurity_improvement += avg_variance_improvement if numeric else (np.mean(variances_left) * samples[int(data[sample, variable])] * len(self.numeric_vars) / (n_samples * len(self.variables)))
+                    impurity_improvement += avg_variance_improvement if numeric else (np.mean(variances_left) * samples[int(pivot)] * len(self.numeric_vars) / (n_samples * len(self.variables)))
 
                 if self.symbolic_vars:
                     if gini_total:
@@ -183,7 +189,7 @@ class Impurity:
                         gini_right = self.gini_impurity(self.symbols_right, samples_right)
                         gini_improvement = (gini_total - (samples_left / n_samples * gini_left +
                                             samples_right / n_samples * gini_right)) / gini_total
-                        impurity_improvement += gini_improvement if numeric else (gini_left * samples[int(data[sample, variable])] * len(self.symbolic_vars) / (n_samples * len(self.variables)))
+                        impurity_improvement += gini_improvement if numeric else (gini_left * samples[int(pivot)] * len(self.symbolic_vars) / (n_samples * len(self.variables)))
 
                 if symbolic:
                     self.symbols_left[...] = 0
@@ -195,7 +201,7 @@ class Impurity:
                     if split_pos == n_samples - 1:
                         impurity_improvement /= denom
                         impurity_improvement = (impurity_total - impurity_improvement) / impurity_total
-                        if not all(not samples[i] or samples[i] >= self.min_samples_leaf for i in range(self.symbols[symbolic-1])):
+                        if not all(not samples[i] or samples[i] >= self.min_samples_leaf for i in range(self.symbols[symbolic_idx-1])):
                             impurity_improvement = 0
                 else:
                     impurity_improvement /= denom

@@ -41,7 +41,8 @@ def tojson(obj):
 
 def entropy(p):
     '''Compute the entropy of the multinomial probability distribution ``p``.
-    :param p:   a ``list`` of probabilities or a ``dict``.
+    :param p:   the probabilities
+    :type p:    [float] or {str:float}
     :return:
     '''
     if isinstance(p, dict):

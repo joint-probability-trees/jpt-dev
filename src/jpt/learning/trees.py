@@ -64,26 +64,8 @@ class Node:
     def format_path(self):
         return ' ^ '.join([var.str(val, fmt='logic') for var, val in self.path.items()])
 
-    # def set_trainingssamples(self, examples, variables):
-    #     '''
-    #     :param examples:    tba
-    #     :type examples:     tba
-    #     :param variables:        tba
-    #     :type variables:         tba
-    #     '''
-    #     self.samples = len(examples)
-    #     for i, v in enumerate(variables):
-    #         self.distributions[v] = v.dist().set_data(examples[:, i])
-
-    @property
-    def str_node(self):
-        return self.dec_criterion.name
-
     def __str__(self):
-        return (f'Node<ID: {self.idx}; '
-                f'CRITERION: {self.dec_criterion.__class__.__name__}; '
-                f'PARENT: {f"Node<ID: {self.parent.idx}>" if self.parent else None}; '
-                f'#CHILDREN: {len(self.children)}>')
+        return (f'Node<{self.idx}>')
 
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
@@ -99,15 +81,16 @@ class DecisionNode(Node):
 
     def __init__(self, idx, splits, dec_criterion, parent=None, treename=None):
         '''
-        :param threshold:       the threshold at which the data for the decision criterion are separated
-        :type threshold:        float
+        :param idx:             the identifier of a node
+        :type idx:              int
+        :param splits:
+        :type splits:
         :param dec_criterion:   the split feature name
         :type dec_criterion:    jpt.variables.Variable
         '''
         self.splits = splits
         self.dec_criterion = dec_criterion
         self.dec_criterion_val = None
-        self.splits = splits
         super().__init__(idx, parent=parent, treename=treename)
         self.children = [None] * len(self.splits)
 
@@ -117,6 +100,20 @@ class DecisionNode(Node):
         node._path.append((self.dec_criterion, self.splits[idx]))
 
     def str_edge(self, idx):
+        return str(self.splits[idx] if self.dec_criterion.numeric else self.dec_criterion.domain.labels[idx])
+
+    @property
+    def str_node(self):
+        return self.dec_criterion.name
+
+    def __str__(self):
+        return (f'DecisionNode<ID:{self.idx}; '
+                f'CRITERION: {self.dec_criterion.name}; '
+                f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}; '
+                f'#CHILDREN: {len(self.children)}>')
+
+    def __repr__(self):
+        return f'Node<{self.idx}> object at {hex(id(self))}'
         return str(self.dec_criterion.str(self.splits[idx], fmt='logic'))
 
 
@@ -153,12 +150,12 @@ class Leaf(Node):
         return self.distributions
 
     def __str__(self):
-        return (f'Leaf<ID: {self.idx}; '
+        return (f'LeafNode<ID: {self.idx}; '
                 f'VALUE: {",".join([f"{var.name}: {str(dist)}" for var, dist in self.distributions.items()])}; '
-                f'PARENT: {f"Node<ID: {self.parent.idx}>" if self.parent else None}>')
+                f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}>')
 
     def __repr__(self):
-        return f'Leaf<{self.idx}> object at {hex(id(self))}'
+        return f'LeafNode<{self.idx}> object at {hex(id(self))}'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -195,8 +192,13 @@ class JPT:
     def variables(self):
         return self._variables
 
-    def impurity(self, indices, tgt):
-        r'''Calculate the mean squared error for the data set `xmpls`, i.e.
+    def impurity(self, indices, var):
+        r'''Calculate the impurity/mean squared error for the data set identified by `indices`, i.e.
+
+        :param indices: the indices for the training samples used to calculate the gain
+        :type indices:  [[int]]
+        :param var:
+        :type var:      jpt.variables.Variable
 
         .. math::
             MSE = \frac{1}{n} · \sum_{i=1}^{n} (y_i - \hat{y}_i)^2
@@ -204,35 +206,35 @@ class JPT:
         if not indices:
             return 0.
 
-        # assuming all Examples have identical indices for their targets
-        tgt_idx = self._variables.index(tgt)
+        var_idx = self._variables.index(var)
 
-        if tgt.symbolic:  # case categorical targets
-            tgts_plain = np.array([self.data[i, tgt_idx] for i in indices])
-            # count occurrences for each value of target tgt and determine their probability
-            _, counts = np.unique(tgts_plain, return_counts=True)
-            probs = counts / tgts_plain.shape[0]
-            # calculate actual impurity target tgt
+        if var.symbolic:
+            plain = np.array([self.data[i, var_idx] for i in indices])
+            # count occurrences for each value of the variable and determine their probability
+            _, counts = np.unique(plain, return_counts=True)
+            probs = counts / plain.shape[0]
+            out(f'impurity {var.name} {rel_entropy(probs)}')
+            # calculate actual impurity for variable
             return rel_entropy(probs)
 
-        elif tgt.numeric:  # case numeric targets
-            tgts_sklearn = np.array([self.data[i, tgt_idx] for i in indices])
-            # calculate mean for target tgt
+        elif var.numeric:
+            tgts_sklearn = np.array([self.data[i, var_idx] for i in indices])
+            # calculate mean for variable
             ft_mean = np.mean(tgts_sklearn)
-            # calculate normalized mean squared error for target tgt
+            # calculate normalized mean squared error for variable
             sqerr = mean_squared_error(tgts_sklearn, [ft_mean] * len(tgts_sklearn))
-
-            # calculate actual impurity for target tgt
+            # calculate actual impurity for variable
             return sqerr
 
     def gains(self, indices, ft, tgt):
         r'''Calculate the impurity for the data set after selection of feature `ft`, i.e.
 
-        :param xmpls:
-        :type xmpls:
+        :param indices: the indices for the training samples used to calculate the gain
+        :type indices:  [[int]]
         :param ft:
-        :type ft:
+        :type ft:       jpt.variables.Variable
         :param tgt:
+        :type tgt:      jpt.variables.Variable
 
         .. math::
             R(ft) = \sum_{i=1}^{v}\frac{p_i + n_i}{p+n} · I(\frac{p_i}{p_i + n_i}, \frac{n_i}{p_i + n_i})
@@ -258,8 +260,11 @@ class JPT:
             partition = [[i for i in indices if self.data[i, ft_idx] == val] for val in distinct]
             if not all(len(p) >= self.min_samples_leaf for p in partition):
                 return {None: 0}
-            # determine overall impurity after selection of ft by multiplying probability for each feature value with its impurity,
-            gain = {None: impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])}
+            # determine overall impurity after selection of ft by multiplying probability for each feature value with its impurity,  ({splitvalue: sqerr})
+            g = impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])
+            out(f'gain for {ft.name}: {g} => {0. if g < ft.min_impurity_improvement else g}')
+            gain = {None: 0. if g < ft.min_impurity_improvement else g}
+            # gain = {None: impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])}
 
         if self.variables[ft_idx].numeric:
             # determine split points of dataset
@@ -270,7 +275,7 @@ class JPT:
                             [i for i in indices if self.data[i, ft_idx] <= spp],
                             [i for i in indices if self.data[i, ft_idx] > spp]) for spp in opts]
 
-            # the squared errors for the left and right datasets of each split value
+            # the squared errors for the left and right datasets of each split value ({splitvalue: sqerr})
             gain = {mv: impurity - (self.impurity(left, tgt) * len(left) / len(indices) +
                                     self.impurity(right, tgt) * len(right)) / len(indices) if len(left) >= self.min_samples_leaf and len(right) >= self.min_samples_leaf else 0
                     for mv, left, right in examples_ft}
@@ -312,6 +317,14 @@ class JPT:
 
     def c45(self, indices, parent, child_idx):
         '''
+
+        :param indices: the indices for the training samples used to calculate the gain
+        :type indices:      [[int]]
+        :param parent:      the parent node of the current iteration, initially the root node
+        :type parent:       jpt.variables.Variable
+        :param child_idx:   the index of the child in the current iteration
+        :type child_idx:    int
+
         Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
         ``indices``. The created node is put as a child with index ``child_idx`` to the children of
         node ``parent``, if any.
@@ -674,8 +687,8 @@ class JPT:
                 rc = math.ceil(math.sqrt(len(plotvars)))
                 img = ''
                 for i, pvar in enumerate(plotvars):
-                    img_name = f'{pvar.name}-{idx}'
-                    n.distributions[pvar].plot(title=pvar.name, fname=img_name, directory=directory, view=False)
+                    img_name = html.escape(f'{pvar.name}-{idx}')
+                    n.distributions[pvar].plot(title=html.escape(pvar.name), fname=img_name, directory=directory, view=False)
                     img += (f'''{"<TR>" if i % rc == 0 else ""}
                                         <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
                                 {"</TR>" if i % rc == rc-1 or i == len(plotvars) - 1 else ""}
@@ -692,7 +705,7 @@ class JPT:
                                 </TR>
                                 '''
 
-            land = '<BR/>\u2227'
+            land = '<BR/>\u2227 '
             element = ' \u2208 '
 
             # content for node labels
@@ -708,13 +721,14 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{v.name}=' + (f'{v.domain.labels[dist.expectation()]!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{html.escape(v.name)}=' + (f'{html.escape(str(v.domain.labels[dist.expectation()]))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f" {land} ".join([(var.str(val) if var.symbolic else f'{var.str(val)}') for var, val in n.path.items()])}</TD>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val)) for var, val in n.path.items()])}</TD>
                                 </TR>
                                 '''
+
             # stitch together
             lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
                             {nodelabel}
@@ -736,7 +750,7 @@ g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDL
         # create edges
         for idx, n in self.innernodes.items():
             for i, c in enumerate(n.children):
-                dot.edge(str(n.idx), str(c.idx), label=n.str_edge(i))
+                dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
 
         # show graph
         logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
@@ -830,7 +844,7 @@ class Result:
         self._w = w
 
     def format_result(self):
-        return ('P(%s%s%s) = %.3f %%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
+        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
                                          ' | ' if self.evidence else '',
                                          ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
                                          self.result * 100))
@@ -839,5 +853,5 @@ class Result:
         result = self.format_result()
         result += '\n'
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '%.3f %%: %s\n' % (weight, leaf.format_path())
+            result += '%.3f%%: %s\n' % (weight, leaf.format_path())
         return result
