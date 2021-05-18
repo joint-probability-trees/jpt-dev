@@ -15,24 +15,25 @@ class Impurity:
         self._numeric_vars = tuple(i for i, v in enumerate(self.variables) if v.numeric)
 
         self._symbolic_vars = tuple(i for i, v in enumerate(self.variables) if v.symbolic)
-        self.symbols = np.array([v.domain.n_values for v in self.variables if v.symbolic])
+        if self.symbolic_vars:
+            self.symbols = np.array([v.domain.n_values for v in self.variables if v.symbolic])
+            self.symbols_left = np.zeros(shape=(max(self.symbols),
+                                                len(self.symbolic_vars)), dtype=np.float64)
+            self.symbols_right = np.zeros(shape=(max(self.symbols),
+                                                 len(self.symbolic_vars)), dtype=np.float64)
+            self.symbols_total = np.zeros(shape=(max(self.symbols),
+                                                 len(self.symbolic_vars)), dtype=np.float64)
+            self.gini_buffer = np.ndarray(shape=self.symbols_total.shape, dtype=np.float64)
+            self.gini_buffer2 = np.ndarray(shape=self.symbols_total.shape[1], dtype=np.float64)
 
-        self.symbols_left = np.zeros(shape=(max(self.symbols),
-                                            len(self.symbolic_vars)), dtype=np.float64)
-        self.symbols_right = np.zeros(shape=(max(self.symbols),
-                                             len(self.symbolic_vars)), dtype=np.float64)
-        self.symbols_total = np.zeros(shape=(max(self.symbols),
-                                             len(self.symbolic_vars)), dtype=np.float64)
+        if self.numeric_vars:
+            self.sums_left = np.zeros(len(self.numeric_vars), dtype=np.float64)
+            self.sums_right = np.zeros(len(self.numeric_vars), dtype=np.float64)
+            self.sums_total = np.zeros(len(self.numeric_vars), dtype=np.float64)
+            self.sq_sums_left = np.zeros(len(self.numeric_vars), dtype=np.float64)
+            self.sq_sums_right = np.zeros(len(self.numeric_vars), dtype=np.float64)
+            self.sq_sums_total = np.zeros(len(self.numeric_vars), dtype=np.float64)
 
-        self.sums_left = np.zeros(len(self.numeric_vars), dtype=np.float64)
-        self.sums_right = np.zeros(len(self.numeric_vars), dtype=np.float64)
-        self.sums_total = np.zeros(len(self.numeric_vars), dtype=np.float64)
-        self.sq_sums_left = np.zeros(len(self.numeric_vars), dtype=np.float64)
-        self.sq_sums_right = np.zeros(len(self.numeric_vars), dtype=np.float64)
-        self.sq_sums_total = np.zeros(len(self.numeric_vars), dtype=np.float64)
-
-        self.gini_buffer = np.ndarray(shape=self.symbols_total.shape, dtype=np.float64)
-        self.gini_buffer2 = np.ndarray(shape=self.symbols_total.shape[1], dtype=np.float64)
         self.min_samples_leaf = tree.min_samples_leaf
 
     @property
@@ -76,31 +77,34 @@ class Impurity:
         best_var = None
         best_split_pos = None
         best_split_val = None
-        # samples = len(self.indices)
         max_impurity_improvement = -1
         n_samples = len(self.indices)
+        denom = 0
 
         data = self.data
+
+        impurity_total = 0
 
         if self.numeric_vars:
             np.sum(data[self.indices, :][:, self.numeric_vars] ** 2, axis=0, out=self.sq_sums_total)
             np.sum(data[self.indices, :][:, self.numeric_vars], axis=0, out=self.sums_total)
             variances_total = (self.sq_sums_total - (self.sums_total ** 2 / n_samples)) / n_samples
+            denom += 1
+            impurity_total += len(self.numeric_vars) * np.mean(variances_total)
 
-        self.symbols_total[...] = 0
-        for sym, var in enumerate(self.symbolic_vars):
-            self.symbols_total[:self.symbols[sym], sym] = np.bincount(data[self.indices, var].astype(np.int32),
-                                                                      minlength=self.symbols[sym]).T
-
-        # with stopwatch('new'):
-        gini_total = self.gini_impurity(self.symbols_total, n_samples)
-        impurity_total = (len(self.numeric_vars) * np.mean(variances_total) +
-                          len(self.symbolic_vars) * gini_total) / (2 * len(self.variables))
-        # out(impurity_total)
-        # out(self.indices)
-        # with stopwatch('old'):
-        #     gini_total_ = np.sum(4 / self.symbols * (1 - np.sum(self.symbols_total ** 2, axis=0) / n_samples ** 2)) / len(self.symbolic_vars)
+        if self.symbolic_vars:
+            self.symbols_total[...] = 0
+            for sym, var in enumerate(self.symbolic_vars):
+                self.symbols_total[:self.symbols[sym], sym] = np.bincount(data[self.indices, var].astype(np.int32),
+                                                                          minlength=self.symbols[sym]).T
+            gini_total = self.gini_impurity(self.symbols_total, n_samples)
+            impurity_total += len(self.symbolic_vars) * gini_total
+            denom += 1
+        else:
+            gini_total = 0
+        impurity_total /= (denom * len(self.variables))
         symbolic = 0
+
         for variable in self.numeric_vars + self.symbolic_vars:
             indices = tuple(sorted(self.indices, key=lambda i: data[i, variable]))
             symbolic += variable in self.symbolic_vars
@@ -120,7 +124,7 @@ class Impurity:
                 self.symbols_left[...] = 0
                 self.symbols_right[...] = self.symbols_total
 
-            samples = np.zeros(shape=self.symbols_left.shape[0])
+            samples = np.zeros(shape=self.symbols_left.shape[0] if symbolic else 2)
             impurity_improvement = 0
 
             for split_pos, sample in enumerate(indices):
@@ -134,7 +138,6 @@ class Impurity:
                     samples[int(pivot)] += 1
                     samples_left = samples[int(pivot)]
                     samples_right = n_samples - samples_left
-
 
                 if numeric and split_pos == n_samples - 1:
                     break
@@ -159,17 +162,20 @@ class Impurity:
 
                 if numeric:
                     impurity_improvement = 0
-                denom = 0
 
                 if self.numeric_vars:
-                    variances_left = (self.sq_sums_left - self.sums_left ** 2 / samples_left) / samples_left if samples_left else 0
-                    variances_right = (self.sq_sums_right - self.sums_right ** 2 / samples_right) / samples_right if samples_right else 0
-                    variance_improvements = (variances_total - (samples_left * variances_left + samples_right * variances_right) / n_samples) / variances_total
+                    variances_left = (self.sq_sums_left - self.sums_left ** 2
+                                      / samples_left) / samples_left if samples_left else 0
+
+                    variances_right = (self.sq_sums_right - self.sums_right ** 2
+                                       / samples_right) / samples_right if samples_right else 0
+
+                    variance_improvements = (variances_total - (samples_left * variances_left
+                                                                + samples_right * variances_right)
+                                             / n_samples) / variances_total
+
                     avg_variance_improvement = np.mean(variance_improvements)
-                    # out(variances_total, variances_left, variances_right, variance_improvements, avg_variance_improvement)
                     impurity_improvement += avg_variance_improvement if numeric else (np.mean(variances_left) * samples[int(data[sample, variable])] * len(self.numeric_vars) / (n_samples * len(self.variables)))
-                    # out(variable, 'numeric improvement', impurity_improvement)
-                    denom += 1
 
                 if self.symbolic_vars:
                     if gini_total:
@@ -177,23 +183,20 @@ class Impurity:
                         gini_right = self.gini_impurity(self.symbols_right, samples_right)
                         gini_improvement = (gini_total - (samples_left / n_samples * gini_left +
                                             samples_right / n_samples * gini_right)) / gini_total
-                        # out(gini_total, gini_left, gini_right, gini_improvement)
                         impurity_improvement += gini_improvement if numeric else (gini_left * samples[int(data[sample, variable])] * len(self.symbolic_vars) / (n_samples * len(self.variables)))
-                        # out(variable, 'symbolic improvement', impurity_improvement, self.symbols_left.T)
-                    denom += 1
 
                 if symbolic:
                     self.symbols_left[...] = 0
-                    self.sums_left[...] = 0
-                    self.sq_sums_left[...] = 0
+
+                    if self.numeric_vars:
+                        self.sums_left[...] = 0
+                        self.sq_sums_left[...] = 0
+
                     if split_pos == n_samples - 1:
                         impurity_improvement /= denom
-                        # out(impurity_total, 'improvement', impurity_improvement)
                         impurity_improvement = (impurity_total - impurity_improvement) / impurity_total
-                        # out(samples)
                         if not all(not samples[i] or samples[i] >= self.min_samples_leaf for i in range(self.symbols[symbolic-1])):
                             impurity_improvement = 0
-                        # out('symbolic', impurity_improvement)
                 else:
                     impurity_improvement /= denom
                     if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
@@ -204,5 +207,4 @@ class Impurity:
                     best_var = variable
                     best_split_pos = split_pos
                     best_split_val = (data[sample, best_var] + data[indices[split_pos + 1], best_var]) / 2. if numeric else None
-                    # out('=======', best_var, best_split_val, max_impurity_improvement, samples)
         return best_var, best_split_val, max_impurity_improvement
