@@ -321,7 +321,7 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         data = self.data[indices, :]
 
-        if indices:
+        if len(indices) > self.min_samples_leaf:
             impurity = Impurity(self, indices)
             # ft_best_idx, sp_best, max_gain = self.compute_best_split(indices)
             ft_best_idx, sp_best, max_gain = impurity.compute_best_split()
