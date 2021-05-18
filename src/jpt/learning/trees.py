@@ -780,14 +780,17 @@ g                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDL
         from scipy.stats import mvn
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], mu, sigma))
 
-    def sklearn_tree(self):
-        assert self.data is not None, 'call learn() first to preprocess the data.'
+    def sklearn_tree(self, data=None, targets=None):
+        if data is None:
+            data = self.data
+        assert data is not None, 'Gimme data!'
 
         tree = DecisionTreeRegressor(min_samples_leaf=self.min_samples_leaf,
                                      min_impurity_decrease=self.min_impurity_improvement,
                                      random_state=0)
         with stopwatch('/sklearn/decisiontree'):
-            tree.fit(self.data, self.data)
+            tree.fit(data, data if targets is None else targets)
+        return tree
 
 
 class Result:
