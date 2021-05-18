@@ -837,6 +837,7 @@ class Result:
 
     def explain(self):
         result = self.format_result()
+        result += '\n'
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '.3f %%: %s\n' % leaf.format_path()
+            result += '%.3f %%: %s\n' % (weight, leaf.format_path())
         return result
