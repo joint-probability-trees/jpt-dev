@@ -529,7 +529,7 @@ class JPT:
         for leaf in self.apply(evidence_):
             # out(leaf.format_path(), 'applies', ' ^ '.join([var.str_by_idx(val) for var, val in evidence_.items()]))
             p_m = 1
-            for var in set(evidence_.keys()).intersection(leaf.path.keys()):
+            for var in set(evidence_.keys()) - set(leaf.path.keys()):
                 evidence_val = evidence_[var]
                 if var.numeric and var in leaf.path:
                     evidence_val = evidence_val.intersection(leaf.path[var])
@@ -540,9 +540,9 @@ class JPT:
             p_e += p_m
 
             if leaf.applies(query_):
-                for var in set(query_.keys()).intersection(leaf.path.keys()):
+                for var in set(query_.keys()) - set(leaf.path.keys()):
                     query_val = query_[var]
-                    if var.numeric:
+                    if var.numeric and var in leaf.path:
                         query_val = query_val.intersection(leaf.path[var])
                     p_m *= leaf.distributions[var].p(query_val)
                 p_q += p_m
