@@ -85,7 +85,7 @@ class Impurity:
 
         data = self.data
 
-        variances_total = [0]
+        # variances_total = [0]
         impurity_total = 0
 
         if self.numeric_vars:
@@ -105,9 +105,11 @@ class Impurity:
             denom += 1
         else:
             gini_total = 0
-        impurity_total /= (denom * len(self.variables))
+
+        impurity_total /= denom * len(self.variables)
         symbolic = 0
         symbolic_idx = 0
+
         for variable in self.numeric_vars + self.symbolic_vars:
             indices = tuple(sorted(self.indices, key=lambda i: data[i, variable]))
             symbolic = variable in self.symbolic_vars
@@ -167,7 +169,6 @@ class Impurity:
 
                 if numeric:
                     impurity_improvement = 0
-                denom = 0
 
                 if self.numeric_vars:
                     variances_left = (self.sq_sums_left - self.sums_left ** 2
@@ -212,5 +213,6 @@ class Impurity:
                     max_impurity_improvement = impurity_improvement
                     best_var = variable
                     best_split_pos = split_pos
-                    best_split_val = (data[sample, best_var] + data[indices[split_pos + 1], best_var]) / 2. if numeric else None
+                    best_split_val = (data[sample, best_var]
+                                      + data[indices[split_pos + 1], best_var]) / 2. if numeric else None
         return best_var, best_split_val, max_impurity_improvement
