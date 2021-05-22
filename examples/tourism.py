@@ -1,12 +1,6 @@
-import itertools
-
 import pandas as pd
 from dnutils import out
 from matplotlib import pyplot as plt
-
-from jpt.learning.distributions import SymbolicType, Numeric
-from jpt.learning.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable
 
 
 def test_tourism():

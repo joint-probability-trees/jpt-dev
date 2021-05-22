@@ -52,3 +52,12 @@ avalailable_colormaps = [
     'terrain_r', 'turbo', 'turbo_r', 'twilight', 'twilight_r', 'twilight_shifted',
     'twilight_shifted_r', 'viridis', 'viridis_r', 'winter', 'winter_r'
 ]
+
+
+class SYMBOL:
+    LAND = '\u2227'
+    IN = '\u2208'
+    LT = '<'
+    GT = '>'
+    LTE = '\u2264'
+    GTE = '\u2265'

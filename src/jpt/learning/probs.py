@@ -13,8 +13,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 from scipy.stats import multivariate_normal
 
 import dnutils
-from dnutils import out, stop
-from jpt.constants import avalailable_colormaps, plotstyle, ddarkblue
+from dnutils import out
+from jpt.base.constants import avalailable_colormaps, plotstyle, ddarkblue
 from .distributions import MultiVariateGaussian
 
 logger = dnutils.getlogger(name='ProbsLogger', level=dnutils.ERROR)
