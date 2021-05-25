@@ -24,7 +24,6 @@ from .learning.impurity import Impurity
 from .base.constants import plotstyle, orange, green
 from .base.utils import list2interval, format_path
 
-logger = dnutils.getlogger(name='TreeLogger', level=dnutils.DEBUG)
 
 style.use(plotstyle)
 
@@ -64,7 +63,7 @@ class Node:
         return format_path(self.path)
 
     def __str__(self):
-        return (f'Node<{self.idx}>')
+        return f'Node<{self.idx}>'
 
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
@@ -162,6 +161,11 @@ class Leaf(Node):
 
 
 class JPT:
+    '''
+    Joint Probability Trees.
+    '''
+
+    logger = dnutils.getlogger('/jpt', level=dnutils.DEBUG)
 
     def __init__(self, variables, name='regtree', min_samples_leaf=1, min_impurity_improvement=None):
         '''Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
@@ -362,9 +366,9 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         # Print the statistics
 
-        logger.info('Learning took %s' % (datetime.datetime.now() - started))
-        if logger.level >= 20:
-            out(self)
+        JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
+        # if logger.level >= 20:
+        JPT.logger.debug(self)
 
     def infer(self, query, evidence=None):
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
