@@ -61,3 +61,4 @@ class SYMBOL:
     GT = '>'
     LTE = '\u2264'
     GTE = '\u2265'
+    THETA = '\u03D1'
