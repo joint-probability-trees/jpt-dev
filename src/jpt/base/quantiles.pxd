@@ -250,5 +250,7 @@ cdef class PiecewiseFunction(Function):
 
     cpdef PiecewiseFunction add_knot(PiecewiseFunction self, np.float64_t x, np.float64_t y)
 
+    cpdef PiecewiseFunction crop(PiecewiseFunction self, ContinuousSet interval)
+
 
 

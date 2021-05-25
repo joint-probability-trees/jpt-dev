@@ -534,6 +534,17 @@ cdef class QuantileDistribution:
         self._cdf.ensure_right(ConstantFunction(1), x[-1])
         return self
 
+    cpdef crop(self, ContinuousSet interval):
+        '''
+        Return a copy this quantile distribution that is cropped to the ``interval``.
+        '''
+        if self._cdf is None:
+            raise RuntimeError('No quantile distribution fitted. Call fit() first.')
+        cdf_ = self.cdf.crop(interval)
+        result = QuantileDistribution(self.epsilon, self.penalty, min_samples_mars=self.min_samples_mars)
+        result._cdf = cdf_
+        return result
+
     @property
     def cdf(self):
         return self._cdf
@@ -1195,10 +1206,16 @@ cdef class PiecewiseFunction(Function):
         return result
 
     cpdef PiecewiseFunction add_knot(PiecewiseFunction self, np.float64_t x, np.float64_t y):
-        pass
-        # for i, f in zip(self.intervals, self.functions):
-        #     if i .lower < x < i.upper:
+        ...
 
+    cpdef PiecewiseFunction crop(PiecewiseFunction self, ContinuousSet interval):
+        cdef PiecewiseFunction result = PiecewiseFunction()
+        for i, f in zip(self.intervals, self.functions):
+            if i.intersects(interval):
+                intersection = i.intersection(interval)
+                result.intervals.append(intersection)
+                result.functions.append(f)
+        return result
 
 
 cpdef object fit_piecewise(np.float64_t[::1] x, np.float64_t[::1] y, np.float64_t epsilon=np.nan,
