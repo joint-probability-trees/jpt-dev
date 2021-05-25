@@ -496,9 +496,10 @@ class Numeric(Distribution):
         self._quantile = quantile
 
     def __str__(self):
-        if self.p is None:
-            return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
+        return self.cdf.pfmt()
+        # if self.p is None:
+        #     return f'{self._cl}<p=n/a>'
+        # return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
 
     @property
     def cdf(self):
@@ -529,7 +530,7 @@ class Numeric(Distribution):
         return e if not singular else i.lower
 
     def set_data(self, data):
-        d = np.array(data, dtype=np.float64)
+        # d = np.array(data, dtype=np.float64)
         self._quantile = QuantileDistribution()
         self._quantile.fit(np.ascontiguousarray(data, dtype=np.float64))
         return self
@@ -538,6 +539,12 @@ class Numeric(Distribution):
         if isinstance(value, numbers.Number):
             return 0
         return (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) - (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+
+    @staticmethod
+    def merge(distributions, weights):
+        if not all(distributions[0].__class__ == d.__class__ for d in distributions):
+            raise TypeError('Only distributions of the same type can be merged.')
+        return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the piecewise linear function representing the variable's cumulative distribution function
@@ -631,7 +638,7 @@ class Multinomial(Distribution):
     def __repr__(self):
         if self.p is None:
             return f'{self._cl}<p=n/na>'
-        return f'\n{self._cl}<p=[\n{sepcomma.join([f"{v}={p}"for v, p in zip(self.labels, self._p)])}]>;'
+        return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self._p)])}]>;'
 
     def p(self, value):
         return self._p[self.values[value]]
@@ -657,7 +664,7 @@ class Multinomial(Distribution):
         return max([(v, p) for v, p in zip(self.values, self._p)], key=itemgetter(1))[0]
 
     def set_data(self, data):
-        self._p = [list(data).count(x) / len(data) for x in self.values]
+        self._p = np.array([list(data).count(x) / len(data) for x in self.values])
         return self
 
     def update(self, dist, weight):
@@ -668,6 +675,15 @@ class Multinomial(Distribution):
         self._p *= 1 - weight
         self._p += dist._p * weight
         return self
+
+    @staticmethod
+    def merge(distributions, weights):
+        if not all(distributions[0].values == v.values for v in distributions):
+            raise TypeError('Only distributions of the same type can be merged.')
+        p = np.zeros(distributions[0].n_values)
+        for d, w in zip(distributions, weights):
+            p += d._p * w
+        return type(distributions[0])(p=p)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
