@@ -1,3 +1,5 @@
+import pprint
+
 import pandas as pd
 import pyximport
 
@@ -287,17 +289,21 @@ def tourism():
     PersonaType = SymbolicType('PersonaType', df['Persona'].unique())
 
     price = NumericVariable('Price', Numeric)
-    t = NumericVariable('Time', Numeric)
+    t = NumericVariable('Time', Numeric, haze=.1)
     d = SymbolicVariable('Destination', DestinationType)
     p = SymbolicVariable('Persona', PersonaType)
 
-    jpt = JPT([price, t, d, p], name="Müslitree", min_samples_leaf=15)
+    jpt = JPT(variables=[price, t, d, p], name="Tourism", min_samples_leaf=15)
     # out(df.values.T)
     jpt.learn(columns=df.values.T[1:])
 
     for clazz in df['Destination'].unique():
-        print(jpt.infer(query={d: clazz}, evidence={t: [150, 250], p: 'FAMILY'}))
-
+        print(jpt.infer(query={d: clazz}, evidence={t: 300}))
+        for exp in jpt.expectation([t, price], evidence={d: clazz}, confidence_level=.95):
+            print(exp)
+    for persona in df['Persona'].unique():
+        for exp in jpt.expectation([t, price], evidence={p: persona}, confidence_level=.95):
+            print(exp)
     jpt.plot()  # plotvars=[price, t]
 
 

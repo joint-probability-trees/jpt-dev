@@ -2,9 +2,11 @@
 '''
 import html
 import math
+import numbers
 import operator
 import os
 import pickle
+import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 
@@ -18,12 +20,11 @@ from dnutils import first, out, ifnone
 from sklearn.tree import DecisionTreeRegressor
 
 from .learning.distributions import Distribution
-from .base.intervals import ContinuousSet as Interval, EXC, INC, R
+from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
 
 from .learning.impurity import Impurity
-from .base.constants import plotstyle, orange, green
-from .base.utils import list2interval, format_path
-
+from .base.constants import plotstyle, orange, green, SYMBOL
+from .base.utils import list2interval, format_path, normalized
 
 style.use(plotstyle)
 
@@ -401,12 +402,8 @@ class JPT:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
-        evidence = ifnone(evidence, {})
-        query = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
-        evidence = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in evidence.items()}
-        # Transform into internal values (symbolic values to their indices)
-        evidence_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in evidence.items()}
-        query_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in query.items()}
+        query_ = self._prepropress_query(query)
+        evidence_ = ifnone(evidence, {}, self._prepropress_query)
 
         r = Result(query_, evidence_)
 
@@ -440,6 +437,61 @@ class JPT:
         r.result = p_q / p_e
         r.weights = [w / p_e for w in r.weights]
         return r
+
+    def expectation(self, variables=None, evidence=None, confidence_level=None):
+        '''
+        Compute the expected value of all ``variables``. If no ``variables`` are passed,
+        it defaults to all variables not passed as ``evidence``.
+        '''
+        evidence_ = self._prepropress_query(ifnone(evidence, {}))
+        conf_level = ifnone(confidence_level, .95)
+        variables = ifnone(variables, set(self.variables) - set(evidence_))
+        distributions = {var: deque() for var in variables}
+
+        result = {var: ExpectationResult(var, evidence_, confidence_level) for var in variables}
+
+        for leaf in self.apply(evidence_):
+            p_m = 1
+            for var in set(evidence_.keys()) - set(leaf.path.keys()):
+                evidence_val = evidence_[var]
+                if var.numeric and var in leaf.path:
+                    evidence_val = evidence_val.intersection(leaf.path[var])
+                p_m *= leaf.distributions[var].p(evidence_val)
+
+            for var in variables:
+                distributions[var].append((leaf.distributions[var], p_m))
+
+        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
+                                            normalized([w for _, w in distributions[var]])) for var in distributions}
+        expectations = {var: dist.expectation() for var, dist in posteriors.items()}
+
+        for var, dist in posteriors.items():
+            result[var].result = expectations[var]
+            if var.numeric:
+                result[var].lower = dist.ppf.eval(max(0, (dist.cdf.eval(expectations[var]) - conf_level / 2)))
+                result[var].upper = dist.ppf.eval(min(1, (dist.cdf.eval(expectations[var]) + conf_level / 2)))
+
+        return list(result.values())
+
+    def _prepropress_query(self, query):
+        '''
+        Transform a query entered by a user into an internal representation
+        that can be further processed.
+        '''
+        # Transform lists into a numeric interval:
+        query_ = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
+        # Transform single numeric values in to intervals given by the haze
+        # parameter of the respective variable:
+        for var, val in list(query_.items()):
+            if var.numeric and isinstance(val, numbers.Number):
+                prior = self.priors[var]
+                quantile = prior.cdf.eval(val)
+                query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
+                                            prior.ppf.eval(min(1, quantile + var.haze / 2)))
+        # Transform into internal values (symbolic values to their indices):
+        query_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in query_.items()}
+        JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
+        return query_
 
     def apply(self, query):
         # if the sample doesn't match the features of the tree, there is no valid prediction possible
@@ -674,7 +726,7 @@ class JPT:
                 dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
 
         # show graph
-        logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
+        JPT.logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
         dot.render(view=view, cleanup=False)
 
     def pickle(self, fpath):
@@ -695,10 +747,10 @@ class JPT:
         '''
         with open(os.path.abspath(fpath), 'rb') as f:
             try:
-                logger.info(f'Loading JPT {os.path.abspath(fpath)}')
+                JPT.logger.info(f'Loading JPT {os.path.abspath(fpath)}')
                 return pickle.load(f)
             except ModuleNotFoundError:
-                logger.error(f'Could not load file {os.path.abspath(fpath)}')
+                JPT.logger.error(f'Could not load file {os.path.abspath(fpath)}')
                 raise Exception(f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.')
 
     @staticmethod
@@ -766,9 +818,9 @@ class Result:
 
     def format_result(self):
         return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
-                                         ' | ' if self.evidence else '',
-                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
-                                         self.result * 100))
+                                        ' | ' if self.evidence else '',
+                                        ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                        self.result * 100))
 
     def explain(self):
         result = self.format_result()
@@ -776,3 +828,21 @@ class Result:
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
             result += '%.3f%%: %s\n' % (weight, format_path({var: val for var, val in leaf.path.items() if var not in self.evidence}))
         return result
+
+
+class ExpectationResult(Result):
+
+    def __init__(self, query, evidence, theta, lower=None, upper=None, res=None, cand=None, w=None):
+        super().__init__(query, evidence, res=res, cand=cand, w=w)
+        self.theta = theta
+        self.lower = lower
+        self.upper = upper
+
+    def format_result(self):
+        left = 'E(%s%s%s; %s = %.3f)' % (self.query,
+                                         ' | ' if self.evidence else '',
+                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                         SYMBOL.THETA,
+                                         self.theta)
+        right = '[%.3f; %.3f; %.3f]' % (self.lower, self.result, self.upper) if self.query.numeric else self.query.str(self.result)
+        return '%s = %s' % (left, right)
