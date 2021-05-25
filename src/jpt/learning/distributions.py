@@ -6,7 +6,7 @@ from jpt.base.utils import classproperty
 
 pyximport.install()
 
-from ..base.quantiles import Quantiles
+from ..base.quantiles import Quantiles, QuantileDistribution
 
 import copy
 import math
@@ -491,11 +491,9 @@ class Numeric(Distribution):
     '''
     values = []
 
-    def __init__(self, cdf=None, pdf=None, ppf=None):
+    def __init__(self, quantile=None):
         super().__init__()
-        self._cdf = cdf
-        self._pdf = pdf
-        self._ppf = ppf
+        self._quantile = quantile
 
     def __str__(self):
         if self.p is None:
@@ -504,19 +502,15 @@ class Numeric(Distribution):
 
     @property
     def cdf(self):
-        return self._cdf
-
-    @cdf.setter
-    def cdf(self, cdf):
-        self._cdf = cdf
+        return self._quantile.cdf
 
     @property
     def pdf(self):
-        return self._pdf
+        return self._quantile.pdf
 
     @property
     def ppf(self):
-        return self._ppf
+        return self._quantile.ppf
 
     def sample(self, n):
         raise NotImplemented()
@@ -536,16 +530,14 @@ class Numeric(Distribution):
 
     def set_data(self, data):
         d = np.array(data, dtype=np.float64)
-        quantiles = Quantiles(d)
-        self._cdf = quantiles.cdf()
-        self._pdf = quantiles.pdf()
-        self._ppf = quantiles.invcdf()
+        self._quantile = QuantileDistribution()
+        self._quantile.fit(np.ascontiguousarray(data, dtype=np.float64))
         return self
 
     def p(self, value):
         if isinstance(value, numbers.Number):
             return 0
-        return (self._cdf.eval(value.upper) if value.upper != np.PINF else 1.) - (self._cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+        return (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) - (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the piecewise linear function representing the variable's cumulative distribution function
@@ -569,9 +561,9 @@ class Numeric(Distribution):
         ax.set_title(f'{title or f"Piecewise linear CDF of {self._cl}"}')
         ax.set_xlabel('value')
         ax.set_ylabel('%')
-        bounds = np.array([v.upper for v in self._cdf.intervals[:-2]] + [self._cdf.intervals[-1].lower])
+        bounds = np.array([v.upper for v in self.cdf.intervals[:-2]] + [self.cdf.intervals[-1].lower])
 
-        ax.plot(bounds, self._cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', label='Piecewise CDF from bounds', linewidth=2, markersize=12)
+        ax.plot(bounds, self.cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', label='Piecewise CDF from bounds', linewidth=2, markersize=12)
         ax.legend()  # do we need a legend with only one plotted line?
         fig.tight_layout()
 
