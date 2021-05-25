@@ -128,3 +128,27 @@ def list2interval(l):
     lower, upper = l
     return ContinuousSet(np.NINF if lower in (np.NINF, -float('inf'), None) else lower,
                          np.PINF if upper in (np.PINF, float('inf'), None) else upper)
+
+
+def normalized(dist, identity_on_zeros=False, allow_neg=False):
+    '''Returns a modification of ``seq`` in which all elements sum to 1, but keep their proportions.'''
+    if isinstance(dist, (list, np.ndarray)):
+        dist_ = {i: p for i, p in enumerate(dist)}
+    else:
+        dist_ = dict(dist)
+    signs = {k: np.sign(v) for k, v in dist_.items()}
+    if not all(e >= 0 for e in dist_.values()) and not allow_neg:
+        raise ValueError('Negative elements not allowed.')
+    absvals = {k: abs(v) for k, v in dist_.items()}
+    z = sum(absvals.values())
+    if not z and not identity_on_zeros:
+        raise ValueError('Not a proper distribution: %s' % dist)
+    elif not z and identity_on_zeros:
+        return [0] * len(dist)
+    if isinstance(dist, dict):
+        return {e: absvals[e] / z * signs[e] for e in dist_}
+    else:
+        rval = [absvals[e] / z * signs[e] for e in range(len(dist_))]
+        if isinstance(dist, np.ndarray):
+            return np.array(rval)
+        return rval
