@@ -4,7 +4,7 @@
 import numbers
 
 import numpy as np
-from dnutils import first
+from dnutils import first, ifnone
 
 from jpt.base.intervals import INC, EXC
 from jpt.learning.distributions import Multinomial, Numeric
@@ -69,20 +69,13 @@ class Variable:
 
     def str(self, assignment, **kwargs):
         raise NotImplemented()
-        # if type(assignment) is set:
-        #     if len(assignment) == 1:
-        #         valstr = str(first(assignment))
-        #     else:
-        #         valstr = f'{{{",".join(map(str, assignment))}}}'
-        # else:
-        #     valstr = str(assignment)
-        # return f'{self.name} {SYMBOL.IN} {valstr}'
 
 
 class NumericVariable(Variable):
 
-    def __init__(self, name, domain, min_impurity_improvement=None):
+    def __init__(self, name, domain, min_impurity_improvement=None, haze=None):
         super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
+        self.haze = ifnone(haze, .05)
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')
