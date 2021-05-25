@@ -40,6 +40,12 @@ class Variable:
         return self._domain
 
     def dist(self, params=None, data=None):
+        '''
+        Create and return a new instance of the distribution type attached to this variable.
+
+        Either the distribution ``params`` can be passed or the ``data`` the distribution parameters
+        are to be determined from.
+        '''
         if data is None:
             return self._domain(params)
         elif data is not None:
