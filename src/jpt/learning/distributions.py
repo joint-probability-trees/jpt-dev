@@ -2,11 +2,11 @@
 '''
 import pyximport
 
-from jpt.utils import classproperty
+from jpt.base.utils import classproperty
 
 pyximport.install()
 
-from quantiles import Quantiles
+from ..base.quantiles import Quantiles
 
 import copy
 import math
@@ -28,9 +28,8 @@ from numpy import iterable
 
 import matplotlib.pyplot as plt
 
-from jpt.constants import sepcomma
-from intervals import ContinuousSet as Interval, ContinuousSet
-from jpt.sampling import wsample, wchoice
+from jpt.base.constants import sepcomma
+from jpt.base.sampling import wsample, wchoice
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
 
@@ -492,9 +491,11 @@ class Numeric(Distribution):
     '''
     values = []
 
-    def __init__(self, cdf=None):
+    def __init__(self, cdf=None, pdf=None, ppf=None):
         super().__init__()
         self._cdf = cdf
+        self._pdf = pdf
+        self._ppf = ppf
 
     def __str__(self):
         if self._p is None:
@@ -508,6 +509,14 @@ class Numeric(Distribution):
     @cdf.setter
     def cdf(self, cdf):
         self._cdf = cdf
+
+    @property
+    def pdf(self):
+        return self._pdf
+
+    @property
+    def ppf(self):
+        return self._ppf
 
     def sample(self, n):
         raise NotImplemented()
@@ -527,7 +536,10 @@ class Numeric(Distribution):
 
     def set_data(self, data):
         d = np.array(data, dtype=np.float64)
-        self._cdf = Quantiles(d).cdf()
+        quantiles = Quantiles(d)
+        self._cdf = quantiles.cdf()
+        self._pdf = quantiles.pdf()
+        self._ppf = quantiles.invcdf()
         return self
 
     def p(self, value):
@@ -617,7 +629,6 @@ class Multinomial(Distribution):
         return type(self) is type(other) and (self._p == other._p).all()
 
     def __hash__(self):
-        # return hash(f'{self._cl}{self.values}')
         return hash((Multinomial, self.values, self._p))
 
     def __str__(self):
@@ -655,6 +666,15 @@ class Multinomial(Distribution):
 
     def set_data(self, data):
         self._p = [list(data).count(x) / len(data) for x in self.values]
+        return self
+
+    def update(self, dist, weight):
+        if not 0 <= weight <= 1:
+            raise ValueError('Weight must be in [0, 1]')
+        if self._p is None:
+            self._p = np.zeros(self.n_values)
+        self._p *= 1 - weight
+        self._p += dist._p * weight
         return self
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):

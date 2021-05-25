@@ -3,7 +3,7 @@ from numpy import iterable
 
 from dnutils import out
 from jpt.learning.distributions import Bool
-from jpt.learning.trees import JPT
+from jpt.trees import JPT
 from jpt.variables import SymbolicVariable
 
 

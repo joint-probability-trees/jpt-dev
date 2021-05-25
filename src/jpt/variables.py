@@ -6,14 +6,16 @@ import numbers
 import numpy as np
 from dnutils import first
 
-from intervals import INC, EXC
+from jpt.base.intervals import INC, EXC
 from jpt.learning.distributions import Multinomial, Numeric
-from jpt.utils import SYMBOL
+from jpt.base.constants import SYMBOL
 
 
 class Variable:
-    '''Abstract class for a variable name along with its distribution class type.
     '''
+    Abstract class for a variable name along with its distribution class type.
+    '''
+
     def __init__(self, name, domain, min_impurity_improvement=None):
         '''
         :param name:    name of the variable

@@ -26,6 +26,7 @@ def test_muesli():
     # df = pd.DataFrame({'X': data[0] + 3, 'Y': data[1] + 2, 'Class': data[2]})
     # df.to_pickle('data/human_muesli.dat')
     df = pd.read_pickle('data/human_muesli.dat')
+    # df.to_csv('data/tourism.csv')
 
     # pprint.pprint(data)
 

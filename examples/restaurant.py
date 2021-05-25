@@ -1,6 +1,6 @@
 from dnutils import out
 from jpt.learning.distributions import Bool, SymbolicType
-from jpt.learning.trees import JPT
+from jpt.trees import JPT
 from jpt.variables import SymbolicVariable
 
 

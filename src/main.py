@@ -2,8 +2,7 @@ import pprint
 
 import pandas as pd
 import pyximport
-from dnutils.stats import print_stopwatches
-from jpt.sampling import wchoice
+from jpt.base.sampling import wchoice
 
 pyximport.install()
 
@@ -15,10 +14,10 @@ from numpy import iterable
 
 from dnutils import out
 from jpt.learning.distributions import Bool, Numeric, HistogramType, SymbolicType
-from intervals import ContinuousSet as Interval
-from jpt.learning.trees import JPT
+from jpt.base.intervals import ContinuousSet as Interval
+from jpt.trees import JPT
 from jpt.variables import Variable, SymbolicVariable, NumericVariable
-from quantiles import Quantiles
+from jpt.base.quantiles import Quantiles
 
 
 class Conditional:
@@ -176,12 +175,12 @@ def alarm():
     J_[False] = Bool(.05)
 
     c = 0.
-    t = 1
+    t = 10
     for i in range(t):
 
         # Construct the CSV for learning
         data = []
-        for i in range(1000):
+        for i in range(10000):
             e = E.dist(.2).sample_one()
             b = B.dist(.1).sample_one()
             a = A_.sample_one([e, b])
@@ -199,7 +198,7 @@ def alarm():
 
         tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
         tree.learn(data)
-        tree.sklearn_tree()
+        # tree.sklearn_tree()
         # tree.plot(plotvars=[E, B, A, M, J])
         # conditional
         # q = {A: True}
@@ -219,11 +218,11 @@ def alarm():
     # tree.learn(data)
     # out(tree)
     res = tree.infer(q, e)
-    res.explain()
+    print(res.explain())
 
     # print_stopwatches()
-    print('AVG', c/t)
-    tree.plot(plotvars=[E, B, A, M, J])
+    # print('AVG', c/t)
+    tree.plot()
 
 
 def test_merge():
@@ -372,10 +371,10 @@ def main(*args):
     # restaurant()  # for bools and strings
     # restaurantsample()
     # test_muesli()
-    muesli_tree()  # for numerics and strings
+    # muesli_tree()  # for numerics and strings
     # picklemuesli()
     # alarm()  # for bools
-    # tourism()
+    tourism()
     # fraport()
 
 

@@ -14,18 +14,17 @@ import numpy as np
 from dnutils.stats import stopwatch
 from graphviz import Digraph
 from matplotlib import style
-from sklearn.metrics import mean_squared_error
 
 import dnutils
-from dnutils import first, out, ifnone, stop
+from dnutils import first, out, ifnone
 from sklearn.tree import DecisionTreeRegressor
 
-from .distributions import Distribution
-from intervals import ContinuousSet as Interval, EXC, INC, R
+from .learning.distributions import Distribution
+from .base.intervals import ContinuousSet as Interval, EXC, INC, R
 
-from .impurity import Impurity
-from ..constants import plotstyle, orange, green
-from ..utils import rel_entropy, list2interval
+from .learning.impurity import Impurity
+from .base.constants import plotstyle, orange, green
+from .base.utils import list2interval, format_path
 
 logger = dnutils.getlogger(name='TreeLogger', level=dnutils.DEBUG)
 
@@ -64,7 +63,7 @@ class Node:
         return res
 
     def format_path(self):
-        return ' ^ '.join([var.str(val, fmt='logic') for var, val in self.path.items()])
+        return format_path(self.path)
 
     def __str__(self):
         return (f'Node<{self.idx}>')
@@ -126,9 +125,10 @@ class Leaf(Node):
     '''
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
-    def __init__(self, idx, parent=None, treename=None):
+    def __init__(self, idx, parent=None, prior=None, treename=None):
         super().__init__(idx, parent=parent, treename=treename)
         self.distributions = defaultdict(Distribution)
+        self.prior = prior
 
     @property
     def str_node(self):
@@ -194,129 +194,6 @@ class JPT:
     def variables(self):
         return self._variables
 
-    def impurity(self, indices, var):
-        r'''Calculate the impurity/mean squared error for the data set identified by `indices`, i.e.
-
-        :param indices: the indices for the training samples used to calculate the gain
-        :type indices:  [[int]]
-        :param var:
-        :type var:      jpt.variables.Variable
-
-        .. math::
-            MSE = \frac{1}{n} · \sum_{i=1}^{n} (y_i - \hat{y}_i)^2
-        '''
-        if not indices:
-            return 0.
-
-        var_idx = self._variables.index(var)
-
-        if var.symbolic:
-            plain = np.array([self.data[i, var_idx] for i in indices])
-            # count occurrences for each value of the variable and determine their probability
-            _, counts = np.unique(plain, return_counts=True)
-            probs = counts / plain.shape[0]
-            out(f'impurity {var.name} {rel_entropy(probs)}')
-            # calculate actual impurity for variable
-            return rel_entropy(probs)
-
-        elif var.numeric:
-            tgts_sklearn = np.array([self.data[i, var_idx] for i in indices])
-            # calculate mean for variable
-            ft_mean = np.mean(tgts_sklearn)
-            # calculate normalized mean squared error for variable
-            sqerr = mean_squared_error(tgts_sklearn, [ft_mean] * len(tgts_sklearn))
-            # calculate actual impurity for variable
-            return sqerr
-
-    def gains(self, indices, ft, tgt):
-        r'''Calculate the impurity for the data set after selection of feature `ft`, i.e.
-
-        :param indices: the indices for the training samples used to calculate the gain
-        :type indices:  [[int]]
-        :param ft:
-        :type ft:       jpt.variables.Variable
-        :param tgt:
-        :type tgt:      jpt.variables.Variable
-
-        .. math::
-            R(ft) = \sum_{i=1}^{v}\frac{p_i + n_i}{p+n} · I(\frac{p_i}{p_i + n_i}, \frac{n_i}{p_i + n_i})
-
-        '''
-
-        if not indices:
-            return {None: 0.}
-
-        impurity = self.impurity(indices, tgt)
-
-        # assuming all Examples have identical indices for their features
-        ft_idx = self.variables.index(ft)
-
-        # sort by ft values for easier dataset split
-        indices = sorted(indices, key=lambda i: self.data[i, ft_idx])
-        fts_plain = np.array([self.data[i, ft_idx] for i in indices])
-        distinct, counts = np.unique(fts_plain, return_counts=True)
-
-        if self.variables[ft_idx].symbolic:
-            probs = counts / len(indices)
-            # divide examples into distinct sets for each value of ft [[Example]]
-            partition = [[i for i in indices if self.data[i, ft_idx] == val] for val in distinct]
-            if not all(len(p) >= self.min_samples_leaf for p in partition):
-                return {None: 0}
-            # determine overall impurity after selection of ft by multiplying probability for each feature value with its impurity,  ({splitvalue: sqerr})
-            g = impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])
-            out(f'gain for {ft.name}: {g} => {0. if g < ft.min_impurity_improvement else g}')
-            gain = {None: 0. if g < ft.min_impurity_improvement else g}
-            # gain = {None: impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])}
-
-        if self.variables[ft_idx].numeric:
-            # determine split points of dataset
-            opts = [(a + b) / 2 for a, b in zip(distinct[:-1], distinct[1:])] if len(distinct) > 1 else distinct
-
-            # divide examples into distinct sets for the left (ft <= value) and right (ft > value) of ft [[Example]]
-            examples_ft = [(spp,
-                            [i for i in indices if self.data[i, ft_idx] <= spp],
-                            [i for i in indices if self.data[i, ft_idx] > spp]) for spp in opts]
-
-            # the squared errors for the left and right datasets of each split value ({splitvalue: sqerr})
-            gain = {mv: impurity - (self.impurity(left, tgt) * len(left) / len(indices) +
-                                    self.impurity(right, tgt) * len(right)) / len(indices) if len(left) >= self.min_samples_leaf and len(right) >= self.min_samples_leaf else 0
-                    for mv, left, right in examples_ft}
-
-        return gain
-
-    def compute_best_split(self, indices):
-        # calculate gains for each feature/target combination and normalize over targets
-        gains_tgt = defaultdict(dict)
-        for tgt in self.variables:
-            maxval = 0.
-            for ft in self.variables:
-                gains_tgt[tgt][ft] = self.gains(indices, ft, tgt)
-                maxval = max(maxval, *gains_tgt[tgt][ft].values())
-
-            # normalize gains for comparability
-            gains_tgt[tgt] = {ft: {v: g / maxval if maxval > 0. else 0 for v, g in gains_tgt[tgt][ft].items()} for ft in self._variables}
-
-        # determine (harmonic) mean of target gains
-        gains_ft_hm = defaultdict(lambda: defaultdict(dict))
-        for tgt, fts in gains_tgt.items():
-            for ft, sps in fts.items():
-                for sp, spval in sps.items():
-                    gains_ft_hm[ft][sp][tgt] = spval
-
-        # determine attribute with highest normalized information gain and its index
-        max_gain = -1
-        sp_best = None
-        ft_best = None
-        for ft, sps in gains_ft_hm.items():
-            for sp, tgts in sps.items():
-                hm = np.mean(list(gains_ft_hm[ft][sp].values()))
-                if max_gain < hm:
-                    sp_best = sp
-                    ft_best = ft
-                    max_gain = hm
-        ft_best_idx = self.variables.index(ft_best)
-        return ft_best_idx, sp_best, max_gain
-
     def c45(self, indices, parent, child_idx):
         '''
 
@@ -363,6 +240,7 @@ class JPT:
 
             for i, v in enumerate(self.variables):
                 leaf.distributions[v] = v.dist(data=data[:, i].T)
+                leaf.prior = data.shape[0] / self.data.shape[0]
 
             leaf.samples = len(indices)
 
@@ -541,7 +419,7 @@ class JPT:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 p_m *= leaf.distributions[var].p(evidence_val)
 
-            w = leaf.samples / self.root.samples
+            w = leaf.prior
             p_m *= w
             p_e += p_m
 
@@ -557,6 +435,7 @@ class JPT:
                 r.weights.append(p_m)
 
         r.result = p_q / p_e
+        r.weights = [w / p_e for w in r.weights]
         return r
 
     def apply(self, query):
@@ -655,6 +534,39 @@ class JPT:
         # nodes representing a path from a leaf to the root
         return paths
 
+    def compute_best_split(self, indices):
+        # calculate gains for each feature/target combination and normalize over targets
+        gains_tgt = defaultdict(dict)
+        for tgt in self.variables:
+            maxval = 0.
+            for ft in self.variables:
+                gains_tgt[tgt][ft] = self.gains(indices, ft, tgt)
+                maxval = max(maxval, *gains_tgt[tgt][ft].values())
+
+            # normalize gains for comparability
+            gains_tgt[tgt] = {ft: {v: g / maxval if maxval > 0. else 0 for v, g in gains_tgt[tgt][ft].items()} for ft in self._variables}
+
+        # determine (harmonic) mean of target gains
+        gains_ft_hm = defaultdict(lambda: defaultdict(dict))
+        for tgt, fts in gains_tgt.items():
+            for ft, sps in fts.items():
+                for sp, spval in sps.items():
+                    gains_ft_hm[ft][sp][tgt] = spval
+
+        # determine attribute with highest normalized information gain and its index
+        max_gain = -1
+        sp_best = None
+        ft_best = None
+        for ft, sps in gains_ft_hm.items():
+            for sp, tgts in sps.items():
+                hm = np.mean(list(gains_ft_hm[ft][sp].values()))
+                if max_gain < hm:
+                    sp_best = sp
+                    ft_best = ft
+                    max_gain = hm
+        ft_best_idx = self.variables.index(ft_best)
+        return ft_best_idx, sp_best, max_gain
+
     def plot(self, filename=None, directory='/tmp', plotvars=None, view=True):
         '''Generates an SVG representation of the generated regression tree.
 
@@ -714,7 +626,7 @@ class JPT:
                 nodelabel = f'''{nodelabel}{imgs}
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{len(n.samples) if isinstance(n.samples, list) else n.samples}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{n.samples} ({n.prior * 100:.3f}%)</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
@@ -851,5 +763,5 @@ class Result:
         result = self.format_result()
         result += '\n'
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '%.3f%%: %s\n' % (weight, leaf.format_path())
+            result += '%.3f%%: %s\n' % (weight, format_path({var: val for var, val in leaf.path.items() if var not in self.evidence}))
         return result

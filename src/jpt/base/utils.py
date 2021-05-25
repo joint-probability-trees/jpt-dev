@@ -4,16 +4,7 @@ from functools import reduce
 import numpy as np
 from dnutils import ifnone
 
-from intervals import ContinuousSet
-
-
-class SYMBOL:
-    LAND = '\u2227'
-    IN = '\u2208'
-    LT = '<'
-    GT = '>'
-    LTE = '\u2264'
-    GTE = '\u2265'
+from .intervals import ContinuousSet
 
 
 def mapstr(seq, format=None):
@@ -34,6 +25,14 @@ def tojson(obj):
     elif isinstance(obj, dict):
         return {str(k): tojson(v) for k, v in obj.items()}
     return obj
+
+
+def format_path(path):
+    '''
+    Returns a readible string representation of a conjunction of variable assignments,
+    given by the dictionary ``path``.
+    '''
+    return ' ^ '.join([var.str(val, fmt='logic') for var, val in path.items()])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -123,6 +122,9 @@ def classproperty(func):
 
 
 def list2interval(l):
+    '''
+    Converts a list representation of an interval to an instance of type
+    '''
     lower, upper = l
     return ContinuousSet(np.NINF if lower in (np.NINF, -float('inf'), None) else lower,
                          np.PINF if upper in (np.PINF, float('inf'), None) else upper)
