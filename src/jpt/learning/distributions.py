@@ -29,7 +29,7 @@ from numpy import iterable
 import matplotlib.pyplot as plt
 
 from jpt.constants import sepcomma
-from intervals import ContinuousSet as Interval
+from intervals import ContinuousSet as Interval, ContinuousSet
 from jpt.sampling import wsample, wchoice
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
@@ -497,9 +497,9 @@ class Numeric(Distribution):
         self._cdf = cdf
 
     def __str__(self):
-        if self.p is None:
+        if self._p is None:
             return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.values, self.p)])}]>'
 
     @property
     def cdf(self):
@@ -621,12 +621,12 @@ class Multinomial(Distribution):
         return hash((Multinomial, self.values, self._p))
 
     def __str__(self):
-        if self.p is None:
+        if self._p is None:
             return f'{self._cl}<p=n/a>'
         return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
 
     def __repr__(self):
-        if self.p is None:
+        if self._p is None:
             return f'{self._cl}<p=n/na>'
         return f'\n{self._cl}<p=[\n{sepcomma.join([f"{v}={p}"for v, p in zip(self.labels, self._p)])}]>;'
 
