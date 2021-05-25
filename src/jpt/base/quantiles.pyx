@@ -2,19 +2,23 @@
 
 import random
 from collections import deque
+from operator import itemgetter
 
-from dnutils import ifnot, out
+from dnutils import ifnot, out, first, stop
 from pyearth import Earth
 from pyearth._basis import ConstantBasisFunction, HingeBasisFunctionBase, LinearBasisFunction, HingeBasisFunction
 from scipy import stats
 from scipy.stats import norm
+from sklearn.tree._classes import DTYPE
 
-from .intervals cimport ContinuousSet, RealSet
+from .intervals cimport ContinuousSet, RealSet, _INC, _EXC
 from .intervals import R, EMPTY
 
 import numpy as np
 cimport numpy as np
 cimport cython
+
+from numpy cimport float64_t
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -474,6 +478,166 @@ GAUSSIAN = np.int32(_GAUSSIAN)
 UNIFORM = np.int32(_UNIFORM)
 
 
+cdef class QuantileDistribution:
+    '''
+    Abstract base class for any quantile-parameterized cumulative data distribution.
+    '''
+
+    cdef np.float64_t epsilon
+    cdef np.float64_t penalty
+    cdef np.int32_t verbose
+    cdef np.int32_t min_samples_mars
+    cdef PiecewiseFunction _cdf, _pdf, _ppf
+
+    def __init__(self, epsilon=.001, penalty=3., min_samples_mars=5, verbose=False):
+        self.epsilon = epsilon
+        self.penalty = penalty
+        self.verbose = verbose
+        self.min_samples_mars = min_samples_mars
+        self._cdf = None
+        self._pdf = None
+        self._ppf = None
+
+    def fit(self, np.float64_t[::1] data, presorted=False):
+        # Sort the data if necessary
+        cdef np.float64_t[::1] y, x
+
+        if not presorted:
+            data = np.sort(data)
+
+        x, counts = np.unique(data, return_counts=True)
+        y = np.asarray(counts, dtype=np.float64)
+        cdef np.int32_t i
+        cdef np.float64_t n_samples = x.shape[0]
+        for i in range(x.shape[0]):
+            y[i] /= n_samples
+        np.cumsum(y, out=np.asarray(y))
+
+        self._ppf = self._pdf = None
+        # Use simple linear regression when fewer than min_samples_mars points are available
+        if 1 < y.shape[0] < self.min_samples_mars:
+            self._cdf = PiecewiseFunction()
+            self._cdf.intervals.append(R.copy())
+            self._cdf.functions.append(LinearFunction(0, 0).fit(x, y))
+
+        elif self.min_samples_mars <= x.shape[0]:
+            self._cdf = fit_piecewise(x, y,
+                                      epsilon=self.epsilon,
+                                      penalty=self.penalty, verbose=self.verbose)
+
+        else:
+            self._cdf = PiecewiseFunction()
+            self._cdf.intervals.append(R.copy())
+            self._cdf.functions.append(ConstantFunction(1))
+
+        self._cdf.ensure_left(ConstantFunction(0), x[0])
+        self._cdf.ensure_right(ConstantFunction(1), x[-1])
+        return self
+
+    @property
+    def cdf(self):
+        return self._cdf
+
+    @property
+    def pdf(self):
+        if self._cdf is None:
+            raise RuntimeError('No quantile distribution fitted. Call fit() first.')
+
+        elif self._pdf is None:
+            pdf = self._cdf.differentiate()
+            if len(self._cdf.intervals) == 2:
+                pdf.intervals.insert(1, ContinuousSet(pdf.intervals[0].upper,
+                                                      np.nextafter(pdf.intervals[0].upper,
+                                                                   pdf.intervals[0].upper + 1), _INC, _EXC))
+                pdf.intervals[-1].lower = np.nextafter(pdf.intervals[-1].lower,
+                                                       pdf.intervals[-1].lower + 1)
+                pdf.functions.insert(1, ConstantFunction(np.PINF))
+            # if simplify:
+            #     pdf = pdf.simplify(samples, epsilon=ifnan(epsilon, self.epsilon), penalty=ifnan(penalty, self.penalty))
+            self._pdf = pdf
+        return self._pdf
+
+    @property
+    def ppf(self):
+        cdef PiecewiseFunction ppf
+        cdef ContinuousSet interval
+        cdef Function f
+
+        if self._cdf is None:
+            raise RuntimeError('No quantile distribution fitted. Call fit() first.')
+
+        elif self._ppf is None:
+            ppf = PiecewiseFunction()
+
+            ppf.intervals.append(ContinuousSet(np.NINF, 0, _EXC, _EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
+            ppf.functions.append(Undefined())
+
+            for interval, f in zip(self._cdf.intervals[1:-1], self._cdf.functions[1:-1]):
+                if f.is_invertible():
+                    ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper,
+                                                       f(interval.upper),
+                                                       _INC, _EXC))
+                    ppf.functions.append(f.invert())
+
+            ppf.intervals.append(ContinuousSet(1, np.nextafter(1, 2), _INC, _EXC))
+            ppf.functions.append(ConstantFunction(self._cdf.intervals[-1].lower))
+
+            ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.PINF, _INC, _EXC))
+            ppf.functions.append(Undefined())
+            self._ppf = ppf
+        return self._ppf
+
+    @staticmethod
+    def merge(distributions, weights):
+        '''
+        Construct a merged quantile-distribution from the passed distributions using the ``weights``.
+        '''
+        intervals = [ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)]
+        functions = [ConstantFunction(0)]
+        lower = sorted([(i.lower, f, w)
+                        for d, w in zip(distributions, weights)
+                        for i, f in zip(d.cdf.intervals, d.cdf.functions)],
+                       key=itemgetter(0))
+        upper = sorted([(i.upper, f, w)
+                        for d, w in zip(distributions, weights)
+                        for i, f in zip(d.cdf.intervals, d.cdf.functions)],
+                       key=itemgetter(0))
+        m = 0
+        while lower or upper:
+            pivot = None
+            # Process all function intervals whose lower bound is minimal and
+            # smaller than the smallest upper interval bound
+            while lower and (pivot is None and first(lower, first) <= first(upper, first, np.PINF) or
+                   pivot == first(lower, first, np.PINF)):
+                l, f, w = lower.pop(0)
+                if isinstance(f, ConstantFunction) or l == np.NINF:
+                    continue
+                m += f.m * w
+                pivot = l
+            # Do the same for the upper bounds...
+            while upper and (pivot is None and first(upper, first) <= first(lower, first, np.PINF) or
+                   pivot == first(upper, first, np.PINF)):
+                u, f, w = upper.pop(0)
+                if isinstance(f, ConstantFunction) or u == np.PINF:
+                    continue
+                m -= f.m * w
+                pivot = u
+            if pivot is None:
+                continue
+            # Split the last interval at the pivot point
+            intervals[-1].upper = pivot
+            intervals.append(ContinuousSet(pivot, np.PINF, _INC, _EXC))
+            # Evaluate the old function at the new pivot point to get the intercept
+            functions.append(LinearFunction(m, functions[-1].eval(pivot) - m * pivot))
+        cdf = PiecewiseFunction()
+        cdf.functions = functions
+        cdf.intervals = intervals
+        cdf.ensure_right(ConstantFunction(1), l or u)
+        distribution = QuantileDistribution()
+        distribution._cdf = cdf
+        return distribution
+
+
 @cython.freelist(500)
 cdef class Quantiles:
     '''
@@ -577,11 +741,13 @@ cdef class Quantiles:
             for i, f in zip(cdf.intervals, cdf.functions):
                 if f.is_invertible():
                     inv_ = f.invert()
-                    inv.intervals.append(ContinuousSet(max(0, f(i.lower)), min(np.nextafter(1, 2), f(i.upper)), 1, 2))
+                    inv.intervals.append(ContinuousSet(max(0, f(i.lower)),
+                                                       min(np.nextafter(1, 2), f(i.upper)),
+                                                       _INC, _EXC))
                     inv.functions.append(inv_)
                 else:
                     if i.lower == np.NINF:
-                        inv.intervals.append(ContinuousSet(np.NINF, np.nextafter(f(i.lower), f(i.lower)-1), 2, 2))
+                        inv.intervals.append(ContinuousSet(np.NINF, np.nextafter(f(i.lower), f(i.lower)-1), _EXC, _EXC))
                         inv.functions.append(Undefined())
                     if i.upper == np.PINF:
                         inv.intervals[-1].upper = 1
@@ -831,14 +997,14 @@ cdef class PiecewiseFunction(Function):
         if xing == R:  # With all points are crossing points, we are done
             return
         elif xing and xing.lower < self.intervals[0].upper:
-            self.intervals.insert(0, ContinuousSet(np.NINF, xing.lower, 2, 2))
+            self.intervals.insert(0, ContinuousSet(np.NINF, xing.lower, _EXC, _EXC))
             self.intervals[1].lower = xing.lower
-            self.intervals[1].left = 1
+            self.intervals[1].left = _INC
             self.functions.insert(0, left)
         else:
-            self.intervals.insert(0, ContinuousSet(np.NINF, x, 2, 2))
+            self.intervals.insert(0, ContinuousSet(np.NINF, x, _EXC, _EXC))
             self.intervals[1].lower = x
-            self.intervals[1].left = 1
+            self.intervals[1].left = _INC
             self.functions.insert(0, left)
             if not self.intervals[1]:
                 del self.intervals[1]
@@ -849,14 +1015,14 @@ cdef class PiecewiseFunction(Function):
         if xing == R:  # With all points are crossing points, we are done
             return
         elif xing and xing.upper > self.intervals[-1].lower:
-            self.intervals.append(ContinuousSet(xing.lower, np.PINF, 1, 2))
+            self.intervals.append(ContinuousSet(xing.lower, np.PINF, _INC, _EXC))
             self.intervals[-2].upper = xing.upper
-            self.intervals[-2].left = 1
+            self.intervals[-2].left = _INC
             self.functions.append(right)
         else:
-            self.intervals.append(ContinuousSet(x, np.PINF, 1, 2))
+            self.intervals.append(ContinuousSet(x, np.PINF, _INC, _EXC))
             self.intervals[-2].upper = x
-            self.intervals[-2].left = 1
+            self.intervals[-2].left = _INC
             self.functions.append(right)
             if not self.intervals[-2]:
                 del self.intervals[-2]
@@ -1035,12 +1201,13 @@ cdef class PiecewiseFunction(Function):
 
 
 
-cpdef object fit_piecewise(np.float64_t[::1] x, np.float64_t[::1] y, np.float64_t epsilon=np.nan, np.float64_t penalty=np.nan,
-                           np.float64_t[::1] weights=None, np.int32_t verbose=False):
+cpdef object fit_piecewise(np.float64_t[::1] x, np.float64_t[::1] y, np.float64_t epsilon=np.nan,
+                           np.float64_t penalty=np.nan, np.float64_t[::1] weights=None,
+                           np.int32_t verbose=False):
     cdef np.int32_t max_terms = 2 * x.shape[0]
     epsilon = ifnan(epsilon, .001)
     penalty = ifnan(penalty, 3)
-    cdef object mars = Earth()  # thresh=epsilon, penalty=penalty, minspan=1, endspan=1, max_terms=max_terms)  # , check_every=1, minspan=0, endspan=0,
+    cdef object mars = Earth(thresh=epsilon, penalty=penalty)  # thresh=epsilon, penalty=penalty, minspan=1, endspan=1, max_terms=max_terms)  # , check_every=1, minspan=0, endspan=0,
     mars.fit(np.asarray(x), np.asarray(y)) #, sample_weight=weights)
     if verbose:
         print(mars.summary())
@@ -1072,10 +1239,10 @@ cpdef object fit_piecewise(np.float64_t[::1] x, np.float64_t[::1] y, np.float64_
         p = m * f_.get_knot() + c
         m += w
         c = p - m * f_.get_knot()
-        if f_.get_knot() == f.intervals[-1].lower:
+        if f_.get_knot() == f.intervals[-1].lower and m > 0:
             f.functions[-1].m = m
             f.functions[-1].c = c
-        elif f_.get_knot() in f.intervals[-1]:
+        elif f_.get_knot() in f.intervals[-1] and m > 0:
             f.intervals[-1].upper = f_.get_knot()
             f.intervals.append(ContinuousSet(f_.get_knot(), np.PINF, 1, 2))
             f.functions.append(LinearFunction(m, c))  # if m != 0 else ConstantFunction(c))

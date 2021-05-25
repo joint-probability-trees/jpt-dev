@@ -121,7 +121,7 @@ def alarm():
 
         # Construct the CSV for learning
         data = []
-        for i in range(1000):
+        for i in range(10000):
             e = E.dist(.2).sample_one()
             b = B.dist(.1).sample_one()
             a = A_.sample_one([e, b])
@@ -301,8 +301,6 @@ def tourism():
     jpt.plot()  # plotvars=[price, t]
 
 
-
-
 def main(*args):
 
     # test_merge()
@@ -311,8 +309,8 @@ def main(*args):
     # test_muesli()
     # muesli_tree()  # for numerics and strings
     # picklemuesli()
-    alarm()  # for bools
-    # tourism()
+    # alarm()  # for bools
+    tourism()
 
 
 # Press the green button in the gutter to run the script.

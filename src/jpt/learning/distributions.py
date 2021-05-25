@@ -669,8 +669,11 @@ class Multinomial(Distribution):
         return self
 
     def update(self, dist, weight):
+        if not 0 <= weight <= 1:
+            raise ValueError('Weight must be in [0, 1]')
         if self._p is None:
             self._p = np.zeros(self.n_values)
+        self._p *= 1 - weight
         self._p += dist._p * weight
         return self
 

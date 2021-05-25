@@ -240,13 +240,11 @@ cdef class RealSet(NumberSet):
 
 re_int = re.compile(r'(?P<ldelim>\(|\[|\])(?P<lval>.+),(?P<rval>.+)(?P<rdelim>\)|\]|\[)')
 
-
-cdef int _INC = 1
-cdef int _EXC = 2
-cdef int CLOSED = 2
-cdef int HALFOPEN = 3
-cdef int OPEN = 4
-
+_INC = 1
+_EXC = 2
+CLOSED = 2
+HALFOPEN = 3
+OPEN = 4
 
 INC = np.int32(_INC)
 EXC = np.int32(_EXC)
@@ -258,12 +256,17 @@ R = ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)
 
 @cython.final
 cdef class ContinuousSet(NumberSet):
-    '''Actual Interval representation. Wrapped by :class:`Interval` to allow more complex intervals with gaps.
+    '''
+    Actual Interval representation. Wrapped by :class:`Interval` to allow more complex intervals with gaps.
 
     .. seealso:: :class:`Interval`
     '''
 
-    def __init__(ContinuousSet self, np.float64_t lower=np.nan, np.float64_t upper=np.nan, np.int32_t left=INC, np.int32_t right=INC):
+    def __init__(ContinuousSet self,
+                 np.float64_t lower=np.nan,
+                 np.float64_t upper=np.nan,
+                 np.int32_t left=_INC,
+                 np.int32_t right=_INC):
         self.lower = lower
         self.upper = upper
         self.left = left
@@ -273,38 +276,52 @@ cdef class ContinuousSet(NumberSet):
     def fromstring(str s):
         interval = ContinuousSet()
         tokens = re_int.match(s.replace(" ", "").replace('∞', 'inf'))
+
         if tokens is None:
             raise ValueError('Malformed input string: "{}"'.format(interval))
+
         if tokens.group('ldelim') in ['(', ']']:
             interval.left = _EXC
+
         elif tokens.group('ldelim') == '[':
             interval.left = _INC
+
         else:
-            raise ValueError('Illegal left delimiter {} in interval {}'.format(tokens.group('ldelim'), interval))
+            raise ValueError('Illegal left delimiter {} in interval {}'.format(tokens.group('ldelim'),
+                                                                               interval))
+
         if tokens.group('rdelim') in [')', '[']:
             interval.right = _EXC
+
         elif tokens.group('rdelim') == ']':
             interval.right = _INC
+
         else:
-            raise ValueError('Illegal right delimiter {} in interval {}'.format(tokens.group('rdelim'), interval))
+            raise ValueError('Illegal right delimiter {} in interval {}'.format(tokens.group('rdelim'),
+                                                                                interval))
+
         try:
             interval.lower = np.float64(tokens.group('lval'))
             interval.upper = np.float64(tokens.group('rval'))
+
         except:
             traceback.print_exc()
-            raise ValueError('Illegal interval values {}, {} in interval {}'.format(tokens.group('lval'), tokens.group('rval'), interval))
+            raise ValueError('Illegal interval values {}, {} in interval {}'.format(tokens.group('lval'),
+                                                                                    tokens.group('rval'),
+                                                                                    interval))
+
         return interval
 
     cpdef inline np.int32_t itype(ContinuousSet self):
         return self.right + self.left
 
     cpdef inline np.int32_t isempty(ContinuousSet self):
-        if np.nextafter(self.lower, self.upper) == self.upper and self.itype() == OPEN:
-            return True
-        return self.lower >= self.upper and (_EXC == self.left or self.right == _EXC)
+        if self.lower >= self.upper:
+            return not self.isclosed()
+        return np.nextafter(self.lower, self.upper) == self.upper and self.itype() == OPEN
 
     cpdef inline np.int32_t isclosed(ContinuousSet self):
-        return self.itype() == OPEN
+        return self.itype() == CLOSED
 
     cpdef inline ContinuousSet emptyset(ContinuousSet self):
         return ContinuousSet(0, 0, _EXC, _EXC)
@@ -313,12 +330,19 @@ cdef class ContinuousSet(NumberSet):
         return ContinuousSet(np.NINF, np.inf, _EXC, _EXC)
 
     cpdef np.float64_t[::1] sample(ContinuousSet self, np.int32_t k=1, np.float64_t[::1] result=None):
+        '''
+        Draw from this interval ``k`` evenly distributed samples.
+        '''
         cdef np.float64_t upper = self.upper if self.right == _INC else np.nextafter(self.upper, self.upper - 1)
         cdef np.float64_t lower = self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
+
         if result is None:
-            result = np.random.uniform(max(np.finfo(np.float64).min, lower), min(np.finfo(np.float64).max, upper), k)
+            result = np.random.uniform(max(np.finfo(np.float64).min, lower),
+                                       min(np.finfo(np.float64).max, upper), k)
+
         else:
-            result[...] = np.random.uniform(max(np.finfo(np.float64).min, lower), min(np.finfo(np.float64).max, upper), k)
+            result[...] = np.random.uniform(max(np.finfo(np.float64).min, lower),
+                                            min(np.finfo(np.float64).max, upper), k)
         # make sure to not sample open bounds
         # cdef np.int32_t i
         # if not self.isclosed():
@@ -327,35 +351,46 @@ cdef class ContinuousSet(NumberSet):
         #             s[i] = np.random.uniform(np.max(np.finfo(np.float64).min, self.lower), min(np.finfo(np.float64).max, self.upper))
         return result
 
-    cpdef np.float64_t[::1] linspace(ContinuousSet self, np.int32_t num, np.float64_t default_step=1, np.float64_t[::1] result=None):
+    cpdef np.float64_t[::1] linspace(ContinuousSet self,
+                                     np.int32_t num,
+                                     np.float64_t default_step=1,
+                                     np.float64_t[::1] result=None):
         cdef np.float64_t start, stop
         cdef np.float64_t[::1] samples
+
         if result is None:
             samples = np.ndarray(shape=num, dtype=np.float64)
         else:
             samples = result
+
         cdef np.float64_t n
         cdef np.float64_t space, val
         cdef np.int32_t alternate = 1
+
         if self.lower == np.NINF and self.upper == np.PINF:
             alternate = -1
             space = default_step
             start = 0
+
         elif self.lower == np.NINF:
             space = -default_step
             start = self.upper
+
         elif self.upper == np.PINF:
             space = default_step
             start = self.lower
+
         else:
             start = self.lower
             stop = self.upper
             if num > 1:
                 n = <np.float64_t> num - 1
                 space = abs((stop - start)) / n
+
         val = start
         cdef np.int64_t i
         cdef np.int32_t pos = math.floor(num / 2) - (0 if num % 2 else 1)
+
         if num == 1:
             if alternate == -1:
                 samples[0] = 0
@@ -365,16 +400,20 @@ cdef class ContinuousSet(NumberSet):
                 samples[0] = self.lower
             else:
                 samples[0] = (stop + start) / 2
+
         else:
             for i in range(num - 1, -1, -1) if space < 0 else range(num):
                 pos += i * (-1) ** (i + 1)
                 samples[i if alternate == 1 else pos] = val if (alternate != -1 or i % 2) else -val
                 if alternate != -1 or (not i % 2 or val == 0):
                     val += space
+
         if self.left == EXC and self.lower != np.NINF:
             samples[0] = np.nextafter(samples[0], samples[0] + 1)
+
         if self.right == EXC and self.upper != np.PINF:
             samples[-1] = np.nextafter(samples[-1], samples[-1] - 1)
+
         return samples
 
     cpdef inline ContinuousSet copy(ContinuousSet self):
@@ -421,6 +460,7 @@ cdef class ContinuousSet(NumberSet):
     cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other):
         if not self.intersects(other):
             return self.emptyset()
+
         cdef np.int32_t left = max(self.left, other.left) if self.lower == other.lower else (self.left if self.lower > other.lower else other.left)
         cdef np.int32_t right = max(self.right, other.right) if self.upper == other.upper else (self.right if self.upper < other.upper else other.right)
         return ContinuousSet(max(self.lower, other.lower), min(self.upper, other.upper), left, right)
@@ -497,15 +537,18 @@ cdef class ContinuousSet(NumberSet):
     def __str__(self):
         if self.isempty():
             return _EMPTYSET
-        if self.lower == self.upper and self.left == self.right == INC:
+        if self.lower == self.upper and self.left == self.right == _INC:
             return '[%.3f]' % self.lower
-        return '{}{},{}{}'.format('[' if self.left == INC else ']',
+        return '{}{},{}{}'.format({_INC: '[', _EXC: ']'}[self.left],
                                   '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
                                   '∞' if self.upper == np.inf else ('%.3f' % self.upper),
-                                  ']' if self.right == INC else '[')
+                                  {_INC: ']', _EXC: '['}[self.right])
 
     def __repr__(self):
-        return '<{}={}>'.format(self.__class__.__name__, str(self))
+        return '<{}={}>'.format(self.__class__.__name__, '{}{},{}{}'.format({_INC: '[', _EXC: ']'}[self.left],
+                                                                            '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
+                                                                            '∞' if self.upper == np.inf else ('%.3f' % self.upper),
+                                                                            {_INC: ']', _EXC: '['}[self.right]))
 
     def __bool__(self):
         return self.size() != 0

@@ -4,6 +4,13 @@ cimport numpy as np
 cimport cython
 
 
+cdef int _INC = 1
+cdef int _EXC = 2
+cdef int CLOSED = 2
+cdef int HALFOPEN = 3
+cdef int OPEN = 4
+
+
 cdef class NumberSet:
     pass
 
