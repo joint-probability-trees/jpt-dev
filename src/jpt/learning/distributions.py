@@ -1,12 +1,12 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import pyximport
+pyximport.install()
 
 from jpt.base.utils import classproperty
 
-pyximport.install()
 
-from ..base.quantiles import Quantiles, QuantileDistribution
+from ..base.quantiles import QuantileDistribution
 
 import copy
 import math

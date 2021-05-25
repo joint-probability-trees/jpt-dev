@@ -1,6 +1,7 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import html
+import itertools
 import math
 import numbers
 import operator
@@ -310,10 +311,13 @@ class JPT:
                 f'JPT stats: #innernodes = {len(self.innernodes)}, ' 
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
-    def _p(self, root, indent):
+    def _p(self, parent, indent):
+        out('parent', parent)
+        if parent is None:
+            return "{}None\n".format(" " * indent)
         return "{}{}\n{}".format(" " * indent,
-                                 str(root),
-                                 ''.join([self._p(r, indent + 5) for r in ifnone(root.children, [])]))
+                                 str(parent),
+                                 ''.join([self._p(r, indent + 5) for r in ifnone(parent.children, [])]))
 
     def learn(self, data=None, rows=None, columns=None):
         '''Fits the ``data`` into a regression tree.
@@ -367,6 +371,7 @@ class JPT:
         elif self.leaves:
             self.root = self.leaves[0]
         else:
+            stop('NO INNER NODES!', self.innernodes, self.leaves)
             self.root = None
 
         # --------------------------------------------------------------------------------------------------------------
@@ -534,57 +539,46 @@ class JPT:
         else:
             return iv
 
-    def reverse(self, query):
+    def reverse(self, query, confidence=.5):
         '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
 
         :param query: a mapping from featurenames to either numeric value intervals or an iterable of categorical values
         :type query: dict
+        :param confidence:  the confidence level for this MPE inference
+        :type confidence: float
         :returns: a mapping from probabilities to lists of matcalo.core.algorithms.JPT.Node (path to root)
         :rtype: dict
         '''
-
         # if none of the target variables is present in the query, there is no match possible
-        if set(query.keys()).isdisjoint(set(self.targets)):
+        if set(query.keys()).isdisjoint(set(self.variables)):
             return []
 
-        numerics = []
-        cat = []
-        for i, tgt in enumerate(self.targets):
-            if issubclass(self._variables[tgt], Distribution):
-                lower = np.NINF
-                upper = np.PINF
-
-                if tgt in query:
-                    t_ = query[tgt]
-                    # value is a function, e.g. min, meaning that we are looking for the minimal value of this variable
-                    if callable(t_):
-                        numerics.append(t_)
-                    else:
-                        numerics.append(Interval(t_.lower if isinstance(t_, Interval) else t_[0], t_.upper if isinstance(t_, Interval) else t_[1]))
-                else:
-                    numerics.append(Interval(lower, upper))
+        # Transform into internal values/intervals (symbolic values to their indices) and update to contain all possible variables
+        query = {var: list2interval(val) if type(val) in (list, tuple) and var.numeric else val if type(val) in (list, tuple) else [val] for var, val in query.items()}
+        query_ = {var: val if var.numeric else set(var.domain.labels.index(v) for v in val) for var, val in query.items()}
+        for i, var in enumerate(self.variables):
+            if var in query_: continue
+            if var.numeric:
+                query_[var] = list2interval([np.NINF, np.PINF])
             else:
-                # TODO: categorical query vars given as set (or iterable), then replace query by either one-element set or find all possible values for cat variables
-                val = None
-                if tgt in query:
-                    if hasattr(query[tgt], '__iter__'):
-                        val = query[tgt]
-                    else:
-                        val = {query[tgt]}
-                else:
-                    # if no value constraints for this categorical feature is set, set all possible values of this feature
-                    # as allowed
-                    val = self._catvalues[tgt]
-                cat.append(val)
+                query_[var] = var.domain.values
 
         # find the leaf (or the leaves) that matches the query best
-        sims = defaultdict(float)
-
+        confs = {}
         for k, l in self.leaves.items():
-            # TODO: FIX THIS TO USE DISTRIBUTIONS
-            sims[l] += l.gbf.query(cat, numerics)
+            confs_ = defaultdict(float)
+            for v, dist in l.distributions.items():
+                if v.numeric:
+                    confs_[v] = dist.p(query_[v])
+                else:
+                    conf = 0.
+                    for sv in query_[v]:
+                        conf += dist.p(sv)
+                    confs_[v] = conf
+            confs[l] = confs_
 
-        candidates = sorted(sims, key=lambda l: sims[l], reverse=True)
+        # the candidates are the one leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
+        candidates = sorted([leaf for leaf, confs in confs.items() if all(c >= confidence for c in confs.values())], key=lambda l: sum(confs[l].values()), reverse=True)
 
         # for the chosen candidate determine the path to the root
         paths = []
@@ -592,10 +586,12 @@ class JPT:
             p = []
             curcand = c
             while curcand is not None:
-                p.append([curcand, [s.identifier for s in curcand.samples]])
+                p.append(curcand)
                 curcand = curcand.parent
-            paths.append([sims[c], p])
+            paths.append((confs[c], p))
 
+        # elements of path are tuples (a, b) with a being mappings of {var: confidence} and b being an ordered list of
+        # nodes representing a path from a leaf to the root
         return paths
 
     def compute_best_split(self, indices):
@@ -660,7 +656,7 @@ class JPT:
                 rc = math.ceil(math.sqrt(len(plotvars)))
                 img = ''
                 for i, pvar in enumerate(plotvars):
-                    img_name = html.escape(f'{pvar.name}-{idx}')
+                    img_name = html.escape(f'{pvar.name}-{n.idx}')
                     n.distributions[pvar].plot(title=html.escape(pvar.name), fname=img_name, directory=directory, view=False)
                     img += (f'''{"<TR>" if i % rc == 0 else ""}
                                         <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
@@ -723,6 +719,7 @@ class JPT:
         # create edges
         for idx, n in self.innernodes.items():
             for i, c in enumerate(n.children):
+                if c is None: continue
                 dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
 
         # show graph
