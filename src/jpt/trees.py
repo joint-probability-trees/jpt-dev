@@ -191,6 +191,7 @@ class JPT:
         self.root = None
         self.data = None
         self.c45queue = deque()
+        self.priors = {}
 
     @property
     def variables(self):
@@ -347,10 +348,14 @@ class JPT:
         self.data = data
 
         # --------------------------------------------------------------------------------------------------------------
+        # Determine the prior distributions
+        self.priors = {var: var.dist(data=self.data[:, i]) for i, var in enumerate(self.variables)}
+
+        # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
         started = datetime.datetime.now()
-        logger.info('Started learning of %s x %s at %s' % (data.shape[0], data.shape[1], started))
+        JPT.logger.info('Started learning of %s x %s at %s' % (data.shape[0], data.shape[1], started))
         # build up tree
         self.c45queue.append((list(range(len(data))), None, None))
         while self.c45queue:
