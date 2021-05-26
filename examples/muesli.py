@@ -13,8 +13,8 @@ import os
 import pickle
 import pprint
 
-from quantiles import Quantiles
-from intervals import ContinuousSet as Interval
+from jpt.base.quantiles import QuantileDistribution
+from jpt.base.intervals import ContinuousSet as Interval
 
 
 def test_muesli():
