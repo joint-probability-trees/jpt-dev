@@ -614,8 +614,10 @@ cdef class QuantileDistribution:
                         for i, f in zip(d.cdf.intervals, d.cdf.functions)],
                        key=itemgetter(0))
         m = 0
+
         while lower or upper:
             pivot = None
+
             # Process all function intervals whose lower bound is minimal and
             # smaller than the smallest upper interval bound
             while lower and (pivot is None and first(lower, first) <= first(upper, first, np.PINF) or
@@ -625,6 +627,7 @@ cdef class QuantileDistribution:
                     continue
                 m += f.m * w
                 pivot = l
+
             # Do the same for the upper bounds...
             while upper and (pivot is None and first(upper, first) <= first(lower, first, np.PINF) or
                    pivot == first(upper, first, np.PINF)):
@@ -633,23 +636,27 @@ cdef class QuantileDistribution:
                     continue
                 m -= f.m * w
                 pivot = u
-            if pivot is None or m == 0 and (lower or upper):
+
+            if pivot is None:
                 continue
+
             if functions and m == functions[-1].m and functions[-1].eval(pivot) - m * pivot == functions[-1].c:
-                # intervals[-1].lower = pivot
                 continue
             # Split the last interval at the pivot point
             intervals[-1].upper = pivot
             intervals.append(ContinuousSet(pivot, np.PINF, _INC, _EXC))
             # Evaluate the old function at the new pivot point to get the intercept
             functions.append(LinearFunction(m, functions[-1].eval(pivot) - m * pivot))
-        # if functions[-1].m == 0:
-        #     del intervals[-1]
-        #     del functions[-1]
+
+        # If the merging ends with an "approximate" constant function
+        # remove it. This may happen for numerical imprecision.
+        while abs(functions[-1].m) <= 1e-08:
+            del intervals[-1]
+            del functions[-1]
+
         cdf = PiecewiseFunction()
         cdf.functions = functions
         cdf.intervals = intervals
-        # intervals[-1].upper
         cdf.ensure_right(ConstantFunction(1), l or u)
         distribution = QuantileDistribution()
         distribution._cdf = cdf
