@@ -650,7 +650,7 @@ cdef class QuantileDistribution:
         cdf.functions = functions
         cdf.intervals = intervals
         # intervals[-1].upper
-        cdf.ensure_right(ConstantFunction(1), )
+        cdf.ensure_right(ConstantFunction(1), l or u)
         distribution = QuantileDistribution()
         distribution._cdf = cdf
         return distribution
