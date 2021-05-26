@@ -590,8 +590,8 @@ cdef class QuantileDistribution:
                                                        _INC, _EXC))
                     ppf.functions.append(f.invert())
 
-            ppf.intervals.append(ContinuousSet(1, np.nextafter(1, 2), _INC, _EXC))
-            ppf.functions.append(ConstantFunction(self._cdf.intervals[-1].lower))
+            ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.nextafter(1, 2), _INC, _EXC))
+            ppf.functions.append(ConstantFunction(ppf.functions[-1].eval(1)))
 
             ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.PINF, _INC, _EXC))
             ppf.functions.append(Undefined())
@@ -633,17 +633,24 @@ cdef class QuantileDistribution:
                     continue
                 m -= f.m * w
                 pivot = u
-            if pivot is None:
+            if pivot is None or m == 0 and (lower or upper):
+                continue
+            if functions and m == functions[-1].m and functions[-1].eval(pivot) - m * pivot == functions[-1].c:
+                # intervals[-1].lower = pivot
                 continue
             # Split the last interval at the pivot point
             intervals[-1].upper = pivot
             intervals.append(ContinuousSet(pivot, np.PINF, _INC, _EXC))
             # Evaluate the old function at the new pivot point to get the intercept
             functions.append(LinearFunction(m, functions[-1].eval(pivot) - m * pivot))
+        # if functions[-1].m == 0:
+        #     del intervals[-1]
+        #     del functions[-1]
         cdf = PiecewiseFunction()
         cdf.functions = functions
         cdf.intervals = intervals
-        cdf.ensure_right(ConstantFunction(1), l or u)
+        # intervals[-1].upper
+        cdf.ensure_right(ConstantFunction(1), )
         distribution = QuantileDistribution()
         distribution._cdf = cdf
         return distribution
