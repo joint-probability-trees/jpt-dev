@@ -313,13 +313,17 @@ def muesli_tree():
     for clazz in data['Class'].unique():
         print(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
 
+    for clazz in data['Class'].unique():
+        for exp in jpt.expectation([x, y], evidence={o: clazz}, confidence_level=.95):
+            print(exp)
+
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
-    jpt.plot(plotvars=[x, y, o])
+    # jpt.plot(plotvars=[x, y, o])
 
-    q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
-    r = jpt.reverse(q)
-    out('Query:', q, 'result:', pprint.pformat(r))
+    # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
+    # r = jpt.reverse(q)
+    # out('Query:', q, 'result:', pprint.pformat(r))
 
 
 def picklemuesli():
@@ -373,10 +377,10 @@ def main(*args):
     # test_dists()
     # restaurant()  # for bools and strings
     # test_muesli()
-    # muesli_tree()  # for numerics and strings
+    muesli_tree()  # for numerics and strings
     # picklemuesli()
     # alarm()  # for bools
-    tourism()
+    # tourism()
 
 
 # Press the green button in the gutter to run the script.
