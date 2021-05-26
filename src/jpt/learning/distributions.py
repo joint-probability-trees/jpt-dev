@@ -6,7 +6,7 @@ pyximport.install()
 from jpt.base.utils import classproperty
 
 
-from ..base.quantiles import QuantileDistribution
+from ..base.quantiles import QuantileDistribution, LinearFunction
 
 import copy
 import math
@@ -525,7 +525,7 @@ class Numeric(Distribution):
         for i, f in zip(self.cdf.intervals, self.cdf.functions):
             if i.lower == np.NINF or i.upper == np.PINF:
                 continue
-            e += f.m * (i.upper - i.lower) * (i.upper + i.lower) / 2
+            e += (f.m if isinstance(f, LinearFunction) else 0) * (i.upper - i.lower) * (i.upper + i.lower) / 2
             singular = False
         return e if not singular else i.lower
 
