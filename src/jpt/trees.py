@@ -642,6 +642,9 @@ class JPT:
         if plotvars == None:
             plotvars = []
 
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
         dot = Digraph(format='svg', name=filename or self.name,
                       directory=directory,
                       filename=f'{filename or self.name}')

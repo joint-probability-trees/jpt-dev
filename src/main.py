@@ -1,4 +1,4 @@
-import pprint
+from datetime import datetime
 
 import pandas as pd
 import pyximport
@@ -85,7 +85,7 @@ def restaurant():
     jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(data)
     out(jpt)
-    jpt.plot(plotvars=variables, view=True)
+    jpt.plot(plotvars=variables, view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))
     # candidates = jpt.apply({ba: True, re: False})
     q = {ba: True, re: False}
     e = {ra: False}
@@ -141,7 +141,7 @@ def restaurantsample():
     jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(rows=data)
     out(jpt)
-    jpt.plot(plotvars=variables, view=True)
+    jpt.plot(plotvars=variables, view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))
     # candidates = jpt.apply({ba: True, re: False})
     q = {ba: True, re: False}
     e = {ra: False}
@@ -221,7 +221,7 @@ def alarm():
 
     # print_stopwatches()
     # print('AVG', c/t)
-    tree.plot()
+    tree.plot(plotvars=[E, B, A, M, J], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Alarm'))
 
 
 def test_merge():
@@ -289,7 +289,7 @@ def test_muesli():
     out('query', interval, p)
 
     print(d.cdf.pfmt())
-    d.plot(name='Müsli Beispiel', view=True)
+    d.plot(name='Müsli Beispiel', view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
 
 
 def muesli_tree():
@@ -307,19 +307,20 @@ def muesli_tree():
     y = NumericVariable('Y', Numeric)
     o = SymbolicVariable('Object', ObjectType)
 
-    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=5)
+    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=15)
     jpt.learn(columns=data.values.T)
+    jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
 
     for clazz in data['Class'].unique():
-        print(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
+        out(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
+    print()
 
     for clazz in data['Class'].unique():
-        for exp in jpt.expectation([x, y], evidence={o: clazz}, confidence_level=.95):
-            print(exp)
+        for exp in jpt.expectation([x, y], evidence={o: clazz}, confidence_level=.1):
+            out(exp)
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
-    # jpt.plot(plotvars=[x, y, o])
 
     # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
     # r = jpt.reverse(q)
@@ -368,7 +369,53 @@ def tourism():
     for persona in df['Persona'].unique():
         for exp in jpt.expectation([t, price], evidence={p: persona}, confidence_level=.95):
             print(exp)
-    jpt.plot()  # plotvars=[price, t]
+    jpt.plot(plotvars=[price, t, d, p], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
+
+
+def neemdata():
+    # location of NEEM_SetTable_Breakfast.tar.xz
+    ltargz = 'https://seafile.zfn.uni-bremen.de/f/fa5a760d89234cfc83ad/?dl=1'
+    df = pd.read_csv(ltargz, compression='xz', delimiter=';', sep=';', skip_blank_lines=True, header=0,
+                     index_col=False,
+                     names=['id', 'type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'parent', 'next', 'previous', 'object_acted_on', 'object_type', 'bodyPartsUsed', 'arm', 'grasp', 'effort'],
+                     usecols=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm'],
+                     na_values=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm', np.inf])
+
+    # set default values for empty, infinity or nan values and remove nan rows
+    df = df[df['endTime'].notna()]  # this not only removes the lines with endTime=NaN, but in particular all lines where each feature is NaN
+    df.replace([np.inf, -np.inf], -1, inplace=True)
+    df['object_acted_on'] = df['object_acted_on'].fillna('DEFAULTOBJECT')
+    df['bodyPartsUsed'] = df['bodyPartsUsed'].fillna('DEFAULTBP')
+    df['arm'] = df['arm'].fillna('DEFAULTARM')
+    df['failure'] = df['failure'].fillna('DEFAULTFAIL')
+    df['startTime'] = df['startTime'].fillna(-1)
+    df['endTime'] = df['endTime'].fillna(-1)
+    df['duration'] = df['duration'].fillna(-1)
+
+    # type declarations
+    tpTYPE = SymbolicType('type', df['type'].unique())
+    failTYPE = SymbolicType('failure', df['failure'].unique())
+    oaoTYPE = SymbolicType('object_acted_on', df['object_acted_on'].unique())
+    bpuTYPE = SymbolicType('bodyPartsUsed', df['bodyPartsUsed'].unique())
+    armTYPE = SymbolicType('arm', df['arm'].unique())
+
+    # variable declarations
+    tp = SymbolicVariable('type', tpTYPE)
+    st = NumericVariable('startTime', Numeric, haze=.1)
+    et = NumericVariable('endTime', Numeric, haze=.1)
+    dur = NumericVariable('duration', Numeric, haze=.1)
+    succ = SymbolicVariable('success', Bool)
+    fail = SymbolicVariable('failure', failTYPE)
+    oao = SymbolicVariable('object_acted_on', oaoTYPE)
+    bpu = SymbolicVariable('bodyPartsUsed', bpuTYPE)
+    arm = SymbolicVariable('arm', armTYPE)
+
+    vars = [tp, st, et, dur, succ, fail, oao, bpu, arm]
+    jpt = JPT(variables=vars, name="NEEMs", min_samples_leaf=500)
+    out(f'Learning sebadata-Tree...')
+    jpt.learn(columns=df.values.T)
+    out(f'Done! Plotting...')
+    jpt.plot(filename=jpt.name, plotvars=vars, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
 
 
 def main(*args):
@@ -377,10 +424,11 @@ def main(*args):
     # test_dists()
     # restaurant()  # for bools and strings
     # test_muesli()
-    muesli_tree()  # for numerics and strings
+    # muesli_tree()  # for numerics and strings
     # picklemuesli()
-    # alarm()  # for bools
-    # tourism()
+    alarm()  # for bools
+    # neemdata()  # for dataset from sebastian (fetching milk from fridge)
+    # tourism()  # for flight data
 
 
 # Press the green button in the gutter to run the script.
