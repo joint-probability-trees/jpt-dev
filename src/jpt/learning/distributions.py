@@ -464,6 +464,9 @@ class Distribution:
     def expectation(self):
         raise NotImplementedError
 
+    def mpe(self):
+        raise NotImplementedError
+
     def set_data(self, data):
         raise NotImplementedError
 
@@ -497,9 +500,6 @@ class Numeric(Distribution):
 
     def __str__(self):
         return self.cdf.pfmt()
-        # if self.p is None:
-        #     return f'{self._cl}<p=n/a>'
-        # return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
 
     @property
     def cdf(self):
@@ -528,6 +528,11 @@ class Numeric(Distribution):
             e += (f.m if isinstance(f, LinearFunction) else 0) * (i.upper - i.lower) * (i.upper + i.lower) / 2
             singular = False
         return e if not singular else i.lower
+
+    def mpe(self):
+        return max([(interval, function)
+                    for interval, function in zip(self.cdf.intervals, self.cdf.functions)],
+                   key=lambda i, f: f.m if isinstance(f, LinearFunction) else 0)[0]
 
     def set_data(self, data):
         # d = np.array(data, dtype=np.float64)
@@ -591,6 +596,7 @@ class Multinomial(Distribution):
     '''
     Abstract supertype of all symbolic domains and distributions.
     '''
+
     values = None
     labels = None
 
@@ -662,6 +668,9 @@ class Multinomial(Distribution):
     def expectation(self):
         '''Returns the value with the highest probability for each variable'''
         return max([(v, p) for v, p in zip(self.values, self._p)], key=itemgetter(1))[0]
+
+    def mpe(self):
+        return self.expectation()
 
     def set_data(self, data):
         self._p = np.array([list(data).count(x) / len(data) for x in self.values])
