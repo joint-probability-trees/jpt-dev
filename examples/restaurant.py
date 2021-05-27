@@ -1,15 +1,20 @@
+import os
+from datetime import datetime
+
 from dnutils import out
+from jpt.base.sampling import wchoice
 from jpt.learning.distributions import Bool, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable
 
 
 def restaurant():
+    # generate JPT from data based on manually set distributions
     # declare variable types
-    PatronsType = SymbolicType('Patrons', ['some', 'full', 'none'])
+    PatronsType = SymbolicType('Patrons', ['Some', 'Full', 'None'])
     PriceType = SymbolicType('Price', ['$', '$$', '$$$'])
     FoodType = SymbolicType('Food', ['French', 'Thai', 'Burger', 'Italian'])
-    WaitEstType = SymbolicType('WaitEstimate', ['0-10', '10-30', '30-60', '>60'])
+    WaitEstType = SymbolicType('WaitEstimate', ['0--10', '10--30', '30--60', '>60'])
 
     # create variables
     al = SymbolicVariable('Alternatives', Bool)
@@ -21,7 +26,7 @@ def restaurant():
     ra = SymbolicVariable('Rain', Bool)
     re = SymbolicVariable('Reservation', Bool)
     fo = SymbolicVariable('Food', FoodType)
-    we = SymbolicVariable('WaitEst', WaitEstType)
+    we = SymbolicVariable('WaitEstimate', WaitEstType)
     wa = SymbolicVariable('WillWait', Bool)
 
     # define probs
@@ -42,7 +47,64 @@ def restaurant():
     jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(data)
     out(jpt)
-    jpt.plot(plotvars=variables, view=True)
+    jpt.plot(plotvars=variables, view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))
+    # candidates = jpt.apply({ba: True, re: False})
+    q = {ba: True, re: False}
+    e = {ra: False}
+    res = jpt.infer(q, e)
+    out(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
+        f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) = {res.result}')
+    print(res.explain())
+
+
+def restaurantsample():
+    # generate JPT from data sampled based on distributions from lecture data
+    import pandas as pd
+    d = pd.read_csv(os.path.join('../', 'examples', 'data', 'restaurant.csv'))
+
+    # declare variable types
+    PatronsType = SymbolicType('Patrons', ['Some', 'Full', 'None'])
+    PriceType = SymbolicType('Price', ['$', '$$', '$$$'])
+    FoodType = SymbolicType('Food', ['French', 'Thai', 'Burger', 'Italian'])
+    WaitEstType = SymbolicType('WaitEstimate', ['0--10', '10--30', '30--60', '>60'])
+
+    # create variables
+    al = SymbolicVariable('Alternatives', Bool)
+    ba = SymbolicVariable('Bar', Bool)
+    fr = SymbolicVariable('Friday', Bool)
+    hu = SymbolicVariable('Hungry', Bool)
+    pa = SymbolicVariable('Patrons', PatronsType)
+    pr = SymbolicVariable('Price', PriceType)
+    ra = SymbolicVariable('Rain', Bool)
+    re = SymbolicVariable('Reservation', Bool)
+    fo = SymbolicVariable('Food', FoodType)
+    we = SymbolicVariable('WaitEstimate', WaitEstType)
+    wa = SymbolicVariable('WillWait', Bool)
+
+    variables = [pa, hu, fo, fr, al, ba, pr, ra, re, we, wa]
+
+    def rec(vars, vals):
+        if not vars:
+            return [v[1] for v in vals]
+
+        d = hilfsfunktion(vars[0], vals)
+        sample = wchoice(vars[0].domain.labels, d)
+        return rec(vars[1:], vals+[(vars[0], sample)])
+
+    def hilfsfunktion(var, vals):
+        d_ = d
+        for v, val in vals:
+            d_ = d_[d_[v.name] == val]
+
+        dist = [len(d_[d_[var.name] == l])/len(d_) for l in var.domain.labels]
+        return dist
+
+    data = [rec(variables, []) for _ in range(500)]
+
+    jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
+    jpt.learn(rows=data)
+    out(jpt)
+    jpt.plot(plotvars=variables, view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))
     # candidates = jpt.apply({ba: True, re: False})
     q = {ba: True, re: False}
     e = {ra: False}
@@ -53,7 +115,8 @@ def restaurant():
 
 
 def main(*args):
-    restaurant()
+    # restaurant()
+    restaurantsample()
 
 
 # Press the green button in the gutter to run the script.

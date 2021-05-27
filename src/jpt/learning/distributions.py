@@ -551,7 +551,7 @@ class Numeric(Distribution):
             raise TypeError('Only distributions of the same type can be merged.')
         return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
 
-    def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
+    def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the piecewise linear function representing the variable's cumulative distribution function
 
         :param title:       the name of the variable this distribution represents
@@ -571,11 +571,12 @@ class Numeric(Distribution):
 
         fig, ax = plt.subplots()
         ax.set_title(f'{title or f"Piecewise linear CDF of {self._cl}"}')
-        ax.set_xlabel('value')
+        ax.set_xlabel(xlabel)
         ax.set_ylabel('%')
         bounds = np.array([v.upper for v in self.cdf.intervals[:-2]] + [self.cdf.intervals[-1].lower])
 
-        ax.plot(bounds, self.cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', label='Piecewise CDF from bounds', linewidth=2, markersize=12)
+        ax.plot(bounds, self.cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', label='Piecewise linear CDF from bounds', linewidth=2, markersize=12)
+        ax.scatter(bounds, self.cdf.multi_eval(bounds), color='orange', marker='o', label='Piecewise Function limits')
         ax.legend()  # do we need a legend with only one plotted line?
         fig.tight_layout()
 

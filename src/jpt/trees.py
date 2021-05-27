@@ -305,10 +305,10 @@ class JPT:
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def __repr__(self):
-        return (f'{self.__class__.__name__}<{self.name}>:\n' 
-                f'{"=" * (len(self.name) + 7)}\n\n' 
-                f'{self._p(self.root, 0)}\n' 
-                f'JPT stats: #innernodes = {len(self.innernodes)}, ' 
+        return (f'{self.__class__.__name__}<{self.name}>:\n'
+                f'{"=" * (len(self.name) + 7)}\n\n'
+                f'{self._p(self.root, 0)}\n'
+                f'JPT stats: #innernodes = {len(self.innernodes)}, '
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def _p(self, parent, indent):
@@ -370,7 +370,7 @@ class JPT:
         elif self.leaves:
             self.root = self.leaves[0]
         else:
-            stop('NO INNER NODES!', self.innernodes, self.leaves)
+            out('NO INNER NODES!', self.innernodes, self.leaves)
             self.root = None
 
         # --------------------------------------------------------------------------------------------------------------
@@ -641,6 +641,9 @@ class JPT:
         if plotvars == None:
             plotvars = []
 
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
         dot = Digraph(format='svg', name=filename or self.name,
                       directory=directory,
                       filename=f'{filename or self.name}')
@@ -723,6 +726,9 @@ class JPT:
 
         # show graph
         JPT.logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
+
+        # improve aspect ratio of graph having many leaves or disconnected nodes
+        dot = dot.unflatten(stagger=3)
         dot.render(view=view, cleanup=False)
 
     def pickle(self, fpath):

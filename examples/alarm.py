@@ -1,3 +1,6 @@
+import os
+from datetime import datetime
+
 import numpy as np
 from numpy import iterable
 
@@ -36,6 +39,7 @@ class Conditional:
 
 
 def alarm():
+
     E = SymbolicVariable('Earthquake', Bool)  # .02
     B = SymbolicVariable('Burglary', Bool)  # Bool(.01)
     A = SymbolicVariable('Alarm', Bool)
@@ -62,7 +66,7 @@ def alarm():
 
         # Construct the CSV for learning
         data = []
-        for i in range(1000):
+        for i in range(10000):
             e = E.dist(.2).sample_one()
             b = B.dist(.1).sample_one()
             a = A_.sample_one([e, b])
@@ -80,6 +84,7 @@ def alarm():
 
         tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
         tree.learn(data)
+        # tree.sklearn_tree()
         # tree.plot(plotvars=[E, B, A, M, J])
         # conditional
         # q = {A: True}
@@ -95,13 +100,15 @@ def alarm():
 
         c += tree.infer(q, e).result
 
-    tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
-    tree.learn(data)
-    out(tree)
+    # tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
+    # tree.learn(data)
+    # out(tree)
     res = tree.infer(q, e)
-    res.explain()
-    print('AVG', c/t)
-    tree.plot(plotvars=[E, B, A, M, J])
+    print(res.explain())
+
+    # print_stopwatches()
+    # print('AVG', c/t)
+    tree.plot(plotvars=[E, B, A, M, J], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Alarm'))
 
 
 def main(*args):

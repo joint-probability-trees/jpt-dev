@@ -1,9 +1,45 @@
+import os
+from datetime import datetime
+
 import pandas as pd
 from dnutils import out
 from matplotlib import pyplot as plt
 
+from jpt.learning.distributions import SymbolicType, Numeric
+from jpt.trees import JPT
+from jpt.variables import NumericVariable, SymbolicVariable
 
-def test_tourism():
+
+def tourism():
+    # generate JPT from tourism data
+    df = pd.read_csv('data/tourism.csv')
+    df['Price'] *= 2000
+    df['DoY'] *= 710
+
+    DestinationType = SymbolicType('DestinationType', df['Destination'].unique())
+    PersonaType = SymbolicType('PersonaType', df['Persona'].unique())
+
+    price = NumericVariable('Price', Numeric)
+    t = NumericVariable('Time', Numeric, haze=.1)
+    d = SymbolicVariable('Destination', DestinationType)
+    p = SymbolicVariable('Persona', PersonaType)
+
+    jpt = JPT(variables=[price, t, d, p], name="Tourism", min_samples_leaf=15)
+    # out(df.values.T)
+    jpt.learn(columns=df.values.T[1:])
+
+    for clazz in df['Destination'].unique():
+        print(jpt.infer(query={d: clazz}, evidence={t: 300}))
+        for exp in jpt.expectation([t, price], evidence={d: clazz}, confidence_level=.95):
+            print(exp)
+    for persona in df['Persona'].unique():
+        for exp in jpt.expectation([t, price], evidence={p: persona}, confidence_level=.95):
+            print(exp)
+    jpt.plot(plotvars=[price, t, d, p], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
+
+
+def plot_tourism():
+    # generate plot for tree data
     df = pd.read_csv('data/tourism.csv')
     df['Price'] *= 2000
     df['DoY'] *= 710
@@ -42,6 +78,11 @@ def test_tourism():
     plt.show()
 
 
+def main(*args):
+    # plot_tourism()
+    tourism()
 
+
+# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    test_tourism()
+    main('PyCharm')
