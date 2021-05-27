@@ -11,11 +11,11 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 from dnutils import out
-from jpt.base.quantiles import Quantiles
+from jpt.base.quantiles import Quantiles, QuantileDistribution
 from jpt.learning.distributions import Numeric, Bool, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable, NumericVariable
-from jpt.base.intervals import ContinuousSet as Interval
+from jpt.base.intervals import ContinuousSet as Interval, ContinuousSet
 
 
 def plot_muesli():
@@ -59,21 +59,26 @@ def plot_muesli():
 
 
 def test_muesli():
-    # TODO: check! This does not work anymore -> fix or delete
 
     data = pd.read_csv('../examples/data/muesli.csv')
     d = np.array(sorted(data['X']), dtype=np.float64)
 
-    quantiles = Quantiles(d, epsilon=.0001)
-    cdf_ = quantiles.cdf()
+    quantiles = QuantileDistribution(epsilon=.0001)
+    quantiles.fit(d)
     d = Numeric(quantile=quantiles)
 
-    interval = Interval(-2.05, -2.0)
+    interval = ContinuousSet(-2.05, -2.0)
     p = d.p(interval)
     out('query', interval, p)
 
     print(d.cdf.pfmt())
-    d.plot(title='Piecewise Linear CDF of Breakfast Data', fname='BreakfastPiecewise', xlabel='X', view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
+
+    # TODO: check! This does not work anymore -> fix or delete
+    d.plot(title='Piecewise Linear CDF of Breakfast Data',
+           fname='BreakfastPiecewise',
+           xlabel='X',
+           view=True,
+           directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
 
 
 def muesli_tree():
