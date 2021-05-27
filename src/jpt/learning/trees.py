@@ -754,6 +754,10 @@ class JPT:
 
         # show graph
         logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
+
+        # improve aspect ratio of graph having many leaves or disconnected nodes
+        dot = dot.unflatten(stagger=3)
+
         dot.render(view=view, cleanup=False)
 
     def pickle(self, fpath):
