@@ -2,6 +2,7 @@ import pprint
 
 import pandas as pd
 import pyximport
+from matplotlib import pyplot as plt
 
 pyximport.install()
 
@@ -11,7 +12,7 @@ import pickle
 import numpy as np
 from numpy import iterable
 
-from dnutils import out
+from dnutils import out, first
 from jpt.learning.distributions import Bool, Numeric, HistogramType, SymbolicType
 from jpt.base.intervals import ContinuousSet as Interval
 from jpt.trees import JPT
@@ -314,12 +315,12 @@ def muesli_tree():
         print(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
 
     for clazz in data['Class'].unique():
-        for exp in jpt.expectation([x, y], evidence={o: clazz}, confidence_level=.95):
+        for exp in jpt.expectation([x, y], evidence={o: clazz}, confidence_level=.1):
             print(exp)
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
-    # jpt.plot(plotvars=[x, y, o])
+    jpt.plot(plotvars=[x, y, o])
 
     # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
     # r = jpt.reverse(q)
@@ -371,16 +372,81 @@ def tourism():
     jpt.plot()  # plotvars=[price, t]
 
 
+def regression():
+
+    def f(x):
+        """The function to predict."""
+        return x * np.sin(x)
+
+    # ----------------------------------------------------------------------
+    #  First the noiseless case
+    POINTS = 1000
+    X = np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T
+    X = np.vstack((np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T, X))
+    X = X.astype(np.float32)
+
+    # Observations
+    y = f(X).ravel()
+
+    dy = 1.5 + .5 * np.random.random(y.shape)
+    noise = np.random.normal(0, dy)
+    y += noise
+    y = y.astype(np.float32)
+
+    # Mesh the input space for evaluations of the real function, the prediction and
+    # its MSE
+    xx = np.atleast_2d(np.linspace(-25, 20, 500)).T
+    xx = xx.astype(np.float32)
+
+    varx = NumericVariable('x', Numeric)
+    vary = NumericVariable('y', Numeric)
+
+    jpt = JPT(variables=[varx, vary], min_samples_leaf=10)
+    jpt.learn(columns=[X.ravel(), y])
+
+    my_predictions = [first(jpt.expectation([vary], evidence={varx: x_})) for x_ in xx.ravel()]
+    y_pred_ = [p.result for p in my_predictions]
+    y_lower_ = [p.lower for p in my_predictions]
+    y_upper_ = [p.upper for p in my_predictions]
+
+
+    # Plot the function, the prediction and the 90% confidence interval based on
+    # the MSE
+    fig = plt.figure()
+    plt.plot(xx, f(xx), 'g:', label=u'$f(x) = x\,\sin(x)$')
+    plt.plot(X, y, '.', color='gray', markersize=5, label=u'Observations')
+    plt.plot(xx, y_pred_, 'm-', label=u'My Prediction')
+    plt.plot(xx, y_lower_, 'y--')
+    plt.plot(xx, y_upper_, 'y--')
+    # plt.plot(xx, mytree.regressor.predict(xx), 'b-')
+    # plt.fill(np.concatenate([xx, xx[::-1]]),
+    #          np.concatenate([y_upper_, y_lower_[::-1]]),
+    #          alpha=.5, fc='y', ec='None', label='my 90% prediction interval')
+    # plt.plot(xx, y_pred, 'r-', label=u'Prediction')
+    # plt.plot(xx, y_upper, 'k-')
+    # plt.plot(xx, y_lower, 'k-')
+    # plt.fill(np.concatenate([xx, xx[::-1]]),
+    #          np.concatenate([y_upper, y_lower[::-1]]),
+    #          alpha=.5, fc='b', ec='None', label='90% prediction interval')
+    # mytree.draw('bla')
+    plt.xlabel('$x$')
+    plt.ylabel('$f(x)$')
+    plt.ylim(-10, 20)
+    plt.legend(loc='upper left')
+    plt.show()
+
+
 def main(*args):
 
     # test_merge()
     # test_dists()
     # restaurant()  # for bools and strings
     # test_muesli()
-    muesli_tree()  # for numerics and strings
+    # muesli_tree()  # for numerics and strings
     # picklemuesli()
     # alarm()  # for bools
     # tourism()
+    regression()
 
 
 # Press the green button in the gutter to run the script.
