@@ -1,12 +1,12 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import pyximport
-
-from jpt.utils import classproperty
-
 pyximport.install()
 
-from quantiles import Quantiles
+from jpt.base.utils import classproperty
+
+
+from ..base.quantiles import QuantileDistribution
 
 import copy
 import math
@@ -28,9 +28,8 @@ from numpy import iterable
 
 import matplotlib.pyplot as plt
 
-from jpt.constants import sepcomma
-from intervals import ContinuousSet as Interval
-from jpt.sampling import wsample, wchoice
+from jpt.base.constants import sepcomma
+from jpt.base.sampling import wsample, wchoice
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
 
@@ -492,22 +491,27 @@ class Numeric(Distribution):
     '''
     values = []
 
-    def __init__(self, cdf=None):
+    def __init__(self, quantile=None):
         super().__init__()
-        self._cdf = cdf
+        self._quantile = quantile
 
     def __str__(self):
-        if self.p is None:
-            return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
+        return self.cdf.pfmt()
+        # if self.p is None:
+        #     return f'{self._cl}<p=n/a>'
+        # return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
 
     @property
     def cdf(self):
-        return self._cdf
+        return self._quantile.cdf
 
-    @cdf.setter
-    def cdf(self, cdf):
-        self._cdf = cdf
+    @property
+    def pdf(self):
+        return self._quantile.pdf
+
+    @property
+    def ppf(self):
+        return self._quantile.ppf
 
     def sample(self, n):
         raise NotImplemented()
@@ -526,14 +530,21 @@ class Numeric(Distribution):
         return e if not singular else i.lower
 
     def set_data(self, data):
-        d = np.array(data, dtype=np.float64)
-        self._cdf = Quantiles(d).cdf()
+        # d = np.array(data, dtype=np.float64)
+        self._quantile = QuantileDistribution()
+        self._quantile.fit(np.ascontiguousarray(data, dtype=np.float64))
         return self
 
     def p(self, value):
         if isinstance(value, numbers.Number):
             return 0
-        return (self._cdf.eval(value.upper) if value.upper != np.PINF else 1.) - (self._cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+        return (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) - (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+
+    @staticmethod
+    def merge(distributions, weights):
+        if not all(distributions[0].__class__ == d.__class__ for d in distributions):
+            raise TypeError('Only distributions of the same type can be merged.')
+        return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the piecewise linear function representing the variable's cumulative distribution function
@@ -557,10 +568,10 @@ class Numeric(Distribution):
         ax.set_title(f'{title or f"Piecewise linear CDF of {self._cl}"}')
         ax.set_xlabel(xlabel)
         ax.set_ylabel('%')
-        bounds = np.array([v.upper for v in self._cdf.intervals[:-2]] + [self._cdf.intervals[-1].lower])
+        bounds = np.array([v.upper for v in self.cdf.intervals[:-2]] + [self.cdf.intervals[-1].lower])
 
-        ax.plot(bounds, self._cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', label='Piecewise linear CDF from bounds', linewidth=2, markersize=12)
-        ax.scatter(bounds, self._cdf.multi_eval(bounds), color='orange', marker='o', label='Piecewise Function limits')
+        ax.plot(bounds, self.cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', label='Piecewise linear CDF from bounds', linewidth=2, markersize=12)
+        ax.scatter(bounds, self.cdf.multi_eval(bounds), color='orange', marker='o', label='Piecewise Function limits')
         ax.legend()  # do we need a legend with only one plotted line?
         fig.tight_layout()
 
@@ -618,7 +629,6 @@ class Multinomial(Distribution):
         return type(self) is type(other) and (self._p == other._p).all()
 
     def __hash__(self):
-        # return hash(f'{self._cl}{self.values}')
         return hash((Multinomial, self.values, self._p))
 
     def __str__(self):
@@ -629,7 +639,7 @@ class Multinomial(Distribution):
     def __repr__(self):
         if self.p is None:
             return f'{self._cl}<p=n/na>'
-        return f'\n{self._cl}<p=[\n{sepcomma.join([f"{v}={p}"for v, p in zip(self.labels, self._p)])}]>;'
+        return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self._p)])}]>;'
 
     def p(self, value):
         return self._p[self.values[value]]
@@ -655,8 +665,26 @@ class Multinomial(Distribution):
         return max([(v, p) for v, p in zip(self.values, self._p)], key=itemgetter(1))[0]
 
     def set_data(self, data):
-        self._p = [list(data).count(x) / len(data) for x in self.values]
+        self._p = np.array([list(data).count(x) / len(data) for x in self.values])
         return self
+
+    def update(self, dist, weight):
+        if not 0 <= weight <= 1:
+            raise ValueError('Weight must be in [0, 1]')
+        if self._p is None:
+            self._p = np.zeros(self.n_values)
+        self._p *= 1 - weight
+        self._p += dist._p * weight
+        return self
+
+    @staticmethod
+    def merge(distributions, weights):
+        if not all(distributions[0].values == v.values for v in distributions):
+            raise TypeError('Only distributions of the same type can be merged.')
+        p = np.zeros(distributions[0].n_values)
+        for d, w in zip(distributions, weights):
+            p += d._p * w
+        return type(distributions[0])(p=p)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.

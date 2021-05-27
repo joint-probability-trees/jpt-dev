@@ -4,16 +4,18 @@
 import numbers
 
 import numpy as np
-from dnutils import first
+from dnutils import first, ifnone
 
-from intervals import INC, EXC
+from jpt.base.intervals import INC, EXC
 from jpt.learning.distributions import Multinomial, Numeric
-from jpt.utils import SYMBOL
+from jpt.base.constants import SYMBOL
 
 
 class Variable:
-    '''Abstract class for a variable name along with its distribution class type.
     '''
+    Abstract class for a variable name along with its distribution class type.
+    '''
+
     def __init__(self, name, domain, min_impurity_improvement=None):
         '''
         :param name:    name of the variable
@@ -38,6 +40,12 @@ class Variable:
         return self._domain
 
     def dist(self, params=None, data=None):
+        '''
+        Create and return a new instance of the distribution type attached to this variable.
+
+        Either the distribution ``params`` can be passed or the ``data`` the distribution parameters
+        are to be determined from.
+        '''
         if data is None:
             return self._domain(params)
         elif data is not None:
@@ -61,20 +69,13 @@ class Variable:
 
     def str(self, assignment, **kwargs):
         raise NotImplemented()
-        # if type(assignment) is set:
-        #     if len(assignment) == 1:
-        #         valstr = str(first(assignment))
-        #     else:
-        #         valstr = f'{{{",".join(map(str, assignment))}}}'
-        # else:
-        #     valstr = str(assignment)
-        # return f'{self.name} {SYMBOL.IN} {valstr}'
 
 
 class NumericVariable(Variable):
 
-    def __init__(self, name, domain, min_impurity_improvement=None):
+    def __init__(self, name, domain, min_impurity_improvement=None, haze=None):
         super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
+        self.haze = ifnone(haze, .05)
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')

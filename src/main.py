@@ -1,6 +1,9 @@
+from datetime import datetime
+
 import pandas as pd
 import pyximport
-from dnutils.stats import print_stopwatches
+
+from jpt.base.sampling import wchoice
 
 pyximport.install()
 
@@ -12,10 +15,10 @@ from numpy import iterable
 
 from dnutils import out
 from jpt.learning.distributions import Bool, Numeric, HistogramType, SymbolicType
-from intervals import ContinuousSet as Interval
-from jpt.learning.trees import JPT
+from jpt.base.intervals import ContinuousSet as Interval
+from jpt.trees import JPT
 from jpt.variables import Variable, SymbolicVariable, NumericVariable
-from quantiles import Quantiles
+from jpt.base.quantiles import Quantiles
 
 
 class Conditional:
@@ -48,10 +51,10 @@ class Conditional:
 
 def restaurant():
     # declare variable types
-    PatronsType = SymbolicType('Patrons', ['some', 'full', 'none'])
+    PatronsType = SymbolicType('Patrons', ['Some', 'Full', 'None'])
     PriceType = SymbolicType('Price', ['$', '$$', '$$$'])
     FoodType = SymbolicType('Food', ['French', 'Thai', 'Burger', 'Italian'])
-    WaitEstType = SymbolicType('WaitEstimate', ['0-10', '10-30', '30-60', '>60'])
+    WaitEstType = SymbolicType('WaitEstimate', ['0--10', '10--30', '30--60', '>60'])
 
     # create variables
     al = SymbolicVariable('Alternatives', Bool)
@@ -63,7 +66,7 @@ def restaurant():
     ra = SymbolicVariable('Rain', Bool)
     re = SymbolicVariable('Reservation', Bool)
     fo = SymbolicVariable('Food', FoodType)
-    we = SymbolicVariable('WaitEst', WaitEstType)
+    we = SymbolicVariable('WaitEstimate', WaitEstType)
     wa = SymbolicVariable('WillWait', Bool)
 
     # define probs
@@ -84,7 +87,63 @@ def restaurant():
     jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(data)
     out(jpt)
-    jpt.plot(plotvars=variables, view=True)
+    jpt.plot(plotvars=variables, view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))
+    # candidates = jpt.apply({ba: True, re: False})
+    q = {ba: True, re: False}
+    e = {ra: False}
+    res = jpt.infer(q, e)
+    out(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
+        f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) = {res.result}')
+    print(res.explain())
+
+
+def restaurantsample():
+    import pandas as pd
+    d = pd.read_csv(os.path.join('../', 'examples', 'data', 'restaurant.csv'))
+
+    # declare variable types
+    PatronsType = SymbolicType('Patrons', ['Some', 'Full', 'None'])
+    PriceType = SymbolicType('Price', ['$', '$$', '$$$'])
+    FoodType = SymbolicType('Food', ['French', 'Thai', 'Burger', 'Italian'])
+    WaitEstType = SymbolicType('WaitEstimate', ['0--10', '10--30', '30--60', '>60'])
+
+    # create variables
+    al = SymbolicVariable('Alternatives', Bool)
+    ba = SymbolicVariable('Bar', Bool)
+    fr = SymbolicVariable('Friday', Bool)
+    hu = SymbolicVariable('Hungry', Bool)
+    pa = SymbolicVariable('Patrons', PatronsType)
+    pr = SymbolicVariable('Price', PriceType)
+    ra = SymbolicVariable('Rain', Bool)
+    re = SymbolicVariable('Reservation', Bool)
+    fo = SymbolicVariable('Food', FoodType)
+    we = SymbolicVariable('WaitEstimate', WaitEstType)
+    wa = SymbolicVariable('WillWait', Bool)
+
+    variables = [pa, hu, fo, fr, al, ba, pr, ra, re, we, wa]
+
+    def rec(vars, vals):
+        if not vars:
+            return [v[1] for v in vals]
+
+        d = hilfsfunktion(vars[0], vals)
+        sample = wchoice(vars[0].domain.labels, d)
+        return rec(vars[1:], vals+[(vars[0], sample)])
+
+    def hilfsfunktion(var, vals):
+        d_ = d
+        for v, val in vals:
+            d_ = d_[d_[v.name] == val]
+
+        dist = [len(d_[d_[var.name] == l])/len(d_) for l in var.domain.labels]
+        return dist
+
+    data = [rec(variables, []) for _ in range(500)]
+
+    jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
+    jpt.learn(rows=data)
+    out(jpt)
+    jpt.plot(plotvars=variables, view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))
     # candidates = jpt.apply({ba: True, re: False})
     q = {ba: True, re: False}
     e = {ra: False}
@@ -117,12 +176,12 @@ def alarm():
     J_[False] = Bool(.05)
 
     c = 0.
-    t = 1
+    t = 10
     for i in range(t):
 
         # Construct the CSV for learning
         data = []
-        for i in range(1000):
+        for i in range(10000):
             e = E.dist(.2).sample_one()
             b = B.dist(.1).sample_one()
             a = A_.sample_one([e, b])
@@ -140,7 +199,7 @@ def alarm():
 
         tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
         tree.learn(data)
-        tree.sklearn_tree()
+        # tree.sklearn_tree()
         # tree.plot(plotvars=[E, B, A, M, J])
         # conditional
         # q = {A: True}
@@ -160,11 +219,11 @@ def alarm():
     # tree.learn(data)
     # out(tree)
     res = tree.infer(q, e)
-    res.explain()
+    print(res.explain())
 
     # print_stopwatches()
-    print('AVG', c/t)
-    tree.plot(plotvars=[E, B, A, M, J])
+    # print('AVG', c/t)
+    tree.plot(plotvars=[E, B, A, M, J], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Alarm'))
 
 
 def test_merge():
@@ -222,14 +281,14 @@ def test_muesli():
 
     quantiles = Quantiles(d, epsilon=.0001)
     cdf_ = quantiles.cdf()
-    d = Numeric(cdf=cdf_)
+    d = Numeric(quantile=quantiles)
 
     interval = Interval(-2.05, -2.0)
     p = d.p(interval)
     out('query', interval, p)
 
     print(d.cdf.pfmt())
-    d.plot(title='Piecewise Linear CDF of Breakfast Data', fname='BreakfastPiecewise', xlabel='X', view=True)
+    d.plot(title='Piecewise Linear CDF of Breakfast Data', fname='BreakfastPiecewise', xlabel='X', view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
 
 
 def muesli_tree():
@@ -249,15 +308,25 @@ def muesli_tree():
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 
-    jpt = JPT([x, y, o, s], name="Müslitree", min_samples_leaf=5)
+    jpt = JPT([x, y, o, s], name="Breakfasttree", min_samples_leaf=5)
     jpt.learn(columns=data.values.T)
+    jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
 
     for clazz in data['Class'].unique():
-        print(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
+        out(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
+    print()
+
+    for clazz in data['Class'].unique():
+        for exp in jpt.expectation([x, y], evidence={o: clazz}, confidence_level=.1):
+            out(exp)
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
-    jpt.plot(plotvars=[x, y, o, s])
+    # jpt.plot(plotvars=[x, y, o, s])
+
+    # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
+    # r = jpt.reverse(q)
+    # out('Query:', q, 'result:', pprint.pformat(r))
 
 
 def picklemuesli():
@@ -287,20 +356,68 @@ def tourism():
     PersonaType = SymbolicType('PersonaType', df['Persona'].unique())
 
     price = NumericVariable('Price', Numeric)
-    t = NumericVariable('Time', Numeric)
+    t = NumericVariable('Time', Numeric, haze=.1)
     d = SymbolicVariable('Destination', DestinationType)
     p = SymbolicVariable('Persona', PersonaType)
 
-    jpt = JPT([price, t, d, p], name="Müslitree", min_samples_leaf=15)
+    jpt = JPT(variables=[price, t, d, p], name="Tourism", min_samples_leaf=15)
     # out(df.values.T)
     jpt.learn(columns=df.values.T[1:])
 
     for clazz in df['Destination'].unique():
-        print(jpt.infer(query={d: clazz}, evidence={t: [150, 250], p: 'FAMILY'}))
+        print(jpt.infer(query={d: clazz}, evidence={t: 300}))
+        for exp in jpt.expectation([t, price], evidence={d: clazz}, confidence_level=.95):
+            print(exp)
+    for persona in df['Persona'].unique():
+        for exp in jpt.expectation([t, price], evidence={p: persona}, confidence_level=.95):
+            print(exp)
+    jpt.plot(plotvars=[price, t, d, p], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
 
-    jpt.plot()  # plotvars=[price, t]
 
+def neemdata():
+    # location of NEEM_SetTable_Breakfast.tar.xz
+    ltargz = 'https://seafile.zfn.uni-bremen.de/f/fa5a760d89234cfc83ad/?dl=1'
+    df = pd.read_csv(ltargz, compression='xz', delimiter=';', sep=';', skip_blank_lines=True, header=0,
+                     index_col=False,
+                     names=['id', 'type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'parent', 'next', 'previous', 'object_acted_on', 'object_type', 'bodyPartsUsed', 'arm', 'grasp', 'effort'],
+                     usecols=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm'],
+                     na_values=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm', np.inf])
 
+    # set default values for empty, infinity or nan values and remove nan rows
+    df = df[df['endTime'].notna()]  # this not only removes the lines with endTime=NaN, but in particular all lines where each feature is NaN
+    df.replace([np.inf, -np.inf], -1, inplace=True)
+    df['object_acted_on'] = df['object_acted_on'].fillna('DEFAULTOBJECT')
+    df['bodyPartsUsed'] = df['bodyPartsUsed'].fillna('DEFAULTBP')
+    df['arm'] = df['arm'].fillna('DEFAULTARM')
+    df['failure'] = df['failure'].fillna('DEFAULTFAIL')
+    df['startTime'] = df['startTime'].fillna(-1)
+    df['endTime'] = df['endTime'].fillna(-1)
+    df['duration'] = df['duration'].fillna(-1)
+
+    # type declarations
+    tpTYPE = SymbolicType('type', df['type'].unique())
+    failTYPE = SymbolicType('failure', df['failure'].unique())
+    oaoTYPE = SymbolicType('object_acted_on', df['object_acted_on'].unique())
+    bpuTYPE = SymbolicType('bodyPartsUsed', df['bodyPartsUsed'].unique())
+    armTYPE = SymbolicType('arm', df['arm'].unique())
+
+    # variable declarations
+    tp = SymbolicVariable('type', tpTYPE)
+    st = NumericVariable('startTime', Numeric, haze=.1)
+    et = NumericVariable('endTime', Numeric, haze=.1)
+    dur = NumericVariable('duration', Numeric, haze=.1)
+    succ = SymbolicVariable('success', Bool)
+    fail = SymbolicVariable('failure', failTYPE)
+    oao = SymbolicVariable('object_acted_on', oaoTYPE)
+    bpu = SymbolicVariable('bodyPartsUsed', bpuTYPE)
+    arm = SymbolicVariable('arm', armTYPE)
+
+    vars = [tp, st, et, dur, succ, fail, oao, bpu, arm]
+    jpt = JPT(variables=vars, name="NEEMs", min_samples_leaf=500)
+    out(f'Learning sebadata-Tree...')
+    jpt.learn(columns=df.values.T)
+    out(f'Done! Plotting...')
+    jpt.plot(filename=jpt.name, plotvars=vars, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
 
 
 def main(*args):
@@ -308,12 +425,13 @@ def main(*args):
     # test_merge()
     # test_dists()
     # restaurant()  # for bools and strings
-    test_muesli()
+    # test_muesli()
     # muesli_tree()  # for numerics and strings
     # picklemuesli()
     # alarm()  # for bools
-    # tourism()
     # fraport()
+    neemdata()  # for dataset from sebastian (fetching milk from fridge)
+    # tourism()  # for flight data
 
 
 # Press the green button in the gutter to run the script.

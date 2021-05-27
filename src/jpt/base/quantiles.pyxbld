@@ -1,0 +1,12 @@
+import numpy
+from scipy._build_utils import numpy_nodepr_api
+
+def make_ext(modname, pyxfilename):
+    from distutils.extension import Extension
+    return Extension(name = modname,
+                     sources=[pyxfilename],
+                     language='c++', **numpy_nodepr_api)
+
+def make_setup_args():
+    return dict(script_args=["--compiler=unix"],
+                include_dirs=numpy.get_include())

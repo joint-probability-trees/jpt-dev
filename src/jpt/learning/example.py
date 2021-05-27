@@ -5,7 +5,7 @@ from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error
 
 import dnutils
-from jpt.utils import tojson
+from jpt.base.utils import tojson
 
 UNKNOWN_FLOAT32 = 1e7
 logger = dnutils.getlogger(name='ExampleLogger', level=dnutils.ERROR)

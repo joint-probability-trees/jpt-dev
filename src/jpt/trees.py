@@ -1,10 +1,13 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import html
+import itertools
 import math
+import numbers
 import operator
 import os
 import pickle
+import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 
@@ -12,20 +15,17 @@ import numpy as np
 from dnutils.stats import stopwatch
 from graphviz import Digraph
 from matplotlib import style
-from sklearn.metrics import mean_squared_error
 
 import dnutils
-from dnutils import first, out, ifnone, stop
+from dnutils import first, out, ifnone
 from sklearn.tree import DecisionTreeRegressor
 
-from .distributions import Distribution
-from intervals import ContinuousSet as Interval, EXC, INC, R
+from .learning.distributions import Distribution
+from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
 
-from .impurity import Impurity
-from ..constants import plotstyle, orange, green
-from ..utils import rel_entropy, list2interval
-
-logger = dnutils.getlogger(name='TreeLogger', level=dnutils.DEBUG)
+from .learning.impurity import Impurity
+from .base.constants import plotstyle, orange, green, SYMBOL
+from .base.utils import list2interval, format_path, normalized
 
 style.use(plotstyle)
 
@@ -62,10 +62,10 @@ class Node:
         return res
 
     def format_path(self):
-        return ' ^ '.join([var.str(val, fmt='logic') for var, val in self.path.items()])
+        return format_path(self.path)
 
     def __str__(self):
-        return (f'Node<{self.idx}>')
+        return f'Node<{self.idx}>'
 
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
@@ -124,9 +124,10 @@ class Leaf(Node):
     '''
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
-    def __init__(self, idx, parent=None, treename=None):
+    def __init__(self, idx, parent=None, prior=None, treename=None):
         super().__init__(idx, parent=parent, treename=treename)
         self.distributions = defaultdict(Distribution)
+        self.prior = prior
 
     @property
     def str_node(self):
@@ -162,6 +163,11 @@ class Leaf(Node):
 
 
 class JPT:
+    '''
+    Joint Probability Trees.
+    '''
+
+    logger = dnutils.getlogger('/jpt', level=dnutils.DEBUG)
 
     def __init__(self, variables, name='regtree', min_samples_leaf=1, min_impurity_improvement=None):
         '''Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
@@ -187,133 +193,11 @@ class JPT:
         self.root = None
         self.data = None
         self.c45queue = deque()
+        self.priors = {}
 
     @property
     def variables(self):
         return self._variables
-
-    def impurity(self, indices, var):
-        r'''Calculate the impurity/mean squared error for the data set identified by `indices`, i.e.
-
-        :param indices: the indices for the training samples used to calculate the gain
-        :type indices:  [[int]]
-        :param var:
-        :type var:      jpt.variables.Variable
-
-        .. math::
-            MSE = \frac{1}{n} · \sum_{i=1}^{n} (y_i - \hat{y}_i)^2
-        '''
-        if not indices:
-            return 0.
-
-        var_idx = self._variables.index(var)
-
-        if var.symbolic:
-            plain = np.array([self.data[i, var_idx] for i in indices])
-            # count occurrences for each value of the variable and determine their probability
-            _, counts = np.unique(plain, return_counts=True)
-            probs = counts / plain.shape[0]
-            out(f'impurity {var.name} {rel_entropy(probs)}')
-            # calculate actual impurity for variable
-            return rel_entropy(probs)
-
-        elif var.numeric:
-            tgts_sklearn = np.array([self.data[i, var_idx] for i in indices])
-            # calculate mean for variable
-            ft_mean = np.mean(tgts_sklearn)
-            # calculate normalized mean squared error for variable
-            sqerr = mean_squared_error(tgts_sklearn, [ft_mean] * len(tgts_sklearn))
-            # calculate actual impurity for variable
-            return sqerr
-
-    def gains(self, indices, ft, tgt):
-        r'''Calculate the impurity for the data set after selection of feature `ft`, i.e.
-
-        :param indices: the indices for the training samples used to calculate the gain
-        :type indices:  [[int]]
-        :param ft:
-        :type ft:       jpt.variables.Variable
-        :param tgt:
-        :type tgt:      jpt.variables.Variable
-
-        .. math::
-            R(ft) = \sum_{i=1}^{v}\frac{p_i + n_i}{p+n} · I(\frac{p_i}{p_i + n_i}, \frac{n_i}{p_i + n_i})
-
-        '''
-
-        if not indices:
-            return {None: 0.}
-
-        impurity = self.impurity(indices, tgt)
-
-        # assuming all Examples have identical indices for their features
-        ft_idx = self.variables.index(ft)
-
-        # sort by ft values for easier dataset split
-        indices = sorted(indices, key=lambda i: self.data[i, ft_idx])
-        fts_plain = np.array([self.data[i, ft_idx] for i in indices])
-        distinct, counts = np.unique(fts_plain, return_counts=True)
-
-        if self.variables[ft_idx].symbolic:
-            probs = counts / len(indices)
-            # divide examples into distinct sets for each value of ft [[Example]]
-            partition = [[i for i in indices if self.data[i, ft_idx] == val] for val in distinct]
-            if not all(len(p) >= self.min_samples_leaf for p in partition):
-                return {None: 0}
-            # determine overall impurity after selection of ft by multiplying probability for each feature value with its impurity,  ({splitvalue: sqerr})
-            g = impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])
-            out(f'gain for {ft.name}: {g} => {0. if g < ft.min_impurity_improvement else g}')
-            gain = {None: 0. if g < ft.min_impurity_improvement else g}
-            # gain = {None: impurity - sum([p * self.impurity(subset, tgt) for p, subset in zip(probs, partition)])}
-
-        if self.variables[ft_idx].numeric:
-            # determine split points of dataset
-            opts = [(a + b) / 2 for a, b in zip(distinct[:-1], distinct[1:])] if len(distinct) > 1 else distinct
-
-            # divide examples into distinct sets for the left (ft <= value) and right (ft > value) of ft [[Example]]
-            examples_ft = [(spp,
-                            [i for i in indices if self.data[i, ft_idx] <= spp],
-                            [i for i in indices if self.data[i, ft_idx] > spp]) for spp in opts]
-
-            # the squared errors for the left and right datasets of each split value ({splitvalue: sqerr})
-            gain = {mv: impurity - (self.impurity(left, tgt) * len(left) / len(indices) +
-                                    self.impurity(right, tgt) * len(right)) / len(indices) if len(left) >= self.min_samples_leaf and len(right) >= self.min_samples_leaf else 0
-                    for mv, left, right in examples_ft}
-
-        return gain
-
-    def compute_best_split(self, indices):
-        # calculate gains for each feature/target combination and normalize over targets
-        gains_tgt = defaultdict(dict)
-        for tgt in self.variables:
-            maxval = 0.
-            for ft in self.variables:
-                gains_tgt[tgt][ft] = self.gains(indices, ft, tgt)
-                maxval = max(maxval, *gains_tgt[tgt][ft].values())
-
-            # normalize gains for comparability
-            gains_tgt[tgt] = {ft: {v: g / maxval if maxval > 0. else 0 for v, g in gains_tgt[tgt][ft].items()} for ft in self._variables}
-
-        # determine (harmonic) mean of target gains
-        gains_ft_hm = defaultdict(lambda: defaultdict(dict))
-        for tgt, fts in gains_tgt.items():
-            for ft, sps in fts.items():
-                for sp, spval in sps.items():
-                    gains_ft_hm[ft][sp][tgt] = spval
-
-        # determine attribute with highest normalized information gain and its index
-        max_gain = -1
-        sp_best = None
-        ft_best = None
-        for ft, sps in gains_ft_hm.items():
-            for sp, tgts in sps.items():
-                hm = np.mean(list(gains_ft_hm[ft][sp].values()))
-                if max_gain < hm:
-                    sp_best = sp
-                    ft_best = ft
-                    max_gain = hm
-        ft_best_idx = self.variables.index(ft_best)
-        return ft_best_idx, sp_best, max_gain
 
     def c45(self, indices, parent, child_idx):
         '''
@@ -361,6 +245,7 @@ class JPT:
 
             for i, v in enumerate(self.variables):
                 leaf.distributions[v] = v.dist(data=data[:, i].T)
+                leaf.prior = data.shape[0] / self.data.shape[0]
 
             leaf.samples = len(indices)
 
@@ -420,16 +305,19 @@ class JPT:
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def __repr__(self):
-        return (f'{self.__class__.__name__}<{self.name}>:\n' 
-                f'{"=" * (len(self.name) + 7)}\n\n' 
-                f'{self._p(self.root, 0)}\n' 
-                f'JPT stats: #innernodes = {len(self.innernodes)}, ' 
+        return (f'{self.__class__.__name__}<{self.name}>:\n'
+                f'{"=" * (len(self.name) + 7)}\n\n'
+                f'{self._p(self.root, 0)}\n'
+                f'JPT stats: #innernodes = {len(self.innernodes)}, '
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
-    def _p(self, root, indent):
+    def _p(self, parent, indent):
+        out('parent', parent)
+        if parent is None:
+            return "{}None\n".format(" " * indent)
         return "{}{}\n{}".format(" " * indent,
-                                 str(root),
-                                 ''.join([self._p(r, indent + 5) for r in ifnone(root.children, [])]))
+                                 str(parent),
+                                 ''.join([self._p(r, indent + 5) for r in ifnone(parent.children, [])]))
 
     def learn(self, data=None, rows=None, columns=None):
         '''Fits the ``data`` into a regression tree.
@@ -465,10 +353,14 @@ class JPT:
         self.data = data
 
         # --------------------------------------------------------------------------------------------------------------
+        # Determine the prior distributions
+        self.priors = {var: var.dist(data=self.data[:, i]) for i, var in enumerate(self.variables)}
+
+        # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
         started = datetime.datetime.now()
-        logger.info('Started learning of %s x %s at %s' % (data.shape[0], data.shape[1], started))
+        JPT.logger.info('Started learning of %s x %s at %s' % (data.shape[0], data.shape[1], started))
         # build up tree
         self.c45queue.append((list(range(len(data))), None, None))
         while self.c45queue:
@@ -479,14 +371,15 @@ class JPT:
         elif self.leaves:
             self.root = self.leaves[0]
         else:
+            out('NO INNER NODES!', self.innernodes, self.leaves)
             self.root = None
 
         # --------------------------------------------------------------------------------------------------------------
         # Print the statistics
 
-        logger.info('Learning took %s' % (datetime.datetime.now() - started))
-        if logger.level >= 20:
-            out(self)
+        JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
+        # if logger.level >= 20:
+        JPT.logger.debug(self)
 
     def infer(self, query, evidence=None):
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
@@ -514,12 +407,8 @@ class JPT:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
-        evidence = ifnone(evidence, {})
-        query = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
-        evidence = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in evidence.items()}
-        # Transform into internal values (symbolic values to their indices)
-        evidence_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in evidence.items()}
-        query_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in query.items()}
+        query_ = self._prepropress_query(query)
+        evidence_ = ifnone(evidence, {}, self._prepropress_query)
 
         r = Result(query_, evidence_)
 
@@ -535,7 +424,7 @@ class JPT:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 p_m *= leaf.distributions[var].p(evidence_val)
 
-            w = leaf.samples / self.root.samples
+            w = leaf.prior
             p_m *= w
             p_e += p_m
 
@@ -551,7 +440,63 @@ class JPT:
                 r.weights.append(p_m)
 
         r.result = p_q / p_e
+        r.weights = [w / p_e for w in r.weights]
         return r
+
+    def expectation(self, variables=None, evidence=None, confidence_level=None):
+        '''
+        Compute the expected value of all ``variables``. If no ``variables`` are passed,
+        it defaults to all variables not passed as ``evidence``.
+        '''
+        evidence_ = self._prepropress_query(ifnone(evidence, {}))
+        conf_level = ifnone(confidence_level, .95)
+        variables = ifnone(variables, set(self.variables) - set(evidence_))
+        distributions = {var: deque() for var in variables}
+
+        result = {var: ExpectationResult(var, evidence_, confidence_level) for var in variables}
+
+        for leaf in self.apply(evidence_):
+            p_m = 1
+            for var in set(evidence_.keys()) - set(leaf.path.keys()):
+                evidence_val = evidence_[var]
+                if var.numeric and var in leaf.path:
+                    evidence_val = evidence_val.intersection(leaf.path[var])
+                p_m *= leaf.distributions[var].p(evidence_val)
+
+            for var in variables:
+                distributions[var].append((leaf.distributions[var], p_m))
+
+        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
+                                            normalized([w for _, w in distributions[var]])) for var in distributions}
+        expectations = {var: dist.expectation() for var, dist in posteriors.items()}
+
+        for var, dist in posteriors.items():
+            result[var].result = expectations[var]
+            if var.numeric:
+                result[var].lower = dist.ppf.eval(max(0, (dist.cdf.eval(expectations[var]) - conf_level / 2)))
+                result[var].upper = dist.ppf.eval(min(1, (dist.cdf.eval(expectations[var]) + conf_level / 2)))
+
+        return list(result.values())
+
+    def _prepropress_query(self, query):
+        '''
+        Transform a query entered by a user into an internal representation
+        that can be further processed.
+        '''
+        # Transform lists into a numeric interval:
+        query_ = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
+        # Transform single numeric values in to intervals given by the haze
+        # parameter of the respective variable:
+        for var, val in list(query_.items()):
+            if var.numeric and isinstance(val, numbers.Number):
+                prior = self.priors[var]
+                quantile = prior.cdf.eval(val)
+                query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
+                                            prior.ppf.eval(min(1, quantile + var.haze / 2)))
+        # Transform into internal values (symbolic values to their indices):
+        query_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in query_.items()}
+        JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
+        return query_
 
     def apply(self, query):
         # if the sample doesn't match the features of the tree, there is no valid prediction possible
@@ -594,57 +539,46 @@ class JPT:
         else:
             return iv
 
-    def reverse(self, query):
+    def reverse(self, query, confidence=.5):
         '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
 
         :param query: a mapping from featurenames to either numeric value intervals or an iterable of categorical values
         :type query: dict
+        :param confidence:  the confidence level for this MPE inference
+        :type confidence: float
         :returns: a mapping from probabilities to lists of matcalo.core.algorithms.JPT.Node (path to root)
         :rtype: dict
         '''
-
         # if none of the target variables is present in the query, there is no match possible
-        if set(query.keys()).isdisjoint(set(self.targets)):
+        if set(query.keys()).isdisjoint(set(self.variables)):
             return []
 
-        numerics = []
-        cat = []
-        for i, tgt in enumerate(self.targets):
-            if issubclass(self._variables[tgt], Distribution):
-                lower = np.NINF
-                upper = np.PINF
-
-                if tgt in query:
-                    t_ = query[tgt]
-                    # value is a function, e.g. min, meaning that we are looking for the minimal value of this variable
-                    if callable(t_):
-                        numerics.append(t_)
-                    else:
-                        numerics.append(Interval(t_.lower if isinstance(t_, Interval) else t_[0], t_.upper if isinstance(t_, Interval) else t_[1]))
-                else:
-                    numerics.append(Interval(lower, upper))
+        # Transform into internal values/intervals (symbolic values to their indices) and update to contain all possible variables
+        query = {var: list2interval(val) if type(val) in (list, tuple) and var.numeric else val if type(val) in (list, tuple) else [val] for var, val in query.items()}
+        query_ = {var: val if var.numeric else set(var.domain.labels.index(v) for v in val) for var, val in query.items()}
+        for i, var in enumerate(self.variables):
+            if var in query_: continue
+            if var.numeric:
+                query_[var] = list2interval([np.NINF, np.PINF])
             else:
-                # TODO: categorical query vars given as set (or iterable), then replace query by either one-element set or find all possible values for cat variables
-                val = None
-                if tgt in query:
-                    if hasattr(query[tgt], '__iter__'):
-                        val = query[tgt]
-                    else:
-                        val = {query[tgt]}
-                else:
-                    # if no value constraints for this categorical feature is set, set all possible values of this feature
-                    # as allowed
-                    val = self._catvalues[tgt]
-                cat.append(val)
+                query_[var] = var.domain.values
 
         # find the leaf (or the leaves) that matches the query best
-        sims = defaultdict(float)
-
+        confs = {}
         for k, l in self.leaves.items():
-            # TODO: FIX THIS TO USE DISTRIBUTIONS
-            sims[l] += l.gbf.query(cat, numerics)
+            confs_ = defaultdict(float)
+            for v, dist in l.distributions.items():
+                if v.numeric:
+                    confs_[v] = dist.p(query_[v])
+                else:
+                    conf = 0.
+                    for sv in query_[v]:
+                        conf += dist.p(sv)
+                    confs_[v] = conf
+            confs[l] = confs_
 
-        candidates = sorted(sims, key=lambda l: sims[l], reverse=True)
+        # the candidates are the one leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
+        candidates = sorted([leaf for leaf, confs in confs.items() if all(c >= confidence for c in confs.values())], key=lambda l: sum(confs[l].values()), reverse=True)
 
         # for the chosen candidate determine the path to the root
         paths = []
@@ -652,11 +586,46 @@ class JPT:
             p = []
             curcand = c
             while curcand is not None:
-                p.append([curcand, [s.identifier for s in curcand.samples]])
+                p.append(curcand)
                 curcand = curcand.parent
-            paths.append([sims[c], p])
+            paths.append((confs[c], p))
 
+        # elements of path are tuples (a, b) with a being mappings of {var: confidence} and b being an ordered list of
+        # nodes representing a path from a leaf to the root
         return paths
+
+    def compute_best_split(self, indices):
+        # calculate gains for each feature/target combination and normalize over targets
+        gains_tgt = defaultdict(dict)
+        for tgt in self.variables:
+            maxval = 0.
+            for ft in self.variables:
+                gains_tgt[tgt][ft] = self.gains(indices, ft, tgt)
+                maxval = max(maxval, *gains_tgt[tgt][ft].values())
+
+            # normalize gains for comparability
+            gains_tgt[tgt] = {ft: {v: g / maxval if maxval > 0. else 0 for v, g in gains_tgt[tgt][ft].items()} for ft in self._variables}
+
+        # determine (harmonic) mean of target gains
+        gains_ft_hm = defaultdict(lambda: defaultdict(dict))
+        for tgt, fts in gains_tgt.items():
+            for ft, sps in fts.items():
+                for sp, spval in sps.items():
+                    gains_ft_hm[ft][sp][tgt] = spval
+
+        # determine attribute with highest normalized information gain and its index
+        max_gain = -1
+        sp_best = None
+        ft_best = None
+        for ft, sps in gains_ft_hm.items():
+            for sp, tgts in sps.items():
+                hm = np.mean(list(gains_ft_hm[ft][sp].values()))
+                if max_gain < hm:
+                    sp_best = sp
+                    ft_best = ft
+                    max_gain = hm
+        ft_best_idx = self.variables.index(ft_best)
+        return ft_best_idx, sp_best, max_gain
 
     def plot(self, filename=None, directory='/tmp', plotvars=None, view=True):
         '''Generates an SVG representation of the generated regression tree.
@@ -673,6 +642,9 @@ class JPT:
         if plotvars == None:
             plotvars = []
 
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
         dot = Digraph(format='svg', name=filename or self.name,
                       directory=directory,
                       filename=f'{filename or self.name}')
@@ -687,7 +659,7 @@ class JPT:
                 rc = math.ceil(math.sqrt(len(plotvars)))
                 img = ''
                 for i, pvar in enumerate(plotvars):
-                    img_name = html.escape(f'{pvar.name}-{idx}')
+                    img_name = html.escape(f'{pvar.name}-{n.idx}')
                     n.distributions[pvar].plot(title=html.escape(pvar.name), fname=img_name, directory=directory, view=False)
                     img += (f'''{"<TR>" if i % rc == 0 else ""}
                                         <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
@@ -717,7 +689,7 @@ class JPT:
                 nodelabel = f'''{nodelabel}{imgs}
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{len(n.samples) if isinstance(n.samples, list) else n.samples}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{n.samples} ({n.prior * 100:.3f}%)</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
@@ -750,14 +722,14 @@ class JPT:
         # create edges
         for idx, n in self.innernodes.items():
             for i, c in enumerate(n.children):
+                if c is None: continue
                 dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
 
         # show graph
-        logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
+        JPT.logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
 
         # improve aspect ratio of graph having many leaves or disconnected nodes
         dot = dot.unflatten(stagger=3)
-
         dot.render(view=view, cleanup=False)
 
     def pickle(self, fpath):
@@ -778,10 +750,10 @@ class JPT:
         '''
         with open(os.path.abspath(fpath), 'rb') as f:
             try:
-                logger.info(f'Loading JPT {os.path.abspath(fpath)}')
+                JPT.logger.info(f'Loading JPT {os.path.abspath(fpath)}')
                 return pickle.load(f)
             except ModuleNotFoundError:
-                logger.error(f'Could not load file {os.path.abspath(fpath)}')
+                JPT.logger.error(f'Could not load file {os.path.abspath(fpath)}')
                 raise Exception(f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.')
 
     @staticmethod
@@ -849,13 +821,31 @@ class Result:
 
     def format_result(self):
         return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
-                                         ' | ' if self.evidence else '',
-                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
-                                         self.result * 100))
+                                        ' | ' if self.evidence else '',
+                                        ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                        self.result * 100))
 
     def explain(self):
         result = self.format_result()
         result += '\n'
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '%.3f%%: %s\n' % (weight, leaf.format_path())
+            result += '%.3f%%: %s\n' % (weight, format_path({var: val for var, val in leaf.path.items() if var not in self.evidence}))
         return result
+
+
+class ExpectationResult(Result):
+
+    def __init__(self, query, evidence, theta, lower=None, upper=None, res=None, cand=None, w=None):
+        super().__init__(query, evidence, res=res, cand=cand, w=w)
+        self.theta = theta
+        self.lower = lower
+        self.upper = upper
+
+    def format_result(self):
+        left = 'E(%s%s%s; %s = %.3f)' % (self.query,
+                                         ' | ' if self.evidence else '',
+                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                         SYMBOL.THETA,
+                                         self.theta)
+        right = '[%.3f; %.3f; %.3f]' % (self.lower, self.result, self.upper) if self.query.numeric else self.query.str(self.result)
+        return '%s = %s' % (left, right)
