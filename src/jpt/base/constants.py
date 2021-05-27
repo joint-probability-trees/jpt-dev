@@ -62,3 +62,5 @@ class SYMBOL:
     LTE = '\u2264'
     GTE = '\u2265'
     THETA = '\u03D1'
+    ARROW_BAR_LEFT = '\u21E4'
+    ARROW_BAR_RIGHT = '\u21E5'

@@ -312,7 +312,6 @@ class JPT:
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def _p(self, parent, indent):
-        out('parent', parent)
         if parent is None:
             return "{}None\n".format(" " * indent)
         return "{}{}\n{}".format(" " * indent,
@@ -841,5 +840,9 @@ class ExpectationResult(Result):
                                          ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
                                          SYMBOL.THETA,
                                          self.theta)
-        right = '[%.3f; %.3f; %.3f]' % (self.lower, self.result, self.upper) if self.query.numeric else self.query.str(self.result)
+        right = '[%.3f %s %.3f %s %.3f]' % (self.lower,
+                                            SYMBOL.ARROW_BAR_LEFT,
+                                            self.result,
+                                            SYMBOL.ARROW_BAR_RIGHT,
+                                            self.upper) if self.query.numeric else self.query.str(self.result)
         return '%s = %s' % (left, right)
