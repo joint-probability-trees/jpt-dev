@@ -25,6 +25,8 @@ class Impurity:
                                                  len(self.symbolic_vars)), dtype=np.float64)
             self.gini_buffer = np.ndarray(shape=self.symbols_total.shape, dtype=np.float64)
             self.gini_buffer2 = np.ndarray(shape=self.symbols_total.shape[1], dtype=np.float64)
+            self.gini_buffer = np.ndarray(shape=self.symbols_total.shape, dtype=np.float64)
+            self.gini_buffer2 = np.ndarray(shape=self.symbols_total.shape[1], dtype=np.float64)
 
         if self.numeric_vars:
             self.sums_left = np.zeros(len(self.numeric_vars), dtype=np.float64)
@@ -34,8 +36,6 @@ class Impurity:
             self.sq_sums_right = np.zeros(len(self.numeric_vars), dtype=np.float64)
             self.sq_sums_total = np.zeros(len(self.numeric_vars), dtype=np.float64)
 
-        self.gini_buffer = np.ndarray(shape=self.symbols_total.shape, dtype=np.float64)
-        self.gini_buffer2 = np.ndarray(shape=self.symbols_total.shape[1], dtype=np.float64)
         self.min_samples_leaf = tree.min_samples_leaf
 
     @property
