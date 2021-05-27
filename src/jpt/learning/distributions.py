@@ -532,7 +532,7 @@ class Numeric(Distribution):
     def mpe(self):
         return max([(interval, function)
                     for interval, function in zip(self.cdf.intervals, self.cdf.functions)],
-                   key=lambda i, f: f.m if isinstance(f, LinearFunction) else 0)[0]
+                   key=lambda x: x[1].m if isinstance(x[1], LinearFunction) else 0)[0]
 
     def set_data(self, data):
         # d = np.array(data, dtype=np.float64)

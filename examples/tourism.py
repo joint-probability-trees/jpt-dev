@@ -5,14 +5,16 @@ import pandas as pd
 from dnutils import out
 from matplotlib import pyplot as plt
 
+from jpt.base.utils import format_path
 from jpt.learning.distributions import SymbolicType, Numeric
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 
 
 def tourism():
+
     # generate JPT from tourism data
-    df = pd.read_csv('data/tourism.csv')
+    df = pd.read_csv('../examples/data/tourism.csv')
     df['Price'] *= 2000
     df['DoY'] *= 710
 
@@ -35,12 +37,18 @@ def tourism():
     for persona in df['Persona'].unique():
         for exp in jpt.expectation([t, price], evidence={p: persona}, confidence_level=.95):
             print(exp)
-    jpt.plot(plotvars=[price, t, d, p], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
+
+    # Test the MPE inference
+    print('MPE:', format_path(jpt.mpe({t: 240})))
+
+    # jpt.plot(plotvars=[price, t, d, p],
+    #          directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
+    plot_tourism()
 
 
 def plot_tourism():
     # generate plot for tree data
-    df = pd.read_csv('data/tourism.csv')
+    df = pd.read_csv('../examples/data/tourism.csv')
     df['Price'] *= 2000
     df['DoY'] *= 710
 
@@ -55,7 +63,6 @@ def plot_tourism():
     colors = {'FAMILY': 'red', 'COUPLE': 'green', 'GROUP': 'blue', 'SINGLE+CHILD': 'orange'}
 
     for dest, persona in [(d, p) for d in df['Destination'].unique() for p in df['Persona'].unique()]:
-        out(dest, persona)
         samples = df[(df['Destination'] == dest) & (df['Persona'] == persona)]
         ax.scatter(samples['Price'] , samples['DoY'],
                    color=colors[persona],
@@ -70,12 +77,12 @@ def plot_tourism():
     # ax.plot(bounds, cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', linewidth=2, markersize=12, label='Piecewise fn from bounds')
     # ax.plot(sampled, cdf.multi_eval(sampled), color='red', linestyle='dotted', linewidth=2, label='Piecewise fn from original data')
 
+    plt.show()
+
     # ax2 = ax.twiny()
     # ax2.set_xlim(left=0., right=1.0)
     # ax2.plot(bounds, cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', linewidth=2, markersize=12, label='Piecewise fn from bounds')
     # ax.legend()
-
-    plt.show()
 
 
 def main(*args):
