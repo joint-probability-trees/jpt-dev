@@ -216,14 +216,11 @@ def test_dists():
 
 
 def test_muesli():
-    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
 
-    data = []
-    with open(f, 'rb') as fi:
-        data = np.array(pickle.load(fi))
-    data_ = np.array(sorted([float(x) for x in data.T[0]]))
+    data = pd.read_csv('../examples/data/muesli.csv')
+    d = np.array(sorted(data['X']), dtype=np.float64)
 
-    quantiles = Quantiles(data_, epsilon=.0001)
+    quantiles = Quantiles(d, epsilon=.0001)
     cdf_ = quantiles.cdf()
     d = Numeric(cdf=cdf_)
 
@@ -232,7 +229,7 @@ def test_muesli():
     out('query', interval, p)
 
     print(d.cdf.pfmt())
-    d.plot(name='Müsli Beispiel', view=True)
+    d.plot(title='Piecewise Linear CDF of Breakfast Data', fname='BreakfastPiecewise', xlabel='X', view=True)
 
 
 def muesli_tree():
@@ -241,7 +238,8 @@ def muesli_tree():
     data = []
     # with open(f, 'rb') as fi:
     #     data = pickle.load(fi)
-    data = pd.read_pickle('../examples/data/human_muesli.dat')
+    # data = pd.read_pickle('../examples/data/human_muesli.dat')
+    data = pd.read_csv('../examples/data/muesli.csv')
     # unique, counts = np.unique(data[2], return_counts=True)
     print(data)
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
@@ -249,8 +247,9 @@ def muesli_tree():
     x = NumericVariable('X', Numeric)
     y = NumericVariable('Y', Numeric)
     o = SymbolicVariable('Object', ObjectType)
+    s = SymbolicVariable('Success', Bool)
 
-    jpt = JPT([x, y, o], name="Müslitree", min_samples_leaf=5)
+    jpt = JPT([x, y, o, s], name="Müslitree", min_samples_leaf=5)
     jpt.learn(columns=data.values.T)
 
     for clazz in data['Class'].unique():
@@ -258,7 +257,7 @@ def muesli_tree():
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
-    jpt.plot(plotvars=[x, y, o])
+    jpt.plot(plotvars=[x, y, o, s])
 
 
 def picklemuesli():
@@ -309,10 +308,10 @@ def main(*args):
     # test_merge()
     # test_dists()
     # restaurant()  # for bools and strings
-    # test_muesli()
+    test_muesli()
     # muesli_tree()  # for numerics and strings
     # picklemuesli()
-    alarm()  # for bools
+    # alarm()  # for bools
     # tourism()
     # fraport()
 
