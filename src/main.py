@@ -1,5 +1,7 @@
 import pyximport
 
+from examples import tourism, quantile, restaurant, neems, alarm, muesli
+
 pyximport.install()
 
 from dnutils import out
@@ -59,7 +61,14 @@ def main(*args):
 
     # test_merge()
     # test_dists()
-    alarm()  # for bools
+
+    # call imported examples
+    alarm.main()
+    # muesli.main()
+    # neems.main()
+    # quantile.main()
+    # restaurant.main()
+    # tourism.main()
 
 
 # Press the green button in the gutter to run the script.

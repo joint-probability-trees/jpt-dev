@@ -42,5 +42,10 @@ def test_quantiles():
     plt.show()
 
 
-if __name__ == '__main__':
+def main(*args):
     test_quantiles()
+
+
+# Press the green button in the gutter to run the script.
+if __name__ == '__main__':
+    main('PyCharm')
