@@ -1,10 +1,42 @@
+import pyximport
+pyximport.install()
 import math
 from functools import reduce
 
 import numpy as np
+from numpy import iterable
+
 from dnutils import ifnone
 
-from .intervals import ContinuousSet
+from jpt.base.intervals import ContinuousSet
+
+
+class Conditional:
+
+    def __init__(self, typ, conditionals):
+        self.type = typ
+        self.conditionals = conditionals
+        self.p = {}
+
+    def __getitem__(self, values):
+        if not iterable(values):
+            values = (values,)
+        return self.p[tuple(values)]
+
+    def __setitem__(self, evidence, dist):
+        if not iterable(evidence):
+            evidence = (evidence,)
+        self.p[evidence] = dist
+
+    def sample(self, evidence, n):
+        if not iterable(evidence):
+            evidence = (evidence,)
+        return self.p[tuple(evidence)].sample(n)
+
+    def sample_one(self, evidence):
+        if not iterable(evidence):
+            evidence = (evidence,)
+        return self.p[tuple(evidence)].sample_one()
 
 
 def mapstr(seq, format=None):
@@ -29,7 +61,7 @@ def tojson(obj):
 
 def format_path(path):
     '''
-    Returns a readible string representation of a conjunction of variable assignments,
+    Returns a readable string representation of a conjunction of variable assignments,
     given by the dictionary ``path``.
     '''
     return ' ^ '.join([var.str(val, fmt='logic') for var, val in path.items()])

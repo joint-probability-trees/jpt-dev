@@ -1,3 +1,5 @@
+import pyximport
+pyximport.install()
 import os
 from datetime import datetime
 
@@ -5,37 +7,10 @@ import numpy as np
 from numpy import iterable
 
 from dnutils import out
+from jpt.base.utils import Conditional
 from jpt.learning.distributions import Bool
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable
-
-
-class Conditional:
-
-    def __init__(self, typ, conditionals):
-        self.type = typ
-        self.conditionals = conditionals
-        self.p = {}
-
-    def __getitem__(self, values):
-        if not iterable(values):
-            values = (values,)
-        return self.p[tuple(values)]
-
-    def __setitem__(self, evidence, dist):
-        if not iterable(evidence):
-            evidence = (evidence,)
-        self.p[evidence] = dist
-
-    def sample(self, evidence, n):
-        if not iterable(evidence):
-            evidence = (evidence,)
-        return self.p[tuple(evidence)].sample(n)
-
-    def sample_one(self, evidence):
-        if not iterable(evidence):
-            evidence = (evidence,)
-        return self.p[tuple(evidence)].sample_one()
 
 
 def alarm():
