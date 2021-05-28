@@ -477,6 +477,32 @@ class JPT:
 
         return list(result.values())
 
+    def mpe(self, evidence=None):
+        '''
+        Compute the (conditional) MPE state of the model.
+        '''
+        evidence_ = self._prepropress_query(evidence)
+        distributions = {var: deque() for var in self.variables}
+
+        result = {var: None for var in self.variables}
+        p = 0
+
+        for leaf in self.apply(evidence_):
+            p_m = 1
+            for var in set(evidence_.keys()) - set(leaf.path.keys()):
+                evidence_val = evidence_[var]
+                if var.numeric and var in leaf.path:
+                    evidence_val = evidence_val.intersection(leaf.path[var])
+                p_m *= leaf.distributions[var].p(evidence_val)
+
+            for var in self.variables:
+                distributions[var].append((leaf.distributions[var], p_m))
+
+        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
+                                            normalized([w for _, w in distributions[var]])) for var in distributions}
+
+        return {var: dist.mpe() for var, dist in posteriors.items()}
+
     def _prepropress_query(self, query):
         '''
         Transform a query entered by a user into an internal representation
