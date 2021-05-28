@@ -31,18 +31,18 @@ def tourism():
     jpt.learn(columns=df.values.T[1:])
 
     for clazz in df['Destination'].unique():
-        print(jpt.infer(query={d: clazz}, evidence={t: 300}))
+        out(jpt.infer(query={d: clazz}, evidence={t: 300}))
         for exp in jpt.expectation([t, price], evidence={d: clazz}, confidence_level=.95):
-            print(exp)
+            out(exp)
     for persona in df['Persona'].unique():
         for exp in jpt.expectation([t, price], evidence={p: persona}, confidence_level=.95):
-            print(exp)
+            out(exp)
 
     # Test the MPE inference
-    print('MPE:', format_path(jpt.mpe({t: 240})))
+    out(jpt.mpe({t: 150}))
 
-    # jpt.plot(plotvars=[price, t, d, p],
-    #          directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
+    jpt.plot(plotvars=[price, t, d, p],
+             directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
     plot_tourism()
 
 
