@@ -14,7 +14,7 @@ import datetime
 import numpy as np
 from dnutils.stats import stopwatch
 from graphviz import Digraph
-from matplotlib import style
+from matplotlib import style, pyplot as plt
 
 import dnutils
 from dnutils import first, out, ifnone
@@ -690,6 +690,9 @@ class JPT:
                                         <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
                                 {"</TR>" if i % rc == rc-1 or i == len(plotvars) - 1 else ""}
                                 ''')
+
+                    # clear current figure to allow for other plots
+                    plt.clf()
 
                 if plotvars:
                     imgs = f'''
