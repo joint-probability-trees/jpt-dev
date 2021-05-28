@@ -50,19 +50,16 @@ class Node:
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx, parent=None, treename=None):
+    def __init__(self, idx, parent=None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
         :param parent:          the parent node
         :type parent:           jpt.learning.trees.Node
-        :param treename:        the name of the decision tree
-        :type treename:         str
         '''
         self.idx = idx
         self.parent = parent
         self.samples = 0.
-        self.treename = treename
         self.children = None
         self._path = []
         self.distributions = {}
@@ -92,7 +89,7 @@ class DecisionNode(Node):
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx, splits, dec_criterion, parent=None, treename=None):
+    def __init__(self, idx, splits, dec_criterion, parent=None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
@@ -104,7 +101,7 @@ class DecisionNode(Node):
         self.splits = splits
         self.dec_criterion = dec_criterion
         self.dec_criterion_val = None
-        super().__init__(idx, parent=parent, treename=treename)
+        super().__init__(idx, parent=parent)
         self.children = [None] * len(self.splits)
 
     def set_child(self, idx, node):
@@ -137,8 +134,8 @@ class Leaf(Node):
     '''
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
-    def __init__(self, idx, parent=None, prior=None, treename=None):
-        super().__init__(idx, parent=parent, treename=treename)
+    def __init__(self, idx, parent=None, prior=None):
+        super().__init__(idx, parent=parent)
         self.distributions = defaultdict(Distribution)
         self.prior = prior
 
@@ -231,7 +228,7 @@ class JPT:
         data = _data[indices, :]
 
         if len(indices) > self.min_samples_leaf:
-            impurity = Impurity(self, indices)
+            impurity = Impurity(self, _data, indices)
             # ft_best_idx, sp_best, max_gain = self.compute_best_split(indices)
             ft_best_idx, sp_best, max_gain = impurity.compute_best_split()
 
@@ -249,8 +246,7 @@ class JPT:
         # create decision node splitting on ft_best or leaf node if min_samples_leaf criterion is not met
         if max_gain <= min_impurity_improvement:
             leaf = Leaf(idx=len(self.allnodes),
-                        parent=parent,
-                        treename=self.name)
+                        parent=parent)
 
             if parent is not None:
                 parent.set_child(child_idx, leaf)
@@ -294,8 +290,7 @@ class JPT:
             node = DecisionNode(idx=len(self.allnodes),
                                 splits=splits,
                                 dec_criterion=ft_best,
-                                parent=parent,
-                                treename=self.name)
+                                parent=parent)
             if parent is not None:
                 parent.set_child(child_idx, node)
             node.samples = len(indices)
@@ -307,7 +302,7 @@ class JPT:
             for i, d_ft in enumerate(split_data):
                 if not d_ft:
                     continue
-                self.c45queue.append((tuple(d_ft), node, i))
+                self.c45queue.put((tuple(d_ft), node, i))
 
     def __str__(self):
         return (f'{self.__class__.__name__}<{self.name}>:\n'
