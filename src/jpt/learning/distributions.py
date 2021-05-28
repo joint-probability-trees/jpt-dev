@@ -566,6 +566,9 @@ class Numeric(Distribution):
         :type view:         bool
         :return:            None
         '''
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
         if not view:
             plt.ioff()
 
