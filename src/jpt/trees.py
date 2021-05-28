@@ -490,15 +490,16 @@ class JPT:
         evidence_ = self._prepropress_query(evidence)
         distributions = {var: deque() for var in self.variables}
 
-        result = {var: None for var in self.variables}
-        p = 0
+        r = MPEResult(evidence_)
 
         for leaf in self.apply(evidence_):
             p_m = 1
-            for var in set(evidence_.keys()) - set(leaf.path.keys()):
+            for var in set(evidence_.keys()):
                 evidence_val = evidence_[var]
                 if var.numeric and var in leaf.path:
                     evidence_val = evidence_val.intersection(leaf.path[var])
+                elif var.symbolic and var in leaf.path:
+                    continue
                 p_m *= leaf.distributions[var].p(evidence_val)
 
             for var in self.variables:
@@ -507,7 +508,9 @@ class JPT:
         posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
                                             normalized([w for _, w in distributions[var]])) for var in distributions}
 
-        return {var: dist.mpe() for var, dist in posteriors.items()}
+        for var, dist in posteriors.items():
+            r.path.update({var: dist.mpe()})
+        return r
 
     def _prepropress_query(self, query):
         '''
@@ -887,3 +890,13 @@ class ExpectationResult(Result):
                                             SYMBOL.ARROW_BAR_RIGHT,
                                             self.upper) if self.query.numeric else self.query.str(self.result)
         return '%s = %s' % (left, right)
+
+
+class MPEResult(Result):
+
+    def __init__(self, evidence, res=None, cand=None, w=None):
+        super().__init__(None, evidence, res=res, cand=cand, w=w)
+        self.path={}
+
+    def format_result(self):
+        return f'MPE({self.evidence}) = {format_path(self.path)}'
