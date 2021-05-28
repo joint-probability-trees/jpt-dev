@@ -31,12 +31,25 @@ style.use(plotstyle)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+# Global data store to exploit copy-on-write in multiprocessing
+
+import multiprocessing as mp
+
+_manager = mp.Manager()
+_data = None
+_data_queue = _manager.Queue()
+_node_queue = _manager.Queue()
+_pool = None
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 class Node:
     '''
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     '''
+
     def __init__(self, idx, parent=None, treename=None):
         '''
         :param idx:             the identifier of a node
@@ -191,8 +204,7 @@ class JPT:
         self.innernodes = {}
         self.allnodes = ChainMap(self.innernodes, self.leaves)
         self.root = None
-        self.data = None
-        self.c45queue = deque()
+        self.c45queue = _data_queue
         self.priors = {}
 
     @property
@@ -216,7 +228,7 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
         # --------------------------------------------------------------------------------------------------------------
-        data = self.data[indices, :]
+        data = _data[indices, :]
 
         if len(indices) > self.min_samples_leaf:
             impurity = Impurity(self, indices)
@@ -349,11 +361,12 @@ class JPT:
         for i, (var, col) in enumerate(zip(self.variables, columns)):
             data[:, i] = col if var.numeric else [var.domain.labels.index(v) for v in col]
 
-        self.data = data
+        global _data
+        _data = data
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
-        self.priors = {var: var.dist(data=self.data[:, i]) for i, var in enumerate(self.variables)}
+        self.priors = {var: var.dist(data=_data[:, i]) for i, var in enumerate(self.variables)}
 
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
@@ -361,9 +374,9 @@ class JPT:
         started = datetime.datetime.now()
         JPT.logger.info('Started learning of %s x %s at %s' % (data.shape[0], data.shape[1], started))
         # build up tree
-        self.c45queue.append((list(range(len(data))), None, None))
-        while self.c45queue:
-            self.c45(*self.c45queue.popleft())
+        self.c45queue.put_nowait((tuple(range(_data.shape[0])), None, None))
+        while self.c45queue.qsize():
+            self.c45(*self.c45queue.get())
 
         if self.innernodes:
             self.root = self.innernodes[0]
