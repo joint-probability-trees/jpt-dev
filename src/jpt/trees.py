@@ -360,13 +360,9 @@ class JPT:
         global _data
         _data = data
 
-        out(data.shape, data)
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
         self.priors = {var: var.dist(data=_data[:, i]) for i, var in enumerate(self.variables)}
-        # for i, prior in enumerate(self.priors.values()):
-            # print(prior.cdf.pfmt())
-            # print(_data[:, i], np.unique(_data[:, i]))
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
