@@ -341,13 +341,15 @@ class JPT:
         if isinstance(data, np.ndarray) and data.shape[0] or data:
             rows = data
 
-        if type(rows) is list and rows or isinstance(rows, np.ndarray) and rows.shape[0]:  # Transpose the rows
+        if isinstance(rows, list) and rows:  # Transpose the rows
             columns = [[row[i] for row in rows] for i in range(len(self.variables))]
+        elif isinstance(rows, np.ndarray) and rows.shape[0]:
+            columns = rows.T
 
-        if type(columns) is list and columns:
+        if isinstance(columns, list) and columns:
             shape = len(columns[0]), len(columns)
         elif isinstance(columns, np.ndarray) and columns.shape:
-            shape = columns.shape
+            shape = columns.T.shape
         else:
             raise ValueError('No data given.')
 
@@ -362,9 +364,9 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
         self.priors = {var: var.dist(data=_data[:, i]) for i, var in enumerate(self.variables)}
-        for i, prior in enumerate(self.priors.values()):
-            print(prior.cdf.pfmt())
-            print(_data[:, i], np.unique(_data[:, i]))
+        # for i, prior in enumerate(self.priors.values()):
+            # print(prior.cdf.pfmt())
+            # print(_data[:, i], np.unique(_data[:, i]))
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
@@ -687,6 +689,8 @@ class JPT:
         '''
         if plotvars == None:
             plotvars = []
+
+        title = ifnone(title, 'unnamed')
 
         if not os.path.exists(directory):
             os.makedirs(directory)
