@@ -2,20 +2,23 @@ import numpy as np
 from dnutils import out
 from matplotlib import pyplot as plt
 
-from jpt.learning.distributions import Numeric
+from jpt.learning.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
-from jpt.variables import NumericVariable
+from jpt.variables import NumericVariable, SymbolicVariable
 
 
 def main():
     from sklearn.datasets import load_digits
     mnist = load_digits()
 
-    variables = [NumericVariable('x_%s%s' % (x1+1, x2+2), Numeric) for x1 in range(8) for x2 in range(8)]
+    variables = ([NumericVariable('x_%s%s' % (x1+1, x2+2), Numeric) for x1 in range(8) for x2 in range(8)])
+    # +
+    #              [SymbolicVariable('class', SymbolicType('DigitType', mnist.target))])
 
     tree = JPT(variables=variables, min_samples_leaf=150)
 
-    tree.learn(rows=mnist.data)
+    # tree.learn(columns=np.vstack([mnist.data.T, mnist.target.T]))
+    tree.learn(columns=mnist.data.T)
 
     leaves = list(tree.leaves.values())
 
@@ -31,14 +34,14 @@ def main():
     # axes[i // 10, i % 10].set_title(f"target: {mnist.target[i]}")
 
     for i, leaf in enumerate(leaves):
-        out(leaf.distributions, leaf.samples)
-        model = np.array([d.expectation() for d in leaf.distributions.values()]).reshape(8, 8)
-        out(model)
+        model = np.array([d.expectation() for d in list(leaf.distributions.values())]).reshape(8, 8)
+        # print(leaf.distributions[tree.varnames['class']]._p)
         idx = i // 10, i % 10 if len(axes.shape) == 1 else i
         axes[idx].imshow(model, cmap='gray')
 
     plt.tight_layout()
     plt.show()
+    tree.plot()
 
 
 if __name__ =='__main__':
