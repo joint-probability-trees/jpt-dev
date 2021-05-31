@@ -2,7 +2,7 @@ import numpy as np
 from dnutils import first
 from matplotlib import pyplot as plt
 
-from jpt.learning.distributions import Numeric
+from jpt.learning.distributions import Numeric, NumericType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable
 
@@ -36,7 +36,7 @@ def main():
 
     # Construct the predictive model
     varx = NumericVariable('x', Numeric)
-    vary = NumericVariable('y', Numeric)
+    vary = NumericVariable('y', NumericType('y', y))
 
     jpt = JPT(variables=[varx, vary], min_samples_leaf=10)
     jpt.learn(columns=[X.ravel(), y])
