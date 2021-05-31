@@ -26,7 +26,7 @@ def tourism():
     d = SymbolicVariable('Destination', DestinationType)
     p = SymbolicVariable('Persona', PersonaType)
 
-    jpt = JPT(variables=[price, t, d, p], name="Tourism", min_samples_leaf=15)
+    jpt = JPT(variables=[price, t, d, p], min_samples_leaf=15)
     # out(df.values.T)
     jpt.learn(columns=df.values.T[1:])
 
@@ -43,7 +43,7 @@ def tourism():
 
     jpt.plot(plotvars=[price, t, d, p],
              directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
-    plot_tourism()
+    # plot_tourism()
 
 
 def plot_tourism():
