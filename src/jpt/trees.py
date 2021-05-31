@@ -355,7 +355,7 @@ class JPT:
 
         data = np.ndarray(shape=shape, dtype=np.float64)
         for i, (var, col) in enumerate(zip(self.variables, columns)):
-            data[:, i] = col if var.numeric else [var.domain.labels.index(v) for v in col]
+            data[:, i] = [var.domain.values[v] for v in col]
 
         global _data
         _data = data
@@ -486,10 +486,10 @@ class JPT:
         expectations = {var: dist.expectation() for var, dist in posteriors.items()}
 
         for var, dist in posteriors.items():
-            result[var].result = expectations[var]
+            result[var]._res = expectations[var]
             if var.numeric:
-                result[var].lower = dist.ppf.eval(max(0, (dist.cdf.eval(expectations[var]) - conf_level / 2)))
-                result[var].upper = dist.ppf.eval(min(1, (dist.cdf.eval(expectations[var]) + conf_level / 2)))
+                result[var]._lower = dist.ppf.eval(max(0, (dist.cdf.eval(expectations[var]) - conf_level / 2)))
+                result[var]._upper = dist.ppf.eval(min(1, (dist.cdf.eval(expectations[var]) + conf_level / 2)))
 
         return list(result.values())
 
@@ -538,7 +538,7 @@ class JPT:
                 query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
                                             prior.ppf.eval(min(1, quantile + var.haze / 2)))
         # Transform into internal values (symbolic values to their indices):
-        query_ = {var: val if var.numeric else var.domain.labels.index(val) for var, val in query_.items()}
+        query_ = {var: var.domain.labels[val] for var, val in query_.items()}
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
 
@@ -599,7 +599,7 @@ class JPT:
 
         # Transform into internal values/intervals (symbolic values to their indices) and update to contain all possible variables
         query = {var: list2interval(val) if type(val) in (list, tuple) and var.numeric else val if type(val) in (list, tuple) else [val] for var, val in query.items()}
-        query_ = {var: val if var.numeric else set(var.domain.labels.index(v) for v in val) for var, val in query.items()}
+        query_ = {var: set(var.domain.value[v] for v in val) for var, val in query.items()}
         for i, var in enumerate(self.variables):
             if var in query_: continue
             if var.numeric:
@@ -836,13 +836,17 @@ class Result:
 
     def __init__(self, query, evidence, res=None, cand=None, w=None):
         self.query = query
-        self.evidence = evidence
+        self._evidence = evidence
         self._res = ifnone(res, [])
         self._cand = ifnone(cand, [])
         self._w = ifnone(w, [])
 
     def __str__(self):
         return self.format_result()
+
+    @property
+    def evidence(self):
+        return {k: (k.domain.labels[v] if v.symbolic else ContinuousSet(k.domain.labels[v.lower], k.domain.labels[v.upper], v.left, v.right)) for k, v in self._evidence.items()}
 
     @property
     def result(self):
@@ -887,8 +891,20 @@ class ExpectationResult(Result):
     def __init__(self, query, evidence, theta, lower=None, upper=None, res=None, cand=None, w=None):
         super().__init__(query, evidence, res=res, cand=cand, w=w)
         self.theta = theta
-        self.lower = lower
-        self.upper = upper
+        self._lower = lower
+        self._upper = upper
+
+    @property
+    def lower(self):
+        return self.query.domain.labels[self._lower]
+
+    @property
+    def upper(self):
+        return self.query.domain.labels[self._upper]
+
+    @property
+    def result(self):
+        return self.query.domain.labels[self._res]
 
     def format_result(self):
         left = 'E(%s%s%s; %s = %.3f)' % (self.query,
@@ -908,7 +924,7 @@ class MPEResult(Result):
 
     def __init__(self, evidence, res=None, cand=None, w=None):
         super().__init__(None, evidence, res=res, cand=cand, w=w)
-        self.path={}
+        self.path = {}
 
     def format_result(self):
         return f'MPE({self.evidence}) = {format_path(self.path)}'

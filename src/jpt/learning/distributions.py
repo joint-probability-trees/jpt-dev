@@ -1,7 +1,13 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
+from collections import OrderedDict
+
 import pyximport
+from sklearn.preprocessing import StandardScaler
+
 pyximport.install()
+
+from ..base.intervals import R
 
 from jpt.base.utils import classproperty
 
@@ -447,6 +453,7 @@ class Distribution:
     Abstract supertype of all domains and distributions
     '''
     values = None
+    labels = None
 
     def __init__(self):
         # used for str and repr methods to be able to print actual type of Distribution when created with jpt.variables.Variable
@@ -455,10 +462,16 @@ class Distribution:
     def __hash__(self):
         return hash(self.values)
 
+    def __getitem__(self, value):
+        return self.p(value)
+
     def sample(self, n):
         raise NotImplementedError
 
     def sample_one(self):
+        raise NotImplementedError
+
+    def p(self, value):
         raise NotImplementedError
 
     def expectation(self):
@@ -488,11 +501,46 @@ class Distribution:
         raise NotImplementedError
 
 
+class DataScaler(StandardScaler):
+    def __init__(self, data, inverse=False):
+        super().__init__()
+        self.fit(data.reshape(-1, 1))
+
+
+    @property
+    def mean(self):
+        raise NotImplementedError
+
+    @property
+    def variance(self):
+        raise NotImplementedError
+
+    def __getitem__(self, item):
+        return self.inverse_transform(np.array([item]))[0]
+
+
+class Identity:
+
+    def __getitem__(self, item):
+        return item
+
+
+class DataScalerProxy:
+
+    def __init__(self, datascaler, inverse=False):
+        self.datascaler = datascaler
+        self.inverse = inverse
+
+    def __getitem__(self, item):
+        return (self.datascaler.transform if not self.inverse else self.datascaler.inverse_transform)(np.array(item).reshape(1, -1))[0]
+
+
 class Numeric(Distribution):
     '''
     Wrapper class for numeric domains and distributions.
     '''
-    values = []
+    values = Identity()
+    labels = Identity()
 
     def __init__(self, quantile=None):
         super().__init__()
@@ -500,6 +548,9 @@ class Numeric(Distribution):
 
     def __str__(self):
         return self.cdf.pfmt()
+
+    def __getitem__(self, value):
+        return self.p(value)
 
     @property
     def cdf(self):
@@ -594,6 +645,13 @@ class Numeric(Distribution):
 
         if view:
             plt.show()
+
+
+class ScaledNumeric(Numeric):
+    scaler = None
+
+    def __init__(self, quantile=None):
+        super().__init__(quantile=quantile)
 
 
 class Multinomial(Distribution):
@@ -958,8 +1016,16 @@ def HistogramType(name, values):
     return t
 
 
-def SymbolicType(name, values):
+def SymbolicType(name, labels):
     t = type(name, (Multinomial,), {})
-    t.values = tuple(range(len(values)))
-    t.labels = tuple(values)
+    t.values = OrderedDict([(lbl, val) for val, lbl in zip(range(len(labels)), labels)])
+    t.labels = OrderedDict([(val, lbl) for val, lbl in zip(range(len(labels)), labels)])
+    return t
+
+
+def NumericType(name, values):
+    t = type(name, (ScaledNumeric,), {})
+    t.scaler = DataScaler(values)
+    t.values = DataScalerProxy(t.scaler, inverse=False)
+    t.labels = DataScalerProxy(t.scaler, inverse=True)
     return t
