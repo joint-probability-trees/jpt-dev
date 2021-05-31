@@ -9,11 +9,18 @@ cimport numpy as np
 cimport cython
 
 cdef class NumberSet:
-    pass
+
+    def __getstate__(self):
+        return ()
+
+    def __setstate__(self, _):
+        pass
+
 
 _CUP = u'\u222A'
 _CAP = u'\u2229'
 _EMPTYSET = u'\u2205'
+
 
 @cython.final
 cdef class RealSet(NumberSet):
