@@ -502,6 +502,7 @@ cdef class QuantileDistribution:
         # Sort the data if necessary
         cdef np.float64_t[::1] y, x
 
+
         if not presorted:
             data = np.sort(data)
 
@@ -520,7 +521,7 @@ cdef class QuantileDistribution:
             self._cdf.intervals.append(R.copy())
             self._cdf.functions.append(LinearFunction(0, 0).fit(x, y))
 
-        elif self.min_samples_mars <= x.shape[0]:
+        elif self.min_samples_mars <= y.shape[0]:
             self._cdf = fit_piecewise(x, y,
                                       epsilon=self.epsilon,
                                       penalty=self.penalty, verbose=self.verbose)
@@ -528,7 +529,7 @@ cdef class QuantileDistribution:
         else:
             self._cdf = PiecewiseFunction()
             self._cdf.intervals.append(R.copy())
-            self._cdf.functions.append(ConstantFunction(1))
+            self._cdf.functions.append(ConstantFunction(0))
 
         self._cdf.ensure_left(ConstantFunction(0), x[0])
         self._cdf.ensure_right(ConstantFunction(1), x[-1])
