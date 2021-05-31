@@ -502,26 +502,25 @@ cdef class QuantileDistribution:
         # Sort the data if necessary
         cdef np.float64_t[::1] y, x
 
-
         if not presorted:
             data = np.sort(data)
 
         x, counts = np.unique(data, return_counts=True)
         y = np.asarray(counts, dtype=np.float64)
+        np.cumsum(y, out=np.asarray(y))
+        cdef np.float64_t n_samples = data.shape[0]
         cdef np.int32_t i
-        cdef np.float64_t n_samples = x.shape[0]
         for i in range(x.shape[0]):
             y[i] /= n_samples
-        np.cumsum(y, out=np.asarray(y))
 
         self._ppf = self._pdf = None
         # Use simple linear regression when fewer than min_samples_mars points are available
-        if 1 < y.shape[0] < self.min_samples_mars:
+        if 1 < x.shape[0] < self.min_samples_mars:
             self._cdf = PiecewiseFunction()
             self._cdf.intervals.append(R.copy())
             self._cdf.functions.append(LinearFunction(0, 0).fit(x, y))
 
-        elif self.min_samples_mars <= y.shape[0]:
+        elif self.min_samples_mars <= x.shape[0]:
             self._cdf = fit_piecewise(x, y,
                                       epsilon=self.epsilon,
                                       penalty=self.penalty, verbose=self.verbose)
@@ -530,7 +529,6 @@ cdef class QuantileDistribution:
             self._cdf = PiecewiseFunction()
             self._cdf.intervals.append(R.copy())
             self._cdf.functions.append(ConstantFunction(0))
-
         self._cdf.ensure_left(ConstantFunction(0), x[0])
         self._cdf.ensure_right(ConstantFunction(1), x[-1])
         return self
@@ -1022,7 +1020,7 @@ cdef class PiecewiseFunction(Function):
         cdef ContinuousSet xing = self.functions[0].xing_point(left)
         if xing == R:  # With all points are crossing points, we are done
             return
-        elif xing and xing.lower < self.intervals[0].upper:
+        elif xing and xing.lower < self.intervals[0].upper and xing.upper >= x:
             self.intervals.insert(0, ContinuousSet(np.NINF, xing.lower, _EXC, _EXC))
             self.intervals[1].lower = xing.lower
             self.intervals[1].left = _INC
@@ -1032,6 +1030,7 @@ cdef class PiecewiseFunction(Function):
             self.intervals[1].lower = x
             self.intervals[1].left = _INC
             self.functions.insert(0, left)
+
             if not self.intervals[1]:
                 del self.intervals[1]
                 del self.functions[1]
@@ -1040,7 +1039,7 @@ cdef class PiecewiseFunction(Function):
         cdef ContinuousSet xing = self.functions[-1].xing_point(right)
         if xing == R:  # With all points are crossing points, we are done
             return
-        elif xing and xing.upper > self.intervals[-1].lower:
+        elif xing and xing.upper > self.intervals[-1].lower and xing.lower <= x:
             self.intervals.append(ContinuousSet(xing.lower, np.PINF, _INC, _EXC))
             self.intervals[-2].upper = xing.upper
             self.intervals[-2].left = _INC
