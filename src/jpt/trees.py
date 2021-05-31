@@ -31,25 +31,34 @@ style.use(plotstyle)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+# Global data store to exploit copy-on-write in multiprocessing
+
+import multiprocessing as mp
+
+_data = None
+_data_queue = mp.Queue()
+_node_queue = mp.Queue()
+_pool = None
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 class Node:
     '''
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     '''
-    def __init__(self, idx, parent=None, treename=None):
+
+    def __init__(self, idx, parent=None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
         :param parent:          the parent node
         :type parent:           jpt.learning.trees.Node
-        :param treename:        the name of the decision tree
-        :type treename:         str
         '''
         self.idx = idx
         self.parent = parent
         self.samples = 0.
-        self.treename = treename
         self.children = None
         self._path = []
         self.distributions = {}
@@ -79,7 +88,7 @@ class DecisionNode(Node):
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx, splits, dec_criterion, parent=None, treename=None):
+    def __init__(self, idx, splits, dec_criterion, parent=None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
@@ -91,7 +100,7 @@ class DecisionNode(Node):
         self.splits = splits
         self.dec_criterion = dec_criterion
         self.dec_criterion_val = None
-        super().__init__(idx, parent=parent, treename=treename)
+        super().__init__(idx, parent=parent)
         self.children = [None] * len(self.splits)
 
     def set_child(self, idx, node):
@@ -124,9 +133,9 @@ class Leaf(Node):
     '''
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
-    def __init__(self, idx, parent=None, prior=None, treename=None):
-        super().__init__(idx, parent=parent, treename=treename)
-        self.distributions = defaultdict(Distribution)
+    def __init__(self, idx, parent=None, prior=None):
+        super().__init__(idx, parent=parent)
+        self.distributions = OrderedDict()
         self.prior = prior
 
     @property
@@ -151,7 +160,7 @@ class Leaf(Node):
         return self.distributions
 
     def __str__(self):
-        return (f'LeafNode<ID: {self.idx}; '
+        return (f'Leaf<ID: {self.idx}; '
                 f'VALUE: {",".join([f"{var.name}: {str(dist)}" for var, dist in self.distributions.items()])}; '
                 f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}>')
 
@@ -169,7 +178,7 @@ class JPT:
 
     logger = dnutils.getlogger('/jpt', level=dnutils.DEBUG)
 
-    def __init__(self, variables, name='regtree', min_samples_leaf=1, min_impurity_improvement=None):
+    def __init__(self, variables, min_samples_leaf=1, min_impurity_improvement=None):
         '''Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -183,15 +192,14 @@ class JPT:
         :type min_samples_leaf:     int
         '''
         self._variables = tuple(variables)
+        self.varnames = OrderedDict((var.name, var) for var in self._variables)
         self.min_samples_leaf = min_samples_leaf
         self.min_impurity_improvement = min_impurity_improvement
-        self.name = name or self.__class__.__name__
         self._numsamples = 0
         self.leaves = {}
         self.innernodes = {}
         self.allnodes = ChainMap(self.innernodes, self.leaves)
         self.root = None
-        self.data = None
         self.c45queue = deque()
         self.priors = {}
 
@@ -216,13 +224,13 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
         # --------------------------------------------------------------------------------------------------------------
-        data = self.data[indices, :]
+        data = _data[indices, :]
 
         if len(indices) > self.min_samples_leaf:
-            impurity = Impurity(self, indices)
+            impurity = Impurity(self, _data, indices)
             # ft_best_idx, sp_best, max_gain = self.compute_best_split(indices)
             ft_best_idx, sp_best, max_gain = impurity.compute_best_split()
-
+            # out(ft_best_idx, sp_best, max_gain)
             if ft_best_idx is not None:
                 ft_best = self.variables[ft_best_idx]  # if ft_best_idx is not None else None
             else:
@@ -237,16 +245,15 @@ class JPT:
         # create decision node splitting on ft_best or leaf node if min_samples_leaf criterion is not met
         if max_gain <= min_impurity_improvement:
             leaf = Leaf(idx=len(self.allnodes),
-                        parent=parent,
-                        treename=self.name)
+                        parent=parent)
 
             if parent is not None:
                 parent.set_child(child_idx, leaf)
 
             for i, v in enumerate(self.variables):
                 leaf.distributions[v] = v.dist(data=data[:, i].T)
-                leaf.prior = data.shape[0] / self.data.shape[0]
 
+            leaf.prior = data.shape[0] / _data.shape[0]
             leaf.samples = len(indices)
 
             self.leaves[leaf.idx] = leaf
@@ -282,8 +289,7 @@ class JPT:
             node = DecisionNode(idx=len(self.allnodes),
                                 splits=splits,
                                 dec_criterion=ft_best,
-                                parent=parent,
-                                treename=self.name)
+                                parent=parent)
             if parent is not None:
                 parent.set_child(child_idx, node)
             node.samples = len(indices)
@@ -298,15 +304,13 @@ class JPT:
                 self.c45queue.append((tuple(d_ft), node, i))
 
     def __str__(self):
-        return (f'{self.__class__.__name__}<{self.name}>:\n'
-                f'{"=" * (len(self.name) + 7)}\n\n'
+        return (f'{self.__class__.__name__}\n'
                 f'{self._p(self.root, 0)}\n'
                 f'JPT stats: #innernodes = {len(self.innernodes)}, '
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def __repr__(self):
-        return (f'{self.__class__.__name__}<{self.name}>:\n'
-                f'{"=" * (len(self.name) + 7)}\n\n'
+        return (f'{self.__class__.__name__}\n'
                 f'{self._p(self.root, 0)}\n'
                 f'JPT stats: #innernodes = {len(self.innernodes)}, '
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
@@ -334,41 +338,51 @@ class JPT:
         if sum(d is not None for d in (data, rows, columns)) != 1:
             raise ValueError('Only either of the three is allowed.')
 
-        if data:
+        if isinstance(data, np.ndarray) and data.shape[0] or data:
             rows = data
 
-        if type(rows) is list and rows or type(rows) is np.ndarray and rows.shape:  # Transpose the rows
+        if isinstance(rows, list) and rows:  # Transpose the rows
             columns = [[row[i] for row in rows] for i in range(len(self.variables))]
+        elif isinstance(rows, np.ndarray) and rows.shape[0]:
+            columns = rows.T
 
-        if type(columns) is list and columns or type(columns) is np.ndarray and columns.shape:
+        if isinstance(columns, list) and columns:
             shape = len(columns[0]), len(columns)
+        elif isinstance(columns, np.ndarray) and columns.shape:
+            shape = columns.T.shape
         else:
             raise ValueError('No data given.')
 
-        data = np.ndarray(shape=shape, dtype=np.float32)
+        data = np.ndarray(shape=shape, dtype=np.float64)
         for i, (var, col) in enumerate(zip(self.variables, columns)):
             data[:, i] = [var.domain.values[v] for v in col]
 
-        self.data = data
+        global _data
+        _data = data
 
+        out(data.shape, data)
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
-        self.priors = {var: var.dist(data=self.data[:, i]) for i, var in enumerate(self.variables)}
-
+        self.priors = {var: var.dist(data=_data[:, i]) for i, var in enumerate(self.variables)}
+        # for i, prior in enumerate(self.priors.values()):
+            # print(prior.cdf.pfmt())
+            # print(_data[:, i], np.unique(_data[:, i]))
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
         started = datetime.datetime.now()
         JPT.logger.info('Started learning of %s x %s at %s' % (data.shape[0], data.shape[1], started))
         # build up tree
-        self.c45queue.append((list(range(len(data))), None, None))
+        self.c45queue.append((tuple(range(_data.shape[0])), None, None))
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
 
         if self.innernodes:
             self.root = self.innernodes[0]
+
         elif self.leaves:
             self.root = self.leaves[0]
+
         else:
             out('NO INNER NODES!', self.innernodes, self.leaves)
             self.root = None
@@ -661,7 +675,7 @@ class JPT:
         ft_best_idx = self.variables.index(ft_best)
         return ft_best_idx, sp_best, max_gain
 
-    def plot(self, filename=None, directory='/tmp', plotvars=None, view=True):
+    def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True):
         '''Generates an SVG representation of the generated regression tree.
 
         :param filename: the name of the JPT (will also be used as filename; extension will be added automatically)
@@ -676,12 +690,14 @@ class JPT:
         if plotvars == None:
             plotvars = []
 
+        title = ifnone(title, 'unnamed')
+
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-        dot = Digraph(format='svg', name=filename or self.name,
+        dot = Digraph(format='svg', name=filename or title,
                       directory=directory,
-                      filename=f'{filename or self.name}')
+                      filename=f'{filename or title}')
 
         # create nodes
         sep = ",<BR/>"
@@ -763,7 +779,7 @@ class JPT:
                 dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
 
         # show graph
-        JPT.logger.info(f'Saving rendered image to {os.path.join(directory, filename or self.name)}.svg')
+        JPT.logger.info(f'Saving rendered image to {os.path.join(directory, filename or title)}.svg')
 
         # improve aspect ratio of graph having many leaves or disconnected nodes
         dot = dot.unflatten(stagger=3)

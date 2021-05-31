@@ -1,8 +1,7 @@
 import pyximport
 pyximport.install()
 
-from examples import tourism, quantile, restaurant, neems, alarm, muesli, regression
-
+from examples import tourism, quantile, restaurant, neems, alarm, muesli, regression, mnist
 
 from dnutils import out
 from jpt.learning.distributions import Bool, HistogramType
@@ -64,12 +63,13 @@ def main(*args):
 
     # call imported examples
     # alarm.main()
-    regression.main()
-    # muesli.main()
+    # regression.main()
+    # muesli.test_muesli()
     # neems.main()
     # quantile.main()
     # restaurant.main()
     # tourism.main()
+    mnist.main()
 
 
 # Press the green button in the gutter to run the script.

@@ -6,9 +6,9 @@ from dnutils.stats import stopwatch
 
 class Impurity:
 
-    def __init__(self, tree, indices):
+    def __init__(self, tree, data, indices):
         self.tree = tree
-        self.data = tree.data
+        self.data = data
         self.indices = tuple(indices)
         # self.targets = ifnone(targets, tuple(range(len(indices))))
         self.variables = tree.variables
@@ -180,6 +180,7 @@ class Impurity:
                     variance_improvements = (variances_total - (samples_left * variances_left
                                                                 + samples_right * variances_right)
                                              / n_samples) / variances_total
+                    variance_improvements[variances_total == 0] = 0
 
                     avg_variance_improvement = np.mean(variance_improvements)
                     impurity_improvement += avg_variance_improvement if numeric else (np.mean(variances_left) * samples[int(pivot)] * len(self.numeric_vars) / (n_samples * len(self.variables)))
@@ -208,7 +209,6 @@ class Impurity:
                     impurity_improvement /= denom
                     if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
                         impurity_improvement = 0
-
                 if (numeric or split_pos == n_samples - 1) and (impurity_improvement > max_impurity_improvement):
                     max_impurity_improvement = impurity_improvement
                     best_var = variable
