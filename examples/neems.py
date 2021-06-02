@@ -51,7 +51,7 @@ def neemdata():
     arm = SymbolicVariable('arm', armTYPE)
 
     vars = [tp, st, et, dur, succ, fail, oao, bpu, arm]
-    jpt = JPT(variables=vars, name="NEEMs", min_samples_leaf=500)
+    jpt = JPT(variables=vars, min_samples_leaf=500)
     out(f'Learning sebadata-Tree...')
     jpt.learn(columns=df.values.T)
     out(f'Done! Plotting...')

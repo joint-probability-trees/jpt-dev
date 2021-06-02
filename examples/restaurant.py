@@ -44,7 +44,7 @@ def restaurant():
              wa.dist(.5).sample_one_label()] for _ in range(numsamples)]
 
     variables = [al, ba, fr, hu, pa, pr, ra, re, fo, we, wa]
-    jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
+    jpt = JPT(variables, min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(data)
     out(jpt)
     jpt.plot(plotvars=variables, view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))

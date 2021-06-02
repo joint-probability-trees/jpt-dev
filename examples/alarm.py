@@ -57,7 +57,7 @@ def alarm():
             unique, counts = np.unique(x, return_counts=True)
             out(var.name, list(zip(unique, counts, counts/sum(counts))))
 
-        tree = JPT(variables=[E, B, A, M, J], name='Alarm', min_impurity_improvement=0)
+        tree = JPT(variables=[E, B, A, M, J], min_impurity_improvement=0)
         tree.learn(data)
         # tree.sklearn_tree()
         # tree.plot(plotvars=[E, B, A, M, J])

@@ -91,7 +91,7 @@ def muesli_tree():
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 
-    jpt = JPT([x, y, o, s], name="Breakfasttree", min_samples_leaf=5)
+    jpt = JPT([x, y, o, s], min_samples_leaf=5)
     jpt.learn(columns=data.values.T)
     jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
 
