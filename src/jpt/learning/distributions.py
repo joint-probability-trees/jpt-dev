@@ -729,13 +729,13 @@ class Multinomial(Distribution):
 
     def expectation(self):
         '''Returns the value with the highest probability for each variable'''
-        return max([(v, p) for v, p in zip(self.values, self._p)], key=itemgetter(1))[0]
+        return max([(v, p) for v, p in zip(self.values.values(), self._p)], key=itemgetter(1))[0]
 
     def mpe(self):
         return self.expectation()
 
     def set_data(self, data):
-        self._p = np.array([list(data).count(x) / len(data) for x in self.values])
+        self._p = np.array([list(data).count(float(x)) / len(data) for x in self.values.values()])
         return self
 
     def update(self, dist, weight):
@@ -987,8 +987,8 @@ class Bool(Multinomial):
     '''
     Wrapper class for Boolean domains and distributions.
     '''
-    values = (1, 0)
-    labels = (True, False)
+    values = OrderedDict([(False, 0), (True, 1)])
+    labels = OrderedDict([(0, False), (1, True)])
 
     def __init__(self, p=None):
         if p is not None and not iterable(p):

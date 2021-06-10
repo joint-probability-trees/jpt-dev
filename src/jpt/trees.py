@@ -538,7 +538,7 @@ class JPT:
                 query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
                                             prior.ppf.eval(min(1, quantile + var.haze / 2)))
         # Transform into internal values (symbolic values to their indices):
-        query_ = {var: var.domain.labels[val] for var, val in query_.items()}
+        query_ = {var: var.domain.values[val] for var, val in query_.items()}
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
 
@@ -846,7 +846,7 @@ class Result:
 
     @property
     def evidence(self):
-        return {k: (k.domain.labels[v] if v.symbolic else ContinuousSet(k.domain.labels[v.lower], k.domain.labels[v.upper], v.left, v.right)) for k, v in self._evidence.items()}
+        return {k: (k.domain.labels[v] if k.symbolic else ContinuousSet(k.domain.labels[v.lower], k.domain.labels[v.upper], v.left, v.right)) for k, v in self._evidence.items()}
 
     @property
     def result(self):
@@ -909,7 +909,7 @@ class ExpectationResult(Result):
     def format_result(self):
         left = 'E(%s%s%s; %s = %.3f)' % (self.query,
                                          ' | ' if self.evidence else '',
-                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                         ', '.join([var.str(val, fmt='logic') for var, val in self._evidence.items()]),
                                          SYMBOL.THETA,
                                          self.theta)
         right = '[%.3f %s %.3f %s %.3f]' % (self.lower,
