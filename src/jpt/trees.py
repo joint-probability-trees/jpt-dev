@@ -11,6 +11,7 @@ import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 
+import dill
 import numpy as np
 from dnutils.stats import stopwatch
 from graphviz import Digraph
@@ -178,7 +179,7 @@ class JPT:
 
     logger = dnutils.getlogger('/jpt', level=dnutils.DEBUG)
 
-    def __init__(self, variables, min_samples_leaf=1, min_impurity_improvement=None):
+    def __init__(self, variables, min_samples_leaf=1, min_impurity_improvement=None, max_leaves=None):
         '''Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -202,6 +203,8 @@ class JPT:
         self.root = None
         self.c45queue = deque()
         self.priors = {}
+        self.max_leaves = max_leaves
+        self._node_counter = 0
 
     @property
     def variables(self):
@@ -338,7 +341,7 @@ class JPT:
         if sum(d is not None for d in (data, rows, columns)) != 1:
             raise ValueError('Only either of the three is allowed.')
 
-        if isinstance(data, np.ndarray) and data.shape[0] or data:
+        if isinstance(data, np.ndarray) and data.shape[0] or isinstance(data, list):
             rows = data
 
         if isinstance(rows, list) and rows:  # Transpose the rows
@@ -363,6 +366,7 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
         self.priors = {var: var.dist(data=_data[:, i]) for i, var in enumerate(self.variables)}
+        JPT.logger.debug('Prior distributions learnt.')
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
@@ -830,6 +834,29 @@ class JPT:
         with stopwatch('/sklearn/decisiontree'):
             tree.fit(data, data if targets is None else targets)
         return tree
+
+    def save(self, file):
+        '''
+        Write this JPT persistently to disk.
+
+        ``file`` can be either a string or file-like object.
+        '''
+        if type(file) is str:
+            with open(file, 'wb+') as f:
+                dill.dump(self, f)
+        else:
+            dill.dump(self, file)
+
+    @staticmethod
+    def load(file):
+        '''
+        Load a JPT from disk.
+        '''
+        if type(file) is str:
+            with open(file, 'rb') as f:
+                return dill.load(f)
+        else:
+            return dill.load(file)
 
 
 class Result:
