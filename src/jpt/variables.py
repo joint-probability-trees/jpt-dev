@@ -88,7 +88,7 @@ class NumericVariable(Variable):
             else:
                 valstr = ', '.join([self.str(a, fmt) for a in assignment])
         else:
-            valstr = str(assignment)
+             valstr = str(assignment)
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, assignment)
         if fmt == 'set':
