@@ -18,7 +18,7 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, out, ifnone
+from dnutils import first, out, ifnone, stop
 from sklearn.tree import DecisionTreeRegressor
 
 from .learning.distributions import Distribution
@@ -367,6 +367,8 @@ class JPT:
         # Determine the prior distributions
         self.priors = {var: var.dist(data=_data[:, i]) for i, var in enumerate(self.variables)}
         JPT.logger.debug('Prior distributions learnt.')
+        # for prior in self.priors.values():
+        #     prior.plot(view=True)
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
@@ -394,7 +396,7 @@ class JPT:
         # if logger.level >= 20:
         JPT.logger.debug(self)
 
-    def infer(self, query, evidence=None):
+    def infer(self, query, evidence=None, fail_on_unsatisfiability=True):
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -437,7 +439,7 @@ class JPT:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                p_m *= leaf.distributions[var].p(evidence_val)
+                p_m *= leaf.distributions[var]._p(evidence_val)
 
             w = leaf.prior
             p_m *= w
@@ -450,17 +452,23 @@ class JPT:
                         query_val = query_val.intersection(leaf.path[var])
                     elif var.symbolic and var in leaf.path:
                         continue
-                    p_m *= leaf.distributions[var].p(query_val)
+                    p_m *= leaf.distributions[var]._p(query_val)
                 p_q += p_m
 
                 r.candidates.append(leaf)
                 r.weights.append(p_m)
 
+        if p_e == 0:
+            if fail_on_unsatisfiability:
+                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
+            else:
+                return None
+
         r.result = p_q / p_e
         r.weights = [w / p_e for w in r.weights]
         return r
 
-    def expectation(self, variables=None, evidence=None, confidence_level=None):
+    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True):
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -480,24 +488,31 @@ class JPT:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                p_m *= leaf.distributions[var].p(evidence_val)
-
+                p_m = leaf.distributions[var]._p(evidence_val)
             for var in variables:
                 distributions[var].append((leaf.distributions[var], p_m))
 
+        if not all([sum([w for _, w in distributions[var]]) for v in variables]):
+            if fail_on_unsatisfiability:
+                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
+            else:
+                return None
+
         posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
-                                            normalized([w for _, w in distributions[var]])) for var in distributions}
-        expectations = {var: dist.expectation() for var, dist in posteriors.items()}
+                                            normalized(np.array([w for _, w in distributions[var]],
+                                                                dtype=np.float64))) for var in distributions}
 
         for var, dist in posteriors.items():
-            result[var]._res = expectations[var]
+            expectation = dist._expectation()
+            result[var]._res = expectation
             if var.numeric:
-                result[var]._lower = dist.ppf.eval(max(0, (dist.cdf.eval(expectations[var]) - conf_level / 2)))
-                result[var]._upper = dist.ppf.eval(min(1, (dist.cdf.eval(expectations[var]) + conf_level / 2)))
+                exp_quantile = dist.cdf.eval(expectation)
+                result[var]._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
+                result[var]._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
 
         return list(result.values())
 
-    def mpe(self, evidence=None):
+    def mpe(self, evidence=None, fail_on_unsatisfiability=True):
         '''
         Compute the (conditional) MPE state of the model.
         '''
@@ -514,10 +529,18 @@ class JPT:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                p_m *= leaf.distributions[var].p(evidence_val)
+                p_m *= leaf.distributions[var]._p(evidence_val)
+
+            if not p_m: continue
 
             for var in self.variables:
                 distributions[var].append((leaf.distributions[var], p_m))
+
+        if not all([sum([w for _, w in distributions[var]]) for v in self.variables]):
+            if fail_on_unsatisfiability:
+                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
+            else:
+                return None
 
         posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
                                             normalized([w for _, w in distributions[var]])) for var in distributions}
@@ -535,14 +558,24 @@ class JPT:
         query_ = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
         # Transform single numeric values in to intervals given by the haze
         # parameter of the respective variable:
-        for var, val in list(query_.items()):
-            if var.numeric and isinstance(val, numbers.Number):
-                prior = self.priors[var]
-                quantile = prior.cdf.eval(val)
-                query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
-                                            prior.ppf.eval(min(1, quantile + var.haze / 2)))
-        # Transform into internal values (symbolic values to their indices):
-        query_ = {var: var.domain.values[val] for var, val in query_.items()}
+        for var, lbl in list(query_.items()):
+            if var.numeric:
+                if isinstance(lbl, numbers.Number):
+                    val = var.domain.values[lbl]
+                    prior = self.priors[var]
+                    quantile = prior.cdf.eval(val)
+                    query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
+                                                prior.ppf.eval(min(1, quantile + var.haze / 2)))
+                    # if query_[var].lower >= query_[var].upper or np.isnan(query_[var].upper) or np.isnan(query_[var].lower):
+                    #     out(prior.cdf.pfmt())
+                    #     out(prior.ppf.pfmt())
+                    #     stop(var, lbl, val, quantile, query_[var].lower, query_[var].upper)
+                elif isinstance(lbl, ContinuousSet):
+                    query_[var] = ContinuousSet(var.domain.values[lbl.lower],
+                                                var.domain.values[lbl.upper], lbl.left, lbl.right)
+            if var.symbolic:
+                # Transform into internal values (symbolic values to their indices):
+                query_[var] = var.domain.values[lbl]
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
 

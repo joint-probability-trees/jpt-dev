@@ -589,11 +589,18 @@ cdef class QuantileDistribution:
                                                        _INC, _EXC))
                     ppf.functions.append(f.invert())
 
-            ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.nextafter(1, 2), _INC, _EXC))
-            ppf.functions.append(ConstantFunction(ppf.functions[-1].eval(1)))
+            if ppf.intervals[-1].upper == 1:
+                ppf.intervals[-1].upper = np.nextafter(1, 2)
+            elif ppf.intervals[-1].upper < 1:
+                ppf.functions.append(LinearFunction.from_points((ppf.intervals[-1].upper,
+                                                                 ppf.functions[-1].eval(ppf.intervals[-1].upper)),
+                                                                (1, self.cdf.intervals[-1].lower)))
+                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.nextafter(1, 2), _INC, _EXC))
 
-            ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.PINF, _INC, _EXC))
+            ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, _INC, _EXC))
             ppf.functions.append(Undefined())
+            assert np.isnan(ppf.eval(np.nextafter(1, 2)))
+            assert not np.isnan(ppf.eval(1.))
             self._ppf = ppf
         return self._ppf
 

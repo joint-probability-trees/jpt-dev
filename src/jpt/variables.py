@@ -50,8 +50,7 @@ class Variable:
             return self._domain(params)
         elif data is not None:
             dist = self.dist(params=params)
-            dist.set_data(data)
-            return dist
+            return dist.fit(data)
 
     def __str__(self):
         return f'{self.name}[{self.domain.__name__}]'
@@ -90,17 +89,17 @@ class NumericVariable(Variable):
         else:
              valstr = str(assignment)
         if isinstance(assignment, numbers.Number):
-            return '%s = %s' % (self.name, assignment)
+            return '%s = %s' % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
             return f'{self.name} {SYMBOL.IN} {valstr}'
         elif fmt == 'logic':
-            return '%s%s%s' % (lower % (assignment.lower,
+            return '%s%s%s' % (lower % (self.domain.labels[assignment.lower],
                                         {INC: SYMBOL.LTE,
                                          EXC: SYMBOL.LT}[assignment.left]) if assignment.lower != np.NINF else '',
                                self.name,
                                upper % ({INC: SYMBOL.LTE,
                                          EXC: SYMBOL.LT}[assignment.right],
-                                         assignment.upper) if assignment.upper != np.PINF else '')
+                                         self.domain.labels[assignment.upper]) if assignment.upper != np.PINF else '')
         else:
             raise ValueError('Unknown format for numeric variable: %s.' % fmt)
 

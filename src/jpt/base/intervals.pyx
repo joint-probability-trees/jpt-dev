@@ -530,7 +530,7 @@ cdef class ContinuousSet(NumberSet):
             if isinstance(x, ContinuousSet):
                 return self.contains_interval(x)
             else:
-                return self.contains_value(np.float64(x))
+                return self.contains_value(x)
         except TypeError:
             pass
         raise ValueError('Invalid data type: %s' % type(x).__name__)

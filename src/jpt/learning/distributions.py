@@ -1,5 +1,6 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
+from abc import ABC
 from collections import OrderedDict
 
 import pyximport
@@ -24,7 +25,7 @@ from operator import itemgetter
 from matplotlib.backends.backend_pdf import PdfPages
 
 import dnutils
-from dnutils import first, out, ifnone, stop
+from dnutils import first, out, ifnone, stop, ifnot
 from dnutils.stats import Gaussian as Gaussian_, _matshape
 
 from scipy.stats import multivariate_normal, mvn, norm
@@ -474,13 +475,16 @@ class Distribution:
     def p(self, value):
         raise NotImplementedError
 
+    def _p(self, value):
+        raise NotImplementedError
+
     def expectation(self):
         raise NotImplementedError
 
     def mpe(self):
         raise NotImplementedError
 
-    def set_data(self, data):
+    def fit(self, data):
         raise NotImplementedError
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
@@ -506,7 +510,6 @@ class DataScaler(StandardScaler):
         super().__init__()
         self.fit(data.reshape(-1, 1))
 
-
     @property
     def mean(self):
         raise NotImplementedError
@@ -516,7 +519,7 @@ class DataScaler(StandardScaler):
         raise NotImplementedError
 
     def __getitem__(self, item):
-        return self.inverse_transform(np.array([item]))[0]
+        return self.inverse_transform(np.array([item]))[0, 0]
 
 
 class Identity:
@@ -532,13 +535,19 @@ class DataScalerProxy:
         self.inverse = inverse
 
     def __getitem__(self, item):
-        return (self.datascaler.transform if not self.inverse else self.datascaler.inverse_transform)(np.array(item).reshape(1, -1))[0]
+        return (self.datascaler.transform
+                if not self.inverse
+                else self.datascaler.inverse_transform)(np.array(item).reshape(1, -1))[0, 0]
+
+    def transform(self, x):
+        return self.datascaler.transform(x.reshape(-1, 1)).ravel()
 
 
 class Numeric(Distribution):
     '''
     Wrapper class for numeric domains and distributions.
     '''
+
     values = Identity()
     labels = Identity()
 
@@ -570,31 +579,37 @@ class Numeric(Distribution):
     def sample_one(self):
         raise NotImplemented()
 
-    def expectation(self):
+    def _expectation(self):
         e = 0
-        singular = True
+        singular = True  # In case the CDF is jump fct the expectation is where the jump happens
         for i, f in zip(self.cdf.intervals, self.cdf.functions):
             if i.lower == np.NINF or i.upper == np.PINF:
                 continue
-            e += (f.m if isinstance(f, LinearFunction) else 0) * (i.upper - i.lower) * (i.upper + i.lower) / 2
+            e += (self.cdf.eval(i.upper) - self.cdf.eval(i.lower)) * (i.upper + i.lower) / 2  # (f.m if isinstance(f, LinearFunction) else 0) *
             singular = False
         return e if not singular else i.lower
+
+    def expectation(self):
+        return self.labels[self._expectation()]
 
     def mpe(self):
         return max([(interval, function)
                     for interval, function in zip(self.cdf.intervals, self.cdf.functions)],
                    key=lambda x: x[1].m if isinstance(x[1], LinearFunction) else 0)[0]
 
-    def set_data(self, data):
-        # d = np.array(data, dtype=np.float64)
+    def fit(self, data):
         self._quantile = QuantileDistribution()
         self._quantile.fit(np.ascontiguousarray(data, dtype=np.float64))
         return self
 
-    def p(self, value):
+    def _p(self, value):
         if isinstance(value, numbers.Number):
             return 0
-        return (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) - (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+        return ((self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
+               (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
+
+    def p(self, value):
+        pass
 
     @staticmethod
     def merge(distributions, weights):
@@ -627,10 +642,26 @@ class Numeric(Distribution):
         ax.set_title(f'{title or f"Piecewise linear CDF of {self._cl}"}')
         ax.set_xlabel(xlabel)
         ax.set_ylabel('%')
-        bounds = np.array([v.upper for v in self.cdf.intervals[:-2]] + [self.cdf.intervals[-1].lower])
+        std = ifnot(np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
+                    self.cdf.intervals[1].upper - self.cdf.intervals[1].lower) * 2
+        bounds = np.array([self.cdf.intervals[0].upper - std/2] +
+                          [v.upper for v in self.cdf.intervals[:-2]] +
+                          [self.cdf.intervals[-1].lower] +
+                          [self.cdf.intervals[-1].lower + std/2])
 
-        ax.plot(bounds, self.cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', label='Piecewise linear CDF from bounds', linewidth=2, markersize=12)
-        ax.scatter(bounds, self.cdf.multi_eval(bounds), color='orange', marker='o', label='Piecewise Function limits')
+        ax.plot(bounds,
+                self.cdf.multi_eval(bounds),
+                color='cornflowerblue',
+                # linestyle='dashed',
+                label='Piecewise linear CDF from bounds',
+                linewidth=2,
+                markersize=12)
+
+        ax.scatter(bounds[1:-1],
+                   self.cdf.multi_eval(bounds[1:-1]),
+                   color='orange',
+                   marker='o',
+                   label='Piecewise Function limits')
         ax.legend()  # do we need a legend with only one plotted line?
         fig.tight_layout()
 
@@ -662,16 +693,16 @@ class Multinomial(Distribution):
     values = None
     labels = None
 
-    def __init__(self, p=None):
+    def __init__(self, params=None):
         super().__init__()
-        if p is not None:
-            if not iterable(p):
-                raise ValueError(f'Probabilities must be an iterable with {len(self.values)} elements, got {p}')
-            if len(self.values) != len(p):
+        if params is not None:
+            if not iterable(params):
+                raise ValueError(f'Probabilities must be an iterable with {len(self.values)} elements, got {params}')
+            if len(self.values) != len(params):
                 raise ValueError('Number of values and probabilities must coincide.')
-            self._p = np.array(p)
+            self._params = np.array(params)
         else:
-            self._p = None
+            self._params = None
         if not issubclass(type(self), Multinomial) or type(self) is Multinomial:
             raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
 
@@ -689,72 +720,75 @@ class Multinomial(Distribution):
     def __getitem__(self, value):
         return self.p(value)
 
-    def __setitem__(self, value, p):
-        self._p[self.values[value]] = p
+    def __setitem__(self, label, p):
+        self._params[self.values[label]] = p
 
     def __eq__(self, other):
-        return type(self) is type(other) and (self._p == other._p).all()
+        return type(self) is type(other) and (self._params == other._params).all()
 
     def __hash__(self):
-        return hash((Multinomial, self.values, self._p))
+        return hash((Multinomial, self.values.values(), self.labels.values(), self._params))
 
     def __str__(self):
-        if self.p is None:
+        if self._p is None:
             return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._params)])}]>'
 
     def __repr__(self):
-        if self.p is None:
+        if self._p is None:
             return f'{self._cl}<p=n/na>'
-        return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self._p)])}]>;'
+        return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self._params)])}]>;'
 
-    def p(self, value):
-        return self._p[self.values[value]]
+    def p(self, label):
+        return self._p(self.values[label])
+
+    def _p(self, value):
+        return self._params[value]
 
     def sample(self, n):
         '''Returns ``n`` sample `values` according to their respective probability'''
-        return wsample(self.values, self._p, n)
+        return wsample(self.values, self._params, n)
 
     def sample_one(self):
         '''Returns one sample `value` according to its probability'''
-        return wchoice(self.values, self._p)
+        return wchoice(self.values, self._params)
 
     def sample_labels(self, n):
         '''Returns ``n`` sample `labels` according to their respective probability'''
-        return [self.labels[i] for i in wsample(self.values, self._p, n)]
+        return [self.labels[i] for i in wsample(self.values, self._params, n)]
 
     def sample_one_label(self):
         '''Returns one sample `label` according to its probability'''
-        return self.labels[wchoice(self.values, self._p)]
+        return self.labels[wchoice(self.values, self._params)]
 
     def expectation(self):
         '''Returns the value with the highest probability for each variable'''
-        return max([(v, p) for v, p in zip(self.values.values(), self._p)], key=itemgetter(1))[0]
+        return max([(v, p) for v, p in zip(self.values.values(), self._params)], key=itemgetter(1))[0]
 
     def mpe(self):
         return self.expectation()
 
-    def set_data(self, data):
-        self._p = np.array([list(data).count(float(x)) / len(data) for x in self.values.values()])
+    def fit(self, data):
+        self._params = np.array([list(data).count(float(x)) / len(data) for x in self.values.values()])
         return self
 
     def update(self, dist, weight):
         if not 0 <= weight <= 1:
             raise ValueError('Weight must be in [0, 1]')
-        if self._p is None:
-            self._p = np.zeros(self.n_values)
-        self._p *= 1 - weight
-        self._p += dist._p * weight
+        if self._params is None:
+            self._params = np.zeros(self.n_values)
+        self._params *= 1 - weight
+        self._params += dist._params * weight
         return self
 
     @staticmethod
     def merge(distributions, weights):
         if not all(distributions[0].values == v.values for v in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
-        p = np.zeros(distributions[0].n_values)
+        params = np.zeros(distributions[0].n_values)
         for d, w in zip(distributions, weights):
-            p += d._p * w
-        return type(distributions[0])(p=p)
+            params += d._params * w
+        return type(distributions[0])(params=params)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
@@ -786,7 +820,7 @@ class Multinomial(Distribution):
         ax.set_title(f'{title or f"Distribution of {self._cl}"}')
 
         if horizontal:
-            bars = ax.barh(x, self._p, xerr=err, color='cornflowerblue', label='%', align='center')
+            bars = ax.barh(x, self._params, xerr=err, color='cornflowerblue', label='%', align='center')
 
             ax.set_xlabel('%')
             ax.set_yticks(x)
@@ -801,7 +835,7 @@ class Multinomial(Distribution):
                          f'{p.get_width():.2f}',
                          fontsize=10, color='black', verticalalignment='center')
         else:
-            bars = ax.bar(x, self._p, yerr=err, color='cornflowerblue', label='%')
+            bars = ax.bar(x, self._params, yerr=err, color='cornflowerblue', label='%')
 
             ax.set_ylabel('%')
             ax.set_xticks(x)
@@ -831,189 +865,28 @@ class Multinomial(Distribution):
             plt.show()
 
 
-class Histogram(Multinomial):
-    '''
-    Wrapper class for symbolic domains and distributions.
-    '''
-    values = Multinomial.values
-    labels = Multinomial.labels
-
-    def __init__(self, p=None):
-        super().__init__(p)
-        self._d = sum(p) if self._p is not None else None
-
-    def __add__(self, other):
-        if type(self) is not type(other):
-            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}')
-        if self._p is None:
-            self._p = np.zeros(len(self.values))
-        if other._p is None:
-            raise TypeError('Should not happen.')
-        return type(self)((self._p + other._p))
-
-    def __iadd__(self, other):
-        if type(self) is not type(other):
-            raise TypeError(f'Type mismatch. Can only add type {type(self)} but got {type(other)}.')
-        if self._p is None:
-            self._p = np.zeros(len(self.values))
-            self._d = 0.
-        if other._p is None or other._d is None:
-            raise TypeError('Should not happen.')
-
-        self._p += other._p
-        self._d += other.d
-        return self
-
-    def __eq__(self, other):
-        return super().__eq__(other) and self.d == other.d
-
-    def __str__(self):
-        if self.p is None:
-            return f'{self._cl}<d=None; p=None>'
-        return f'{self._cl}<d={self._d}; p=[{",".join([f"{self.labels[v]}={p}" + (f" ({self.p(v)})" if self._d != 1. else "") for v, p in zip(self.values, self._p)])}]>'
-
-    def __repr__(self):
-        if self.p is None:
-            return f'{self._cl}<d=None; p=None>'
-        return f'\n{self._cl}<d={self._d}; p=[\n{sepcomma.join([f"{self.labels[v]}={p}" + (f" ({self.p(v)})" if self._d != 1. else "") for v, p in zip(self.values, self._p)])}]>'
-
-    def __setitem__(self, value, p):
-        self._p[self.values[value]] = p
-        self._d = sum(p)
-
-    # @Multinomial.p.getter
-    def p(self, value):
-        if self._p is not None:
-            return super().p(value) / self._d
-        else:
-            return None
-
-    @property
-    def d(self):
-        return self._d
-
-    def expectation(self):
-        return max([(v, p) for v, p in zip(self.values, self._p)], key=itemgetter(1))
-
-    def set_data(self, data):
-        self._p = [list(data).count(x) for x in self.values]
-        self._d = len(data)
-        return self
-
-    def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
-        '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
-
-        :param title:       the name of the variable this distribution represents
-        :type title:        str
-        :param fname:       the name of the file to be stored
-        :type fname:        str
-        :param directory:   the directory to store the generated plot files
-        :type directory:    str
-        :param pdf:         whether to store files as PDF. If false, a png is generated by default
-        :type pdf:          bool
-        :param view:        whether to display generated plots, default False (only stores files)
-        :type view:         bool
-        :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
-        :type horizontal:   bool
-        :return:            None
-        '''
-        # Only save figures, do not show
-        if not view:
-            plt.ioff()
-
-        vals = [re.escape(str(x)) for x in self.labels]
-        x = np.arange(len(self.values))  # the label locations
-        err = [.015]*len(self.values)
-
-        fig, ax = plt.subplots()
-        ax.set_title(f'{title or f"Distribution of {self.__class__.__name__}"}')
-
-        if horizontal:
-            ax2 = ax.twiny()
-
-            bars = ax.barh(x, self._p, xerr=err, color='cornflowerblue', label='%', align='center')
-
-            ax.set_xlabel('%')
-            ax.set_yticks(x)
-            ax.set_yticklabels(vals)
-            ax2.set_xlabel('#')
-
-            ax.invert_yaxis()
-            ax2.invert_yaxis()
-            ax.set_xlim(left=0., right=1.)
-            ax2.set_xlim(left=0., right=self.d)
-
-            # print precise value labels on bars
-            for p, v in zip(ax.patches, self._p):
-                h = p.get_width() - .09 if p.get_width() >= .9 else p.get_width() + .03
-                plt.text(h, p.get_y() + p.get_height() / 2,
-                         f'{v} ({round(v/self.d*100, 2)}%)',
-                         fontsize=10, color='black', verticalalignment='center')
-        else:
-            ax2 = ax.twinx()
-
-            bars = ax.bar(x, self._p, yerr=err, color='cornflowerblue', label='%')
-
-            ax.set_ylabel('%')
-            ax.set_xticks(x)
-            ax.set_xticklabels(vals)
-            ax2.set_ylabel('#')
-
-            ax.set_ylim(bottom=0., top=1.)
-            ax2.set_ylim(bottom=0., top=self.d)
-
-            # print precise value labels on bars
-            for p, v in zip(ax.patches, self._p):
-                h = p.get_height() - .09 if p.get_height() >= .9 else p.get_height() + .03
-                plt.text(p.get_x() + p.get_width()/2, h,
-                         f'{v} ({round(v/self.d*100, 2)}%)',
-                         rotation=90, fontsize=10, color='black', horizontalalignment='center')
-        fig.tight_layout()
-
-        # save figure as PDF or PNG
-        if pdf:
-            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{fname or self.__class__.__name__}.pdf')}")
-            with PdfPages(os.path.join(directory, f'{fname or self.__class__.__name__}.pdf')) as pdf:
-                pdf.savefig(fig)
-        else:
-            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{fname or self.__class__.__name__}.png')}")
-            plt.savefig(os.path.join(directory, f'{fname or self.__class__.__name__}.png'))
-
-        if view:
-            plt.show()
-
-
 class Bool(Multinomial):
     '''
     Wrapper class for Boolean domains and distributions.
     '''
+
     values = OrderedDict([(False, 0), (True, 1)])
     labels = OrderedDict([(0, False), (1, True)])
 
-    def __init__(self, p=None):
-        if p is not None and not iterable(p):
-            p = [p, 1 - p]
-        try:
-            super().__init__(p)
-        except Exception:
-            pass
+    def __init__(self, params=None):
+        if params is not None and not iterable(params):
+            params = [1 - params, params]
+        super().__init__(params=params)
 
     def __str__(self):
         if self.p is None:
             return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._p)])}]>'
+        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._params)])}]>'
 
     def __setitem__(self, v, p):
         if not iterable(p):
-            p = np.array([p, 1-p])
+            p = np.array([p, 1 - p])
         super().__setitem__(v, p)
-
-
-def HistogramType(name, values):
-    t = type(name, (Histogram,), {})
-    t.values = tuple(range(len(values)))
-    t.labels = tuple(values)
-    return t
 
 
 def SymbolicType(name, labels):

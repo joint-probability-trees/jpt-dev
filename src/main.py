@@ -4,26 +4,26 @@ pyximport.install()
 from examples import tourism, quantile, restaurant, neems, alarm, muesli, regression, mnist
 
 from dnutils import out
-from jpt.learning.distributions import Bool, HistogramType
+from jpt.learning.distributions import Bool
 from jpt.variables import Variable
 
 
-def test_merge():
-    X = HistogramType('YesNo', ['Y', 'N'])
-    mn1 = X([20, 30])
-    out('MN1', mn1, mn1.p, mn1.d)
-
-    mn2 = X([10, 12])
-    out('MN2', mn2, mn2.p, mn2.d)
-
-    mnmerged = X([30, 42])
-    out('MNMERGED', mnmerged, mnmerged.p, mnmerged.d)
-
-    mn3 = mn1 + mn2
-    out('MN3 as merge of MN1 and MN2', mn3, mn3.p, mn3.d, mn3==mnmerged)
-
-    mn2 += mn1
-    out('MN2 after adding MN1', mn2, mn2.p, mn2.d, mn2 == mnmerged)
+# def test_merge():
+#     X = HistogramType('YesNo', ['Y', 'N'])
+#     mn1 = X([20, 30])
+#     out('MN1', mn1, mn1.p, mn1.d)
+#
+#     mn2 = X([10, 12])
+#     out('MN2', mn2, mn2.p, mn2.d)
+#
+#     mnmerged = X([30, 42])
+#     out('MNMERGED', mnmerged, mnmerged.p, mnmerged.d)
+#
+#     mn3 = mn1 + mn2
+#     out('MN3 as merge of MN1 and MN2', mn3, mn3.p, mn3.d, mn3==mnmerged)
+#
+#     mn2 += mn1
+#     out('MN2 after adding MN1', mn2, mn2.p, mn2.d, mn2 == mnmerged)
 
 
 def test_dists():
@@ -64,12 +64,12 @@ def main(*args):
     # call imported examples
     # alarm.main()
     # regression.main()
-    # muesli.test_muesli()
+    muesli.muesli_tree()
     # neems.main()
     # quantile.main()
     # restaurant.main()
     # tourism.main()
-    mnist.main()
+    # mnist.main()
 
 
 # Press the green button in the gutter to run the script.
