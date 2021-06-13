@@ -1,5 +1,5 @@
 import numpy as np
-from dnutils import first
+from dnutils import first, out
 from matplotlib import pyplot as plt
 
 from jpt.learning.distributions import Numeric, NumericType
@@ -36,18 +36,25 @@ def main():
     xx = xx.astype(np.float32)
 
     # Construct the predictive model
-    varx = NumericVariable('x', Numeric)
-    vary = NumericVariable('y', NumericType('y', y))
+    varx = NumericVariable('x', NumericType('x', X), haze=.05)
+    vary = NumericVariable('y', NumericType('y', y), haze=.05)
 
-    jpt = JPT(variables=[varx, vary], min_samples_leaf=10)
+    jpt = JPT(variables=[varx, vary], min_samples_leaf=15)
     jpt.learn(columns=[X.ravel(), y])
-
+    # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model
-    confidence = .25
-    my_predictions = [first(jpt.expectation([vary], evidence={varx: x_}, confidence_level=confidence)) for x_ in xx.ravel()]
-    y_pred_ = [p.result for p in my_predictions]
-    y_lower_ = [p.lower for p in my_predictions]
-    y_upper_ = [p.upper for p in my_predictions]
+    confidence = .95
+
+    # for x in xx.ravel():
+    #     print(jpt.infer({varx: x}).explain())
+    # exit(0)
+    my_predictions = [first(jpt.expectation([vary],
+                                            evidence={varx: x_},
+                                            confidence_level=confidence,
+                                            fail_on_unsatisfiability=False)) for x_ in xx.ravel()]
+    y_pred_ = [p.result if p else None for p in my_predictions]
+    y_lower_ = [p.lower if p else None for p in my_predictions]
+    y_upper_ = [p.upper if p else None for p in my_predictions]
 
     # Plot the function, the prediction and the 90% confidence interval based on the MSE
     fig = plt.figure()

@@ -93,7 +93,7 @@ def muesli_tree():
 
     jpt = JPT([x, y, o, s], min_samples_leaf=5)
     jpt.learn(columns=data.values.T)
-    jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
+    # jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
 
     for clazz in data['Class'].unique():
         out(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))

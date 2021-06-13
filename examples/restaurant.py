@@ -60,7 +60,7 @@ def restaurant():
 def restaurantsample():
     # generate JPT from data sampled based on distributions from lecture data
     import pandas as pd
-    d = pd.read_csv(os.path.join('../', 'examples', 'data', 'restaurant.csv'))
+    df = pd.read_csv(os.path.join('../', 'examples', 'data', 'restaurant.csv'))
 
     # declare variable types
     PatronsType = SymbolicType('Patrons', ['Some', 'Full', 'None'])
@@ -86,22 +86,21 @@ def restaurantsample():
     def rec(vars, vals):
         if not vars:
             return [v[1] for v in vals]
-
-        d = hilfsfunktion(vars[0], vals)
+            return
+        d = dist(vars[0], vals)
         sample = wchoice(vars[0].domain.labels, d)
         return rec(vars[1:], vals+[(vars[0], sample)])
 
-    def hilfsfunktion(var, vals):
-        d_ = d
+    def dist(var, vals):
+        d_ = df
         for v, val in vals:
             d_ = d_[d_[v.name] == val]
-
-        dist = [len(d_[d_[var.name] == l])/len(d_) for l in var.domain.labels]
-        return dist
+        return [len(d_[d_[var.name] == l]) / len(d_) for l in var.domain.labels.values()] if len(d_) else None
 
     data = [rec(variables, []) for _ in range(500)]
+    out(data)
 
-    jpt = JPT(variables, name='Restaurant', min_samples_leaf=30, min_impurity_improvement=0)
+    jpt = JPT(variables, min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(rows=data)
     out(jpt)
     jpt.plot(plotvars=variables, view=True, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))

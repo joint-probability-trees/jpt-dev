@@ -41,7 +41,7 @@ def alarm():
 
         # Construct the CSV for learning
         data = []
-        for i in range(10000):
+        for i in range(1000):
             e = E.dist(.2).sample_one()
             b = B.dist(.1).sample_one()
             a = A_.sample_one([e, b])
