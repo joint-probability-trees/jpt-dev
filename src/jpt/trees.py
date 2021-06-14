@@ -478,7 +478,7 @@ class JPT:
         variables = ifnone(variables, set(self.variables) - set(evidence_))
         distributions = {var: deque() for var in variables}
 
-        result = {var: ExpectationResult(var, evidence_, confidence_level) for var in variables}
+        result = {var: ExpectationResult(var, evidence_, conf_level) for var in variables}
 
         for leaf in self.apply(evidence_):
             p_m = 1
@@ -486,17 +486,17 @@ class JPT:
                 evidence_val = evidence_[var]
                 if var.numeric and var in leaf.path:
                     evidence_val = evidence_val.intersection(leaf.path[var])
-                elif var.symbolic and var in leaf.path:
-                    continue
-                p_m = leaf.distributions[var]._p(evidence_val)
-            for var in variables:
-                distributions[var].append((leaf.distributions[var], p_m))
+                p_m *= leaf.distributions[var]._p(evidence_val)
+            if p_m:
+                for var in variables:
+                    distributions[var].append((leaf.distributions[var], p_m))
 
-        if not all([sum([w for _, w in distributions[var]]) for v in variables]):
-            if fail_on_unsatisfiability:
-                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
-            else:
-                return None
+        for var in variables:
+            if not sum([w for _, w in distributions[var]]):
+                if fail_on_unsatisfiability:
+                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                else:
+                    return None
 
         posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
                                             normalized(np.array([w for _, w in distributions[var]],
