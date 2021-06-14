@@ -121,4 +121,6 @@ class SymbolicVariable(Variable):
                 return ' v '.join([self.str(a, fmt=fmt) for a in assignment])
         if isinstance(assignment, numbers.Integral):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
+        elif type(assignment) is str:
+            return '%s = %s' % (self.name, assignment)
 
