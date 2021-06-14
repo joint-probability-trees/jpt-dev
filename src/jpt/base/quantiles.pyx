@@ -582,6 +582,14 @@ cdef class QuantileDistribution:
             ppf.intervals.append(ContinuousSet(np.NINF, 0, _EXC, _EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
             ppf.functions.append(Undefined())
 
+            if len(self._cdf.functions) == 2:
+                ppf.intervals[-1].upper = 1
+                ppf.intervals.append(ContinuousSet(1, np.nextafter(1, 2), _INC, _EXC))
+                ppf.functions.append(ConstantFunction(self._cdf.intervals[-1].lower))
+                ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, _INC, _EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
+                ppf.functions.append(Undefined())
+                return ppf
+
             for interval, f in zip(self._cdf.intervals[1:-1], self._cdf.functions[1:-1]):
                 if f.is_invertible():
                     ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper,
@@ -599,8 +607,8 @@ cdef class QuantileDistribution:
 
             ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, _INC, _EXC))
             ppf.functions.append(Undefined())
-            assert np.isnan(ppf.eval(np.nextafter(1, 2)))
-            assert not np.isnan(ppf.eval(1.))
+            assert np.isnan(ppf.eval(np.nextafter(1, 2))), ppf.pfmt()
+            assert not np.isnan(ppf.eval(1.)), ppf.pfmt()
             self._ppf = ppf
         return self._ppf
 
@@ -656,7 +664,7 @@ cdef class QuantileDistribution:
 
         # If the merging ends with an "approximate" constant function
         # remove it. This may happen for numerical imprecision.
-        while abs(functions[-1].m) <= 1e-08:
+        while len(functions) > 1 and abs(functions[-1].m) <= 1e-08:
             del intervals[-1]
             del functions[-1]
 
