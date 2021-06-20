@@ -504,25 +504,66 @@ class Distribution:
         '''
         raise NotImplementedError
 
+    def to_json(self):
+        raise NotImplementedError()
+
+    @staticmethod
+    def from_json(data):
+        clazz = _DISTRIBUTIONS.get(data['type'])
+        if clazz is None:
+            raise TypeError('Unknown distribution type: %s' % data['type'])
+        return clazz.from_json(data)
+
+    @staticmethod
+    def type_from_json(data):
+        clazz = _DISTRIBUTIONS.get(data['type'])
+        if clazz is None:
+            raise TypeError('Unknown distribution type: %s' % data['type'])
+        return clazz.type_from_json(data)
+
 
 class DataScaler(StandardScaler):
-    def __init__(self, data, inverse=False):
+    '''
+    A numeric data transformation that represents data points in form of a translation
+    by their mean and a scaling by their variance. After the transformation, the transformed
+    input data have zero mean and unit variance.
+    '''
+
+    def __init__(self, data):
         super().__init__()
-        self.fit(data.reshape(-1, 1))
+        if data is not None:
+            self.fit(data.reshape(-1, 1))
 
     @property
     def mean(self):
-        raise NotImplementedError
+        raise self.mean_
 
     @property
     def variance(self):
-        raise NotImplementedError
+        raise self.scale_
 
     def __getitem__(self, item):
+        if item in (np.NINF, np.PINF):
+            return item
         return self.inverse_transform(np.array([item]))[0, 0]
+
+    def to_json(self):
+        return {'mean': list(self.mean_),
+                'var': list(self.scale_)}
+
+    @staticmethod
+    def from_json(data):
+        scaler = DataScaler(None)
+        scaler.mean_ = np.array(data['mean'])
+        scaler.scale_ = np.array(data['var'])
+        scaler.n_features_in_ = 1
+        return scaler
 
 
 class Identity:
+    '''
+    Simple identity mapping that mimics the __getitem__ protocol of dicts.
+    '''
 
     def __getitem__(self, item):
         return item
@@ -535,6 +576,8 @@ class DataScalerProxy:
         self.inverse = inverse
 
     def __getitem__(self, item):
+        if item in (np.NINF, np.PINF):
+            return item
         return (self.datascaler.transform
                 if not self.inverse
                 else self.datascaler.inverse_transform)(np.array(item).reshape(1, -1))[0, 0]
@@ -554,6 +597,7 @@ class Numeric(Distribution):
     def __init__(self, quantile=None):
         super().__init__()
         self._quantile = quantile
+        self.to_json = self.inst_to_json
 
     def __str__(self):
         return self.cdf.pfmt()
@@ -617,6 +661,25 @@ class Numeric(Distribution):
             raise TypeError('Only distributions of the same type can be merged.')
         return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
 
+    @classmethod
+    def type_to_json(cls):
+        return {'type': 'numeric',
+                'class': cls.__name__}
+
+    def inst_to_json(self):
+        return {'class': type(self).__name__,
+                'quantile': self._quantile.to_json()}
+
+    to_json = type_to_json
+
+    @staticmethod
+    def from_json(data):
+        return Numeric(quantile=QuantileDistribution.from_json(data['quantile']))
+
+    @classmethod
+    def type_from_json(cls, data):
+        return cls
+
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the piecewise linear function representing the variable's cumulative distribution function
 
@@ -679,10 +742,34 @@ class Numeric(Distribution):
 
 
 class ScaledNumeric(Numeric):
+    '''
+    Scaled numeric distribution represented by mean and variance.
+    '''
+
     scaler = None
 
     def __init__(self, quantile=None):
         super().__init__(quantile=quantile)
+
+    @classmethod
+    def type_to_json(cls):
+        return {'type': 'scaled-numeric',
+                'class': cls.__name__,
+                'scaler': cls.scaler.to_json()}
+
+    to_json = type_to_json
+
+    @staticmethod
+    def type_from_json(data):
+        clazz = NumericType(data['class'], None)
+        clazz.scaler = DataScaler.from_json(data['scaler'])
+        clazz.values = DataScalerProxy(clazz.scaler)
+        clazz.labels = DataScalerProxy(clazz.scaler, True)
+        return clazz
+
+    @classmethod
+    def from_json(cls, data):
+        return cls(quantile=QuantileDistribution.from_json(data['quantile']))
 
 
 class Multinomial(Distribution):
@@ -705,6 +792,7 @@ class Multinomial(Distribution):
             self._params = None
         if not issubclass(type(self), Multinomial) or type(self) is Multinomial:
             raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
+        self.to_json = self.inst_to_json
 
     @classproperty
     def n_values(self):
@@ -789,6 +877,26 @@ class Multinomial(Distribution):
         for d, w in zip(distributions, weights):
             params += d._params * w
         return type(distributions[0])(params=params)
+
+    @classmethod
+    def type_to_json(cls):
+        return {'type': 'symbolic',
+                'class': cls.__name__,
+                'labels': list(cls.labels.values())}
+
+    def inst_to_json(self):
+        return {'class': type(self).__name__,
+                'params': list(self._params)}
+
+    to_json = type_to_json
+
+    @staticmethod
+    def type_from_json(data):
+        return SymbolicType(data['class'], data['labels'])
+
+    @classmethod
+    def from_json(cls, data):
+        return cls(data['params'])
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
@@ -898,7 +1006,16 @@ def SymbolicType(name, labels):
 
 def NumericType(name, values):
     t = type(name, (ScaledNumeric,), {})
-    t.scaler = DataScaler(values)
-    t.values = DataScalerProxy(t.scaler, inverse=False)
-    t.labels = DataScalerProxy(t.scaler, inverse=True)
+    if values is not None:
+        t.scaler = DataScaler(values)
+        t.values = DataScalerProxy(t.scaler, inverse=False)
+        t.labels = DataScalerProxy(t.scaler, inverse=True)
     return t
+
+
+_DISTRIBUTIONS = {
+    'numeric': Numeric,
+    'scaled-numeric': ScaledNumeric,
+    'symbolic': Multinomial
+}
+

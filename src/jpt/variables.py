@@ -1,13 +1,14 @@
 '''
 © Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
+import hashlib
 import numbers
 
 import numpy as np
 from dnutils import first, ifnone
 
 from jpt.base.intervals import INC, EXC
-from jpt.learning.distributions import Multinomial, Numeric
+from jpt.learning.distributions import Multinomial, Numeric, ScaledNumeric, Distribution
 from jpt.base.constants import SYMBOL
 
 
@@ -58,6 +59,14 @@ class Variable:
     def __repr__(self):
         return str(self)
 
+    def __eq__(self, other):
+        return (self.name == other.name
+                and self.domain == other.domain
+                and self.min_impurity_improvement == other.min_impurity_improvement)
+
+    def __hash__(self):
+        return hash((type(self), hashlib.md5(self.name.encode()).hexdigest(), self.domain))
+
     @property
     def symbolic(self):
         return issubclass(self.domain, Multinomial)
@@ -68,6 +77,22 @@ class Variable:
 
     def str(self, assignment, **kwargs):
         raise NotImplemented()
+
+    def to_json(self):
+        return {'name': self.name,
+                'type': 'numeric' if self.numeric else 'symbolic',
+                'domain': self.domain.to_json(),
+                'min_impurity_improvement': self.min_impurity_improvement}
+
+    @staticmethod
+    def from_json(data):
+        domain = Distribution.type_from_json(data['domain'])
+        if data['type'] == 'numeric':
+            return NumericVariable(name=data['name'], domain=domain)
+        elif data['type'] == 'symbolic':
+            return SymbolicVariable(name=data['name'], domain=domain)
+        else:
+            raise TypeError('Unknown distribution type: %s' % data['type'])
 
 
 class NumericVariable(Variable):

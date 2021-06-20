@@ -27,6 +27,7 @@ from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSe
 from .learning.impurity import Impurity
 from .base.constants import plotstyle, orange, green, SYMBOL
 from .base.utils import list2interval, format_path, normalized
+from .variables import Variable
 
 style.use(plotstyle)
 
@@ -168,11 +169,251 @@ class Leaf(Node):
     def __repr__(self):
         return f'LeafNode<{self.idx}> object at {hex(id(self))}'
 
+    def to_json(self):
+        return {'idx': self.idx,
+                'path': [[var.name, list(values) if var.symbolic else values.to_json()] for var, values in self.path.items()],
+                'distributions': [[var.name, dist.to_json()] for var, dist in self.distributions.items()],
+                'leaf_prior': self.prior}
+
+    @staticmethod
+    def from_json(tree, data):
+        leaf = Leaf(idx=data['idx'], prior=data['leaf_prior'])
+        leaf.distributions = OrderedDict([(tree.varnames[v],
+                                           tree.varnames[v].domain.from_json(d)) for v, d in data['distributions']])
+        leaf._path = OrderedDict()
+        for varname, values in data['path']:
+            var = tree.varnames[varname]
+            leaf.path[var] = set(values) if var.symbolic else ContinuousSet.from_json(values)
+        leaf.prior = data['leaf_prior']
+        return leaf
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-class JPT:
+class JPTBase:
+
+    def __init__(self, variables):
+        self._variables = tuple(variables)
+        self.varnames = OrderedDict((var.name, var) for var in self._variables)
+        self.leaves = {}
+        self.priors = {}
+
+    @property
+    def variables(self):
+        return self._variables
+
+    def to_json(self):
+        return {'variables': [v.to_json() for v in self.variables],
+                'leaves': [l.to_json() for l in self.leaves.values()],
+                'priors': {var.name: p.to_json() for var, p in self.priors.items()}}
+
+    @staticmethod
+    def from_json(data):
+        jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
+        jpt.leaves = {d['idx']: Leaf.from_json(jpt, d) for d in data['leaves']}
+        return jpt
+
+    def infer(self, query, evidence=None, fail_on_unsatisfiability=True):
+        r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
+
+        .. math::
+            P(query|evidence) = \frac{p_q}{p_e}
+            :label: query
+
+        .. math::
+            p_q = \frac{c}{N}
+            :label: pq
+
+        .. math::
+            c = \frac{\prod{F}}{x^{n-1}}
+            :label: c
+
+        where ``Q`` is the set of variables in `query`, :math:`P_{l}` is the set of variables that occur in ``l``,
+        :math:`F = \{v | v \in Q \wedge~v \notin P_{l}\}` is the set of variables in the `query` that do not occur in ``l``'s path,
+        :math:`x = |S_{l}|` is the number of samples in ``l``, :math:`n = |F|` is the number of free variables and
+        ``N`` is the number of samples represented by the entire tree.
+        reference to :eq:`query`
+
+        :param query:       the event to query for, i.e. the query part of the conditional P(query|evidence) or the prior P(query)
+        :type query:        dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
+        :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
+        :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
+        '''
+        query_ = self._prepropress_query(query)
+        evidence_ = ifnone(evidence, {}, self._prepropress_query)
+
+        r = Result(query_, evidence_)
+
+        p_q = 0.
+        p_e = 0.
+
+        for leaf in self.apply(evidence_):
+            # out(leaf.format_path(), 'applies', ' ^ '.join([var.str_by_idx(val) for var, val in evidence_.items()]))
+            p_m = 1
+            for var in set(evidence_.keys()):
+                evidence_val = evidence_[var]
+                if var.numeric and var in leaf.path:
+                    evidence_val = evidence_val.intersection(leaf.path[var])
+                elif var.symbolic and var in leaf.path:
+                    continue
+                p_m *= leaf.distributions[var]._p(evidence_val)
+
+            w = leaf.prior
+            p_m *= w
+            p_e += p_m
+
+            if leaf.applies(query_):
+                for var in set(query_.keys()):
+                    query_val = query_[var]
+                    if var.numeric and var in leaf.path:
+                        query_val = query_val.intersection(leaf.path[var])
+                    elif var.symbolic and var in leaf.path:
+                        continue
+                    p_m *= leaf.distributions[var]._p(query_val)
+                p_q += p_m
+
+                r.candidates.append(leaf)
+                r.weights.append(p_m)
+
+        if p_e == 0:
+            if fail_on_unsatisfiability:
+                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
+            else:
+                return None
+
+        r.result = p_q / p_e
+        r.weights = [w / p_e for w in r.weights]
+        return r
+
+    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True):
+        '''
+        Compute the expected value of all ``variables``. If no ``variables`` are passed,
+        it defaults to all variables not passed as ``evidence``.
+        '''
+        evidence_ = self._prepropress_query(ifnone(evidence, {}))
+        conf_level = ifnone(confidence_level, .95)
+        variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
+                           set(self.variables) - set(evidence_))
+        distributions = {var: deque() for var in variables}
+
+        result = {var: ExpectationResult(var, evidence_, conf_level) for var in variables}
+
+        for leaf in self.apply(evidence_):
+            p_m = 1
+            for var in set(evidence_.keys()):
+                evidence_val = evidence_[var]
+                if var.numeric and var in leaf.path:
+                    evidence_val = evidence_val.intersection(leaf.path[var])
+                p_m *= leaf.distributions[var]._p(evidence_val)
+            if p_m:
+                for var in variables:
+                    distributions[var].append((leaf.distributions[var], p_m))
+
+        for var in variables:
+            if not sum([w for _, w in distributions[var]]):
+                if fail_on_unsatisfiability:
+                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                else:
+                    return None
+
+        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
+                                            normalized(np.array([w for _, w in distributions[var]],
+                                                                dtype=np.float64))) for var in distributions}
+
+        for var, dist in posteriors.items():
+            expectation = dist._expectation()
+            result[var]._res = expectation
+            if var.numeric:
+                exp_quantile = dist.cdf.eval(expectation)
+                result[var]._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
+                result[var]._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
+
+        return list(result.values())
+
+    def mpe(self, evidence=None, fail_on_unsatisfiability=True):
+        '''
+        Compute the (conditional) MPE state of the model.
+        '''
+        evidence_ = self._prepropress_query(evidence)
+        distributions = {var: deque() for var in self.variables}
+
+        r = MPEResult(evidence_)
+
+        for leaf in self.apply(evidence_):
+            p_m = 1
+            for var in set(evidence_.keys()):
+                evidence_val = evidence_[var]
+                if var.numeric and var in leaf.path:
+                    evidence_val = evidence_val.intersection(leaf.path[var])
+                elif var.symbolic and var in leaf.path:
+                    continue
+                p_m *= leaf.distributions[var]._p(evidence_val)
+
+            if not p_m: continue
+
+            for var in self.variables:
+                distributions[var].append((leaf.distributions[var], p_m))
+
+        if not all([sum([w for _, w in distributions[var]]) for v in self.variables]):
+            if fail_on_unsatisfiability:
+                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
+            else:
+                return None
+
+        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
+                                            normalized([w for _, w in distributions[var]])) for var in distributions}
+
+        for var, dist in posteriors.items():
+            r.path.update({var: dist.mpe()})
+        return r
+
+    def _prepropress_query(self, query):
+        '''
+        Transform a query entered by a user into an internal representation
+        that can be further processed.
+        '''
+        # Transform lists into a numeric interval:
+        query_ = {var if isinstance(var, Variable)
+                  else self.varnames[var]: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
+        # Transform single numeric values in to intervals given by the haze
+        # parameter of the respective variable:
+        for var, lbl in list(query_.items()):
+            if var.numeric:
+                if isinstance(lbl, numbers.Number):
+                    val = var.domain.values[lbl]
+                    prior = self.priors[var]
+                    quantile = prior.cdf.eval(val)
+                    query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
+                                                prior.ppf.eval(min(1, quantile + var.haze / 2)))
+                    # if query_[var].lower >= query_[var].upper or np.isnan(query_[var].upper) or np.isnan(query_[var].lower):
+                    #     out(prior.cdf.pfmt())
+                    #     out(prior.ppf.pfmt())
+                    #     stop(var, lbl, val, quantile, query_[var].lower, query_[var].upper)
+                elif isinstance(lbl, ContinuousSet):
+                    query_[var] = ContinuousSet(var.domain.values[lbl.lower],
+                                                var.domain.values[lbl.upper], lbl.left, lbl.right)
+            if var.symbolic:
+                # Transform into internal values (symbolic values to their indices):
+                query_[var] = var.domain.values[lbl]
+        JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
+        return query_
+
+    def apply(self, query):
+        # if the sample doesn't match the features of the tree, there is no valid prediction possible
+        if not set(query.keys()).issubset(set(self._variables)):
+            raise TypeError(f'Invalid query. Query contains variables that are not '
+                            f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}')
+
+        # find the leaf (or the leaves) that have each variable either
+        # - not occur in the path to this node OR
+        # - match the boolean/symbolic value in the path OR
+        # - lie in the interval of the numeric value in the path
+        # -> return leaf that matches query
+        yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
+
+
+class JPT(JPTBase):
     '''
     Joint Probability Trees.
     '''
@@ -180,35 +421,26 @@ class JPT:
     logger = dnutils.getlogger('/jpt', level=dnutils.DEBUG)
 
     def __init__(self, variables, min_samples_leaf=1, min_impurity_improvement=None, max_leaves=None):
-        '''Custom wrapper around Joint Probability Tree (JPT) learning. We store multiple distributions
+        '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
         has children :class:`~jpt.learning.trees.Node`.
 
         :param variables:           the variable declarations of the data being processed by this tree
         :type variables:            [jpt.variables.Variable]
-        :param name:                the name of the tree
-        :type name:                 str
         :param min_samples_leaf:    the minimum number of samples required to generate a leaf node
         :type min_samples_leaf:     int
         '''
-        self._variables = tuple(variables)
-        self.varnames = OrderedDict((var.name, var) for var in self._variables)
+        super().__init__(variables)
         self.min_samples_leaf = min_samples_leaf
         self.min_impurity_improvement = min_impurity_improvement
         self._numsamples = 0
-        self.leaves = {}
         self.innernodes = {}
         self.allnodes = ChainMap(self.innernodes, self.leaves)
         self.root = None
         self.c45queue = deque()
-        self.priors = {}
         self.max_leaves = max_leaves
         self._node_counter = 0
-
-    @property
-    def variables(self):
-        return self._variables
 
     def c45(self, indices, parent, child_idx):
         '''
@@ -395,202 +627,6 @@ class JPT:
         JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
         # if logger.level >= 20:
         JPT.logger.debug(self)
-
-    def infer(self, query, evidence=None, fail_on_unsatisfiability=True):
-        r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
-
-        .. math::
-            P(query|evidence) = \frac{p_q}{p_e}
-            :label: query
-
-        .. math::
-            p_q = \frac{c}{N}
-            :label: pq
-
-        .. math::
-            c = \frac{\prod{F}}{x^{n-1}}
-            :label: c
-
-        where ``Q`` is the set of variables in `query`, :math:`P_{l}` is the set of variables that occur in ``l``,
-        :math:`F = \{v | v \in Q \wedge~v \notin P_{l}\}` is the set of variables in the `query` that do not occur in ``l``'s path,
-        :math:`x = |S_{l}|` is the number of samples in ``l``, :math:`n = |F|` is the number of free variables and
-        ``N`` is the number of samples represented by the entire tree.
-        reference to :eq:`query`
-
-        :param query:       the event to query for, i.e. the query part of the conditional P(query|evidence) or the prior P(query)
-        :type query:        dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
-        :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
-        :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
-        '''
-        query_ = self._prepropress_query(query)
-        evidence_ = ifnone(evidence, {}, self._prepropress_query)
-
-        r = Result(query_, evidence_)
-
-        p_q = 0.
-        p_e = 0.
-
-        for leaf in self.apply(evidence_):
-            # out(leaf.format_path(), 'applies', ' ^ '.join([var.str_by_idx(val) for var, val in evidence_.items()]))
-            p_m = 1
-            for var in set(evidence_.keys()):
-                evidence_val = evidence_[var]
-                if var.numeric and var in leaf.path:
-                    evidence_val = evidence_val.intersection(leaf.path[var])
-                elif var.symbolic and var in leaf.path:
-                    continue
-                p_m *= leaf.distributions[var]._p(evidence_val)
-
-            w = leaf.prior
-            p_m *= w
-            p_e += p_m
-
-            if leaf.applies(query_):
-                for var in set(query_.keys()):
-                    query_val = query_[var]
-                    if var.numeric and var in leaf.path:
-                        query_val = query_val.intersection(leaf.path[var])
-                    elif var.symbolic and var in leaf.path:
-                        continue
-                    p_m *= leaf.distributions[var]._p(query_val)
-                p_q += p_m
-
-                r.candidates.append(leaf)
-                r.weights.append(p_m)
-
-        if p_e == 0:
-            if fail_on_unsatisfiability:
-                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
-            else:
-                return None
-
-        r.result = p_q / p_e
-        r.weights = [w / p_e for w in r.weights]
-        return r
-
-    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True):
-        '''
-        Compute the expected value of all ``variables``. If no ``variables`` are passed,
-        it defaults to all variables not passed as ``evidence``.
-        '''
-        evidence_ = self._prepropress_query(ifnone(evidence, {}))
-        conf_level = ifnone(confidence_level, .95)
-        variables = ifnone(variables, set(self.variables) - set(evidence_))
-        distributions = {var: deque() for var in variables}
-
-        result = {var: ExpectationResult(var, evidence_, conf_level) for var in variables}
-
-        for leaf in self.apply(evidence_):
-            p_m = 1
-            for var in set(evidence_.keys()):
-                evidence_val = evidence_[var]
-                if var.numeric and var in leaf.path:
-                    evidence_val = evidence_val.intersection(leaf.path[var])
-                p_m *= leaf.distributions[var]._p(evidence_val)
-            if p_m:
-                for var in variables:
-                    distributions[var].append((leaf.distributions[var], p_m))
-
-        for var in variables:
-            if not sum([w for _, w in distributions[var]]):
-                if fail_on_unsatisfiability:
-                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
-                else:
-                    return None
-
-        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
-                                            normalized(np.array([w for _, w in distributions[var]],
-                                                                dtype=np.float64))) for var in distributions}
-
-        for var, dist in posteriors.items():
-            expectation = dist._expectation()
-            result[var]._res = expectation
-            if var.numeric:
-                exp_quantile = dist.cdf.eval(expectation)
-                result[var]._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
-                result[var]._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
-
-        return list(result.values())
-
-    def mpe(self, evidence=None, fail_on_unsatisfiability=True):
-        '''
-        Compute the (conditional) MPE state of the model.
-        '''
-        evidence_ = self._prepropress_query(evidence)
-        distributions = {var: deque() for var in self.variables}
-
-        r = MPEResult(evidence_)
-
-        for leaf in self.apply(evidence_):
-            p_m = 1
-            for var in set(evidence_.keys()):
-                evidence_val = evidence_[var]
-                if var.numeric and var in leaf.path:
-                    evidence_val = evidence_val.intersection(leaf.path[var])
-                elif var.symbolic and var in leaf.path:
-                    continue
-                p_m *= leaf.distributions[var]._p(evidence_val)
-
-            if not p_m: continue
-
-            for var in self.variables:
-                distributions[var].append((leaf.distributions[var], p_m))
-
-        if not all([sum([w for _, w in distributions[var]]) for v in self.variables]):
-            if fail_on_unsatisfiability:
-                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
-            else:
-                return None
-
-        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
-                                            normalized([w for _, w in distributions[var]])) for var in distributions}
-
-        for var, dist in posteriors.items():
-            r.path.update({var: dist.mpe()})
-        return r
-
-    def _prepropress_query(self, query):
-        '''
-        Transform a query entered by a user into an internal representation
-        that can be further processed.
-        '''
-        # Transform lists into a numeric interval:
-        query_ = {var: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
-        # Transform single numeric values in to intervals given by the haze
-        # parameter of the respective variable:
-        for var, lbl in list(query_.items()):
-            if var.numeric:
-                if isinstance(lbl, numbers.Number):
-                    val = var.domain.values[lbl]
-                    prior = self.priors[var]
-                    quantile = prior.cdf.eval(val)
-                    query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
-                                                prior.ppf.eval(min(1, quantile + var.haze / 2)))
-                    # if query_[var].lower >= query_[var].upper or np.isnan(query_[var].upper) or np.isnan(query_[var].lower):
-                    #     out(prior.cdf.pfmt())
-                    #     out(prior.ppf.pfmt())
-                    #     stop(var, lbl, val, quantile, query_[var].lower, query_[var].upper)
-                elif isinstance(lbl, ContinuousSet):
-                    query_[var] = ContinuousSet(var.domain.values[lbl.lower],
-                                                var.domain.values[lbl.upper], lbl.left, lbl.right)
-            if var.symbolic:
-                # Transform into internal values (symbolic values to their indices):
-                query_[var] = var.domain.values[lbl]
-        JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
-        return query_
-
-    def apply(self, query):
-        # if the sample doesn't match the features of the tree, there is no valid prediction possible
-        if not set(query.keys()).issubset(set(self._variables)):
-            raise TypeError(f'Invalid query. Query contains variables that are not '
-                            f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}')
-
-        # find the leaf (or the leaves) that have each variable either
-        # - not occur in the path to this node OR
-        # - match the boolean/symbolic value in the path OR
-        # - lie in the interval of the numeric value in the path
-        # -> return leaf that matches query
-        yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
 
     @staticmethod
     def sample(sample, ft):

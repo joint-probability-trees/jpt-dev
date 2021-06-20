@@ -283,6 +283,9 @@ cdef class ConstantFunction(Function):
         else:
             raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
 
+    def to_json(self):
+        return {'type': 'constant', 'value': self.value}
+
 
 @cython.final
 cdef class LinearFunction(Function):
@@ -423,6 +426,20 @@ cdef class LinearFunction(Function):
     cpdef inline LinearFunction fit(LinearFunction self, np.float64_t[::1] x, np.float64_t[::1] y) except +:
         self.m, self.c, _, _, _ = stats.linregress(x, y)
         return self
+
+    def to_json(self):
+        return {'type': 'linear',
+                'slope': self.m,
+                'intercept': self.c}
+
+    @staticmethod
+    def from_json(data):
+        if data['type'] == 'linear':
+            return LinearFunction(data['slope'], data['intercept'])
+        elif data['type'] == 'constant':
+            return ConstantFunction(data['value'])
+        else:
+            raise TypeError('Unknown function type or type not given (%s)' % data.get('type'))
 
 
 @cython.final
@@ -675,6 +692,20 @@ cdef class QuantileDistribution:
         distribution = QuantileDistribution()
         distribution._cdf = cdf
         return distribution
+
+    def to_json(self):
+        return {'epsilon': self.epsilon,
+                'penalty': self.penalty,
+                'min_samples_mars': self.min_samples_mars,
+                'cdf': self._cdf.to_json()}
+
+    @staticmethod
+    def from_json(data):
+        q = QuantileDistribution(epsilon=data['epsilon'],
+                                 penalty=data['penalty'],
+                                 min_samples_mars=data['min_samples_mars'])
+        q._cdf = PiecewiseFunction.from_json(data['cdf'])
+        return q
 
 
 @cython.freelist(500)
@@ -1245,6 +1276,17 @@ cdef class PiecewiseFunction(Function):
                 result.intervals.append(intersection)
                 result.functions.append(f)
         return result
+
+    def to_json(self):
+        return {'intervals': [i.to_json() for i in self.intervals],
+                'functions': [f.to_json() for f in self.functions]}
+
+    @staticmethod
+    def from_json(data):
+        function = PiecewiseFunction()
+        function.intervals = [ContinuousSet.from_json(d) for d in data['intervals']]
+        function.functions = [LinearFunction.from_json(d) for d in data['functions']]
+        return function
 
 
 cpdef object fit_piecewise(np.float64_t[::1] x, np.float64_t[::1] y, np.float64_t epsilon=np.nan,

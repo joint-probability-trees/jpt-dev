@@ -568,3 +568,16 @@ cdef class ContinuousSet(NumberSet):
 
     def __setstate__(self, x):
         self.lower, self.upper, self.left, self.right = x
+
+    def to_json(self):
+        return {'upper': self.upper,
+                'lower': self.lower,
+                'left': self.left,
+                'right': self.right}
+
+    @staticmethod
+    def from_json(data):
+        return ContinuousSet(data['lower'],
+                             data['upper'],
+                             data['left'],
+                             data['right'])
