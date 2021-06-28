@@ -63,8 +63,8 @@ def main(*args):
 
     # call imported examples
     # alarm.main()
-    # regression.main()
-    muesli.muesli_tree()
+    regression.main()
+    # muesli.muesli_tree()
     # neems.main()
     # quantile.main()
     # restaurant.main()

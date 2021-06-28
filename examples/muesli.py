@@ -1,3 +1,5 @@
+import pprint
+
 import pyximport
 pyximport.install()
 import itertools
@@ -12,8 +14,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from dnutils import out
 from jpt.base.quantiles import Quantiles, QuantileDistribution
-from jpt.learning.distributions import Numeric, Bool, SymbolicType
-from jpt.trees import JPT
+from jpt.learning.distributions import Numeric, Bool, SymbolicType, NumericType
+from jpt.trees import JPT, JPTBase
 from jpt.variables import SymbolicVariable, NumericVariable
 from jpt.base.intervals import ContinuousSet as Interval, ContinuousSet
 
@@ -85,22 +87,29 @@ def muesli_tree():
     # generate Joint Probability Tree from muesli data (use .csv file because it contains the additional Success column)
     data = pd.read_csv('../examples/data/muesli.csv')
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
+    XType = NumericType('XType', data['X'].values)
 
     x = NumericVariable('X', Numeric)
     y = NumericVariable('Y', Numeric)
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 
+    # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
+
     jpt = JPT([x, y, o, s], min_samples_leaf=5)
     jpt.learn(columns=data.values.T)
+
+    # json_data = jpt.to_json()
+    # pprint.pprint(json_data)
     # jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
+    # jpt = JPTBase.from_json(json_data)
 
     for clazz in data['Class'].unique():
-        out(jpt.infer(query={o: clazz}, evidence={x: [.9, None], y: [None, .45]}))
+        out(jpt.infer(query={o.name: clazz}, evidence={x.name: [.9, None], y.name: [None, .45]}))
     print()
 
     for clazz in data['Class'].unique():
-        for exp in jpt.expectation([x, y], evidence={o: clazz}, confidence_level=.1):
+        for exp in jpt.expectation([x.name, y.name], evidence={o.name: clazz}, confidence_level=.1):
             out(exp)
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
