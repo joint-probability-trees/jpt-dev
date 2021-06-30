@@ -204,8 +204,9 @@ class Leaf(Node):
 
 class JPTBase:
 
-    def __init__(self, variables):
+    def __init__(self, variables, targets=None):
         self._variables = tuple(variables)
+        self._targets = ifnone(targets, variables, tuple)
         self.varnames = OrderedDict((var.name, var) for var in self._variables)
         self.leaves = {}
         self.priors = {}
@@ -214,14 +215,20 @@ class JPTBase:
     def variables(self):
         return self._variables
 
+    @property
+    def targets(self):
+        return self._targets
+
     def to_json(self):
         return {'variables': [v.to_json() for v in self.variables],
+                'targets': [v.name for v in self.variables],
                 'leaves': [l.to_json() for l in self.leaves.values()],
                 'priors': {var.name: p.to_json() for var, p in self.priors.items()}}
 
     @staticmethod
     def from_json(data):
         jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
+        jpt._targets = tuple(jpt.variables[varname] for varname in data['targets'])
         jpt.leaves = {d['idx']: Leaf.from_json(jpt, d) for d in data['leaves']}
         return jpt
 
@@ -431,7 +438,7 @@ class JPT(JPTBase):
 
     logger = dnutils.getlogger('/jpt', level=dnutils.DEBUG)
 
-    def __init__(self, variables, min_samples_leaf=1, min_impurity_improvement=None, max_leaves=None):
+    def __init__(self, variables, targets=None, min_samples_leaf=1, min_impurity_improvement=None, max_leaves=None):
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -442,7 +449,7 @@ class JPT(JPTBase):
         :param min_samples_leaf:    the minimum number of samples required to generate a leaf node
         :type min_samples_leaf:     int
         '''
-        super().__init__(variables)
+        super().__init__(variables, targets=targets)
         self.min_samples_leaf = min_samples_leaf
         self.min_impurity_improvement = min_impurity_improvement
         self._numsamples = 0

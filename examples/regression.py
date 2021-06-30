@@ -11,6 +11,7 @@ def main():
 
     def f(x):
         """The function to predict."""
+        # x -= 20
         return x * np.sin(x)
 
     # ----------------------------------------------------------------------
@@ -40,7 +41,7 @@ def main():
     varx = NumericVariable('x', NumericType('x', X), haze=.05)
     vary = NumericVariable('y', NumericType('y', y), haze=.05)
 
-    jpt = JPT(variables=[varx, vary], min_samples_leaf=10)
+    jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=15)
     jpt.learn(columns=[X.ravel(), y])
     # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model

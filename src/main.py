@@ -65,6 +65,7 @@ def main(*args):
     # alarm.main()
     regression.main()
     # muesli.muesli_tree()
+    # muesli.plot_muesli()
     # neems.main()
     # quantile.main()
     # restaurant.main()

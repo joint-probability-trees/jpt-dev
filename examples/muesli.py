@@ -24,7 +24,7 @@ def plot_muesli():
     # Used to create the plots for the paper
 
     # df = pd.read_pickle('data/human_muesli.dat')
-    df = pd.read_csv('data/muesli.csv')
+    df = pd.read_csv('../examples/data/muesli.csv')
     # pd.set_option('display.max_rows', 500)
     # pd.set_option('display.max_columns', 500)
     # pd.set_option('display.width', 1000)
@@ -89,7 +89,7 @@ def muesli_tree():
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
     XType = NumericType('XType', data['X'].values)
 
-    x = NumericVariable('X', Numeric)
+    x = NumericVariable('X', XType)
     y = NumericVariable('Y', Numeric)
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
@@ -109,7 +109,7 @@ def muesli_tree():
     print()
 
     for clazz in data['Class'].unique():
-        for exp in jpt.expectation([x.name, y.name], evidence={o.name: clazz}, confidence_level=.1):
+        for exp in jpt.expectation([x.name, y.name], evidence={o.name: clazz}, confidence_level=.95):
             out(exp)
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts

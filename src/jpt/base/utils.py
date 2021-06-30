@@ -170,7 +170,7 @@ def normalized(dist, identity_on_zeros=False, allow_neg=False):
         dist_ = dict(dist)
     signs = {k: np.sign(v) for k, v in dist_.items()}
     if not all(e >= 0 for e in dist_.values()) and not allow_neg:
-        raise ValueError('Negative elements not allowed.')
+        raise ValueError('Negative elements not allowed: %s' % np.array(list(dist_.values())))
     absvals = {k: abs(v) for k, v in dist_.items()}
     z = sum(absvals.values())
     if not z and not identity_on_zeros:

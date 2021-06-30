@@ -2,6 +2,9 @@
 # cython: infer_types=True
 # cython: language_level=3
 # cython: cdivision=True
+# cython: wraparound=False
+# cython: boundscheck=False
+# cython: nonehcheck=False
 
 import numpy as np
 cimport numpy as np
@@ -24,9 +27,7 @@ cdef int LEFT = 0
 cdef int RIGHT = 1
 
 # ----------------------------------------------------------------------------------------------------------------------
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
+
 cdef inline void compute_var_improvements(DTYPE_t[::1] variances_total,
                                    DTYPE_t[::1] variances_left,
                                    DTYPE_t[::1] variances_right,
@@ -47,9 +48,6 @@ cdef inline void compute_var_improvements(DTYPE_t[::1] variances_total,
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline void sum_at(DTYPE_t[:, ::1] M,
                         SIZE_t[::1] rows,
                         SIZE_t[::1] cols,
@@ -63,10 +61,6 @@ cdef inline void sum_at(DTYPE_t[:, ::1] M,
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline void sq_sum_at(DTYPE_t[:, ::1] M,
                            SIZE_t[::1] rows,
                            SIZE_t[::1] cols,
@@ -80,9 +74,6 @@ cdef inline void sq_sum_at(DTYPE_t[:, ::1] M,
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline void variances(DTYPE_t[::1] sq_sums,
                            DTYPE_t[::1] sums,
                            DTYPE_t n_samples,
@@ -96,17 +87,15 @@ cdef inline void variances(DTYPE_t[::1] sq_sums,
     See also: https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/sklearn/tree/_criterion.pyx#L683
     '''
     result[:] = sq_sums
-    cdef i
+    cdef SIZE_t i
     for i in range(sums.shape[0]):
         result[i] -= sums[i] * sums[i] / n_samples
+        result[i] /= n_samples - 1
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # in-place vector addition
 
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline void ivadd(DTYPE_t[::1] target, DTYPE_t[::1] arg, SIZE_t n, int sq=False) nogil:
     cdef SIZE_t i
     for i in range(n):
@@ -114,9 +103,7 @@ cdef inline void ivadd(DTYPE_t[::1] target, DTYPE_t[::1] arg, SIZE_t n, int sq=F
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
+
 cdef inline void bincount(DTYPE_t[:, ::1] data,
                           SIZE_t[::1] rows,
                           SIZE_t[::1] cols,
@@ -126,6 +113,9 @@ cdef inline void bincount(DTYPE_t[:, ::1] data,
     for i in range(rows.shape[0]):
         for j in range(cols.shape[0]):
             result[<SIZE_t> data[rows[i], cols[j]], j] += 1.
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 cdef class Impurity:
@@ -143,6 +133,7 @@ cdef class Impurity:
     cdef DTYPE_t[::1] variances_left
     cdef DTYPE_t[::1] variances_right
     cdef DTYPE_t[::1] variance_improvements
+    cdef SIZE_t[::1] targets
     cdef deque[int] _best_split_pos
     cdef readonly int best_var
     cdef readonly  DTYPE_t max_impurity_improvement
@@ -190,22 +181,14 @@ cdef class Impurity:
             self.variance_improvements = np.ndarray(len(self.numeric_vars), dtype=np.float64)
 
         self.min_samples_leaf = tree.min_samples_leaf
+        self.targets = np.array([i for i, v in enumerate(tree.variables) if v in tree.targets], dtype=np.int64)
 
-    @cython.wraparound(False)
-    @cython.boundscheck(False)
-    @cython.nonecheck(False)
     cdef inline int has_numeric_vars(Impurity self):
         return self.numeric_vars.shape[0]
 
-    @cython.wraparound(False)
-    @cython.boundscheck(False)
-    @cython.nonecheck(False)
     cdef inline int has_symbolic_vars(Impurity self):
         return self.symbolic_vars.shape[0]
 
-    @cython.wraparound(False)
-    @cython.boundscheck(False)
-    @cython.nonecheck(False)
     cdef inline DTYPE_t gini_impurity(Impurity self, DTYPE_t[:, ::1] counts, DTYPE_t n_samples) nogil:
         cdef DTYPE_t[:, ::1] buffer = self.gini_buffer
         buffer[...] = counts
@@ -231,9 +214,6 @@ cdef class Impurity:
         result /= self.symbolic_vars.shape[0]
         return result
 
-    @cython.wraparound(False)
-    @cython.boundscheck(False)
-    @cython.nonecheck(False)
     cdef inline int col_is_constant(Impurity self, long start, long end, long col) nogil:
         cdef np.float64_t v_ = nan, v
         cdef long i
@@ -311,10 +291,9 @@ cdef class Impurity:
         cdef SIZE_t[::1] index_buffer = np.ndarray(shape=self.end - self.start, dtype=np.int64)
         index_buffer[...] = self.indices[self.start:self.end]
 
-        # print(np.asarray(self.numeric_vars))
-        # print(np.asarray(self.symbolic_vars))
-
         for variable in np.concatenate((self.numeric_vars, self.symbolic_vars)):
+            if variable in self.targets:
+                continue
             symbolic = variable in self.symbolic_vars
             symbolic_idx += symbolic
             split_pos.clear()
@@ -429,16 +408,16 @@ cdef class Impurity:
                 impurity_improvement = 0
 
             if self.has_numeric_vars():
-                if samples_left:
+                if samples_left > 1:
                     variances(self.sq_sums_left, self.sums_left, samples_left, result=self.variances_left)
                 else:
                     self.variances_left[:] = 0
 
-                if samples_right:
+                if samples_right > 1:
                     variances(self.sq_sums_right, self.sums_right, samples_right, result=self.variances_right)
                 else:
                     self.variances_right[:] = 0
-
+                out(np.asarray(self.variances_left), np.asarray(self.variances_right), np.asarray(variances_total))
                 compute_var_improvements(variances_total,
                                          self.variances_left,
                                          self.variances_right,
@@ -493,9 +472,9 @@ cdef class Impurity:
 
         return max_impurity_improvement
 
-    @cython.wraparound(False)
-    @cython.boundscheck(False)
-    @cython.nonecheck(False)
+    # @cython.wraparound(False)
+    # @cython.boundscheck(False)
+    # @cython.nonecheck(False)
     cdef inline void update_numeric_stats(Impurity self, SIZE_t sample_idx):
         cdef SIZE_t var, i
         cdef DTYPE_t y
@@ -509,20 +488,12 @@ cdef class Impurity:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline double ld(double x) nogil:
     return ln(x) / ln(2.0)
 
 
 # Sort n-element arrays pointed to by Xf and samples, simultaneously,
 # by the values in Xf. Algorithm: Introsort (Musser, SP&E, 1997).
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline void sort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
     if n == 0:
         return
@@ -530,10 +501,6 @@ cdef inline void sort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
     introsort(Xf, samples, n, maxd)
 
 
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline void swap(DTYPE_t* Xf, SIZE_t* samples,
                       SIZE_t i, SIZE_t j) nogil:
     # Helper for sort
@@ -541,10 +508,6 @@ cdef inline void swap(DTYPE_t* Xf, SIZE_t* samples,
     samples[i], samples[j] = samples[j], samples[i]
 
 
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline DTYPE_t median3(DTYPE_t* Xf,SIZE_t n) nogil:
     # Median of three pivot selection, after Bentley and McIlroy (1993).
     # Engineering a sort function. SP&E. Requires 8/3 comparisons on average.
@@ -567,10 +530,6 @@ cdef inline DTYPE_t median3(DTYPE_t* Xf,SIZE_t n) nogil:
 
 # Introsort with median of 3 pivot selection and 3-way partition function
 # (robust to repeated elements, e.g. lots of zero features).
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef void introsort(DTYPE_t* Xf, SIZE_t *samples,
                     SIZE_t n, int maxd) nogil:
     cdef DTYPE_t pivot
@@ -604,10 +563,6 @@ cdef void introsort(DTYPE_t* Xf, SIZE_t *samples,
         n -= r
 
 
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef inline void sift_down(DTYPE_t* Xf, SIZE_t* samples,
                            SIZE_t start, SIZE_t end) nogil:
     # Restore heap order in Xf[start:end] by moving the max element to start.
@@ -631,10 +586,6 @@ cdef inline void sift_down(DTYPE_t* Xf, SIZE_t* samples,
             root = maxind
 
 
-@cython.cdivision(True)
-@cython.wraparound(False)
-@cython.boundscheck(False)
-@cython.nonecheck(False)
 cdef void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
     cdef SIZE_t start, end
 
