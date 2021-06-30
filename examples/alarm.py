@@ -36,7 +36,7 @@ def alarm():
     J_[False] = Bool(.05)
 
     c = 0.
-    t = 10
+    t = 1
     for i in range(t):
 
         # Construct the CSV for learning

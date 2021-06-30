@@ -15,10 +15,11 @@ def main():
 
     # ----------------------------------------------------------------------
     #  First the noiseless case
-    POINTS = 100
+    POINTS = 1000
     X = np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T
     X = np.vstack((np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T, X))
     X = X.astype(np.float32)
+    X = np.array(list(sorted(X)))
 
     # Observations
     y = f(X).ravel()
@@ -31,7 +32,7 @@ def main():
 
     # Mesh the input space for evaluations of the real function, the prediction and
     # its MSE
-    xx = np.atleast_2d(np.linspace(-25, 20, 500)).T
+    xx = np.atleast_2d(np.linspace(-30, 30, 500)).T
     # xx = np.atleast_2d(np.linspace(-10, 20, 500)).T
     xx = xx.astype(np.float32)
 
@@ -39,7 +40,7 @@ def main():
     varx = NumericVariable('x', NumericType('x', X), haze=.05)
     vary = NumericVariable('y', NumericType('y', y), haze=.05)
 
-    jpt = JPT(variables=[varx, vary], min_samples_leaf=2)
+    jpt = JPT(variables=[varx, vary], min_samples_leaf=10)
     jpt.learn(columns=[X.ravel(), y])
     # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model
