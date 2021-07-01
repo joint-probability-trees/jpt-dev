@@ -67,9 +67,11 @@ cdef inline void sq_sum_at(DTYPE_t[:, ::1] M,
                            DTYPE_t[::1] result) nogil:
     result[...] = 0
     cdef SIZE_t i, j
+    cdef DTYPE_t v
     for j in range(cols.shape[0]):
         for i in range(rows.shape[0]):
-            result[j] += M[rows[i], cols[j]] * M[rows[i], cols[j]]
+            v = M[rows[i], cols[j]]
+            result[j] += v * v
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -235,25 +237,20 @@ cdef class Impurity:
         See also: https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/sklearn/tree/_criterion.pyx#L683
         '''
         cdef int best_var = -1
-        # cdef np.float64_t best_split_val = -1
-        # cdef np.float64_t max_impurity_improvement = -1
-        cdef int n_samples = len(self.indices)
+        cdef int n_samples = self.end - self.start
         cdef np.float64_t denom = 0
 
-        cdef DTYPE_t[:, ::1] data = self.data
-
-        # variances_total = [0]
         cdef np.float64_t impurity_total = 0
         variances_total = np.zeros(len(self.numeric_vars))
         cdef np.float64_t gini_total = 0
 
         if self.has_numeric_vars():
-            sq_sum_at(data,
+            sq_sum_at(self.data,
                       self.indices[self.start:self.end],
                       self.numeric_vars,
                       result=self.sq_sums_total)
 
-            sum_at(data,
+            sum_at(self.data,
                    self.indices[self.start:self.end],
                    self.numeric_vars,
                    result=self.sums_total)
@@ -263,12 +260,11 @@ cdef class Impurity:
                       n_samples,
                       result=variances_total)
 
-            # variances_total = (self.sq_sums_total - (self.sums_total ** 2 / n_samples)) / n_samples
             denom += 1
             impurity_total += len(self.numeric_vars) * np.mean(variances_total)
 
         if self.symbolic_vars.shape[0]:
-            bincount(data,
+            bincount(self.data,
                      self.indices[self.start:self.end],
                      self.symbolic_vars,
                      result=self.symbols_total)
@@ -292,8 +288,8 @@ cdef class Impurity:
         index_buffer[...] = self.indices[self.start:self.end]
 
         for variable in np.concatenate((self.numeric_vars, self.symbolic_vars)):
-            if variable in self.targets:
-                continue
+            # if variable in self.targets:
+            #     continue
             symbolic = variable in self.symbolic_vars
             symbolic_idx += symbolic
             split_pos.clear()
@@ -346,7 +342,6 @@ cdef class Impurity:
         
         if self.col_is_constant(start, end, var_idx):
             return 0
-
         # Prepare the stats
         if self.has_numeric_vars():
             self.sums_left[...] = 0
@@ -417,7 +412,7 @@ cdef class Impurity:
                     variances(self.sq_sums_right, self.sums_right, samples_right, result=self.variances_right)
                 else:
                     self.variances_right[:] = 0
-                out(np.asarray(self.variances_left), np.asarray(self.variances_right), np.asarray(variances_total))
+
                 compute_var_improvements(variances_total,
                                          self.variances_left,
                                          self.variances_right,
@@ -425,11 +420,8 @@ cdef class Impurity:
                                          samples_right,
                                          result=self.variance_improvements)
 
-                # np.asarray(self.variance_improvements)[np.asarray(variances_total) == 0] = 0
-                avg_variance_improvement = np.mean(self.variance_improvements)
-
                 if numeric:
-                    impurity_improvement += avg_variance_improvement
+                    impurity_improvement += np.mean(self.variance_improvements)
                 else:
                     impurity_improvement += np.mean(self.variances_left) * <DTYPE_t> num_samples[VAL_IDX]\
                                                * len(self.numeric_vars) / (n_samples * len(self.variables))
@@ -443,7 +435,9 @@ cdef class Impurity:
                     if numeric:
                         impurity_improvement += gini_improvement
                     else:
-                        impurity_improvement += gini_left * <DTYPE_t> num_samples[VAL_IDX] * len(self.symbolic_vars) / (n_samples * len(self.variables))
+                        impurity_improvement += (gini_left * <DTYPE_t> num_samples[VAL_IDX]
+                                                 * self.symbolic_vars.shape[0]
+                                                 / (n_samples * self.variables.shape[0]))
 
             if symbolic:
                 self.symbols_left[...] = 0
@@ -472,9 +466,6 @@ cdef class Impurity:
 
         return max_impurity_improvement
 
-    # @cython.wraparound(False)
-    # @cython.boundscheck(False)
-    # @cython.nonecheck(False)
     cdef inline void update_numeric_stats(Impurity self, SIZE_t sample_idx):
         cdef SIZE_t var, i
         cdef DTYPE_t y
@@ -482,8 +473,9 @@ cdef class Impurity:
             y = self.data[sample_idx, var]
             self.sums_left[i] += y
             self.sq_sums_left[i] += y * y
-        self.sums_right[:] = self.sums_total - self.sums_left
-        self.sq_sums_right[:] = self.sq_sums_total - self.sq_sums_left
+        for i in range(self.numeric_vars.shape[0]):
+            self.sums_right[i] = self.sums_total[i] - self.sums_left[i]
+            self.sq_sums_right[i] = self.sq_sums_total[i] - self.sq_sums_left[i]
 
 
 # ----------------------------------------------------------------------------------------------------------------------

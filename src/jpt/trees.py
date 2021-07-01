@@ -479,8 +479,7 @@ class JPT(JPTBase):
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
         # --------------------------------------------------------------------------------------------------------------
         n_samples = end - start
-        out('start:', start, 'end:', end, 'nsamples:', n_samples)
-        # out('indices:', self.indices[start:end])
+
         if n_samples > self.min_samples_leaf:
             impurity = Impurity(self, data, start, end)
             # ft_best_idx, sp_best, max_gain = self.compute_best_split(indices)
@@ -488,7 +487,7 @@ class JPT(JPTBase):
             impurity.compute_best_split()
             max_gain = impurity.max_impurity_improvement
             best_split = impurity.best_split_pos
-            out(impurity.best_var, impurity.best_split_pos, impurity.max_impurity_improvement)
+
             if impurity.best_var != -1:
                 ft_best_idx = impurity.best_var
                 ft_best = self.variables[ft_best_idx]  # if ft_best_idx is not None else None
