@@ -17,8 +17,9 @@ def main():
     # ----------------------------------------------------------------------
     #  First the noiseless case
     POINTS = 1000
-    X = np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T
-    X = np.vstack((np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T, X))
+    X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T
+    X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T, X))
+    # X = np.atleast_2d(np.random.uniform(-20, 10.0, size=int(POINTS))).T
     X = X.astype(np.float32)
     X = np.array(list(sorted(X)))
 
@@ -41,11 +42,11 @@ def main():
     varx = NumericVariable('x', NumericType('x', X), haze=.05)
     vary = NumericVariable('y', NumericType('y', y), haze=.05)
 
-    jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=15)
+    jpt = JPT(variables=[varx, vary], min_samples_leaf=15)
     jpt.learn(columns=[X.ravel(), y])
     # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model
-    confidence = .95
+    confidence = .5
 
     # for x in xx.ravel():
     #     print(jpt.infer({varx: x}).explain())

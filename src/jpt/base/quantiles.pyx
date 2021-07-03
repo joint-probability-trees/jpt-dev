@@ -1,4 +1,9 @@
-# cython: auto_cpdef=True, infer_types=True, language_level=3
+# cython: auto_cpdef=True,
+# cython: infer_types=True,
+# cython: language_level=3
+# cython: boundscheck=False
+# cython: nonecheck=False
+# cython: cdivision=True
 
 import random
 from collections import deque

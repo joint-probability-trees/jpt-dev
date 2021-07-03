@@ -206,7 +206,7 @@ class JPTBase:
 
     def __init__(self, variables, targets=None):
         self._variables = tuple(variables)
-        self._targets = ifnone(targets, variables, tuple)
+        self._targets = targets
         self.varnames = OrderedDict((var.name, var) for var in self._variables)
         self.leaves = {}
         self.priors = {}
@@ -460,6 +460,7 @@ class JPT(JPTBase):
         self.max_leaves = max_leaves
         self._node_counter = 0
         self.indices = None
+        self.impurity = Impurity(self)
 
     def c45(self, data, start, end, parent, child_idx):
         '''
@@ -481,10 +482,8 @@ class JPT(JPTBase):
         n_samples = end - start
 
         if n_samples > self.min_samples_leaf:
-            impurity = Impurity(self, data, start, end)
-            # ft_best_idx, sp_best, max_gain = self.compute_best_split(indices)
-            # ft_best_idx, sp_best, max_gain = impurity.compute_best_split()
-            impurity.compute_best_split()
+            impurity = self.impurity
+            impurity.compute_best_split(start, end)
             max_gain = impurity.max_impurity_improvement
             best_split = impurity.best_split_pos
 
@@ -514,7 +513,6 @@ class JPT(JPTBase):
             leaf.samples = n_samples
 
             self.leaves[leaf.idx] = leaf
-            # out('created child', leaf)
 
         else:
             # divide examples into distinct sets for each value of ft_best
@@ -528,21 +526,15 @@ class JPT(JPTBase):
 
             if ft_best.symbolic:
                 # CASE SPLIT VARIABLE IS SYMBOLIC
-                # split_data = [deque() for _ in range(ft_best.domain.n_values)]
                 node.splits = [{i_v} for i_v in range(ft_best.domain.n_values)]
 
                 # split examples into distinct sets for each value of the selected feature
-                # for i, d in zip(range(start, end), data):
-                #     split_data[int(d[ft_best_idx])].append(i)
                 prev = 0
                 for i, val in enumerate(node.splits):
-                    out(val, best_split)
                     if best_split and first(val) == data[self.indices[start + best_split[0]], ft_best_idx]:
                         pos = best_split.popleft()
-                        out(start + prev, start + pos + 1)
                         self.c45queue.append((data, start + prev, start + pos + 1, node, i))
                         prev = pos + 1
-                # assert prev - pos - 1 == end, '%s != %s' % (prev, end)
 
             elif ft_best.numeric:
                 # CASE SPLIT VARIABLE IS NUMERIC
@@ -621,9 +613,11 @@ class JPT(JPTBase):
 
         # global _data
         # _data = data
-        self.indices = np.ndarray(shape=len(data), dtype=np.int64)
-        for i in range(len(data)):
-            self.indices[i] = i
+        self.indices = np.ones(shape=(data.shape[0],), dtype=np.int64)
+        self.indices[0] = 0
+        np.cumsum(self.indices, out=self.indices)
+        # Initialize the impurity calculation
+        self.impurity.setup(data, self.indices)
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
