@@ -436,7 +436,7 @@ class JPT(JPTBase):
     Joint Probability Trees.
     '''
 
-    logger = dnutils.getlogger('/jpt', level=dnutils.DEBUG)
+    logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
     def __init__(self, variables, targets=None, min_samples_leaf=1, min_impurity_improvement=None, max_leaves=None):
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
@@ -514,6 +514,8 @@ class JPT(JPTBase):
 
             self.leaves[leaf.idx] = leaf
 
+            JPT.logger.debug('Created leaf', str(leaf))
+
         else:
             # divide examples into distinct sets for each value of ft_best
             # split_data = None  # {val: [] for val in ft_best.domain.values}
@@ -556,6 +558,8 @@ class JPT(JPTBase):
 
             if parent is not None:
                 parent.set_child(child_idx, node)
+
+            JPT.logger.debug('Created decision node', str(node))
 
     def __str__(self):
         return (f'{self.__class__.__name__}\n'
@@ -621,10 +625,10 @@ class JPT(JPTBase):
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
+        started = datetime.datetime.now()
         self.priors = {var: var.dist(data=data[:, i]) for i, var in enumerate(self.variables)}
-        JPT.logger.debug('Prior distributions learnt.')
-        # for prior in self.priors.values():
-        #     prior.plot(view=True)
+        JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
+
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
