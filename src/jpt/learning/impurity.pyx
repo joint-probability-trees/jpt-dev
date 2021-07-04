@@ -148,6 +148,8 @@ cdef class Impurity:
         sums_total, \
         sq_sums_total
 
+    cdef DTYPE_t[::1] max_variances
+
     cdef SIZE_t[::1] num_samples
     cdef SIZE_t[::1] targets
     cdef deque[int] _best_split_pos
@@ -197,6 +199,7 @@ cdef class Impurity:
             self.sums_total = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.sq_sums_total = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.variances_total = np.ndarray(self.n_num_vars, dtype=np.float64)
+            self.max_variances = np.array([v._max_std ** 2 for v in tree.variables if v.numeric], dtype=np.float64)
 
             # Thread-private buffers
             self.sums_left = np.ndarray(self.n_num_vars, dtype=np.float64)
@@ -206,6 +209,14 @@ cdef class Impurity:
             self.variances_left = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.variances_right = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.variance_improvements = np.ndarray(self.n_num_vars, dtype=np.float64)
+
+    cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
+        cdef int i
+        for i in range(self.n_num_vars):
+            if variances[i] > self.max_variances[i]:
+                return True
+        return False
+            # variances[i] = 0 if variances[i] < self.max_variances[i] else variances[i]
 
     cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices) except +:
         self.data = data
@@ -283,6 +294,8 @@ cdef class Impurity:
                       self.sums_total,
                       n_samples,
                       result=self.variances_total)
+
+            # self.check_variances(self.variances_total)
 
             denom += 1
             impurity_total += len(self.numeric_vars) * np.mean(self.variances_total)
@@ -427,11 +440,13 @@ cdef class Impurity:
             if self.has_numeric_vars():
                 if samples_left > 1:
                     variances(self.sq_sums_left, self.sums_left, samples_left, result=self.variances_left)
+                    # self.check_variances(self.variances_left)
                 else:
                     self.variances_left[:] = 0
 
                 if samples_right > 1:
                     variances(self.sq_sums_right, self.sums_right, samples_right, result=self.variances_right)
+                    # self.check_variances(self.variances_right)
                 else:
                     self.variances_right[:] = 0
 
@@ -441,7 +456,7 @@ cdef class Impurity:
                                          samples_left,
                                          samples_right,
                                          result=self.variance_improvements)
-
+                # self.check_variances(self.variance_improvements)
                 if numeric:
                     impurity_improvement += mean(self.variance_improvements)
                 else:
@@ -479,7 +494,9 @@ cdef class Impurity:
 
             else:  # numeric
                 impurity_improvement /= denom
-                if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
+                if (samples_left < self.min_samples_leaf
+                    or samples_right < self.min_samples_leaf
+                    or not self.check_max_variances(self.variances_total)):
                     impurity_improvement = 0
 
             if (numeric or last_iter) and (impurity_improvement > max_impurity_improvement):

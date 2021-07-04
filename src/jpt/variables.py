@@ -2,6 +2,7 @@
 © Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import hashlib
+import math
 import numbers
 
 import numpy as np
@@ -17,7 +18,7 @@ class Variable:
     Abstract class for a variable name along with its distribution class type.
     '''
 
-    def __init__(self, name, domain, min_impurity_improvement=None):
+    def __init__(self, name, domain, min_impurity_improvement=None, ):
         '''
         :param name:    name of the variable
         :type name:     str
@@ -88,18 +89,39 @@ class Variable:
     def from_json(data):
         domain = Distribution.type_from_json(data['domain'])
         if data['type'] == 'numeric':
-            return NumericVariable(name=data['name'], domain=domain)
+            return NumericVariable.from_json(data)
         elif data['type'] == 'symbolic':
-            return SymbolicVariable(name=data['name'], domain=domain)
+            return SymbolicVariable.from_json(data)
         else:
             raise TypeError('Unknown distribution type: %s' % data['type'])
 
 
 class NumericVariable(Variable):
 
-    def __init__(self, name, domain, min_impurity_improvement=None, haze=None):
+    def __init__(self, name, domain, min_impurity_improvement=None, haze=None, max_std=None):
         super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
         self.haze = ifnone(haze, .05)
+        self._max_std_lbl = ifnone(max_std, 0.)
+
+    def to_json(self):
+        result = super().to_json()
+        result['max_std'] = self._max_std_lbl
+
+    @staticmethod
+    def from_json(data):
+        domain = Distribution.type_from_json(data['domain'])
+        return NumericVariable(name=data['name'], domain=domain, max_std=data.get('max_std'))
+
+    @property
+    def _max_std(self):
+        if issubclass(self.domain, ScaledNumeric):
+            return self._max_std_lbl / math.sqrt(self.domain.values.datascaler.variance[0])
+        else:
+            return self._max_std_lbl
+
+    @property
+    def max_std(self):
+        return self._max_std_lbl
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')
@@ -133,6 +155,11 @@ class SymbolicVariable(Variable):
 
     def __init__(self, name, domain, min_impurity_improvement=None):
         super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
+
+    @staticmethod
+    def from_json(data):
+        domain = Distribution.type_from_json(data['domain'])
+        return SymbolicVariable(name=data['name'], domain=domain)
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')
