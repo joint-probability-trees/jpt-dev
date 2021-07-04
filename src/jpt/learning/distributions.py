@@ -536,11 +536,11 @@ class DataScaler(StandardScaler):
 
     @property
     def mean(self):
-        raise self.mean_
+        return self.mean_
 
     @property
     def variance(self):
-        raise self.scale_
+        return self.scale_
 
     def __getitem__(self, item):
         if item in (np.NINF, np.PINF):
