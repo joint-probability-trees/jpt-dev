@@ -89,14 +89,14 @@ def muesli_tree():
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
     XType = NumericType('XType', data['X'].values)
 
-    x = NumericVariable('X', XType)
-    y = NumericVariable('Y', Numeric)
+    x = NumericVariable('X', XType, max_std=.1)
+    y = NumericVariable('Y', Numeric, max_std=.1)
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 
     # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
 
-    jpt = JPT([x, y, o, s], min_samples_leaf=5)
+    jpt = JPT([x, y, o, s], min_samples_leaf=1)
     jpt.learn(columns=data.values.T)
 
     # json_data = jpt.to_json()
@@ -114,7 +114,8 @@ def muesli_tree():
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
-    # jpt.plot(plotvars=[x, y, o, s])
+    print(jpt)
+    jpt.plot(plotvars=[x, y, o, s])
 
     # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
     # r = jpt.reverse(q)
