@@ -11,6 +11,18 @@ from dnutils import ifnone
 from jpt.base.intervals import ContinuousSet
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+def pairwise(seq):
+    '''Iterate over all consecutive pairs in ``seq``.'''
+    for e in seq:
+        if 'prev' in locals():
+            yield prev, e
+        prev = e
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 class Conditional:
 
     def __init__(self, typ, conditionals):
