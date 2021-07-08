@@ -163,3 +163,24 @@ cdef inline void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
         sift_down(Xf, samples, 0, end)
         end = end - 1
 
+
+cdef inline SIZE_t _bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t lower, SIZE_t upper) nogil:
+    if Xf[lower] >= v:
+        return lower
+    elif Xf[upper] <= v:
+        return upper + 1
+    elif lower + 1 == upper and  Xf[lower] < v < Xf[upper]:
+        return upper
+    cdef SIZE_t pivot = (lower + upper) / 2
+    if Xf[pivot] < v:
+        return _bisect(Xf, v, pivot, upper)
+    else:
+        return _bisect(Xf, v, lower, pivot)
+
+
+cdef inline SIZE_t bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t n) nogil:
+    return _bisect(Xf, v, 0, n - 1)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
