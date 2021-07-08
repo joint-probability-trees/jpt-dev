@@ -14,10 +14,9 @@ from pyearth import Earth
 from pyearth._basis import ConstantBasisFunction, HingeBasisFunctionBase, LinearBasisFunction, HingeBasisFunction
 from scipy import stats
 from scipy.stats import norm
-from sklearn.tree._classes import DTYPE
 
 from .intervals cimport ContinuousSet, RealSet, _INC, _EXC
-from .intervals import R, EMPTY
+from .intervals import R, EMPTY, EXC, INC
 
 import numpy as np
 cimport numpy as np
@@ -26,10 +25,16 @@ cimport cython
 from numpy cimport float64_t
 
 import warnings
+
+from .utils import pairwise
+from .cutils cimport SIZE_t, DTYPE_t, sort
+
+from ..learning.cdfreg import CDFRegressor
+
 warnings.filterwarnings("ignore")
 
 
-cpdef np.float64_t ifnan(np.float64_t if_, np.float64_t else_, transform=None):
+cpdef DTYPE_t ifnan(DTYPE_t if_, DTYPE_t else_, transform=None):
     '''
     Returns the condition ``if_`` iff it is not ``Nan``, or if a transformation is
     specified, ``transform(if_)``. Returns ``else_`` if the condition is ``NaN``.
@@ -44,11 +49,11 @@ cpdef np.float64_t ifnan(np.float64_t if_, np.float64_t else_, transform=None):
             return if_
 
 
-cdef inline np.int32_t equal(np.float64_t x1, np.float64_t x2, np.float64_t tol=1e-7):
+cdef inline np.int32_t equal(DTYPE_t x1, DTYPE_t x2, DTYPE_t tol=1e-7):
     return abs(x1 - x2) < tol
 
 
-cpdef np.float64_t[::1] linspace(np.float64_t start, np.float64_t stop, np.int64_t num):
+cpdef DTYPE_t[::1] linspace(DTYPE_t start, DTYPE_t stop, np.int64_t num):
     '''
     Modification of the ``numpy.linspace`` function to return an array of ``num``
     equally spaced samples in the range of ``start`` and ``stop`` (both inclusive).
@@ -61,14 +66,14 @@ cpdef np.float64_t[::1] linspace(np.float64_t start, np.float64_t stop, np.int64
     :param num:
     :return:
     '''
-    cdef np.float64_t[::1] samples = np.ndarray(shape=num, dtype=np.float64)
-    cdef np.float64_t n
-    cdef np.float64_t space, val = start
+    cdef DTYPE_t[::1] samples = np.ndarray(shape=num, dtype=np.float64)
+    cdef DTYPE_t n
+    cdef DTYPE_t space, val = start
     cdef np.int64_t i
     if num == 1:
         samples[0] = (stop - start) / 2
     else:
-        n = <np.float64_t> num - 1
+        n = <DTYPE_t> num - 1
         space = (stop - start) / n
         for i in range(num):
             samples[i] = val
@@ -93,7 +98,7 @@ cdef class ConfInterval:
     cpdef tuple totuple(ConfInterval self):
         return self.lower, self.mean, self.upper
 
-    cpdef np.float64_t[::1] tomemview(ConfInterval self, np.float64_t[::1] result=None):
+    cpdef DTYPE_t[::1] tomemview(ConfInterval self, DTYPE_t[::1] result=None):
         if result is None:
             result = np.ndarray(shape=3, dtype=np.float64)
         result[0] = self.lower
@@ -120,7 +125,7 @@ cdef class Undefined(Function):
     This class represents an undefined function.
     '''
 
-    cpdef inline np.float64_t eval(Undefined self, np.float64_t x):
+    cpdef inline DTYPE_t eval(Undefined self, DTYPE_t x):
         return np.nan
 
     def __str__(self):
@@ -135,7 +140,7 @@ cdef class KnotFunction(Function):
     Abstract superclass of all knot functions.
     '''
 
-    def __init__(KnotFunction self, np.float64_t knot, np.float64_t weight):
+    def __init__(KnotFunction self, DTYPE_t knot, DTYPE_t weight):
         self.knot = knot
         self.weight = weight
 
@@ -149,12 +154,12 @@ cdef class Hinge(KnotFunction):
     alpha = -1: hinge is zero to the left of knot
     '''
 
-    def __init__(Hinge self, np.float64_t knot, np.int32_t alpha, np.float64_t weight):
+    def __init__(Hinge self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
         super(Hinge, self).__init__(knot, weight)
         assert alpha in (1, -1), 'alpha must be in {1,-1}'
         self.alpha = alpha
 
-    cpdef inline np.float64_t eval(Hinge self, np.float64_t x):
+    cpdef inline DTYPE_t eval(Hinge self, DTYPE_t x):
         return max(0, (self.knot - x) if self.alpha == 1 else (x - self.knot)) * self.weight
 
     def __str__(self):
@@ -176,12 +181,12 @@ cdef class Jump(KnotFunction):
     Implementation of jump functions.
     '''
 
-    def __init__(Jump self, np.float64_t knot, np.int32_t alpha, np.float64_t weight):
+    def __init__(Jump self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
         super(Jump, self).__init__(knot, weight)
         assert alpha in (1, -1), 'alpha must be in {1,-1}'
         self.alpha = alpha
 
-    cpdef inline np.float64_t eval(Jump self, np.float64_t x):
+    cpdef inline DTYPE_t eval(Jump self, DTYPE_t x):
         return max(0, (-1 if ((self.knot - x) if self.alpha == 1 else (x - self.knot)) < 0 else 1)) * self.weight
 
     def __str__(self):
@@ -205,10 +210,10 @@ cdef class Impulse(KnotFunction):
     Represents a function that is non-zero at exactly one x-position and zero at all other positions.
     '''
 
-    def __init__(Impulse self, np.float64_t knot, np.float64_t weight):
+    def __init__(Impulse self, DTYPE_t knot, DTYPE_t weight):
         super(Impulse, self).__init__(knot, weight)
 
-    cpdef np.float64_t eval(self, np.float64_t x):
+    cpdef DTYPE_t eval(self, DTYPE_t x):
         return self.weight if x == self.knot else 0
 
     cpdef inline Function differentiate(Impulse self):
@@ -230,7 +235,7 @@ cdef class ConstantFunction(Function):
     Represents a constant function.
     '''
 
-    def __init__(ConstantFunction self, np.float64_t value):
+    def __init__(ConstantFunction self, DTYPE_t value):
         self.value = value
 
     def __call__(self, x=None):
@@ -242,7 +247,7 @@ cdef class ConstantFunction(Function):
     def __repr__(self):
         return 'const=%s' % self.value
 
-    cpdef inline np.float64_t eval(ConstantFunction self, np.float64_t x):
+    cpdef inline DTYPE_t eval(ConstantFunction self, DTYPE_t x):
         return self.value
 
     cpdef inline ConstantFunction differentiate(ConstantFunction self):
@@ -298,14 +303,14 @@ cdef class LinearFunction(Function):
     Implementation of univariate linear functions.
     '''
 
-    def __init__(LinearFunction self, np.float64_t m, np.float64_t c):
+    def __init__(LinearFunction self, DTYPE_t m, DTYPE_t c):
         self.m = m
         self.c = c
 
-    def __call__(self, np.float64_t x):
+    def __call__(self, DTYPE_t x):
         return self.eval(x)
 
-    cpdef inline np.float64_t eval(LinearFunction self, np.float64_t x):
+    cpdef inline DTYPE_t eval(LinearFunction self, DTYPE_t x):
         return self.m * x + self.c
 
     def __str__(self):
@@ -317,7 +322,7 @@ cdef class LinearFunction(Function):
     def __repr__(self):
         return '<%s>' % str(self)
 
-    cpdef np.float64_t root(LinearFunction self) except +:
+    cpdef DTYPE_t root(LinearFunction self) except +:
         '''
         Find the root of the function, i.e. the ``x`` positions subject to ``self.eval(x) = 0``.
         :return: 
@@ -366,7 +371,7 @@ cdef class LinearFunction(Function):
         :param f: 
         :return: 
         '''
-        cdef np.float64_t x
+        cdef DTYPE_t x
         if isinstance(f, LinearFunction):
             if self.m == f.m:
                 if self.c == f.c:
@@ -414,21 +419,21 @@ cdef class LinearFunction(Function):
             return self.copy()
 
     @staticmethod
-    def from_points(tuple p1, tuple p2):
-        cdef np.float64_t x1 = p1[0], y1 = p1[1]
-        cdef np.float64_t x2 = p2[0], y2 = p2[1]
+    def from_points((DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2):
+        cdef DTYPE_t x1 = p1[0], y1 = p1[1]
+        cdef DTYPE_t x2 = p2[0], y2 = p2[1]
         if x1 == x2:
             raise ValueError('Points must have different coordinates to fit a line: p1=%s, p2=%s' % (p1, p2))
         if y2 == y1:
             return ConstantFunction(y2)
-        cdef np.float64_t m = (y2 - y1) / (x2 - x1)
-        cdef np.float64_t c = y1 - m * x1
+        cdef DTYPE_t m = (y2 - y1) / (x2 - x1)
+        cdef DTYPE_t c = y1 - m * x1
         return LinearFunction(m, c)
 
     cpdef inline np.int32_t is_invertible(LinearFunction self):
         return abs(self.m) >= 1e-4
 
-    cpdef inline LinearFunction fit(LinearFunction self, np.float64_t[::1] x, np.float64_t[::1] y) except +:
+    cpdef inline LinearFunction fit(LinearFunction self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +:
         self.m, self.c, _, _, _ = stats.linregress(x, y)
         return self
 
@@ -450,26 +455,26 @@ cdef class LinearFunction(Function):
 @cython.final
 cdef class GaussianCDF(Function):
 
-    cdef readonly np.float64_t mu, sigma
+    cdef readonly DTYPE_t mu, sigma
 
-    def __init__(GaussianCDF self, np.float64_t mu, np.float64_t sigma):
+    def __init__(GaussianCDF self, DTYPE_t mu, DTYPE_t sigma):
         self.mu = mu
         self.sigma = sigma
 
-    cpdef inline double eval(GaussianCDF self, np.float64_t x):
+    cpdef inline double eval(GaussianCDF self, DTYPE_t x):
         return norm.cdf(x, loc=self.mu, scale=self.sigma)
 
 
 @cython.final
 cdef class GaussianPDF(Function):
 
-    cdef readonly np.float64_t mu, sigma
+    cdef readonly DTYPE_t mu, sigma
 
-    def __init__(GaussianPDF self, np.float64_t mu, np.float64_t sigma):
+    def __init__(GaussianPDF self, DTYPE_t mu, DTYPE_t sigma):
         self.mu = mu
         self.sigma = sigma
 
-    cpdef inline double eval(GaussianPDF self, np.float64_t x):
+    cpdef inline double eval(GaussianPDF self, DTYPE_t x):
         return norm.pdf(x, loc=self.mu, scale=self.sigma)
 
     def __str__(self):
@@ -479,13 +484,13 @@ cdef class GaussianPDF(Function):
 @cython.final
 cdef class GaussianPPF(Function):
 
-    cdef readonly np.float64_t mu, sigma
+    cdef readonly DTYPE_t mu, sigma
 
-    def __init__(GaussianPPF self, np.float64_t mu, np.float64_t sigma):
+    def __init__(GaussianPPF self, DTYPE_t mu, DTYPE_t sigma):
         self.mu = mu
         self.sigma = sigma
 
-    cpdef inline double eval(GaussianPPF self, np.float64_t x):
+    cpdef inline double eval(GaussianPPF self, DTYPE_t x):
         return norm.ppf(x, loc=self.mu, scale=self.sigma)
 
 
@@ -505,13 +510,13 @@ cdef class QuantileDistribution:
     Abstract base class for any quantile-parameterized cumulative data distribution.
     '''
 
-    cdef np.float64_t epsilon
-    cdef np.float64_t penalty
+    cdef DTYPE_t epsilon
+    cdef DTYPE_t penalty
     cdef np.int32_t verbose
     cdef np.int32_t min_samples_mars
     cdef PiecewiseFunction _cdf, _pdf, _ppf
 
-    def __init__(self, epsilon=.001, penalty=3., min_samples_mars=5, verbose=False):
+    def __init__(self, epsilon=.01, penalty=3., min_samples_mars=5, verbose=False):
         self.epsilon = epsilon
         self.penalty = penalty
         self.verbose = verbose
@@ -520,39 +525,72 @@ cdef class QuantileDistribution:
         self._pdf = None
         self._ppf = None
 
-    def fit(self, np.float64_t[::1] data, presorted=False):
-        # Sort the data if necessary
-        cdef np.float64_t[::1] y, x
+    cpdef QuantileDistribution fit(self, DTYPE_t[:, ::1] data, SIZE_t[::1] rows, SIZE_t col):
+        if rows is None:
+            rows = np.arange(data.shape[0], dtype=np.int64)
 
-        if not presorted:
-            data = np.sort(data)
+        cdef SIZE_t i, n_samples = rows.shape[0]
+        cdef DTYPE_t[:, ::1] data_buffer = np.ndarray(shape=(2, n_samples), dtype=np.float64, order='C')
+        for i in range(n_samples):
+            data_buffer[0, i] = data[rows[i], col]
+        np.asarray(data_buffer[0, :]).sort()
 
-        x, counts = np.unique(data, return_counts=True)
-        y = np.asarray(counts, dtype=np.float64)
-        np.cumsum(y, out=np.asarray(y))
-        cdef np.float64_t n_samples = data.shape[0]
-        cdef np.int32_t i
-        for i in range(x.shape[0]):
-            y[i] /= n_samples
+        cdef SIZE_t count = 0,
+        i = 0
+        for i in range(n_samples):
+            if i > 0 and data_buffer[0, i] == data_buffer[0, i - 1]:
+                data_buffer[1, count - 1] += 1
+            else:
+                data_buffer[0, count] = data_buffer[0, i]
+                data_buffer[1, count] = <DTYPE_t> i + 1
+                count += 1
+        for i in range(count):
+            data_buffer[1, i] /= <DTYPE_t> n_samples
+        data_buffer = np.ascontiguousarray(data_buffer[:, :count])
+        cdef DTYPE_t[::1] x, y
+        n_samples = count
 
         self._ppf = self._pdf = None
         # Use simple linear regression when fewer than min_samples_mars points are available
-        if 1 < x.shape[0] < self.min_samples_mars:
+        if 1 < n_samples < self.min_samples_mars:
+            x = data_buffer[0, :]
+            y = data_buffer[1, :]
             self._cdf = PiecewiseFunction()
             self._cdf.intervals.append(R.copy())
             self._cdf.functions.append(LinearFunction(0, 0).fit(x, y))
+            self._cdf.ensure_left(ConstantFunction(0), x[0])
+            self._cdf.ensure_right(ConstantFunction(1), x[-1])
 
-        elif self.min_samples_mars <= x.shape[0]:
-            self._cdf = fit_piecewise(x, y,
-                                      epsilon=self.epsilon,
-                                      penalty=self.penalty, verbose=self.verbose)
+        elif self.min_samples_mars <= n_samples:
+            # self._cdf = fit_piecewise(x, y,
+            #                           epsilon=self.epsilon,
+            #                           penalty=self.penalty, verbose=self.verbose)
+            # self._cdf.ensure_left(ConstantFunction(0), x[0])
+            # self._cdf.ensure_right(ConstantFunction(1), x[-1])
+            #
+            regressor = CDFRegressor(eps=self.epsilon)
+            regressor.fit(data_buffer)
+            self._cdf = PiecewiseFunction()
+            self._cdf.functions.append(ConstantFunction(0))
+            self._cdf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
+            for left, right in pairwise(regressor.support_points):
+                self._cdf.functions.append(LinearFunction.from_points(tuple(left), tuple(right)))
+                self._cdf.intervals[-1].upper = left[0]
+                self._cdf.intervals.append(ContinuousSet(left[0], right[0], 1, 2))
+            self._cdf.functions.append(ConstantFunction(1))
+            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
+
+        # self._cdf = regressor.cdf
 
         else:
+            x = data_buffer[0, :]
+            y = data_buffer[1, :]
             self._cdf = PiecewiseFunction()
             self._cdf.intervals.append(R.copy())
             self._cdf.functions.append(ConstantFunction(0))
-        self._cdf.ensure_left(ConstantFunction(0), x[0])
-        self._cdf.ensure_right(ConstantFunction(1), x[-1])
+            self._cdf.ensure_left(ConstantFunction(0), x[0])
+            self._cdf.ensure_right(ConstantFunction(1), x[-1])
+
         return self
 
     cpdef crop(self, ContinuousSet interval):
@@ -580,7 +618,7 @@ cdef class QuantileDistribution:
             if len(self._cdf.intervals) == 2:
                 pdf.intervals.insert(1, ContinuousSet(pdf.intervals[0].upper,
                                                       np.nextafter(pdf.intervals[0].upper,
-                                                                   pdf.intervals[0].upper + 1), _INC, _EXC))
+                                                                   pdf.intervals[0].upper + 1), INC, EXC))
                 pdf.intervals[-1].lower = np.nextafter(pdf.intervals[-1].lower,
                                                        pdf.intervals[-1].lower + 1)
                 pdf.functions.insert(1, ConstantFunction(np.PINF))
@@ -601,14 +639,14 @@ cdef class QuantileDistribution:
         elif self._ppf is None:
             ppf = PiecewiseFunction()
 
-            ppf.intervals.append(ContinuousSet(np.NINF, 0, _EXC, _EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
+            ppf.intervals.append(ContinuousSet(np.NINF, 0, EXC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
             ppf.functions.append(Undefined())
 
             if len(self._cdf.functions) == 2:
                 ppf.intervals[-1].upper = 1
-                ppf.intervals.append(ContinuousSet(1, np.nextafter(1, 2), _INC, _EXC))
+                ppf.intervals.append(ContinuousSet(1, np.nextafter(1, 2), INC, EXC))
                 ppf.functions.append(ConstantFunction(self._cdf.intervals[-1].lower))
-                ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, _INC, _EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
+                ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
                 ppf.functions.append(Undefined())
                 return ppf
 
@@ -616,7 +654,7 @@ cdef class QuantileDistribution:
                 if f.is_invertible():
                     ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper,
                                                        f(interval.upper),
-                                                       _INC, _EXC))
+                                                       INC, EXC))
                     ppf.functions.append(f.invert())
 
             if ppf.intervals[-1].upper == 1:
@@ -625,9 +663,9 @@ cdef class QuantileDistribution:
                 ppf.functions.append(LinearFunction.from_points((ppf.intervals[-1].upper,
                                                                  ppf.functions[-1].eval(ppf.intervals[-1].upper)),
                                                                 (1, self.cdf.intervals[-1].lower)))
-                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.nextafter(1, 2), _INC, _EXC))
+                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.nextafter(1, 2), INC, EXC))
 
-            ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, _INC, _EXC))
+            ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC))
             ppf.functions.append(Undefined())
             assert np.isnan(ppf.eval(np.nextafter(1, 2))), ppf.pfmt()
             assert not np.isnan(ppf.eval(1.)), ppf.pfmt()
@@ -639,7 +677,7 @@ cdef class QuantileDistribution:
         '''
         Construct a merged quantile-distribution from the passed distributions using the ``weights``.
         '''
-        intervals = [ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)]
+        intervals = [ContinuousSet(np.NINF, np.PINF, EXC, EXC)]
         functions = [ConstantFunction(0)]
         lower = sorted([(i.lower, f, w)
                         for d, w in zip(distributions, weights)
@@ -680,7 +718,7 @@ cdef class QuantileDistribution:
                 continue
             # Split the last interval at the pivot point
             intervals[-1].upper = pivot
-            intervals.append(ContinuousSet(pivot, np.PINF, _INC, _EXC))
+            intervals.append(ContinuousSet(pivot, np.PINF, INC, EXC))
             # Evaluate the old function at the new pivot point to get the intercept
             functions.append(LinearFunction(m, functions[-1].eval(pivot) - m * pivot))
 
@@ -720,14 +758,14 @@ cdef class Quantiles:
     in a data distribution.
     '''
 
-    def __init__(Quantiles self, np.float64_t[:] data, np.float64_t lower=np.nan, np.int32_t verbose=False,
-                 np.float64_t upper=np.nan, np.float64_t epsilon=.001, np.float64_t penalty=3., np.int32_t dtype=_FLOAT):
+    def __init__(Quantiles self, DTYPE_t[:] data, DTYPE_t lower=np.nan, np.int32_t verbose=False,
+                 DTYPE_t upper=np.nan, DTYPE_t epsilon=.001, DTYPE_t penalty=3., np.int32_t dtype=_FLOAT):
         if data.shape[0] == 0:
             raise IndexError('Data must contain at least 1 data point, got only %s' % len(data))
         self.dtype = dtype
         self.verbose = verbose
-        cdef np.float64_t[::1] bins
-        cdef np.float64_t z
+        cdef DTYPE_t[::1] bins
+        cdef DTYPE_t z
         if self.dtype == _INT:
             self.data = np.sort(np.unique(data))
             bins = np.ndarray(shape=self.data.shape[0]+1, dtype=np.float64)
@@ -768,8 +806,8 @@ cdef class Quantiles:
     def array(self):
         return np.asarray(self.data, dtype=np.float64)
 
-    cpdef Function cdf(Quantiles self, np.float64_t epsilon=np.nan, np.float64_t penalty=np.nan):
-        cdef np.float64_t[::1] y
+    cpdef Function cdf(Quantiles self, DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
+        cdef DTYPE_t[::1] y
         if self._cdf is None and self.dtype == _UNIFORM:
             self._cdf = PiecewiseFunction()
             self._cdf.intervals.append(ContinuousSet(np.NINF, self.data[0], 2, 2))
@@ -800,12 +838,12 @@ cdef class Quantiles:
             self._cdf.ensure_right(ConstantFunction(1), self.data[-1])
         return self._cdf
 
-    cpdef Function invcdf(Quantiles self, np.float64_t epsilon=np.nan, np.float64_t penalty=np.nan):
+    cpdef Function invcdf(Quantiles self, DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
         cdef PiecewiseFunction cdf
         cdef PiecewiseFunction inv
         cdef ContinuousSet i
         cdef Function f
-        cdef np.float64_t mean, stddev
+        cdef DTYPE_t mean, stddev
         if self._invcdf is None and self.dtype == _GAUSSIAN:
             if self._stuff is None:
                 self._stuff = norm.fit(self.data)
@@ -818,11 +856,11 @@ cdef class Quantiles:
                     inv_ = f.invert()
                     inv.intervals.append(ContinuousSet(max(0, f(i.lower)),
                                                        min(np.nextafter(1, 2), f(i.upper)),
-                                                       _INC, _EXC))
+                                                       INC, EXC))
                     inv.functions.append(inv_)
                 else:
                     if i.lower == np.NINF:
-                        inv.intervals.append(ContinuousSet(np.NINF, np.nextafter(f(i.lower), f(i.lower)-1), _EXC, _EXC))
+                        inv.intervals.append(ContinuousSet(np.NINF, np.nextafter(f(i.lower), f(i.lower)-1), EXC, EXC))
                         inv.functions.append(Undefined())
                     if i.upper == np.PINF:
                         inv.intervals[-1].upper = 1
@@ -834,9 +872,9 @@ cdef class Quantiles:
         return self._invcdf
 
     cpdef Function pdf(Quantiles self, np.int32_t simplify=False, np.int32_t samples=False,
-                                np.float64_t epsilon=np.nan, np.float64_t penalty=np.nan):
+                                DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
         cdef PiecewiseFunction pdf
-        cdef np.float64_t mean, stddev
+        cdef DTYPE_t mean, stddev
         if self._pdf is None and self.dtype == _GAUSSIAN:
             if self._stuff is None:
                 self._stuff = norm.fit(self.data)
@@ -852,7 +890,7 @@ cdef class Quantiles:
             self._pdf = pdf
         return self._pdf
 
-    cpdef np.float64_t[::1] sample(Quantiles self, np.int32_t n=1, np.float64_t[::1] result=None):
+    cpdef DTYPE_t[::1] sample(Quantiles self, np.int32_t n=1, DTYPE_t[::1] result=None):
         '''
         Generate from this quantile distribution ``k`` samples.
 
@@ -875,9 +913,9 @@ cdef class Quantiles:
             result[...] = self.data[0]
             return result
         cdef PiecewiseFunction pdf = self.pdf()
-        cdef np.float64_t[::1] z = np.ndarray(1, dtype=np.float64)
+        cdef DTYPE_t[::1] z = np.ndarray(1, dtype=np.float64)
         z[...] = np.random.uniform(self.data[0], self.data[-1])
-        cdef np.float64_t slice_
+        cdef DTYPE_t slice_
         for i in range(n):
             slice_ = random.uniform(0, pdf(z[0]))
             z[...] = pdf.gt(slice_).sample(1, result=result[i:i+1])
@@ -888,11 +926,11 @@ cdef class Quantiles:
             np.round(result, out=np.asarray(result))
         return result
 
-    cpdef np.float64_t[::1] gt(Quantiles self, np.float64_t q):
+    cpdef DTYPE_t[::1] gt(Quantiles self, DTYPE_t q):
         cdef np.int32_t points = self.data.shape[0]
         return self.data[int(np.floor(q * points)):] if points > 1 else self.data
 
-    cpdef np.float64_t[::1] lt(Quantiles self, np.float64_t q):
+    cpdef DTYPE_t[::1] lt(Quantiles self, DTYPE_t q):
         cdef np.int32_t points = self.data.shape[0]
         return self.data[:int(np.floor(q * points))] if points > 1 else self.data
 
@@ -922,7 +960,7 @@ cdef class Quantiles:
     def upper(self):
         return self.invcdf().eval(self._upper)
 
-    cpdef ConfInterval interval(Quantiles self, np.float64_t conf_level):
+    cpdef ConfInterval interval(Quantiles self, DTYPE_t conf_level):
         if not 0 <= conf_level <= 1:
             raise ValueError('Confidence level must be in [0, 1], got %s' % conf_level)
         return ConfInterval(self.mean, self.invcdf().eval(conf_level), self.invcdf().eval(1 - conf_level))
@@ -938,14 +976,14 @@ cdef class PiecewiseFunction(Function):
         self.functions = []
         self.intervals = []
 
-    cpdef inline np.float64_t eval(PiecewiseFunction self, np.float64_t x):
+    cpdef inline DTYPE_t eval(PiecewiseFunction self, DTYPE_t x):
         val = self.at(x).eval(x)
         # if np.isnan(val):
         #     print('eval returns', val, 'at', x, 'in')
         #     print(self.pfmt())
         return val
 
-    cpdef inline np.float64_t[::1] multi_eval(PiecewiseFunction self, np.float64_t[::1] x, np.float64_t[::1] result=None):
+    cpdef inline DTYPE_t[::1] multi_eval(PiecewiseFunction self, DTYPE_t[::1] x, DTYPE_t[::1] result=None):
         if result is None:
             result = np.ndarray(shape=len(x), dtype=np.float64)
         cdef int i
@@ -953,7 +991,7 @@ cdef class PiecewiseFunction(Function):
             result[i] = self.eval(x[i])
         return result
 
-    cpdef inline Function at(PiecewiseFunction self, np.float64_t x):
+    cpdef inline Function at(PiecewiseFunction self, DTYPE_t x):
         cdef int i
         cdef ContinuousSet interval
         for i, interval in enumerate(self.intervals):
@@ -968,7 +1006,7 @@ cdef class PiecewiseFunction(Function):
     def __call__(self, x):
         return self.eval(x)
 
-    cpdef inline ContinuousSet interval_at(PiecewiseFunction self, np.float64_t x):
+    cpdef inline ContinuousSet interval_at(PiecewiseFunction self, DTYPE_t x):
         cdef int i
         cdef ContinuousSet interval
         for i, interval in enumerate(self.intervals):
@@ -1014,7 +1052,7 @@ cdef class PiecewiseFunction(Function):
         self.intervals = list(intervals)
         self.functions = list(functions)
 
-    cpdef tuple split(PiecewiseFunction self, np.float64_t splitpoint):
+    cpdef tuple split(PiecewiseFunction self, DTYPE_t splitpoint):
         cdef PiecewiseFunction f1 = PiecewiseFunction(), f2 = PiecewiseFunction()
         cdef ContinuousSet interval, i_
         cdef Function f
@@ -1067,54 +1105,54 @@ cdef class PiecewiseFunction(Function):
             diff.functions.append(f.differentiate())
         return diff
 
-    cpdef ensure_left(PiecewiseFunction self, Function left, np.float64_t x):
+    cpdef ensure_left(PiecewiseFunction self, Function left, DTYPE_t x):
         cdef ContinuousSet xing = self.functions[0].xing_point(left)
         if xing == R:  # With all points are crossing points, we are done
             return
         elif xing and xing.lower < self.intervals[0].upper and xing.upper >= x:
-            self.intervals.insert(0, ContinuousSet(np.NINF, xing.lower, _EXC, _EXC))
+            self.intervals.insert(0, ContinuousSet(np.NINF, xing.lower, EXC, EXC))
             self.intervals[1].lower = xing.lower
-            self.intervals[1].left = _INC
+            self.intervals[1].left = INC
             self.functions.insert(0, left)
         else:
-            self.intervals.insert(0, ContinuousSet(np.NINF, x, _EXC, _EXC))
+            self.intervals.insert(0, ContinuousSet(np.NINF, x, EXC, EXC))
             self.intervals[1].lower = x
-            self.intervals[1].left = _INC
+            self.intervals[1].left = INC
             self.functions.insert(0, left)
 
             if not self.intervals[1]:
                 del self.intervals[1]
                 del self.functions[1]
 
-    cpdef ensure_right(PiecewiseFunction self, Function right, np.float64_t x):
+    cpdef ensure_right(PiecewiseFunction self, Function right, DTYPE_t x):
         cdef ContinuousSet xing = self.functions[-1].xing_point(right)
         if xing == R:  # With all points are crossing points, we are done
             return
         elif xing and xing.upper > self.intervals[-1].lower and xing.lower <= x:
-            self.intervals.append(ContinuousSet(xing.lower, np.PINF, _INC, _EXC))
+            self.intervals.append(ContinuousSet(xing.lower, np.PINF, INC, EXC))
             self.intervals[-2].upper = xing.upper
-            self.intervals[-2].left = _INC
+            self.intervals[-2].left = INC
             self.functions.append(right)
         else:
-            self.intervals.append(ContinuousSet(x, np.PINF, _INC, _EXC))
+            self.intervals.append(ContinuousSet(x, np.PINF, INC, EXC))
             self.intervals[-2].upper = x
-            self.intervals[-2].left = _INC
+            self.intervals[-2].left = INC
             self.functions.append(right)
             if not self.intervals[-2]:
                 del self.intervals[-2]
                 del self.functions[-2]
 
-    cpdef np.float64_t[::1] xsamples(PiecewiseFunction self, np.int32_t sort=True):
+    cpdef DTYPE_t[::1] xsamples(PiecewiseFunction self, np.int32_t sort=True):
         cdef np.int32_t n = 2
         cdef np.int32_t samples_total = len(self.intervals) * (n + 1)
-        cdef np.float64_t[::1] samples_x = np.ndarray(shape=samples_total, dtype=np.float64)
+        cdef DTYPE_t[::1] samples_x = np.ndarray(shape=samples_total, dtype=np.float64)
         samples_x[:] = 0
         cdef object f
         cdef np.int32_t i = 0
-        cdef np.float64_t stepsize = 1
+        cdef DTYPE_t stepsize = 1
         cdef ContinuousSet interval
         cdef np.int32_t nopen = 2
-        cdef np.float64_t tmp_
+        cdef DTYPE_t tmp_
         for interval, f in zip(self.intervals, self.functions):
             if interval.lower != np.NINF and interval.upper != np.PINF:
                 interval.linspace(n, default_step=1, result=samples_x[i:i + n])
@@ -1137,15 +1175,15 @@ cdef class PiecewiseFunction(Function):
         else:
             return samples_x[:i]
 
-    cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=1, np.float64_t epsilon=.001,
-                                     np.float64_t penalty=3.):
+    cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=1, DTYPE_t epsilon=.001,
+                                     DTYPE_t penalty=3.):
         cdef np.int32_t samples_total = len(self.intervals) * n_samples
-        cdef np.float64_t[::1] samples_x = np.ndarray(shape=samples_total, dtype=np.float64)
+        cdef DTYPE_t[::1] samples_x = np.ndarray(shape=samples_total, dtype=np.float64)
         samples_x[:] = 0
         cdef object f
         cdef np.int32_t i = 0
-        cdef np.float64_t stepsize = 1
-        cdef np.float64_t max_int = max([i_.upper - i_.lower for i_ in self.intervals if i_.lower != np.NINF and i_.upper != np.PINF])
+        cdef DTYPE_t stepsize = 1
+        cdef DTYPE_t max_int = max([i_.upper - i_.lower for i_ in self.intervals if i_.lower != np.NINF and i_.upper != np.PINF])
         cdef ContinuousSet interval
         cdef np.int32_t nopen = 2
         for interval, f in zip(self.intervals, self.functions):
@@ -1166,11 +1204,11 @@ cdef class PiecewiseFunction(Function):
         if self.intervals[-1].upper == np.PINF:
             self.intervals[-1].linspace(n_samples, default_step=stepsize, result=samples_x[i:i + n_samples])
             i += n_samples
-        cdef np.float64_t[::1] learn_data = samples_x[:i]
-        cdef np.float64_t[::1] samples_y = self.multi_eval(learn_data)
+        cdef DTYPE_t[::1] learn_data = samples_x[:i]
+        cdef DTYPE_t[::1] samples_y = self.multi_eval(learn_data)
         return fit_piecewise(learn_data, samples_y, penalty=penalty, epsilon=epsilon)
 
-    cpdef RealSet eq(PiecewiseFunction self, np.float64_t y):
+    cpdef RealSet eq(PiecewiseFunction self, DTYPE_t y):
         result_set = RealSet()
         y_ = ConstantFunction(y)
         prev_f = None
@@ -1183,7 +1221,7 @@ cdef class PiecewiseFunction(Function):
             prev_f = f
         return result_set
 
-    cpdef RealSet lt(PiecewiseFunction self, np.float64_t y):
+    cpdef RealSet lt(PiecewiseFunction self, DTYPE_t y):
         result_set = RealSet()
         y_ = ConstantFunction(y)
         prev_f = None
@@ -1211,7 +1249,7 @@ cdef class PiecewiseFunction(Function):
             result_set.intervals.append(current)
         return result_set
 
-    cpdef RealSet gt(PiecewiseFunction self, np.float64_t y):
+    cpdef RealSet gt(PiecewiseFunction self, DTYPE_t y):
         result_set = RealSet()
         y_ = ConstantFunction(y)
         current = None
@@ -1259,7 +1297,7 @@ cdef class PiecewiseFunction(Function):
         result.stretch(1. / result.eval(result.intervals[-1].lower))  # Ensure that the function ends with value 1 on the right
         return result
 
-    cpdef list knots(PiecewiseFunction self, np.float64_t lastx=np.nan):
+    cpdef list knots(PiecewiseFunction self, DTYPE_t lastx=np.nan):
         result = []
         for i, f in zip(self.intervals, self.functions):
             if i.lower != np.NINF:
@@ -1270,7 +1308,7 @@ cdef class PiecewiseFunction(Function):
             result.append((lastx, self.functions[-1].eval(lastx)))
         return result
 
-    cpdef PiecewiseFunction add_knot(PiecewiseFunction self, np.float64_t x, np.float64_t y):
+    cpdef PiecewiseFunction add_knot(PiecewiseFunction self, DTYPE_t x, DTYPE_t y):
         ...
 
     cpdef PiecewiseFunction crop(PiecewiseFunction self, ContinuousSet interval):
@@ -1294,8 +1332,8 @@ cdef class PiecewiseFunction(Function):
         return function
 
 
-cpdef object fit_piecewise(np.float64_t[::1] x, np.float64_t[::1] y, np.float64_t epsilon=np.nan,
-                           np.float64_t penalty=np.nan, np.float64_t[::1] weights=None,
+cpdef object fit_piecewise(DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t epsilon=np.nan,
+                           DTYPE_t penalty=np.nan, DTYPE_t[::1] weights=None,
                            np.int32_t verbose=False):
     cdef np.int32_t max_terms = 2 * x.shape[0]
     epsilon = ifnan(epsilon, .001)
@@ -1306,13 +1344,13 @@ cpdef object fit_piecewise(np.float64_t[::1] x, np.float64_t[::1] y, np.float64_
         print(mars.summary())
     cdef object f = PiecewiseFunction()
     cdef list hinges = [h for h in mars.basis_ if not h.is_pruned()]
-    cdef np.float64_t[::1] coeff = mars.coef_[0,:]
+    cdef DTYPE_t[::1] coeff = mars.coef_[0,:]
     # Sort the functions according to their knot positions
     cdef np.ndarray functions = np.vstack([[h.get_knot() if isinstance(h, HingeBasisFunctionBase) else np.nan for h in hinges], hinges, coeff])
     functions = functions[:, np.argsort(functions[0,:])]
     cdef LinearFunction linear = LinearFunction(0, 0)
-    cdef np.float64_t[:,::1] x_ = np.array([[0]], dtype=np.float64)
-    cdef np.float64_t k, w
+    cdef DTYPE_t[:,::1] x_ = np.array([[0]], dtype=np.float64)
+    cdef DTYPE_t k, w
     for k, f_, w in functions.T:
         if isinstance(f_, LinearBasisFunction):
             linear.m += w
@@ -1322,8 +1360,8 @@ cpdef object fit_piecewise(np.float64_t[::1] x, np.float64_t[::1] y, np.float64_
                 linear.c += w * f_.get_knot()
         elif isinstance(f_, ConstantBasisFunction):
             linear.c += w
-    cdef np.float64_t m = linear.m
-    cdef np.float64_t c = linear.c
+    cdef DTYPE_t m = linear.m
+    cdef DTYPE_t c = linear.c
     f.intervals.append(R.copy())
     f.functions.append(linear)
     for k, f_, w in functions.T:
