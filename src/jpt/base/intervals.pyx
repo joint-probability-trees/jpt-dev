@@ -1,4 +1,9 @@
-# cython: infer_types=True, language_level=3
+# cython: infer_types=True
+# cython: language_level=3
+# cython: cdivision=True
+# cython: wraparound=True
+# cython: boundscheck=False
+# cython: nonecheck=False
 import re
 import traceback
 from operator import attrgetter
@@ -95,8 +100,8 @@ cdef class RealSet(NumberSet):
     def __hash__(self):
         return hash((RealSet, tuple(sorted(self.intervals, key=attrgetter('lower')))))
 
-    cpdef np.float64_t size(RealSet self):
-        cdef np.float64_t s = 0
+    cpdef DTYPE_t size(RealSet self):
+        cdef DTYPE_t s = 0
         cdef int i
         for i in range(len(self.intervals)):
             s += self.intervals[i].size()
@@ -106,7 +111,7 @@ cdef class RealSet(NumberSet):
     def emptyset():
         return RealSet()
 
-    cpdef np.float64_t[::1] sample(RealSet self, np.int32_t n=1, np.float64_t[::1] result=None):
+    cpdef DTYPE_t[::1] sample(RealSet self, np.int32_t n=1, DTYPE_t[::1] result=None):
         '''Chooses an element from self.intervals proportionally to their sizes, then returns a uniformly sampled
         value from that Interval.
 
@@ -116,14 +121,14 @@ cdef class RealSet(NumberSet):
         if self.isempty():
             raise IndexError('Cannot sample from an empty set.')
         cdef ContinuousSet i_
-        cdef np.float64_t[::1] weights = np.array([abs(i_.upper - i_.lower) for i_ in self.intervals if i_.size()], dtype=np.float64)
+        cdef DTYPE_t[::1] weights = np.array([abs(i_.upper - i_.lower) for i_ in self.intervals if i_.size()], dtype=np.float64)
         if sum(weights) == 0:
             weights[...] = 1.
-        cdef np.float64_t[::1] upperbounds = np.cumsum(weights)
+        cdef DTYPE_t[::1] upperbounds = np.cumsum(weights)
         if result is None:
             result = np.ndarray(shape=n, dtype=np.float64)
         cdef int i, j
-        cdef np.float64_t resval, bound
+        cdef DTYPE_t resval, bound
         for i in range(n):
             resval = np.random.uniform(0, min([np.finfo(np.float64).max, upperbounds[-1]]))
             for j, bound in enumerate(upperbounds):
@@ -132,7 +137,7 @@ cdef class RealSet(NumberSet):
                     break
         return result
 
-    cpdef inline np.int32_t contains_value(RealSet self, np.float64_t value):
+    cpdef inline np.int32_t contains_value(RealSet self, DTYPE_t value):
         '''Checks if ``value`` lies in interval'''
         cdef ContinuousSet s
         for s in self.intervals:
@@ -168,7 +173,7 @@ cdef class RealSet(NumberSet):
                 return False
         return True
 
-    cpdef inline np.float64_t fst(RealSet self):
+    cpdef inline DTYPE_t fst(RealSet self):
         return min([i.fst() for i in self.intervals])
 
     cpdef inline np.int32_t intersects(RealSet self, RealSet other):
@@ -247,11 +252,13 @@ cdef class RealSet(NumberSet):
 
 re_int = re.compile(r'(?P<ldelim>\(|\[|\])(?P<lval>.+),(?P<rval>.+)(?P<rdelim>\)|\]|\[)')
 
-_INC = 1
-_EXC = 2
 CLOSED = 2
 HALFOPEN = 3
 OPEN = 4
+
+# NB: Do not remove this! Declaration of _INC and _EXC in intervals.pxd does not set their values!
+_INC = 1
+_EXC = 2
 
 INC = np.int32(_INC)
 EXC = np.int32(_EXC)
@@ -270,8 +277,8 @@ cdef class ContinuousSet(NumberSet):
     '''
 
     def __init__(ContinuousSet self,
-                 np.float64_t lower=np.nan,
-                 np.float64_t upper=np.nan,
+                 DTYPE_t lower=np.nan,
+                 DTYPE_t upper=np.nan,
                  np.int32_t left=_INC,
                  np.int32_t right=_INC):
         self.lower = lower
@@ -336,12 +343,12 @@ cdef class ContinuousSet(NumberSet):
     cpdef inline ContinuousSet allnumbers(ContinuousSet self):
         return ContinuousSet(np.NINF, np.inf, _EXC, _EXC)
 
-    cpdef np.float64_t[::1] sample(ContinuousSet self, np.int32_t k=1, np.float64_t[::1] result=None):
+    cpdef DTYPE_t[::1] sample(ContinuousSet self, np.int32_t k=1, DTYPE_t[::1] result=None):
         '''
         Draw from this interval ``k`` evenly distributed samples.
         '''
-        cdef np.float64_t upper = self.upper if self.right == _INC else np.nextafter(self.upper, self.upper - 1)
-        cdef np.float64_t lower = self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
+        cdef DTYPE_t upper = self.upper if self.right == _INC else np.nextafter(self.upper, self.upper - 1)
+        cdef DTYPE_t lower = self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
 
         if result is None:
             result = np.random.uniform(max(np.finfo(np.float64).min, lower),
@@ -358,20 +365,20 @@ cdef class ContinuousSet(NumberSet):
         #             s[i] = np.random.uniform(np.max(np.finfo(np.float64).min, self.lower), min(np.finfo(np.float64).max, self.upper))
         return result
 
-    cpdef np.float64_t[::1] linspace(ContinuousSet self,
+    cpdef DTYPE_t[::1] linspace(ContinuousSet self,
                                      np.int32_t num,
-                                     np.float64_t default_step=1,
-                                     np.float64_t[::1] result=None):
-        cdef np.float64_t start, stop
-        cdef np.float64_t[::1] samples
+                                     DTYPE_t default_step=1,
+                                     DTYPE_t[::1] result=None):
+        cdef DTYPE_t start, stop
+        cdef DTYPE_t[::1] samples
 
         if result is None:
             samples = np.ndarray(shape=num, dtype=np.float64)
         else:
             samples = result
 
-        cdef np.float64_t n
-        cdef np.float64_t space, val
+        cdef DTYPE_t n
+        cdef DTYPE_t space, val
         cdef np.int32_t alternate = 1
 
         if self.lower == np.NINF and self.upper == np.PINF:
@@ -391,7 +398,7 @@ cdef class ContinuousSet(NumberSet):
             start = self.lower
             stop = self.upper
             if num > 1:
-                n = <np.float64_t> num - 1
+                n = <DTYPE_t> num - 1
                 space = abs((stop - start)) / n
 
         val = start
@@ -427,7 +434,7 @@ cdef class ContinuousSet(NumberSet):
         '''Return an exact copy of this interval.'''
         return ContinuousSet(self.lower, self.upper, self.left, self.right)
 
-    cpdef inline np.int32_t contains_value(ContinuousSet self, np.float64_t value):
+    cpdef inline np.int32_t contains_value(ContinuousSet self, DTYPE_t value):
         '''Checks if ``value`` lies in interval'''
         return self.intersects(ContinuousSet(value, value))
 
@@ -506,7 +513,7 @@ cdef class ContinuousSet(NumberSet):
         '''Return the complement set of this interval.'''
         return R.difference(self)
 
-    cpdef inline np.float64_t size(ContinuousSet self):
+    cpdef inline DTYPE_t size(ContinuousSet self):
         '''Alternative to __len__ but may return float (inf)'''
         if self.isempty():
             return 0
@@ -514,7 +521,7 @@ cdef class ContinuousSet(NumberSet):
             return 1
         return np.inf
 
-    cpdef inline np.float64_t fst(ContinuousSet self):
+    cpdef inline DTYPE_t fst(ContinuousSet self):
         if self.isempty():
             return np.nan
         if self.lower != np.NINF:
@@ -544,18 +551,18 @@ cdef class ContinuousSet(NumberSet):
     def __str__(self):
         if self.isempty():
             return _EMPTYSET
-        if self.lower == self.upper and self.left == self.right == _INC:
+        if self.lower == self.upper and self.left == self.right == INC:
             return '[%.3f]' % self.lower
-        return '{}{},{}{}'.format({_INC: '[', _EXC: ']'}[self.left],
+        return '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
                                   '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
                                   '∞' if self.upper == np.inf else ('%.3f' % self.upper),
-                                  {_INC: ']', _EXC: '['}[self.right])
+                                  {INC: ']', EXC: '['}[int(self.right)])
 
     def __repr__(self):
-        return '<{}={}>'.format(self.__class__.__name__, '{}{},{}{}'.format({_INC: '[', _EXC: ']'}[self.left],
+        return '<{}={}>'.format(self.__class__.__name__, '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
                                                                             '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
                                                                             '∞' if self.upper == np.inf else ('%.3f' % self.upper),
-                                                                            {_INC: ']', _EXC: '['}[self.right]))
+                                                                            {INC: ']', EXC: '['}[int(self.right)]))
 
     def __bool__(self):
         return self.size() != 0

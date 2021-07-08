@@ -1,11 +1,12 @@
-# cython: auto_cpdef=True, infer_types=True, language_level=3
+# cython: language_level=3
 
 cimport numpy as np
 cimport cython
 
+from ..base.cutils cimport DTYPE_t, SIZE_t
 
-cdef int _INC = 1
-cdef int _EXC = 2
+cdef int _INC
+cdef int _EXC
 cdef int CLOSED = 2
 cdef int HALFOPEN = 3
 cdef int OPEN = 4
@@ -22,11 +23,11 @@ cdef class RealSet(NumberSet):
     cdef public list intervals
 
     # Class Methods
-    cpdef np.float64_t size(RealSet self)
+    cpdef DTYPE_t size(RealSet self)
 
-    cpdef np.float64_t[::1] sample(RealSet self, np.int32_t n=*, np.float64_t[::1] result=*)
+    cpdef DTYPE_t[::1] sample(RealSet self, np.int32_t n=*, DTYPE_t[::1] result=*)
 
-    cpdef inline np.int32_t contains_value(RealSet self, np.float64_t value)
+    cpdef inline np.int32_t contains_value(RealSet self, DTYPE_t value)
 
     cpdef inline np.int32_t contains_interval(RealSet self, ContinuousSet other)
 
@@ -42,7 +43,7 @@ cdef class RealSet(NumberSet):
 
     cpdef inline RealSet complement(RealSet self)
 
-    cpdef inline np.float64_t fst(RealSet self)
+    cpdef inline DTYPE_t fst(RealSet self)
 
 
 @cython.final
@@ -51,7 +52,7 @@ cdef class ContinuousSet(NumberSet):
     # Class attributes
     cdef public:
         np.int32_t left, right
-        np.float64_t lower, upper
+        DTYPE_t lower, upper
 
     cpdef inline np.int32_t itype(ContinuousSet self)
 
@@ -63,11 +64,11 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef inline ContinuousSet allnumbers(ContinuousSet self)
 
-    cpdef np.float64_t[::1] sample(ContinuousSet self, np.int32_t k=*, np.float64_t[::1] result=*)
+    cpdef DTYPE_t[::1] sample(ContinuousSet self, np.int32_t k=*, DTYPE_t[::1] result=*)
 
     cpdef inline ContinuousSet copy(ContinuousSet self)
 
-    cpdef inline np.int32_t contains_value(ContinuousSet self, np.float64_t value)
+    cpdef inline np.int32_t contains_value(ContinuousSet self, DTYPE_t value)
 
     cpdef inline np.int32_t contains_interval(ContinuousSet self, ContinuousSet other)
 
@@ -83,8 +84,8 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef inline NumberSet complement(ContinuousSet self)
 
-    cpdef inline np.float64_t size(ContinuousSet self)
+    cpdef inline DTYPE_t size(ContinuousSet self)
 
-    cpdef np.float64_t[::1] linspace(ContinuousSet self, np.int32_t num, np.float64_t default_step=*, np.float64_t[::1] result=*)
+    cpdef DTYPE_t[::1] linspace(ContinuousSet self, np.int32_t num, DTYPE_t default_step=*, DTYPE_t[::1] result=*)
 
-    cpdef inline np.float64_t fst(ContinuousSet self)
+    cpdef inline DTYPE_t fst(ContinuousSet self)
