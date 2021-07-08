@@ -39,10 +39,10 @@ def main():
     xx = xx.astype(np.float32)
 
     # Construct the predictive model
-    varx = NumericVariable('x', NumericType('x', X), haze=.05)
-    vary = NumericVariable('y', NumericType('y', y), haze=.05)
+    varx = NumericVariable('x', NumericType('x', X), haze=.05, max_std=2)
+    vary = NumericVariable('y', NumericType('y', y), haze=.05, max_std=7)
 
-    jpt = JPT(variables=[varx, vary], min_samples_leaf=15)
+    jpt = JPT(variables=[varx, vary], min_samples_leaf=1)
     jpt.learn(columns=[X.ravel(), y])
     # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model

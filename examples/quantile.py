@@ -1,14 +1,15 @@
-from operator import itemgetter
-
 import pyximport
-from dnutils import out
-
 pyximport.install()
 
-from jpt.learning.qreg import QReg
+# from jpt.base.quantiles import QuantileDistribution
+from operator import itemgetter
+
+from dnutils import out
+
+from jpt.learning.cdfreg import CDFRegressor
 
 
-from jpt.base.intervals import ContinuousSet, INC, EXC
+# from jpt.base.intervals import ContinuousSet, INC, EXC
 
 
 from jpt.base.quantiles import QuantileDistribution
@@ -21,13 +22,14 @@ from jpt.learning.distributions import Gaussian
 
 
 def qdata(data):
+    data = np.sort(data)
     x, counts = np.unique(data, return_counts=True)
     y = np.asarray(counts, dtype=np.float64)
     np.cumsum(y, out=np.asarray(y))
     n_samples = data.shape[0]
     for i in range(x.shape[0]):
         y[i] /= n_samples
-    return [x, y]
+    return np.array([x, y])
 
 
 def test_quantiles():
@@ -36,22 +38,19 @@ def test_quantiles():
     gauss3 = Gaussian(3, .1).sample(100)
     data = np.hstack([gauss1, gauss2, gauss3])
 
-    # x, counts = np.unique(data, return_counts=True)
-    # y = np.asarray(counts, dtype=np.float64)
-    # np.cumsum(y, out=np.asarray(y))
-    # n_samples = data.shape[0]
-    # for i in range(x.shape[0]):
-    #     y[i] /= n_samples
+    reg = CDFRegressor(eps=.01)
+    reg.fit(qdata(data))
 
-    reg = QReg(eps=.025)
-    reg.fit(np.array(qdata(data)).T, presort=1)
-    points = np.array(reg.points)
+    # print(reg.cdf.pfmt())
+
+    points = np.array(reg.support_points)
+
     plt.plot(points[:, 0], points[:, 1], label='QReg points', marker='x')
 
     plt.scatter(data, np.zeros(data.shape[0]), label='Raw data')
 
     dist_all = QuantileDistribution(epsilon=1e-10)
-    dist_all.fit(data)
+    dist_all.fit(data.reshape(-1, 1), None, 0)
 
 
     # dist1 = QuantileDistribution(epsilon=1e-10)

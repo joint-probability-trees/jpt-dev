@@ -89,8 +89,8 @@ def muesli_tree():
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
     XType = NumericType('XType', data['X'].values)
 
-    x = NumericVariable('X', XType, max_std=.1)
-    y = NumericVariable('Y', Numeric, max_std=.1)
+    x = NumericVariable('X', XType, max_std=.1, precision=.01)
+    y = NumericVariable('Y', Numeric, max_std=.1, precision=.1)
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 

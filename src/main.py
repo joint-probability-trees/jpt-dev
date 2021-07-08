@@ -66,11 +66,11 @@ def main(*args):
     # regression.main()
     # muesli.muesli_tree()
     # muesli.plot_muesli()
-    neems.main()
+    # neems.main()
     # quantile.main()
     # restaurant.main()
     # tourism.main()
-    # mnist.main()
+    mnist.main()
 
 
 # Press the green button in the gutter to run the script.
