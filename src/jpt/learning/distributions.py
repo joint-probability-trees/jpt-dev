@@ -484,7 +484,7 @@ class Distribution:
     def mpe(self):
         raise NotImplementedError
 
-    def fit(self, data):
+    def fit(self, data, rows=None, col=None):
         raise NotImplementedError
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
@@ -568,12 +568,19 @@ class Identity:
     def __getitem__(self, item):
         return item
 
+    __call__ = __getitem__
+
 
 class DataScalerProxy:
 
     def __init__(self, datascaler, inverse=False):
         self.datascaler = datascaler
         self.inverse = inverse
+        # self.__call__ = self.__getitem__
+
+    def __call__(self, arg):
+        # out(arg, self[arg])
+        return self[arg]
 
     def __getitem__(self, item):
         if item in (np.NINF, np.PINF):
@@ -641,9 +648,9 @@ class Numeric(Distribution):
                     for interval, function in zip(self.cdf.intervals, self.cdf.functions)],
                    key=lambda x: x[1].m if isinstance(x[1], LinearFunction) else 0)[0]
 
-    def fit(self, data):
-        self._quantile = QuantileDistribution()
-        self._quantile.fit(np.ascontiguousarray(data, dtype=np.float64))
+    def fit(self, data, rows=None, col=None, **params):
+        self._quantile = QuantileDistribution(**params)
+        self._quantile.fit(data, rows=rows, col=col)
         return self
 
     def _p(self, value):
@@ -668,7 +675,7 @@ class Numeric(Distribution):
 
     def inst_to_json(self):
         return {'class': type(self).__name__,
-                'quantile': self._quantile.to_json()}
+                'quantile': self._quantile.to_json() if self._quantile is not None else None}
 
     to_json = type_to_json
 
@@ -856,8 +863,12 @@ class Multinomial(Distribution):
     def mpe(self):
         return self.expectation()
 
-    def fit(self, data):
-        self._params = np.array([list(data).count(float(x)) / len(data) for x in self.values.values()])
+    def fit(self, data, rows=None, col=None):
+        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
+        n_samples = ifnone(rows, len(data), len)
+        col = ifnone(col, 0)
+        for row in ifnone(rows, range(len(data))):
+            self._params[int(data[row, col])] += 1 / n_samples
         return self
 
     def update(self, dist, weight):
@@ -997,10 +1008,24 @@ class Bool(Multinomial):
         super().__setitem__(v, p)
 
 
+class HashableOrderedDict(OrderedDict):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # self.__call__ = self.__getitem__
+
+    def __call__(self, arg):
+        out(arg, self[arg])
+        return self[arg]
+
+    def __hash__(self):
+        return hash((tuple(self.values()), tuple(self.keys())))
+
+
 def SymbolicType(name, labels):
     t = type(name, (Multinomial,), {})
-    t.values = OrderedDict([(lbl, val) for val, lbl in zip(range(len(labels)), labels)])
-    t.labels = OrderedDict([(val, lbl) for val, lbl in zip(range(len(labels)), labels)])
+    t.values = HashableOrderedDict([(lbl, val) for val, lbl in zip(range(len(labels)), labels)])
+    t.labels = HashableOrderedDict([(val, lbl) for val, lbl in zip(range(len(labels)), labels)])
     return t
 
 

@@ -4,7 +4,7 @@
 # cython: cdivision=True
 # cython: wraparound=False
 # cython: boundscheck=False
-# cython: nonehcheck=False
+# cython: nonecheck=False
 
 import numpy as np
 cimport numpy as np

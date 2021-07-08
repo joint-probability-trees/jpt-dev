@@ -13,6 +13,7 @@ import datetime
 
 import dill
 import numpy as np
+import pandas as pd
 from dnutils.stats import stopwatch
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
@@ -44,6 +45,11 @@ _pool = None
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+
+
+def _prior(args):
+    var_idx, json_var = args
+    return Variable.from_json(json_var).dist(data=_data, col=var_idx).to_json()
 
 
 class Node:
@@ -507,7 +513,7 @@ class JPT(JPTBase):
                 parent.set_child(child_idx, leaf)
 
             for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.dist(data=data[self.indices[start:end], i].T)
+                leaf.distributions[v] = v.dist(data=data, rows=self.indices[start:end], col=i)
 
             leaf.prior = n_samples / data.shape[0]
             leaf.samples = n_samples
@@ -596,6 +602,8 @@ class JPT(JPTBase):
         if sum(d is not None for d in (data, rows, columns)) != 1:
             raise ValueError('Only either of the three is allowed.')
 
+        JPT.logger.info('Preprocessing data...')
+
         if isinstance(data, np.ndarray) and data.shape[0] or isinstance(data, list):
             rows = data
 
@@ -608,34 +616,46 @@ class JPT(JPTBase):
             shape = len(columns[0]), len(columns)
         elif isinstance(columns, np.ndarray) and columns.shape:
             shape = columns.T.shape
+        elif isinstance(data, pd.DataFrame):
+            shape = data.shape
         else:
             raise ValueError('No data given.')
 
-        data = np.ndarray(shape=shape, dtype=np.float64)
-        for i, (var, col) in enumerate(zip(self.variables, columns)):
-            data[:, i] = [var.domain.values[v] for v in col]
+        global _data
+        _data = np.ndarray(shape=shape, dtype=np.float64, order='C')
+        # out(_data.flags)
+        
+        if isinstance(data, pd.DataFrame):
+            _data[:] = data.transform([var.domain.values for var in self.variables]).values.T
+        else:
+            for i, (var, col) in enumerate(zip(self.variables, columns)):
+                _data[:, i] = [var.domain.values[v] for v in col]
 
-        # global _data
-        # _data = data
-        self.indices = np.ones(shape=(data.shape[0],), dtype=np.int64)
+        self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
         self.indices[0] = 0
         np.cumsum(self.indices, out=self.indices)
         # Initialize the impurity calculation
-        self.impurity.setup(data, self.indices)
+        self.impurity.setup(_data, self.indices)
+
+        JPT.logger.info('Data transformation... %d x %d', _data.shape)
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
         started = datetime.datetime.now()
-        self.priors = {var: var.dist(data=data[:, i]) for i, var in enumerate(self.variables)}
+        JPT.logger.info('Learning prior distributions...')
+        self.priors = {}
+        pool = mp.Pool()
+        for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(self.variables)])):# {var: var.dist(data=data[:, i]) }
+            self.priors[self.variables[i]] = self.variables[i].domain.from_json(prior)
         JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
 
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
         started = datetime.datetime.now()
-        JPT.logger.info('Started learning of %s x %s at %s' % (data.shape[0], data.shape[1], started))
+        JPT.logger.info('Started learning of %s x %s at %s' % (_data.shape[0], _data.shape[1], started))
         # build up tree
-        self.c45queue.append((data, 0, data.shape[0], None, None))
+        self.c45queue.append((_data, 0, _data.shape[0], None, None))
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
 
@@ -954,6 +974,16 @@ class JPT(JPTBase):
                 return dill.load(f)
         else:
             return dill.load(file)
+
+
+class DistributedJPT(JPTBase):
+
+    def __init__(self, path, **kwargs):
+        super().__init__(**kwargs)
+        self.path = path
+
+    def apply(self, query):
+        pass
 
 
 class Result:
