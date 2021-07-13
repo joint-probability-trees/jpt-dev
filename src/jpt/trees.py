@@ -2,6 +2,7 @@
 '''
 import html
 import itertools
+import json
 import math
 import numbers
 import operator
@@ -911,10 +912,10 @@ class JPT(JPTBase):
         ``file`` can be either a string or file-like object.
         '''
         if type(file) is str:
-            with open(file, 'wb+') as f:
-                dill.dump(self, f)
+            with open(file, 'w+') as f:
+                json.dump(self.to_json(), f)
         else:
-            dill.dump(self, file)
+            json.dump(self.to_json(), file)
 
     @staticmethod
     def load(file):
@@ -922,10 +923,11 @@ class JPT(JPTBase):
         Load a JPT from disk.
         '''
         if type(file) is str:
-            with open(file, 'rb') as f:
-                return dill.load(f)
+            with open(file, 'r') as f:
+                t = json.load(f)
         else:
-            return dill.load(file)
+            t = json.load(file)
+        return JPTBase.from_json(t)
 
 
 class Result:
