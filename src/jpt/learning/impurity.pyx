@@ -126,7 +126,7 @@ cdef class Impurity:
     cdef SIZE_t start, end
 
     cdef SIZE_t[::1] numeric_vars, symbolic_vars, all_vars
-    cdef DTYPE_t min_samples_leaf
+    cdef public DTYPE_t min_samples_leaf
     cdef SIZE_t[::1] symbols
     cdef SIZE_t n_num_vars, n_sym_vars, max_sym_domain, n_vars
 
@@ -156,6 +156,8 @@ cdef class Impurity:
     cdef readonly int best_var
     cdef readonly  DTYPE_t max_impurity_improvement
 
+    cdef public list priors
+
     @property
     def best_split_pos(self):
         return pydeque([e for e in self._best_split_pos])
@@ -173,6 +175,7 @@ cdef class Impurity:
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables) if v.symbolic], dtype=np.int64)
         self.all_vars = np.concatenate((self.numeric_vars, self.symbolic_vars))
         self.n_vars = len(tree.variables)
+        self.priors = []
 
         self.targets = np.array([i for i, v in enumerate(tree.variables) if tree.targets is None or v in tree.targets], dtype=np.int64)
 
@@ -210,13 +213,12 @@ cdef class Impurity:
             self.variances_right = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.variance_improvements = np.ndarray(self.n_num_vars, dtype=np.float64)
 
-    cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
+    cdef inline int check_max_variances(self, DTYPE_t[::1] variances):  # nogil:
         cdef int i
         for i in range(self.n_num_vars):
             if variances[i] > self.max_variances[i]:
                 return True
         return False
-            # variances[i] = 0 if variances[i] < self.max_variances[i] else variances[i]
 
     cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices) except +:
         self.data = data
@@ -278,6 +280,8 @@ cdef class Impurity:
         cdef np.float64_t impurity_total = 0
         cdef np.float64_t gini_total = 0
 
+        self.max_impurity_improvement = 0
+
         if self.has_numeric_vars():
             self.variances_total[:] = 0
             sq_sum_at(self.data,
@@ -295,7 +299,8 @@ cdef class Impurity:
                       n_samples,
                       result=self.variances_total)
 
-            # self.check_variances(self.variances_total)
+            if not self.check_max_variances(self.variances_total):
+                return 0
 
             denom += 1
             impurity_total += len(self.numeric_vars) * np.mean(self.variances_total)
@@ -318,7 +323,6 @@ cdef class Impurity:
         cdef int symbolic_idx = -1
 
         cdef DTYPE_t impurity_improvement
-        self.max_impurity_improvement = 0
         cdef int variable
 
         cdef deque[int] split_pos
@@ -495,8 +499,8 @@ cdef class Impurity:
             else:  # numeric
                 impurity_improvement /= denom
                 if (samples_left < self.min_samples_leaf
-                    or samples_right < self.min_samples_leaf
-                    or not self.check_max_variances(self.variances_total)):
+                    or samples_right < self.min_samples_leaf):
+                    #or not self.check_max_variances(self.variances_total)):
                     impurity_improvement = 0
 
             if (numeric or last_iter) and (impurity_improvement > max_impurity_improvement):

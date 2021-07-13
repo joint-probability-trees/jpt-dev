@@ -636,8 +636,10 @@ class JPT(JPTBase):
         np.cumsum(self.indices, out=self.indices)
         # Initialize the impurity calculation
         self.impurity.setup(_data, self.indices)
+        if type(self.min_samples_leaf) is float and 0 < self.min_samples_leaf < 1:
+            self.impurity.min_samples_leaf = int(len(_data) * self.min_samples_leaf)
 
-        JPT.logger.info('Data transformation... %d x %d', _data.shape)
+        JPT.logger.info('Data transformation... %d x %d' % _data.shape)
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
@@ -648,7 +650,7 @@ class JPT(JPTBase):
         for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(self.variables)])):# {var: var.dist(data=data[:, i]) }
             self.priors[self.variables[i]] = self.variables[i].domain.from_json(prior)
         JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
-
+        self.impurity.priors = [self.priors[v] for v in self.variables if v.numeric]
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
