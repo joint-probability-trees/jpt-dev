@@ -64,12 +64,13 @@ def main(*args):
     # call imported examples
     # alarm.main()
     # regression.main()
-    muesli.muesli_tree()
+    # muesli.muesli_tree()
+    # muesli.plot_muesli()
     # neems.main()
     # quantile.main()
     # restaurant.main()
     # tourism.main()
-    # mnist.main()
+    mnist.main()
 
 
 # Press the green button in the gutter to run the script.

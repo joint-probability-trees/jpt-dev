@@ -6,6 +6,8 @@ import numpy as np
 cimport numpy as np
 cimport cython
 
+from ..base.cutils cimport DTYPE_t, SIZE_t
+
 
 cdef class NotInvertibleError(Exception):
     pass
@@ -15,11 +17,11 @@ cdef class ConfInterval:
     '''Represents a prediction interval with a predicted value, lower und upper bound'''
 
     cdef readonly:
-        np.float64_t mean, lower, upper
+        DTYPE_t mean, lower, upper
 
     cpdef tuple totuple(ConfInterval self)
 
-    cpdef np.float64_t[::1] tomemview(ConfInterval self, np.float64_t[::1] result=*)
+    cpdef DTYPE_t[::1] tomemview(ConfInterval self, DTYPE_t[::1] result=*)
 
 
 
@@ -35,7 +37,7 @@ cdef class Undefined(Function):
     This class represents an undefined function.
     '''
 
-    cpdef inline np.float64_t eval(Undefined self, np.float64_t x)
+    cpdef inline DTYPE_t eval(Undefined self, DTYPE_t x)
 
 
 cdef class KnotFunction(Function):
@@ -45,7 +47,7 @@ cdef class KnotFunction(Function):
     # Class attributes
 
     cdef public:
-        np.float64_t knot, weight
+        DTYPE_t knot, weight
 
 
 @cython.final
@@ -64,7 +66,7 @@ cdef class Hinge(KnotFunction):
 
     # Class methods
 
-    cpdef inline np.float64_t eval(Hinge self, np.float64_t x)
+    cpdef inline DTYPE_t eval(Hinge self, DTYPE_t x)
 
     cpdef Function differentiate(Hinge self)
 
@@ -84,7 +86,7 @@ cdef class Jump(KnotFunction):
 
     # Class methods
 
-    cpdef inline np.float64_t eval(Jump self, np.float64_t x)
+    cpdef inline DTYPE_t eval(Jump self, DTYPE_t x)
 
     cpdef inline Function differentiate(Jump self)
 
@@ -97,7 +99,7 @@ cdef class Impulse(KnotFunction):
 
     # Class methods
 
-    cpdef np.float64_t eval(self, np.float64_t x)
+    cpdef DTYPE_t eval(self, DTYPE_t x)
 
     cpdef inline Function differentiate(Impulse self)
 
@@ -112,11 +114,11 @@ cdef class ConstantFunction(Function):
 
     # Class attributes
 
-    cdef public np.float64_t value
+    cdef public DTYPE_t value
 
     # Class methods
 
-    cpdef inline np.float64_t eval(ConstantFunction self, np.float64_t x)
+    cpdef inline DTYPE_t eval(ConstantFunction self, DTYPE_t x)
 
     cpdef inline ConstantFunction differentiate(ConstantFunction self)
 
@@ -137,13 +139,13 @@ cdef class LinearFunction(Function):
 
     # Class attributes
 
-    cdef public np.float64_t m, c
+    cdef public DTYPE_t m, c
 
     # Class methods
 
-    cpdef inline np.float64_t eval(LinearFunction self, np.float64_t x)
+    cpdef inline DTYPE_t eval(LinearFunction self, DTYPE_t x)
 
-    cpdef np.float64_t root(LinearFunction self) except +
+    cpdef DTYPE_t root(LinearFunction self) except +
 
     cpdef LinearFunction invert(LinearFunction self) except +
 
@@ -161,7 +163,7 @@ cdef class LinearFunction(Function):
 
     cpdef inline np.int32_t is_invertible(LinearFunction self)
 
-    cpdef inline LinearFunction fit(LinearFunction self, np.float64_t[::1] x, np.float64_t[::1] y) except +
+    cpdef inline LinearFunction fit(LinearFunction self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +
 
 
 cdef class Quantiles:
@@ -172,14 +174,14 @@ cdef class Quantiles:
 
     # Class attributes
 
-    cdef readonly np.float64_t[::1] data
-    cdef readonly np.float64_t[::1] weights
-    cdef readonly np.float64_t epsilon
-    cdef readonly np.float64_t penalty
-    cdef readonly np.float64_t _lower
-    cdef readonly np.float64_t _upper
-    cdef readonly np.float64_t _mean
-    # cdef readonly np.float64_t[::1] _lower_half, _upper_half
+    cdef readonly DTYPE_t[::1] data
+    cdef readonly DTYPE_t[::1] weights
+    cdef readonly DTYPE_t epsilon
+    cdef readonly DTYPE_t penalty
+    cdef readonly DTYPE_t _lower
+    cdef readonly DTYPE_t _upper
+    cdef readonly DTYPE_t _mean
+    # cdef readonly DTYPE_t[::1] _lower_half, _upper_half
     cdef readonly Function _cdf, _pdf, _invcdf
     cdef readonly np.int32_t dtype
     cdef public np.int32_t verbose
@@ -187,20 +189,20 @@ cdef class Quantiles:
 
     # Class methods
 
-    cpdef Function cdf(Quantiles self, np.float64_t epsilon=*, np.float64_t penalty=*)
+    cpdef Function cdf(Quantiles self, DTYPE_t epsilon=*, DTYPE_t penalty=*)
 
-    cpdef Function invcdf(Quantiles self, np.float64_t epsilon=*, np.float64_t penalty=*)
+    cpdef Function invcdf(Quantiles self, DTYPE_t epsilon=*, DTYPE_t penalty=*)
 
     cpdef Function pdf(Quantiles self, np.int32_t simplify=*, np.int32_t samples=*,
-                                np.float64_t epsilon=*, np.float64_t penalty=*)
+                                DTYPE_t epsilon=*, DTYPE_t penalty=*)
 
-    cpdef np.float64_t[::1] sample(Quantiles self, np.int32_t n=*, np.float64_t[::1] result=*)
+    cpdef DTYPE_t[::1] sample(Quantiles self, np.int32_t n=*, DTYPE_t[::1] result=*)
 
-    cpdef np.float64_t[::1] gt(Quantiles self, np.float64_t q)
+    cpdef DTYPE_t[::1] gt(Quantiles self, DTYPE_t q)
 
-    cpdef np.float64_t[::1] lt(Quantiles self, np.float64_t q)
+    cpdef DTYPE_t[::1] lt(Quantiles self, DTYPE_t q)
 
-    cpdef ConfInterval interval(Quantiles self, np.float64_t alpha)
+    cpdef ConfInterval interval(Quantiles self, DTYPE_t alpha)
 
 
 @cython.final
@@ -215,40 +217,40 @@ cdef class PiecewiseFunction(Function):
 
     # Class methods
 
-    cpdef inline np.float64_t eval(PiecewiseFunction self, np.float64_t x)
+    cpdef inline DTYPE_t eval(PiecewiseFunction self, DTYPE_t x)
 
-    cpdef inline np.float64_t[::1] multi_eval(PiecewiseFunction self, np.float64_t[::1] x, np.float64_t[::1] result=*)
+    cpdef inline DTYPE_t[::1] multi_eval(PiecewiseFunction self, DTYPE_t[::1] x, DTYPE_t[::1] result=*)
 
-    cpdef inline Function at(PiecewiseFunction self, np.float64_t x)
+    cpdef inline Function at(PiecewiseFunction self, DTYPE_t x)
 
-    cpdef inline ContinuousSet interval_at(PiecewiseFunction self, np.float64_t x)
+    cpdef inline ContinuousSet interval_at(PiecewiseFunction self, DTYPE_t x)
 
     cpdef PiecewiseFunction copy(PiecewiseFunction self)
 
     cpdef PiecewiseFunction differentiate(PiecewiseFunction self)
 
-    cpdef ensure_left(PiecewiseFunction self, Function left, np.float64_t x)
+    cpdef ensure_left(PiecewiseFunction self, Function left, DTYPE_t x)
 
-    cpdef ensure_right(PiecewiseFunction self, Function right, np.float64_t x)
+    cpdef ensure_right(PiecewiseFunction self, Function right, DTYPE_t x)
 
-    cpdef np.float64_t[::1] xsamples(PiecewiseFunction self, np.int32_t sort=*)
+    cpdef DTYPE_t[::1] xsamples(PiecewiseFunction self, np.int32_t sort=*)
 
-    cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=*, np.float64_t epsilon=*,
-                                     np.float64_t penalty=*)
+    cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=*, DTYPE_t epsilon=*,
+                                     DTYPE_t penalty=*)
 
-    cpdef RealSet eq(PiecewiseFunction self, np.float64_t y)
+    cpdef RealSet eq(PiecewiseFunction self, DTYPE_t y)
 
-    cpdef RealSet lt(PiecewiseFunction self, np.float64_t y)
+    cpdef RealSet lt(PiecewiseFunction self, DTYPE_t y)
 
-    cpdef RealSet gt(PiecewiseFunction self, np.float64_t y)
+    cpdef RealSet gt(PiecewiseFunction self, DTYPE_t y)
 
-    cpdef tuple split(PiecewiseFunction self, np.float64_t splitpoint)
+    cpdef tuple split(PiecewiseFunction self, DTYPE_t splitpoint)
 
     cpdef inline str pfmt(PiecewiseFunction self)
 
-    cpdef inline list knots(PiecewiseFunction self, np.float64_t lastx=*)
+    cpdef inline list knots(PiecewiseFunction self, DTYPE_t lastx=*)
 
-    cpdef PiecewiseFunction add_knot(PiecewiseFunction self, np.float64_t x, np.float64_t y)
+    cpdef PiecewiseFunction add_knot(PiecewiseFunction self, DTYPE_t x, DTYPE_t y)
 
     cpdef PiecewiseFunction crop(PiecewiseFunction self, ContinuousSet interval)
 

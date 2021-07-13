@@ -2,6 +2,7 @@
 © Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import hashlib
+import math
 import numbers
 
 import numpy as np
@@ -40,7 +41,7 @@ class Variable:
     def domain(self):
         return self._domain
 
-    def dist(self, params=None, data=None):
+    def dist(self, params=None, data=None, rows=None, col=None):
         '''
         Create and return a new instance of the distribution type attached to this variable.
 
@@ -48,10 +49,20 @@ class Variable:
         are to be determined from.
         '''
         if data is None:
-            return self._domain(params)
+            return self._dist(params)
         elif data is not None:
+            if col is None and len(data.shape) > 1:
+                raise ValueError('In multi-dimensional matrices (dim=%d), a col index must be passed.' % data.ndim)
             dist = self.dist(params=params)
-            return dist.fit(data)
+            return dist.fit(data, rows, col if data.ndim > 1 else 0, **self.params)
+
+    @property
+    def params(self):
+        return {}
+
+    def _dist(self, params):
+        '''Create and return a new instance of the distribution associated with this type of variable.'''
+        return self._domain(params)
 
     def __str__(self):
         return f'{self.name}[{self.domain.__name__}]'
@@ -86,20 +97,51 @@ class Variable:
 
     @staticmethod
     def from_json(data):
-        domain = Distribution.type_from_json(data['domain'])
+        # domain = Distribution.type_from_json(data['domain'])
         if data['type'] == 'numeric':
-            return NumericVariable(name=data['name'], domain=domain)
+            return NumericVariable.from_json(data)
         elif data['type'] == 'symbolic':
-            return SymbolicVariable(name=data['name'], domain=domain)
+            return SymbolicVariable.from_json(data)
         else:
             raise TypeError('Unknown distribution type: %s' % data['type'])
 
 
 class NumericVariable(Variable):
 
-    def __init__(self, name, domain, min_impurity_improvement=None, haze=None):
+    def __init__(self, name, domain, min_impurity_improvement=None, haze=None, max_std=None, precision=None):
         super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
         self.haze = ifnone(haze, .05)
+        self._max_std_lbl = ifnone(max_std, 0.)
+        self.precision = ifnone(precision, .01)
+
+    @Variable.params.getter
+    def params(self):
+        return {'epsilon': self.precision}
+
+    def to_json(self):
+        result = super().to_json()
+        result['max_std'] = self._max_std_lbl
+        result['precision'] = self.precision
+        return result
+
+    @staticmethod
+    def from_json(data):
+        domain = Distribution.type_from_json(data['domain'])
+        return NumericVariable(name=data['name'],
+                               domain=domain,
+                               max_std=data.get('max_std'),
+                               precision=data.get('precision'))
+
+    @property
+    def _max_std(self):
+        if issubclass(self.domain, ScaledNumeric):
+            return self._max_std_lbl / math.sqrt(self.domain.values.datascaler.variance[0])
+        else:
+            return self._max_std_lbl
+
+    @property
+    def max_std(self):
+        return self._max_std_lbl
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')
@@ -132,7 +174,14 @@ class NumericVariable(Variable):
 class SymbolicVariable(Variable):
 
     def __init__(self, name, domain, min_impurity_improvement=None):
-        super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
+        super().__init__(name,
+                         domain,
+                         min_impurity_improvement=min_impurity_improvement)
+
+    @staticmethod
+    def from_json(data):
+        domain = Distribution.type_from_json(data['domain'])
+        return SymbolicVariable(name=data['name'], domain=domain)
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')

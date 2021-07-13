@@ -55,7 +55,8 @@ def neemdata():
     out(f'Learning sebadata-Tree...')
     jpt.learn(columns=df.values.T)
     out(f'Done! Plotting...')
-    jpt.plot(filename='NEEMs', plotvars=vars, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
+    out(jpt)
+    # jpt.plot(filename='NEEMs', plotvars=vars, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
 
 
 def main(*args):

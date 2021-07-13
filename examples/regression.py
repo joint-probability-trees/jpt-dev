@@ -11,14 +11,17 @@ def main():
 
     def f(x):
         """The function to predict."""
+        # x -= 20
         return x * np.sin(x)
 
     # ----------------------------------------------------------------------
     #  First the noiseless case
     POINTS = 1000
-    X = np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T
-    X = np.vstack((np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T, X))
+    X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T
+    X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T, X))
+    # X = np.atleast_2d(np.random.uniform(-20, 10.0, size=int(POINTS))).T
     X = X.astype(np.float32)
+    X = np.array(list(sorted(X)))
 
     # Observations
     y = f(X).ravel()
@@ -31,19 +34,19 @@ def main():
 
     # Mesh the input space for evaluations of the real function, the prediction and
     # its MSE
-    xx = np.atleast_2d(np.linspace(-25, 20, 500)).T
+    xx = np.atleast_2d(np.linspace(-30, 30, 500)).T
     # xx = np.atleast_2d(np.linspace(-10, 20, 500)).T
     xx = xx.astype(np.float32)
 
     # Construct the predictive model
-    varx = NumericVariable('x', NumericType('x', X), haze=.05)
-    vary = NumericVariable('y', NumericType('y', y), haze=.05)
+    varx = NumericVariable('x', NumericType('x', X), haze=.05, max_std=2)
+    vary = NumericVariable('y', NumericType('y', y), haze=.05, max_std=7)
 
-    jpt = JPT(variables=[varx, vary], min_samples_leaf=15)
+    jpt = JPT(variables=[varx, vary], min_samples_leaf=1)
     jpt.learn(columns=[X.ravel(), y])
     # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model
-    confidence = .95
+    confidence = .5
 
     # for x in xx.ravel():
     #     print(jpt.infer({varx: x}).explain())
