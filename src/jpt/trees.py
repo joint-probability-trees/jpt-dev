@@ -638,7 +638,7 @@ class JPT(JPTBase):
         # Initialize the impurity calculation
         self.impurity.setup(_data, self.indices)
 
-        JPT.logger.info('Data transformation... %d x %d', _data.shape)
+        JPT.logger.info('Data transformation... %d x %d' % _data.shape)
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
@@ -654,7 +654,7 @@ class JPT(JPTBase):
         # Start the training
 
         started = datetime.datetime.now()
-        JPT.logger.info('Started learning of %s x %s at %s' % (_data.shape[0], _data.shape[1], started))
+        JPT.logger.info('Started learning of %s x %s at %s requiring at least %s samples per leaf' % (_data.shape[0], _data.shape[1], started, self.min_samples_leaf))
         # build up tree
         self.c45queue.append((_data, 0, _data.shape[0], None, None))
         while self.c45queue:
