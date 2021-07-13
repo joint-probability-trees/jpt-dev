@@ -2,6 +2,7 @@
 '''
 import html
 import itertools
+import json
 import math
 import numbers
 import operator
@@ -655,7 +656,7 @@ class JPT(JPTBase):
         # Start the training
 
         started = datetime.datetime.now()
-        JPT.logger.info('Started learning of %s x %s at %s' % (_data.shape[0], _data.shape[1], started))
+        JPT.logger.info('Started learning of %s x %s at %s requiring at least %s samples per leaf' % (_data.shape[0], _data.shape[1], started, self.min_samples_leaf))
         # build up tree
         self.c45queue.append((_data, 0, _data.shape[0], None, None))
         while self.c45queue:
@@ -961,10 +962,10 @@ class JPT(JPTBase):
         ``file`` can be either a string or file-like object.
         '''
         if type(file) is str:
-            with open(file, 'wb+') as f:
-                dill.dump(self, f)
+            with open(file, 'w+') as f:
+                json.dump(self.to_json(), f)
         else:
-            dill.dump(self, file)
+            json.dump(self.to_json(), file)
 
     @staticmethod
     def load(file):
@@ -972,10 +973,11 @@ class JPT(JPTBase):
         Load a JPT from disk.
         '''
         if type(file) is str:
-            with open(file, 'rb') as f:
-                return dill.load(f)
+            with open(file, 'r') as f:
+                t = json.load(f)
         else:
-            return dill.load(file)
+            t = json.load(file)
+        return JPTBase.from_json(t)
 
 
 class DistributedJPT(JPTBase):
