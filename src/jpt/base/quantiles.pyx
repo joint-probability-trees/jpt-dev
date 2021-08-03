@@ -10,8 +10,8 @@ from collections import deque
 from operator import itemgetter
 
 from dnutils import ifnot, out, first, stop
-from pyearth import Earth
-from pyearth._basis import ConstantBasisFunction, HingeBasisFunctionBase, LinearBasisFunction, HingeBasisFunction
+# from pyearth import Earth
+# from pyearth._basis import ConstantBasisFunction, HingeBasisFunctionBase, LinearBasisFunction, HingeBasisFunction
 from scipy import stats
 from scipy.stats import norm
 
@@ -632,6 +632,7 @@ cdef class QuantileDistribution:
         cdef PiecewiseFunction ppf
         cdef ContinuousSet interval
         cdef Function f
+        cdef DTYPE_t one_plus_eps = np.nextafter(1, 2)
 
         if self._cdf is None:
             raise RuntimeError('No quantile distribution fitted. Call fit() first.')
@@ -644,9 +645,9 @@ cdef class QuantileDistribution:
 
             if len(self._cdf.functions) == 2:
                 ppf.intervals[-1].upper = 1
-                ppf.intervals.append(ContinuousSet(1, np.nextafter(1, 2), INC, EXC))
+                ppf.intervals.append(ContinuousSet(1, one_plus_eps, INC, EXC))
                 ppf.functions.append(ConstantFunction(self._cdf.intervals[-1].lower))
-                ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
+                ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
                 ppf.functions.append(Undefined())
                 return ppf
 
@@ -658,16 +659,16 @@ cdef class QuantileDistribution:
                     ppf.functions.append(f.invert())
 
             if ppf.intervals[-1].upper == 1:
-                ppf.intervals[-1].upper = np.nextafter(1, 2)
+                ppf.intervals[-1].upper = one_plus_eps
             elif ppf.intervals[-1].upper < 1:
                 ppf.functions.append(LinearFunction.from_points((ppf.intervals[-1].upper,
                                                                  ppf.functions[-1].eval(ppf.intervals[-1].upper)),
                                                                 (1, self.cdf.intervals[-1].lower)))
-                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.nextafter(1, 2), INC, EXC))
+                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, one_plus_eps, INC, EXC))
 
-            ppf.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC))
+            ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC))
             ppf.functions.append(Undefined())
-            assert np.isnan(ppf.eval(np.nextafter(1, 2))), ppf.pfmt()
+            assert np.isnan(ppf.eval(one_plus_eps)), (ppf.intervals[-1].lower, ppf.pfmt())
             assert not np.isnan(ppf.eval(1.)), ppf.pfmt()
             self._ppf = ppf
         return self._ppf
@@ -751,219 +752,219 @@ cdef class QuantileDistribution:
         return q
 
 
-@cython.freelist(500)
-cdef class Quantiles:
-    '''
-    This class implements basic representation and handling of quantiles
-    in a data distribution.
-    '''
-
-    def __init__(Quantiles self, DTYPE_t[:] data, DTYPE_t lower=np.nan, np.int32_t verbose=False,
-                 DTYPE_t upper=np.nan, DTYPE_t epsilon=.001, DTYPE_t penalty=3., np.int32_t dtype=_FLOAT):
-        if data.shape[0] == 0:
-            raise IndexError('Data must contain at least 1 data point, got only %s' % len(data))
-        self.dtype = dtype
-        self.verbose = verbose
-        cdef DTYPE_t[::1] bins
-        cdef DTYPE_t z
-        if self.dtype == _INT:
-            self.data = np.sort(np.unique(data))
-            bins = np.ndarray(shape=self.data.shape[0]+1, dtype=np.float64)
-            bins[0:-1] = self.data
-            bins[-1] = self.data[-1] + 1.
-            self.weights = np.histogram(data, bins=bins, density=True)[0]
-        elif self.dtype == _FLOAT:
-            self.data = np.sort(np.unique(data))
-            self.weights = np.ones(shape=self.data.shape[0], dtype=np.float64) * 1. / self.data.shape[0]
-        elif self.dtype == _GAUSSIAN:
-            self.weights = None
-            self.data = np.unique(data)
-        elif self.dtype == _UNIFORM:
-            self.weights = None
-            self.data = np.sort(np.unique(data))
-        else:
-            raise TypeError('Invalid dtype argument: must be INT or FLOAT, got %s' % dtype)
-        self._mean = np.nan
-        self.epsilon = ifnan(epsilon, .001)
-        self.penalty = ifnan(penalty, 3)
-        self._cdf = self._pdf = self._invcdf = None
-        self._upper = upper
-        self._lower = lower
-        self._stuff = None
-
-    @property
-    def mean(self):
-        if np.isnan(self._mean):
-            if self.weights is None:
-                self.weights = np.ones(shape=self.data.shape[0], dtype=np.float64) * 1. / self.data.shape[0]
-            self._mean = sum([w * d for w, d in zip(self.weights, self.data)])
-        return self._mean
-
-    def __len__(self):
-        return len(self.data)
-
-    @property
-    def array(self):
-        return np.asarray(self.data, dtype=np.float64)
-
-    cpdef Function cdf(Quantiles self, DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
-        cdef DTYPE_t[::1] y
-        if self._cdf is None and self.dtype == _UNIFORM:
-            self._cdf = PiecewiseFunction()
-            self._cdf.intervals.append(ContinuousSet(np.NINF, self.data[0], 2, 2))
-            self._cdf.functions.append(ConstantFunction(0))
-            if self.data[0] != self.data[-1]:
-                self._cdf.intervals.append(ContinuousSet(self.data[0], self.data[-1], 1, 2))
-                self._cdf.functions.append(LinearFunction.from_points((self.data[0], 0), (self.data[-1], 1)))
-            self._cdf.intervals.append(ContinuousSet(self.data[-1], np.PINF,  1, 2))
-            self._cdf.functions.append(ConstantFunction(1))
-        elif self._cdf is None and self.dtype == _GAUSSIAN:
-            if self._stuff is None:
-                self._stuff = norm.fit(self.data)
-            self._cdf = GaussianCDF(*self._stuff)
-        elif self._cdf is None:
-            y = np.cumsum(self.weights, dtype=np.float64)
-            if 1 < self.data.shape[0] < 20:  # Use simple linear regression when fewer than 20 points are available
-                self._cdf = PiecewiseFunction()
-                self._cdf.intervals.append(R.copy())
-                self._cdf.functions.append(LinearFunction(0, 0).fit(self.data, y))
-            elif 20 <= self.data.shape[0]:
-                self._cdf = fit_piecewise(self.data, y, epsilon=ifnan(epsilon, self.epsilon),
-                                          penalty=ifnan(penalty, self.penalty), verbose=self.verbose)
-            else:
-                self._cdf = PiecewiseFunction()
-                self._cdf.intervals.append(R.copy())
-                self._cdf.functions.append(ConstantFunction(1))
-            self._cdf.ensure_left(ConstantFunction(0), self.data[0])
-            self._cdf.ensure_right(ConstantFunction(1), self.data[-1])
-        return self._cdf
-
-    cpdef Function invcdf(Quantiles self, DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
-        cdef PiecewiseFunction cdf
-        cdef PiecewiseFunction inv
-        cdef ContinuousSet i
-        cdef Function f
-        cdef DTYPE_t mean, stddev
-        if self._invcdf is None and self.dtype == _GAUSSIAN:
-            if self._stuff is None:
-                self._stuff = norm.fit(self.data)
-            self._invcdf = GaussianPPF(*self._stuff)
-        elif self._invcdf is None:
-            cdf = self.cdf(epsilon=ifnan(epsilon, self.epsilon), penalty=ifnan(penalty, self.penalty))
-            inv = PiecewiseFunction()
-            for i, f in zip(cdf.intervals, cdf.functions):
-                if f.is_invertible():
-                    inv_ = f.invert()
-                    inv.intervals.append(ContinuousSet(max(0, f(i.lower)),
-                                                       min(np.nextafter(1, 2), f(i.upper)),
-                                                       INC, EXC))
-                    inv.functions.append(inv_)
-                else:
-                    if i.lower == np.NINF:
-                        inv.intervals.append(ContinuousSet(np.NINF, np.nextafter(f(i.lower), f(i.lower)-1), EXC, EXC))
-                        inv.functions.append(Undefined())
-                    if i.upper == np.PINF:
-                        inv.intervals[-1].upper = 1
-                        inv.intervals.append(ContinuousSet(1, np.nextafter(1, 2), 1, 2))
-                        inv.functions.append(ConstantFunction(i.lower))
-                        inv.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, 1, 2))
-                        inv.functions.append(Undefined())
-            self._invcdf = inv
-        return self._invcdf
-
-    cpdef Function pdf(Quantiles self, np.int32_t simplify=False, np.int32_t samples=False,
-                                DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
-        cdef PiecewiseFunction pdf
-        cdef DTYPE_t mean, stddev
-        if self._pdf is None and self.dtype == _GAUSSIAN:
-            if self._stuff is None:
-                self._stuff = norm.fit(self.data)
-            self._pdf = GaussianPDF(*self._stuff)
-        elif self._pdf is None:
-            pdf = self.cdf().differentiate()
-            if len(pdf.intervals) == 2 and self.data.shape[0] == 1:
-                pdf.intervals.insert(1, ContinuousSet(self.data[0], np.nextafter(self.data[0], self.data[0]+1), 1, 2))
-                pdf.intervals[-1].lower = np.nextafter(pdf.intervals[-1].lower, pdf.intervals[-1].lower+1)
-                pdf.functions.insert(1, ConstantFunction(1))
-            if simplify:
-                pdf = pdf.simplify(samples, epsilon=ifnan(epsilon, self.epsilon), penalty=ifnan(penalty, self.penalty))
-            self._pdf = pdf
-        return self._pdf
-
-    cpdef DTYPE_t[::1] sample(Quantiles self, np.int32_t n=1, DTYPE_t[::1] result=None):
-        '''
-        Generate from this quantile distribution ``k`` samples.
-
-        This method implements a slice sampling procedure.
-        
-        :param n:       (int) the number of samples to draw.
-        :param result:  (optional) buffer the results shall be written to.
-        :return:
-        '''
-        if result is None:
-            result = np.ndarray(shape=n, dtype=np.float64)
-        cdef size_t i
-        if self.dtype == _GAUSSIAN:
-            if self._stuff is None:
-                self._stuff = norm(*norm.fit(self.data))
-            for i in range(result.shape[0]):
-                result[i] = self._stuff.rvs(size=1)
-            return result
-        if self.data.shape[0] == 1:
-            result[...] = self.data[0]
-            return result
-        cdef PiecewiseFunction pdf = self.pdf()
-        cdef DTYPE_t[::1] z = np.ndarray(1, dtype=np.float64)
-        z[...] = np.random.uniform(self.data[0], self.data[-1])
-        cdef DTYPE_t slice_
-        for i in range(n):
-            slice_ = random.uniform(0, pdf(z[0]))
-            z[...] = pdf.gt(slice_).sample(1, result=result[i:i+1])
-            if result[i] > 1e6:
-                # print('sampling from', pdf.pfmt(), 'in', pdf.gt(slice), 'returned', result[i])
-                raise ValueError('sampling from', pdf.pfmt(), 'in', pdf.gt(slice_), 'returned', result[i])
-        if self.dtype == _INT:
-            np.round(result, out=np.asarray(result))
-        return result
-
-    cpdef DTYPE_t[::1] gt(Quantiles self, DTYPE_t q):
-        cdef np.int32_t points = self.data.shape[0]
-        return self.data[int(np.floor(q * points)):] if points > 1 else self.data
-
-    cpdef DTYPE_t[::1] lt(Quantiles self, DTYPE_t q):
-        cdef np.int32_t points = self.data.shape[0]
-        return self.data[:int(np.floor(q * points))] if points > 1 else self.data
-
-    @property
-    def median(self):
-        return self.invcdf().eval(.5)
-
-    @property
-    def lower_half(self):
-        a = np.asarray(self.data)
-        return a[a <= self.median] if not np.isnan(self.median) else self.data[:]
-
-    @property
-    def upper_half(self):
-        a = np.asarray(self.data)
-        return a[a > self.median] if not np.isnan(self.median) else self.data[:]
-
-    @property
-    def avgdist(self):
-        return np.mean(np.diff(self.data))
-
-    @property
-    def lower(self):
-        return self.invcdf().eval(self._lower)
-
-    @property
-    def upper(self):
-        return self.invcdf().eval(self._upper)
-
-    cpdef ConfInterval interval(Quantiles self, DTYPE_t conf_level):
-        if not 0 <= conf_level <= 1:
-            raise ValueError('Confidence level must be in [0, 1], got %s' % conf_level)
-        return ConfInterval(self.mean, self.invcdf().eval(conf_level), self.invcdf().eval(1 - conf_level))
+# @cython.freelist(500)
+# cdef class Quantiles:
+#     '''
+#     This class implements basic representation and handling of quantiles
+#     in a data distribution.
+#     '''
+#
+#     def __init__(Quantiles self, DTYPE_t[:] data, DTYPE_t lower=np.nan, np.int32_t verbose=False,
+#                  DTYPE_t upper=np.nan, DTYPE_t epsilon=.001, DTYPE_t penalty=3., np.int32_t dtype=_FLOAT):
+#         if data.shape[0] == 0:
+#             raise IndexError('Data must contain at least 1 data point, got only %s' % len(data))
+#         self.dtype = dtype
+#         self.verbose = verbose
+#         cdef DTYPE_t[::1] bins
+#         cdef DTYPE_t z
+#         if self.dtype == _INT:
+#             self.data = np.sort(np.unique(data))
+#             bins = np.ndarray(shape=self.data.shape[0]+1, dtype=np.float64)
+#             bins[0:-1] = self.data
+#             bins[-1] = self.data[-1] + 1.
+#             self.weights = np.histogram(data, bins=bins, density=True)[0]
+#         elif self.dtype == _FLOAT:
+#             self.data = np.sort(np.unique(data))
+#             self.weights = np.ones(shape=self.data.shape[0], dtype=np.float64) * 1. / self.data.shape[0]
+#         elif self.dtype == _GAUSSIAN:
+#             self.weights = None
+#             self.data = np.unique(data)
+#         elif self.dtype == _UNIFORM:
+#             self.weights = None
+#             self.data = np.sort(np.unique(data))
+#         else:
+#             raise TypeError('Invalid dtype argument: must be INT or FLOAT, got %s' % dtype)
+#         self._mean = np.nan
+#         self.epsilon = ifnan(epsilon, .001)
+#         self.penalty = ifnan(penalty, 3)
+#         self._cdf = self._pdf = self._invcdf = None
+#         self._upper = upper
+#         self._lower = lower
+#         self._stuff = None
+#
+#     @property
+#     def mean(self):
+#         if np.isnan(self._mean):
+#             if self.weights is None:
+#                 self.weights = np.ones(shape=self.data.shape[0], dtype=np.float64) * 1. / self.data.shape[0]
+#             self._mean = sum([w * d for w, d in zip(self.weights, self.data)])
+#         return self._mean
+#
+#     def __len__(self):
+#         return len(self.data)
+#
+#     @property
+#     def array(self):
+#         return np.asarray(self.data, dtype=np.float64)
+#
+#     cpdef Function cdf(Quantiles self, DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
+#         cdef DTYPE_t[::1] y
+#         if self._cdf is None and self.dtype == _UNIFORM:
+#             self._cdf = PiecewiseFunction()
+#             self._cdf.intervals.append(ContinuousSet(np.NINF, self.data[0], 2, 2))
+#             self._cdf.functions.append(ConstantFunction(0))
+#             if self.data[0] != self.data[-1]:
+#                 self._cdf.intervals.append(ContinuousSet(self.data[0], self.data[-1], 1, 2))
+#                 self._cdf.functions.append(LinearFunction.from_points((self.data[0], 0), (self.data[-1], 1)))
+#             self._cdf.intervals.append(ContinuousSet(self.data[-1], np.PINF,  1, 2))
+#             self._cdf.functions.append(ConstantFunction(1))
+#         elif self._cdf is None and self.dtype == _GAUSSIAN:
+#             if self._stuff is None:
+#                 self._stuff = norm.fit(self.data)
+#             self._cdf = GaussianCDF(*self._stuff)
+#         elif self._cdf is None:
+#             y = np.cumsum(self.weights, dtype=np.float64)
+#             if 1 < self.data.shape[0] < 20:  # Use simple linear regression when fewer than 20 points are available
+#                 self._cdf = PiecewiseFunction()
+#                 self._cdf.intervals.append(R.copy())
+#                 self._cdf.functions.append(LinearFunction(0, 0).fit(self.data, y))
+#             elif 20 <= self.data.shape[0]:
+#                 self._cdf = fit_piecewise(self.data, y, epsilon=ifnan(epsilon, self.epsilon),
+#                                           penalty=ifnan(penalty, self.penalty), verbose=self.verbose)
+#             else:
+#                 self._cdf = PiecewiseFunction()
+#                 self._cdf.intervals.append(R.copy())
+#                 self._cdf.functions.append(ConstantFunction(1))
+#             self._cdf.ensure_left(ConstantFunction(0), self.data[0])
+#             self._cdf.ensure_right(ConstantFunction(1), self.data[-1])
+#         return self._cdf
+#
+#     cpdef Function invcdf(Quantiles self, DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
+#         cdef PiecewiseFunction cdf
+#         cdef PiecewiseFunction inv
+#         cdef ContinuousSet i
+#         cdef Function f
+#         cdef DTYPE_t mean, stddev
+#         if self._invcdf is None and self.dtype == _GAUSSIAN:
+#             if self._stuff is None:
+#                 self._stuff = norm.fit(self.data)
+#             self._invcdf = GaussianPPF(*self._stuff)
+#         elif self._invcdf is None:
+#             cdf = self.cdf(epsilon=ifnan(epsilon, self.epsilon), penalty=ifnan(penalty, self.penalty))
+#             inv = PiecewiseFunction()
+#             for i, f in zip(cdf.intervals, cdf.functions):
+#                 if f.is_invertible():
+#                     inv_ = f.invert()
+#                     inv.intervals.append(ContinuousSet(max(0, f(i.lower)),
+#                                                        min(np.nextafter(1, 2), f(i.upper)),
+#                                                        INC, EXC))
+#                     inv.functions.append(inv_)
+#                 else:
+#                     if i.lower == np.NINF:
+#                         inv.intervals.append(ContinuousSet(np.NINF, np.nextafter(f(i.lower), f(i.lower)-1), EXC, EXC))
+#                         inv.functions.append(Undefined())
+#                     if i.upper == np.PINF:
+#                         inv.intervals[-1].upper = 1
+#                         inv.intervals.append(ContinuousSet(1, np.nextafter(1, 2), 1, 2))
+#                         inv.functions.append(ConstantFunction(i.lower))
+#                         inv.intervals.append(ContinuousSet(np.nextafter(1, 2), np.PINF, 1, 2))
+#                         inv.functions.append(Undefined())
+#             self._invcdf = inv
+#         return self._invcdf
+#
+#     cpdef Function pdf(Quantiles self, np.int32_t simplify=False, np.int32_t samples=False,
+#                                 DTYPE_t epsilon=np.nan, DTYPE_t penalty=np.nan):
+#         cdef PiecewiseFunction pdf
+#         cdef DTYPE_t mean, stddev
+#         if self._pdf is None and self.dtype == _GAUSSIAN:
+#             if self._stuff is None:
+#                 self._stuff = norm.fit(self.data)
+#             self._pdf = GaussianPDF(*self._stuff)
+#         elif self._pdf is None:
+#             pdf = self.cdf().differentiate()
+#             if len(pdf.intervals) == 2 and self.data.shape[0] == 1:
+#                 pdf.intervals.insert(1, ContinuousSet(self.data[0], np.nextafter(self.data[0], self.data[0]+1), 1, 2))
+#                 pdf.intervals[-1].lower = np.nextafter(pdf.intervals[-1].lower, pdf.intervals[-1].lower+1)
+#                 pdf.functions.insert(1, ConstantFunction(1))
+#             if simplify:
+#                 pdf = pdf.simplify(samples, epsilon=ifnan(epsilon, self.epsilon), penalty=ifnan(penalty, self.penalty))
+#             self._pdf = pdf
+#         return self._pdf
+#
+#     cpdef DTYPE_t[::1] sample(Quantiles self, np.int32_t n=1, DTYPE_t[::1] result=None):
+#         '''
+#         Generate from this quantile distribution ``k`` samples.
+#
+#         This method implements a slice sampling procedure.
+#
+#         :param n:       (int) the number of samples to draw.
+#         :param result:  (optional) buffer the results shall be written to.
+#         :return:
+#         '''
+#         if result is None:
+#             result = np.ndarray(shape=n, dtype=np.float64)
+#         cdef size_t i
+#         if self.dtype == _GAUSSIAN:
+#             if self._stuff is None:
+#                 self._stuff = norm(*norm.fit(self.data))
+#             for i in range(result.shape[0]):
+#                 result[i] = self._stuff.rvs(size=1)
+#             return result
+#         if self.data.shape[0] == 1:
+#             result[...] = self.data[0]
+#             return result
+#         cdef PiecewiseFunction pdf = self.pdf()
+#         cdef DTYPE_t[::1] z = np.ndarray(1, dtype=np.float64)
+#         z[...] = np.random.uniform(self.data[0], self.data[-1])
+#         cdef DTYPE_t slice_
+#         for i in range(n):
+#             slice_ = random.uniform(0, pdf(z[0]))
+#             z[...] = pdf.gt(slice_).sample(1, result=result[i:i+1])
+#             if result[i] > 1e6:
+#                 # print('sampling from', pdf.pfmt(), 'in', pdf.gt(slice), 'returned', result[i])
+#                 raise ValueError('sampling from', pdf.pfmt(), 'in', pdf.gt(slice_), 'returned', result[i])
+#         if self.dtype == _INT:
+#             np.round(result, out=np.asarray(result))
+#         return result
+#
+#     cpdef DTYPE_t[::1] gt(Quantiles self, DTYPE_t q):
+#         cdef np.int32_t points = self.data.shape[0]
+#         return self.data[int(np.floor(q * points)):] if points > 1 else self.data
+#
+#     cpdef DTYPE_t[::1] lt(Quantiles self, DTYPE_t q):
+#         cdef np.int32_t points = self.data.shape[0]
+#         return self.data[:int(np.floor(q * points))] if points > 1 else self.data
+#
+#     @property
+#     def median(self):
+#         return self.invcdf().eval(.5)
+#
+#     @property
+#     def lower_half(self):
+#         a = np.asarray(self.data)
+#         return a[a <= self.median] if not np.isnan(self.median) else self.data[:]
+#
+#     @property
+#     def upper_half(self):
+#         a = np.asarray(self.data)
+#         return a[a > self.median] if not np.isnan(self.median) else self.data[:]
+#
+#     @property
+#     def avgdist(self):
+#         return np.mean(np.diff(self.data))
+#
+#     @property
+#     def lower(self):
+#         return self.invcdf().eval(self._lower)
+#
+#     @property
+#     def upper(self):
+#         return self.invcdf().eval(self._upper)
+#
+#     cpdef ConfInterval interval(Quantiles self, DTYPE_t conf_level):
+#         if not 0 <= conf_level <= 1:
+#             raise ValueError('Confidence level must be in [0, 1], got %s' % conf_level)
+#         return ConfInterval(self.mean, self.invcdf().eval(conf_level), self.invcdf().eval(1 - conf_level))
 
 
 @cython.final
@@ -1175,38 +1176,38 @@ cdef class PiecewiseFunction(Function):
         else:
             return samples_x[:i]
 
-    cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=1, DTYPE_t epsilon=.001,
-                                     DTYPE_t penalty=3.):
-        cdef np.int32_t samples_total = len(self.intervals) * n_samples
-        cdef DTYPE_t[::1] samples_x = np.ndarray(shape=samples_total, dtype=np.float64)
-        samples_x[:] = 0
-        cdef object f
-        cdef np.int32_t i = 0
-        cdef DTYPE_t stepsize = 1
-        cdef DTYPE_t max_int = max([i_.upper - i_.lower for i_ in self.intervals if i_.lower != np.NINF and i_.upper != np.PINF])
-        cdef ContinuousSet interval
-        cdef np.int32_t nopen = 2
-        for interval, f in zip(self.intervals, self.functions):
-            if interval.lower != np.NINF and interval.upper != np.PINF:
-                samples = int(max(1, np.ceil(n_samples * (interval.upper - interval.lower) / max_int)))
-                interval.linspace(samples, default_step=1, result=samples_x[i:i + samples])
-                i += samples
-        if len(self.intervals) > 2:
-            if self.intervals[0].lower != np.NINF:
-                nopen -= 1
-            if self.intervals[-1].upper != np.PINF:
-                nopen -= 1
-            if nopen:
-                stepsize = np.mean(np.abs(np.diff(samples_x[:i])))
-        if self.intervals[0].lower == np.NINF:
-            self.intervals[0].linspace(n_samples, default_step=stepsize, result=samples_x[i:i + n_samples])
-            i += n_samples
-        if self.intervals[-1].upper == np.PINF:
-            self.intervals[-1].linspace(n_samples, default_step=stepsize, result=samples_x[i:i + n_samples])
-            i += n_samples
-        cdef DTYPE_t[::1] learn_data = samples_x[:i]
-        cdef DTYPE_t[::1] samples_y = self.multi_eval(learn_data)
-        return fit_piecewise(learn_data, samples_y, penalty=penalty, epsilon=epsilon)
+    # cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=1, DTYPE_t epsilon=.001,
+    #                                  DTYPE_t penalty=3.):
+    #     cdef np.int32_t samples_total = len(self.intervals) * n_samples
+    #     cdef DTYPE_t[::1] samples_x = np.ndarray(shape=samples_total, dtype=np.float64)
+    #     samples_x[:] = 0
+    #     cdef object f
+    #     cdef np.int32_t i = 0
+    #     cdef DTYPE_t stepsize = 1
+    #     cdef DTYPE_t max_int = max([i_.upper - i_.lower for i_ in self.intervals if i_.lower != np.NINF and i_.upper != np.PINF])
+    #     cdef ContinuousSet interval
+    #     cdef np.int32_t nopen = 2
+    #     for interval, f in zip(self.intervals, self.functions):
+    #         if interval.lower != np.NINF and interval.upper != np.PINF:
+    #             samples = int(max(1, np.ceil(n_samples * (interval.upper - interval.lower) / max_int)))
+    #             interval.linspace(samples, default_step=1, result=samples_x[i:i + samples])
+    #             i += samples
+    #     if len(self.intervals) > 2:
+    #         if self.intervals[0].lower != np.NINF:
+    #             nopen -= 1
+    #         if self.intervals[-1].upper != np.PINF:
+    #             nopen -= 1
+    #         if nopen:
+    #             stepsize = np.mean(np.abs(np.diff(samples_x[:i])))
+    #     if self.intervals[0].lower == np.NINF:
+    #         self.intervals[0].linspace(n_samples, default_step=stepsize, result=samples_x[i:i + n_samples])
+    #         i += n_samples
+    #     if self.intervals[-1].upper == np.PINF:
+    #         self.intervals[-1].linspace(n_samples, default_step=stepsize, result=samples_x[i:i + n_samples])
+    #         i += n_samples
+    #     cdef DTYPE_t[::1] learn_data = samples_x[:i]
+    #     cdef DTYPE_t[::1] samples_y = self.multi_eval(learn_data)
+    #     return fit_piecewise(learn_data, samples_y, penalty=penalty, epsilon=epsilon)
 
     cpdef RealSet eq(PiecewiseFunction self, DTYPE_t y):
         result_set = RealSet()
@@ -1332,51 +1333,51 @@ cdef class PiecewiseFunction(Function):
         return function
 
 
-cpdef object fit_piecewise(DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t epsilon=np.nan,
-                           DTYPE_t penalty=np.nan, DTYPE_t[::1] weights=None,
-                           np.int32_t verbose=False):
-    cdef np.int32_t max_terms = 2 * x.shape[0]
-    epsilon = ifnan(epsilon, .001)
-    penalty = ifnan(penalty, 3)
-    cdef object mars = Earth(thresh=epsilon, penalty=penalty)  # thresh=epsilon, penalty=penalty, minspan=1, endspan=1, max_terms=max_terms)  # , check_every=1, minspan=0, endspan=0,
-    mars.fit(np.asarray(x), np.asarray(y)) #, sample_weight=weights)
-    if verbose:
-        print(mars.summary())
-    cdef object f = PiecewiseFunction()
-    cdef list hinges = [h for h in mars.basis_ if not h.is_pruned()]
-    cdef DTYPE_t[::1] coeff = mars.coef_[0,:]
-    # Sort the functions according to their knot positions
-    cdef np.ndarray functions = np.vstack([[h.get_knot() if isinstance(h, HingeBasisFunctionBase) else np.nan for h in hinges], hinges, coeff])
-    functions = functions[:, np.argsort(functions[0,:])]
-    cdef LinearFunction linear = LinearFunction(0, 0)
-    cdef DTYPE_t[:,::1] x_ = np.array([[0]], dtype=np.float64)
-    cdef DTYPE_t k, w
-    for k, f_, w in functions.T:
-        if isinstance(f_, LinearBasisFunction):
-            linear.m += w
-        elif isinstance(f_, HingeBasisFunction):
-            if f_.get_reverse() == 1:
-                linear.m -= w
-                linear.c += w * f_.get_knot()
-        elif isinstance(f_, ConstantBasisFunction):
-            linear.c += w
-    cdef DTYPE_t m = linear.m
-    cdef DTYPE_t c = linear.c
-    f.intervals.append(R.copy())
-    f.functions.append(linear)
-    for k, f_, w in functions.T:
-        if not type(f_) is HingeBasisFunction:
-            continue
-        p = m * f_.get_knot() + c
-        m += w
-        c = p - m * f_.get_knot()
-        if f_.get_knot() == f.intervals[-1].lower and m > 0:
-            f.functions[-1].m = m
-            f.functions[-1].c = c
-        elif f_.get_knot() in f.intervals[-1] and m > 0:
-            f.intervals[-1].upper = f_.get_knot()
-            f.intervals.append(ContinuousSet(f_.get_knot(), np.PINF, 1, 2))
-            f.functions.append(LinearFunction(m, c))  # if m != 0 else ConstantFunction(c))
-    return f
-
-
+# cpdef object fit_piecewise(DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t epsilon=np.nan,
+#                            DTYPE_t penalty=np.nan, DTYPE_t[::1] weights=None,
+#                            np.int32_t verbose=False):
+#     cdef np.int32_t max_terms = 2 * x.shape[0]
+#     epsilon = ifnan(epsilon, .001)
+#     penalty = ifnan(penalty, 3)
+#     cdef object mars = Earth(thresh=epsilon, penalty=penalty)  # thresh=epsilon, penalty=penalty, minspan=1, endspan=1, max_terms=max_terms)  # , check_every=1, minspan=0, endspan=0,
+#     mars.fit(np.asarray(x), np.asarray(y)) #, sample_weight=weights)
+#     if verbose:
+#         print(mars.summary())
+#     cdef object f = PiecewiseFunction()
+#     cdef list hinges = [h for h in mars.basis_ if not h.is_pruned()]
+#     cdef DTYPE_t[::1] coeff = mars.coef_[0,:]
+#     # Sort the functions according to their knot positions
+#     cdef np.ndarray functions = np.vstack([[h.get_knot() if isinstance(h, HingeBasisFunctionBase) else np.nan for h in hinges], hinges, coeff])
+#     functions = functions[:, np.argsort(functions[0,:])]
+#     cdef LinearFunction linear = LinearFunction(0, 0)
+#     cdef DTYPE_t[:,::1] x_ = np.array([[0]], dtype=np.float64)
+#     cdef DTYPE_t k, w
+#     for k, f_, w in functions.T:
+#         if isinstance(f_, LinearBasisFunction):
+#             linear.m += w
+#         elif isinstance(f_, HingeBasisFunction):
+#             if f_.get_reverse() == 1:
+#                 linear.m -= w
+#                 linear.c += w * f_.get_knot()
+#         elif isinstance(f_, ConstantBasisFunction):
+#             linear.c += w
+#     cdef DTYPE_t m = linear.m
+#     cdef DTYPE_t c = linear.c
+#     f.intervals.append(R.copy())
+#     f.functions.append(linear)
+#     for k, f_, w in functions.T:
+#         if not type(f_) is HingeBasisFunction:
+#             continue
+#         p = m * f_.get_knot() + c
+#         m += w
+#         c = p - m * f_.get_knot()
+#         if f_.get_knot() == f.intervals[-1].lower and m > 0:
+#             f.functions[-1].m = m
+#             f.functions[-1].c = c
+#         elif f_.get_knot() in f.intervals[-1] and m > 0:
+#             f.intervals[-1].upper = f_.get_knot()
+#             f.intervals.append(ContinuousSet(f_.get_knot(), np.PINF, 1, 2))
+#             f.functions.append(LinearFunction(m, c))  # if m != 0 else ConstantFunction(c))
+#     return f
+#
+#

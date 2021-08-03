@@ -1,8 +1,6 @@
 from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
 from csv import Dialect
 
-import pyximport
-pyximport.install()
 import math
 import numpy as np
 import arff
@@ -13,7 +11,12 @@ from numpy import iterable
 
 from dnutils import ifnone, stop
 
-from jpt.base.intervals import ContinuousSet
+try:
+    from jpt.base.intervals import ContinuousSet
+except ImportError:
+    import pyximport
+    pyximport.install()
+    from jpt.base.intervals import ContinuousSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------

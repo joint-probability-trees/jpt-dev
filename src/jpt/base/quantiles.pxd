@@ -166,43 +166,43 @@ cdef class LinearFunction(Function):
     cpdef inline LinearFunction fit(LinearFunction self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +
 
 
-cdef class Quantiles:
-    '''
-    This class implements basic representation and handling of quantiles
-    in a data distribution.
-    '''
-
-    # Class attributes
-
-    cdef readonly DTYPE_t[::1] data
-    cdef readonly DTYPE_t[::1] weights
-    cdef readonly DTYPE_t epsilon
-    cdef readonly DTYPE_t penalty
-    cdef readonly DTYPE_t _lower
-    cdef readonly DTYPE_t _upper
-    cdef readonly DTYPE_t _mean
-    # cdef readonly DTYPE_t[::1] _lower_half, _upper_half
-    cdef readonly Function _cdf, _pdf, _invcdf
-    cdef readonly np.int32_t dtype
-    cdef public np.int32_t verbose
-    cdef object _stuff
-
-    # Class methods
-
-    cpdef Function cdf(Quantiles self, DTYPE_t epsilon=*, DTYPE_t penalty=*)
-
-    cpdef Function invcdf(Quantiles self, DTYPE_t epsilon=*, DTYPE_t penalty=*)
-
-    cpdef Function pdf(Quantiles self, np.int32_t simplify=*, np.int32_t samples=*,
-                                DTYPE_t epsilon=*, DTYPE_t penalty=*)
-
-    cpdef DTYPE_t[::1] sample(Quantiles self, np.int32_t n=*, DTYPE_t[::1] result=*)
-
-    cpdef DTYPE_t[::1] gt(Quantiles self, DTYPE_t q)
-
-    cpdef DTYPE_t[::1] lt(Quantiles self, DTYPE_t q)
-
-    cpdef ConfInterval interval(Quantiles self, DTYPE_t alpha)
+# cdef class Quantiles:
+#     '''
+#     This class implements basic representation and handling of quantiles
+#     in a data distribution.
+#     '''
+#
+#     # Class attributes
+#
+#     cdef readonly DTYPE_t[::1] data
+#     cdef readonly DTYPE_t[::1] weights
+#     cdef readonly DTYPE_t epsilon
+#     cdef readonly DTYPE_t penalty
+#     cdef readonly DTYPE_t _lower
+#     cdef readonly DTYPE_t _upper
+#     cdef readonly DTYPE_t _mean
+#     # cdef readonly DTYPE_t[::1] _lower_half, _upper_half
+#     cdef readonly Function _cdf, _pdf, _invcdf
+#     cdef readonly np.int32_t dtype
+#     cdef public np.int32_t verbose
+#     cdef object _stuff
+#
+#     # Class methods
+#
+#     cpdef Function cdf(Quantiles self, DTYPE_t epsilon=*, DTYPE_t penalty=*)
+#
+#     cpdef Function invcdf(Quantiles self, DTYPE_t epsilon=*, DTYPE_t penalty=*)
+#
+#     cpdef Function pdf(Quantiles self, np.int32_t simplify=*, np.int32_t samples=*,
+#                                 DTYPE_t epsilon=*, DTYPE_t penalty=*)
+#
+#     cpdef DTYPE_t[::1] sample(Quantiles self, np.int32_t n=*, DTYPE_t[::1] result=*)
+#
+#     cpdef DTYPE_t[::1] gt(Quantiles self, DTYPE_t q)
+#
+#     cpdef DTYPE_t[::1] lt(Quantiles self, DTYPE_t q)
+#
+#     cpdef ConfInterval interval(Quantiles self, DTYPE_t alpha)
 
 
 @cython.final
@@ -235,8 +235,8 @@ cdef class PiecewiseFunction(Function):
 
     cpdef DTYPE_t[::1] xsamples(PiecewiseFunction self, np.int32_t sort=*)
 
-    cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=*, DTYPE_t epsilon=*,
-                                     DTYPE_t penalty=*)
+    # cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=*, DTYPE_t epsilon=*,
+    #                                  DTYPE_t penalty=*)
 
     cpdef RealSet eq(PiecewiseFunction self, DTYPE_t y)
 

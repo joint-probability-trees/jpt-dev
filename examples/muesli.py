@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 from dnutils import out
-from jpt.base.quantiles import Quantiles, QuantileDistribution
+from jpt.base.quantiles import QuantileDistribution
 from jpt.learning.distributions import Numeric, Bool, SymbolicType, NumericType
 from jpt.trees import JPT, JPTBase
 from jpt.variables import SymbolicVariable, NumericVariable

@@ -235,8 +235,9 @@ class JPTBase:
     @staticmethod
     def from_json(data):
         jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
-        jpt._targets = tuple(jpt.variables[varname] for varname in data['targets'])
+        jpt._targets = tuple(jpt.varnames[varname] for varname in data['targets'])
         jpt.leaves = {d['idx']: Leaf.from_json(jpt, d) for d in data['leaves']}
+        jpt.priors = {varname: jpt.varnames[varname].domain.from_json(dist) for varname, dist in data['priors'].items()}
         return jpt
 
     def infer(self, query, evidence=None, fail_on_unsatisfiability=True):
@@ -390,6 +391,8 @@ class JPTBase:
                                             normalized([w for _, w in distributions[var]])) for var in distributions}
 
         for var, dist in posteriors.items():
+            if var in evidence_:
+                continue
             r.path.update({var: dist.mpe()})
         return r
 
@@ -407,7 +410,7 @@ class JPTBase:
             if var.numeric:
                 if isinstance(lbl, numbers.Number):
                     val = var.domain.values[lbl]
-                    prior = self.priors[var]
+                    prior = self.priors[var.name]
                     quantile = prior.cdf.eval(val)
                     query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
                                                 prior.ppf.eval(min(1, quantile + var.haze / 2)))

@@ -39,18 +39,38 @@ def main():
     xx = xx.astype(np.float32)
 
     # Construct the predictive model
-    varx = NumericVariable('x', NumericType('x', X), haze=.05, max_std=2)
-    vary = NumericVariable('y', NumericType('y', y), haze=.05, max_std=7)
+    varx = NumericVariable('x', Numeric)  # , max_std=1)
+    vary = NumericVariable('y', Numeric)  # , max_std=1)
+    # varx = NumericVariable('x', NumericType('x', X), haze=.05, max_std=2)
+    # vary = NumericVariable('y', NumericType('y', y), haze=.05, max_std=2)
 
-    jpt = JPT(variables=[varx, vary], min_samples_leaf=1)
+    jpt = JPT(variables=[varx, vary], min_samples_leaf=.01)
     jpt.learn(columns=[X.ravel(), y])
     # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model
-    confidence = .5
+    confidence = .2
+    fig = plt.figure()
 
-    # for x in xx.ravel():
-    #     print(jpt.infer({varx: x}).explain())
-    # exit(0)
+    def vmax(x):
+        return 20 if x == np.NINF else x
+
+    for leaf in jpt.leaves.values():
+        xlower = varx.domain.labels[leaf.path[varx].lower if varx in leaf.path else -np.inf]
+        xupper = varx.domain.labels[leaf.path[varx].upper if varx in leaf.path else np.inf]
+        ylower = vary.domain.labels[leaf.path[vary].lower if vary in leaf.path else -np.inf]
+        yupper = vary.domain.labels[leaf.path[vary].upper if vary in leaf.path else np.inf]
+        vlines = []
+        hlines = []
+        if xlower != np.NINF:
+            vlines.append(xlower)
+        if xupper != np.PINF:
+            vlines.append(xupper)
+        if ylower != np.NINF:
+            hlines.append(ylower)
+        if yupper != np.PINF:
+            hlines.append(yupper)
+        plt.vlines(vlines, max(ylower, -20), min(yupper, 20))
+        plt.hlines(hlines, max(xlower, -30), min(xupper, 30))
     my_predictions = [first(jpt.expectation([vary],
                                             evidence={varx: x_},
                                             confidence_level=confidence,
@@ -60,7 +80,6 @@ def main():
     y_upper_ = [p.upper if p else None for p in my_predictions]
 
     # Plot the function, the prediction and the 90% confidence interval based on the MSE
-    fig = plt.figure()
     plt.plot(xx, f(xx), 'g:', label=r'$f(x) = x\,\sin(x)$')
     plt.plot(X, y, '.', color='gray', markersize=5, label='Training data')
     plt.plot(xx, y_pred_, 'm-', label='JPT Prediction')
@@ -70,7 +89,9 @@ def main():
     plt.xlabel('$x$')
     plt.ylabel('$f(x)$')
     plt.ylim(-10, 20)
+    plt.xlim(-25, 15)
     plt.legend(loc='upper left')
+    plt.grid()
     plt.show()
 
 

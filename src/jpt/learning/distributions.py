@@ -3,17 +3,9 @@
 from abc import ABC
 from collections import OrderedDict
 
-import pyximport
 from sklearn.preprocessing import StandardScaler
 
-pyximport.install()
-
-from ..base.intervals import R
-
 from jpt.base.utils import classproperty
-
-
-from ..base.quantiles import QuantileDistribution, LinearFunction
 
 import copy
 import math
@@ -37,6 +29,16 @@ import matplotlib.pyplot as plt
 
 from jpt.base.constants import sepcomma
 from jpt.base.sampling import wsample, wchoice
+
+try:
+    from ..base.intervals import R
+    from ..base.quantiles import QuantileDistribution, LinearFunction
+except ImportError:
+    import pyximport
+    pyximport.install()
+    from ..base.intervals import R
+    from ..base.quantiles import QuantileDistribution, LinearFunction
+
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
 
@@ -509,9 +511,9 @@ class Distribution:
 
     @staticmethod
     def from_json(data):
-        clazz = _DISTRIBUTIONS.get(data['type'])
+        clazz = _DISTRIBUTIONS.get(data['class'])
         if clazz is None:
-            raise TypeError('Unknown distribution type: %s' % data['type'])
+            raise TypeError('Unknown distribution class: %s' % data['class'])
         return clazz.from_json(data)
 
     @staticmethod
