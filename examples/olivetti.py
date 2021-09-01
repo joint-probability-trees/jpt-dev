@@ -32,8 +32,8 @@ def main():
     # for i, leaf in enumerate(leaves):
     #     model = np.array([d.expectation() for d in list(leaf.distributions.values())]).reshape(8, 8)
     #     # print(leaf.distributions[tree.varnames['class']]._p)
-    #     idx = i // 10, i % 10 if len(axes.shape) == 1 else i
-    #     axes[idx].imshow(model, cmap='gray')
+    #     fld_idx = i // 10, i % 10 if len(axes.shape) == 1 else i
+    #     axes[fld_idx].imshow(model, cmap='gray')
     #
     # plt.tight_layout()
     # plt.show()
