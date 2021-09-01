@@ -448,7 +448,7 @@ class JPT(JPTBase):
 
     logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
-    def __init__(self, variables, targets=None, min_samples_leaf=1, min_impurity_improvement=None, max_leaves=None):
+    def __init__(self, variables, targets=None, min_samples_leaf=1, min_impurity_improvement=None, max_leaves=None, max_depth=None):
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -468,11 +468,12 @@ class JPT(JPTBase):
         self.root = None
         self.c45queue = deque()
         self.max_leaves = max_leaves
+        self.max_depth = max_depth
         self._node_counter = 0
         self.indices = None
         self.impurity = Impurity(self)
 
-    def c45(self, data, start, end, parent, child_idx):
+    def c45(self, data, start, end, parent, child_idx, depth):
         '''
 
         :param indices: the indices for the training samples used to calculate the gain
@@ -510,7 +511,7 @@ class JPT(JPTBase):
             ft_best_idx = None
 
         # create decision node splitting on ft_best or leaf node if min_samples_leaf criterion is not met
-        if max_gain <= min_impurity_improvement:
+        if max_gain <= min_impurity_improvement or depth >= self.max_depth:
             leaf = Leaf(idx=len(self.allnodes),
                         parent=parent)
             if parent is not None:
@@ -545,7 +546,7 @@ class JPT(JPTBase):
                 for i, val in enumerate(node.splits):
                     if best_split and first(val) == data[self.indices[start + best_split[0]], ft_best_idx]:
                         pos = best_split.popleft()
-                        self.c45queue.append((data, start + prev, start + pos + 1, node, i))
+                        self.c45queue.append((data, start + prev, start + pos + 1, node, i, depth + 1))
                         prev = pos + 1
 
             elif ft_best.numeric:
@@ -558,9 +559,9 @@ class JPT(JPTBase):
                                         data[self.indices[start + pos + 1],
                                              ft_best_idx]) / 2
                     splits.append(Interval(splits[-1].upper, np.PINF, INC, EXC))
-                    self.c45queue.append((data, start + prev, start + pos + 1, node, i))
+                    self.c45queue.append((data, start + prev, start + pos + 1, node, i, depth + 1))
                     prev = pos + 1
-                self.c45queue.append((data, start + prev, end, node, len(splits) - 1))
+                self.c45queue.append((data, start + prev, end, node, len(splits) - 1, depth + 1))
                 node.splits = splits
 
             else:
@@ -655,13 +656,16 @@ class JPT(JPTBase):
             self.priors[self.variables[i].name] = self.variables[i].domain.from_json(prior)
         JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
         self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
+        pool.close()
+        pool.join()
+
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
 
         started = datetime.datetime.now()
         JPT.logger.info('Started learning of %s x %s at %s requiring at least %s samples per leaf' % (_data.shape[0], _data.shape[1], started, self.min_samples_leaf))
         # build up tree
-        self.c45queue.append((_data, 0, _data.shape[0], None, None))
+        self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
 
@@ -820,7 +824,7 @@ class JPT(JPTBase):
 
         dot = Digraph(format='svg', name=filename or title,
                       directory=directory,
-                      filename=f'{filename or title}')
+                      filename=f'{filename or title}.dot')
 
         # create nodes
         sep = ",<BR/>"
