@@ -33,12 +33,13 @@ logger = dnutils.getlogger('/airline', level=dnutils.DEBUG)
 def preprocess_airline():
     try:
         logger.info('Trying to load dataset from local file...')
-        data = pd.read_csv('../examples/data/airlines_train_regression_10000000.csv')
+        data = pd.read_csv('../examples/data/airlines_train_regression_10000000.csv',
+                           delimiter=',', sep=',', skip_blank_lines=True, header=0, quotechar="'")
     except FileNotFoundError:
         src = 'https://www.openml.org/data/get_csv/22044760/airlines_train_regression_10000000.csv'
         logger.warning(f'The file containing this dataset is not in the repository, as it is very large.\nI will try downloading file {src} now...')
         try:
-            data = pd.read_csv(src, delimiter=',', sep=',', skip_blank_lines=True, header=0)
+            data = pd.read_csv(src, delimiter=',', sep=',', skip_blank_lines=True, quoting=0, header=0)
             logger.info(f'Success! Downloaded dataset containing {data.shape[0]} instances of {data.shape[1]} features each')
         except pd.errors.ParserError:
             logger.error('Could not download and/or parse file. Please download it manually and try again.')
