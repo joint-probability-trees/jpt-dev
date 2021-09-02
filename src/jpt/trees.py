@@ -230,7 +230,7 @@ class JPTBase:
         return {'variables': [v.to_json() for v in self.variables],
                 'targets': [v.name for v in self.variables],
                 'leaves': [l.to_json() for l in self.leaves.values()],
-                'priors': {var.name: p.to_json() for var, p in self.priors.items()}}
+                'priors': {varname: p.to_json() for varname, p in self.priors.items()}}
 
     @staticmethod
     def from_json(data):
