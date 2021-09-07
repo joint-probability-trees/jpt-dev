@@ -2,9 +2,12 @@ import glob
 import multiprocessing
 import os
 import pickle
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
+from sklearn.metrics import mean_squared_error, f1_score
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
@@ -21,13 +24,14 @@ prefix = f'{start.strftime(timeformat)}'
 data = variables = kf = None
 data_train = data_test = []
 dataset = 'airline'
+folds = 10
 
 clogger = dnutils.getlogger('/crossval-learning', level=dnutils.DEBUG)
 rlogger = dnutils.getlogger('/crossval-results', level=dnutils.DEBUG)
 
 
 def init_globals():
-    global d, prefix, clogger, rlogger, dataset
+    global d, start, prefix, clogger, rlogger, dataset
     d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-{dataset}')
     Path(d).mkdir(parents=True, exist_ok=True)
     prefix = f'{start.strftime(timeformat)}-{dataset}-FOLD-'
@@ -128,54 +132,124 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
 
 
 def crossval(max_depth=8):
+    global folds
     cfstart = datetime.now()
-    clogger.info(f'Start 10-fold cross validation at {cfstart}')
+    clogger.info(f'Start {folds}-fold cross validation at {cfstart}')
 
     # create KFold splits over dataset
     global kf
-    kf = KFold(n_splits=10, shuffle=True)
+    kf = KFold(n_splits=folds, shuffle=True)
     kf.get_n_splits(data)
 
     # run folds
     for idx, (train_index, test_index) in enumerate(kf.split(data)):
         fold(idx, train_index, test_index, max_depth=max_depth)
 
-    clogger.info(f'10-fold cross validation took {datetime.now() - cfstart}')
+    clogger.info(f'{folds}-fold cross validation took {datetime.now() - cfstart}')
 
 
-def compare(folds):
-    # compare
+def compare():
+    global d, variables, folds
+    sep = "\n"
+    pool = multiprocessing.Pool()
+    res_jpt, res_dec = zip(*pool.starmap(compare_, zip(range(len(variables)))))
+    out(res_jpt, res_dec)
+    rlogger.debug(f'Crossvalidation results: {sep.join(f"{v}: {j} | {d}" for v, j, d in zip(variables, res_jpt, res_dec))}')
 
+    with open(os.path.join(d, f'{prefix}crossvalidation.result'), 'w+') as f:
+        f.write(sep.join(f"{v};{j};{d}" for v, j, d in zip(variables, res_jpt, res_dec)))
+
+    pool.close()
+    pool.join()
+
+
+def compare_(i):
+    global folds
+    v = variables[i]
+    em_jpt = EvaluationMatrix(v)
+    em_dec = EvaluationMatrix(v)
+
+    rlogger.debug(f'Comparing full JPT over all variables to separately learnt tree for variable {v.name}...')
     for fld_idx in range(folds):
-        rlogger.debug(f'Comparing full JPT over all variables to separately learnt trees for FOLD {fld_idx}...')
+        # load test dataset for fold fld_idx
+        testdata = pd.read_pickle(os.path.join(d, f'{prefix}{fld_idx}-testdata.data'))
+
+        # load JPT for fold fld_idx
         jpt = JPT.load(os.path.join(d, f'{prefix}{fld_idx}-JPT.json'))
-        for i, v in enumerate(variables):
-            with open(os.path.join(d, f'{prefix}{fld_idx}-{v.name}.pkl'), 'rb') as f:
-                dectree = pickle.load(f)
-            for index, row in data_test.iterrows():
-                dp_jpt = {ri: val for ri, val in zip(row.index, row.values)}
-                dp_dec = [v.domain.values[x] for j, x in enumerate(row.values) if i != j]  # translate variable value to code for dec tree
-                res_jpt = jpt.infer(dp_jpt).result
-                # res_dt = dectree.predict(dp_dec)
-                rlogger.debug(f'res_jpt | res_dt: {res_jpt} | {res_jpt}: Comparing datapoint { dp_jpt } in decision tree loaded from {prefix}{fld_idx}-{v.name}.pkl and JPT from {prefix}{fld_idx}-JPT.json')
+
+        # load decision tree for fold fld_idx variable v
+        with open(os.path.join(d, f'{prefix}{fld_idx}-{v.name}.pkl'), 'rb') as f:
+            dectree = pickle.load(f)
+
+        # for each data point in the test dataset check results and store them
+        for index, row in testdata.iterrows():
+            # ground truth
+            var_gt = row[v.name]
+
+            # transform datapoints into expected formats for jpt.expectation and dectree.predict
+            dp_jpt = {ri: val for ri, val in zip(row.index, row.values) if ri != v.name}
+            out('vals for', v.name, v.domain.values)
+            out('rowvalues', v.name, row.values)
+            out('dp_dec', v.name, [v.domain.values[x] for j, x in enumerate(row.values) if i != j])
+            dp_dec = [v.domain.values[x] for j, x in enumerate(row.values) if i != j]  # translate variable value to code for dec tree
+
+            em_jpt.update(var_gt, jpt.expectation([v], dp_jpt)[0].result)
+            em_dec.update(var_gt, dectree.predict([dp_dec])[0])
+
+    rlogger.debug(f'res_jpt | res_dec: {em_jpt.accuracy()} | {em_dec.accuracy()}: Comparing datapoint { dp_jpt } in decision tree loaded from {prefix}{fld_idx}-{v.name}.pkl and JPT from {prefix}{fld_idx}-JPT.json')
+    return em_jpt.accuracy(), em_dec.accuracy()
+
+
+class EvaluationMatrix:
+    def __init__(self, variable):
+        self.variable = variable
+        self._res = []
+
+    def update(self, ground_truth, prediction):
+        self._res.append(tuple([ground_truth, prediction]))
+
+    def accuracy(self):
+        if self.variable.symbolic:
+            return f1_score(list(zip(*self._res))[0], list(zip(*self._res))[1])
+        else:
+            return sum([abs(gt - exp)**2 for gt, exp in self._res])/len(self._res)
 
 
 if __name__ == '__main__':
-    global dataset
+    # dataset = 'airline'
+
+    # init_globals()
+    # preprocess()
+    # crossval()
+    # compare()
+
+    ###################### ONLY RUN COMPARE WITH ON ALREADY EXISTING DATA ##############################################
+    start = datetime.strptime('07.09.2021-12:01:58', '%d.%m.%Y-%H:%M:%S')
     dataset = 'airline'
+    d = os.path.join('/tmp', f'2021-09-07-airline')
+    prefix = f'07.09.2021-12:01:58-airline-FOLD-'
+    dnutils.loggers({'/crossval-learning': dnutils.newlogger(dnutils.logs.console,
+                                                             dnutils.logs.FileHandler(os.path.join(d,
+                                                                                                   f'07.09.2021-12:01:58-airline-learning.log')),
+                                                             level=dnutils.DEBUG),
+                     '/crossval-results': dnutils.newlogger(dnutils.logs.console,
+                                                            dnutils.logs.FileHandler(os.path.join(d,
+                                                                                                  f'07.09.2021-12:01:58-airline-results.log')),
+                                                            level=dnutils.DEBUG),
+                     })
 
-    init_globals()
-    preprocess()
-    crossval()
-    compare(10)
+    clogger = dnutils.getlogger('/crossval-learning', level=dnutils.DEBUG)
+    rlogger = dnutils.getlogger('/crossval-results', level=dnutils.DEBUG)
 
-    # load pickled dataframe and print first data point
-    # data = pd.read_pickle('31.08.2021-16:51:47-airline-FOLD-0-testdata.data')
-    # data.iloc[0]
+    data, variables = preprocess_airline()
 
-    # load pickled decision tree
-    # with open('31.08.2021-16:51:47-airline-FOLD-0-Dest.pkl', 'rb') as f:
-    #     dectree = pickle.load(f)
+    # set variable value/code mappings for each symbolic variable
+    catcols = data.select_dtypes(['object']).columns
+    out('setting catcols', catcols)
+    data[catcols] = data[catcols].astype('category')
+    for col, var in zip(catcols, [v for v in variables if v.symbolic]):
+        out('setting for ', col, var)
+        data[col] = data[col].cat.set_categories(var.domain.labels.values())
 
-    # load pickled jpt
-    # jpt = JPT.load('31.08.2021-16:51:47-airline-FOLD-0-JPT.json')
+    compare()
+    ###################### ONLY RUN COMPARE WITH ON ALREADY EXISTING DATA ##############################################

@@ -16,14 +16,14 @@ from jpt.variables import NumericVariable, SymbolicVariable
 
 # globals
 start = datetime.now()
-d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-Airline')
+d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-airline')
 Path(d).mkdir(parents=True, exist_ok=True)
-prefix = f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-Airline-FOLD-'
+prefix = f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-airline-FOLD-'
 data = variables = kf = None
 data_train = data_test = []
 
 dnutils.loggers({'/airline': dnutils.newlogger(dnutils.logs.console,
-                                               dnutils.logs.FileHandler(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-Airline.log')),
+                                               dnutils.logs.FileHandler(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-airline.log')),
                                                level=dnutils.DEBUG)
                  })
 
@@ -45,8 +45,7 @@ def preprocess_airline():
             logger.error('Could not download and/or parse file. Please download it manually and try again.')
             sys.exit(-1)
 
-    data = data.sample(frac=1)
-
+    # data = data.sample()
     logger.info('creating types and variables...')
     UniqueCarrier_type = SymbolicType('UniqueCarrier_type', data['UniqueCarrier'].unique())
     Origin_type = SymbolicType('Origin_type', data['Origin'].unique())
@@ -69,14 +68,14 @@ def preprocess_airline():
 
 def main():
     data, variables = preprocess_airline()
-    d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-Airline')
+    d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-airline')
     Path(d).mkdir(parents=True, exist_ok=True)
 
     # tree = JPT(variables=variables, min_samples_leaf=data.shape[0]*.01)
     tree = JPT(variables=variables, max_depth=8)
     tree.learn(columns=data.values.T)
-    tree.save(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-Airline.json'))
-    tree.plot(title='Airline', directory=d, view=False)
+    tree.save(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-airline.json'))
+    tree.plot(title='airline', directory=d, view=False)
     logger.info(tree)
 
 
