@@ -339,7 +339,7 @@ class JPTBase:
         for var in variables:
             if not sum([w for _, w in distributions[var]]):
                 if fail_on_unsatisfiability:
-                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(self.variables, evidence))
                 else:
                     return None
 
@@ -468,7 +468,7 @@ class JPT(JPTBase):
         self.root = None
         self.c45queue = deque()
         self.max_leaves = max_leaves
-        self.max_depth = max_depth
+        self.max_depth = max_depth or float('inf')
         self._node_counter = 0
         self.indices = None
         self.impurity = Impurity(self)
@@ -873,7 +873,7 @@ class JPT(JPTBase):
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{html.escape(v.name)}=' + (f'{html.escape(str(v.domain.labels[dist.expectation()]))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
