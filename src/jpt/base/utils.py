@@ -79,12 +79,13 @@ def tojson(obj):
     return obj
 
 
-def format_path(path):
+def format_path(variables, path):
     '''
     Returns a readable string representation of a conjunction of variable assignments,
     given by the dictionary ``path``.
     '''
-    return ' ^ '.join([var.str(val, fmt='logic') for var, val in path.items()])
+    # TODO: This is an ugly workaround as path only contains variable names instead of instances of <jpt.variables.Variable>
+    return ' ^ '.join([next((x for x in variables if x.name == var), None).str(val, fmt='logic') for var, val in path.items()])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
