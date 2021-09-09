@@ -858,9 +858,12 @@ class Multinomial(Distribution):
         '''Returns one sample `label` according to its probability'''
         return self.labels[wchoice(self.values, self._params)]
 
-    def expectation(self):
+    def _expectation(self):
         '''Returns the value with the highest probability for each variable'''
         return max([(v, p) for v, p in zip(self.values.values(), self._params)], key=itemgetter(1))[0]
+
+    def expectation(self):
+        return self.labels[self._expectation()]
 
     def mpe(self):
         return self.expectation()
