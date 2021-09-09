@@ -5,12 +5,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
 import dnutils
-from jpt.learning.distributions import Numeric, SymbolicType
+from jpt.learning.distributions import Numeric, SymbolicType, NumericType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 
@@ -45,22 +46,29 @@ def preprocess_airline():
             logger.error('Could not download and/or parse file. Please download it manually and try again.')
             sys.exit(-1)
 
-    # data = data.sample()
+    # data = data.sample(frac=0.0001)
     logger.info('creating types and variables...')
+    DepDelay_type = NumericType('DepDelay_type', np.array(data['DepDelay']))
+    Month_type = NumericType('Month_type', np.array(data['Month']))
+    DayofMonth_type = NumericType('DayofMonth_type', np.array(data['DayofMonth']))
+    DayOfWeek_type = NumericType('DayOfWeek_type', np.array(data['DayOfWeek']))
+    CRSDepTime_type = NumericType('CRSDepTime_type', np.array(data['CRSDepTime']))
+    CRSArrTime_type = NumericType('CRSArrTime_type', np.array(data['CRSArrTime']))
     UniqueCarrier_type = SymbolicType('UniqueCarrier_type', data['UniqueCarrier'].unique())
     Origin_type = SymbolicType('Origin_type', data['Origin'].unique())
     Dest_type = SymbolicType('Dest_type', data['Dest'].unique())
+    Distance_type = NumericType('Distance_type', np.array(data['Distance']))
 
-    DepDelay = NumericVariable('DepDelay', Numeric)
-    Month = NumericVariable('Month', Numeric)
-    DayofMonth = NumericVariable('DayofMonth', Numeric)
-    DayOfWeek = NumericVariable('DayOfWeek', Numeric)
-    CRSDepTime = NumericVariable('CRSDepTime', Numeric)
-    CRSArrTime = NumericVariable('CRSArrTime', Numeric)
+    DepDelay = NumericVariable('DepDelay', DepDelay_type)
+    Month = NumericVariable('Month', Month_type)
+    DayofMonth = NumericVariable('DayofMonth', DayofMonth_type)
+    DayOfWeek = NumericVariable('DayOfWeek', DayOfWeek_type)
+    CRSDepTime = NumericVariable('CRSDepTime', CRSDepTime_type)
+    CRSArrTime = NumericVariable('CRSArrTime', CRSArrTime_type)
     UniqueCarrier = SymbolicVariable('UniqueCarrier', UniqueCarrier_type)
     Origin = SymbolicVariable('Origin', Origin_type)
     Dest = SymbolicVariable('Dest', Dest_type)
-    Distance = NumericVariable('Distance', Numeric)
+    Distance = NumericVariable('Distance', Distance_type)
 
     variables = [DepDelay, Month, DayofMonth, DayOfWeek, CRSDepTime, CRSArrTime, UniqueCarrier, Origin, Dest, Distance]
     return data, variables
