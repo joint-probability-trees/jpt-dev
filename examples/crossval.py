@@ -1,31 +1,26 @@
-import glob
 import multiprocessing
 import os
 import pickle
 from collections import defaultdict
 from datetime import datetime
-from math import sqrt
+from itertools import chain
 from multiprocessing import current_process
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-from sklearn.metrics import mean_squared_error, f1_score
+from sklearn.metrics import f1_score, mean_absolute_error
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
 import dnutils
 from airlines_depdelay import preprocess_airline
-from dnutils import stop, out
-from jpt.learning.distributions import ScaledNumeric, NumericType
 from jpt.trees import JPT
 
 # globals
-from jpt.variables import Variable
-
 start = datetime.now()
-timeformat = "%d.%m.%Y-%H:%M:%S"
+timeformat = "%Y-%m-%d-%H:%M:%S"
 d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}')
 prefix = f'{start.strftime(timeformat)}'
 data = variables = kf = None
@@ -40,7 +35,7 @@ def init_globals():
     global d, start, prefix, logger, logger, dataset
     d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-{dataset}')
     Path(d).mkdir(parents=True, exist_ok=True)
-    prefix = f'{start.strftime(timeformat)}-{dataset}-FOLD-'
+    prefix = f'{start.strftime(timeformat)}-{dataset}'
     dnutils.loggers({'/crossvalidation': dnutils.newlogger(dnutils.logs.console,
                                                     dnutils.logs.FileHandler(os.path.join(d, f'{start.strftime(timeformat)}-{dataset}-learning.log')),
                                                     level=dnutils.DEBUG)
@@ -64,9 +59,9 @@ def preprocess():
         data[col] = data[col].cat.set_categories(var.domain.labels.values())
 
 
-def discrtree(i, idx):
+def discrtree(i, fld_idx):
     var = variables[i]
-    logger.debug(f'Learning {"Decision" if var.symbolic else "Regression"} tree #{i} with target variable {var.name} for FOLD {idx}')
+    logger.debug(f'Learning {"Decision" if var.symbolic else "Regression"} tree #{i} with target variable {var.name} for FOLD {fld_idx}')
     tgt = data_train[[var.name]]
     X = data_train[[v.name for v in variables if v != var]]
 
@@ -80,9 +75,9 @@ def discrtree(i, idx):
     else:
         t = DecisionTreeClassifier(min_samples_leaf=int(data_train.shape[0]*.01))
 
-    logger.debug(f'Pickling tree {var.name} for FOLD {idx}...')
+    logger.debug(f'Pickling tree {var.name} for FOLD {fld_idx}...')
     t.fit(X, tgt)
-    with open(os.path.abspath(os.path.join(d, f'{prefix}{idx}-{var.name}.pkl')), 'wb') as f:
+    with open(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.pkl')), 'wb') as f:
         pickle.dump(t, f)
 
 
@@ -94,7 +89,7 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
     global data_train, data_test
     data_train = data.iloc[train_index]
     data_test = data.iloc[test_index]
-    data_test.to_pickle(os.path.join(d, f'{prefix}{fld_idx}-testdata.data'))
+    data_test.to_pickle(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-testdata.data'))
 
     # learn separate regression/decision trees for each variable simultaneously
     pool = multiprocessing.Pool()
@@ -106,8 +101,8 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
     logger.debug(f'Learning full JPT over all variables for FOLD {fld_idx}...')
     jpt = JPT(variables=variables, min_samples_leaf=data_train.shape[0]*.01)
     jpt.learn(columns=data_train.values.T)
-    jpt.save(os.path.join(d, f'{prefix}{fld_idx}-JPT.json'))
-    jpt.plot(title=f'{prefix}{fld_idx}', directory=d, view=False)
+    jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
+    jpt.plot(title=f'{prefix}-FOLD-{fld_idx}', directory=d, view=False)
     logger.debug(jpt)
 
     logger.info(f'FOLD {fld_idx}: done!\n{"":=<100}\n')
@@ -140,10 +135,19 @@ def compare():
     res_jpt, res_dec = zip(*pool.map(compare_, [(i, [v.to_json() for v in variables]) for i, _ in enumerate(variables)]))
     pool.close()
     pool.join()
-    logger.debug(f'Crossvalidation results (error JPT | error DEC):\n{nsep.join(f"{v.name:<20}{j:.8f} | {d:.8f}" for v, j, d in zip(variables, res_jpt, res_dec))}')
+    logger.debug(f'Crossvalidation results (error JPT | error DEC):\n{nsep.join(f"{v.name:<20}{j.accuracy():.3f} ({j.error():.3f}) | {d.accuracy():.3f} ({d.error():.3f})" for v, j, d in zip(variables, res_jpt, res_dec))}')
 
-    with open(os.path.join(d, f'{prefix}crossvalidation.result'), 'w+') as f:
-        f.write(nsep.join(f"{v.name};{j};{d}" for v, j, d in zip(variables, res_jpt, res_dec)))
+    # save crossvalidation results to file
+    with open(os.path.join(d, f'{prefix}-Matrix-DEC.pkl'), 'wb') as f:
+        pickle.dump(res_dec, f)
+
+    with open(os.path.join(d, f'{prefix}-Matrix-JPT.pkl'), 'wb') as f:
+        pickle.dump(res_jpt, f)
+
+    # TODO remove (human-readable version of crossvalidation results; not used anywhere)
+    with open(os.path.join(d, f'{prefix}-crossvalidation.csv'), 'w+') as f:
+        f.write(f'Variable;JPTacc;JPTerr;DECacc;DECerr\n')
+        f.write(nsep.join(f"{v.name};{j.accuracy()};{j.error()};{d.accuracy()};{d.error()}" for v, j, d in zip(variables, res_jpt, res_dec)))
 
     logger.info(f'Comparison of {folds}-fold cross validation took {datetime.now() - cmpstart}')
 
@@ -163,7 +167,7 @@ def compare_(args):
     logger.debug(f'Comparing full JPT over all variables to separately learnt tree for variable {compvariable}...')
     for fld_idx in range(folds):
         # load test dataset for fold fld_idx
-        testdata = pd.read_pickle(os.path.join(d, f'{prefix}{fld_idx}-testdata.data'))
+        testdata = pd.read_pickle(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-testdata.data'))
         # testdata = testdata.sample(frac=1)
         datapoints += len(testdata)
 
@@ -172,10 +176,10 @@ def compare_(args):
         mappings = {var: {c: i for i, c in enumerate(testdata[var].cat.categories)} for var in allvariables if var in catcols}
 
         # load JPT for fold fld_idx
-        jpt = JPT.load(os.path.join(d, f'{prefix}{fld_idx}-JPT.json'))
+        jpt = JPT.load(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
 
         # load decision tree for fold fld_idx variable v
-        with open(os.path.join(d, f'{prefix}{fld_idx}-{compvariable}.pkl'), 'rb') as f:
+        with open(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{compvariable}.pkl'), 'rb') as f:
             dectree = pickle.load(f)
 
         # for each data point in the test dataset check results and store them
@@ -195,43 +199,38 @@ def compare_(args):
                 errors += 1.
                 logger.warning(f'Errors in Pool #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}) (unsatisfiable query: {dp_jpt})')
             else:
-                em_jpt.update(var_gt, jptexp[0].result)
-                em_dec.update(var_gt, dectree.predict([dp_dec])[0])
+                em_jpt.update(fld_idx, var_gt, jptexp[0].result)
+                em_dec.update(fld_idx, var_gt, dectree.predict([dp_dec])[0])
 
-    with open(os.path.join(d, f'{prefix}{compvariable}-Matrix-JPT.pkl'), 'wb') as f:
+    with open(os.path.join(d, f'{prefix}-Matrix-JPT-{compvariable}.pkl'), 'wb') as f:
         pickle.dump(em_jpt, f)
 
-    with open(os.path.join(d, f'{prefix}{compvariable}-Matrix-DEC.pkl'), 'wb') as f:
+    with open(os.path.join(d, f'{prefix}-Matrix-DEC-{compvariable}.pkl'), 'wb') as f:
         pickle.dump(em_dec, f)
 
     logger.error(f'FINAL NUMBER OF ERRORS FOR VARIABLE {compvariable}: {errors} in {datapoints} data points')
-    logger.warning(f'res_jpt | res_dec: {em_jpt.accuracy()} | {em_dec.accuracy()}: Comparing datapoint { dp_jpt } in decision tree loaded from {prefix}{fld_idx}-{compvariable}.pkl and JPT from {prefix}{fld_idx}-JPT.json')
-    return em_jpt.accuracy(), em_dec.accuracy()
+    logger.warning(f'res_jpt | res_dec: {em_jpt.accuracy()} | {em_dec.accuracy()}: Comparing datapoint { dp_jpt } in decision tree loaded from {prefix}-FOLD-{fld_idx}-{compvariable}.pkl and JPT from {prefix}{fld_idx}-JPT.json')
+    return em_jpt, em_dec
 
 
 def plot_confusion_matrix():
-    mat = pd.read_csv(os.path.join(d, f'{prefix}crossvalidation.result'), sep=';', names=['Variable', 'JPTerr', 'DECerr'])
-
     x_pos = np.arange(len(variables))
     varnames = [v.name for v in variables]
     vartypes = [v.domain if v.numeric else None for v in variables]
-    decerr = [vtype.values[val] if vtype is not None else val for vtype, val in zip(vartypes, mat['DECerr'])]
-    jpterr = [vtype.values[val] if vtype is not None else val for vtype, val in zip(vartypes, mat['JPTerr'])]
 
-    decstd = []
-    jptstd = []
-    for vn in varnames:
-        with open(os.path.join(d, f'{prefix}{vn}-Matrix-DEC.pkl'), 'rb') as f:
-            matdec = pickle.load(f)
-            decstd.append(matdec.error())
+    with open(os.path.join(d, f'{prefix}-Matrix-DEC.pkl'), 'rb') as f:
+        matdec = pickle.load(f)
+    decacc = [vt.values[m.accuracy()] if vt is not None else m.accuracy() for vt, m in zip(vartypes, matdec)]
+    decerr = [vt.values[m.error()] if vt is not None else m.accuracy() for vt, m in zip(vartypes, matdec)]
 
-        with open(os.path.join(d, f'{prefix}{vn}-Matrix-JPT.pkl'), 'rb') as f:
-            matjpt = pickle.load(f)
-            jptstd.append(matjpt.error())
+    with open(os.path.join(d, f'{prefix}-Matrix-JPT.pkl'), 'rb') as f:
+        matjpt = pickle.load(f)
+    jptacc = [vt.values[j.accuracy()] if vt is not None else j.accuracy() for vt, j in zip(vartypes, matjpt)]
+    jpterr = [vt.values[j.error()] if vt is not None else j.error() for vt, j in zip(vartypes, matjpt)]
 
     fig, ax = plt.subplots()
-    ax.bar(x_pos-0.1, jpterr, width=0.2, yerr=jptstd, align='center', alpha=0.5, ecolor='black', color='orange', capsize=10, label='JPT')
-    ax.bar(x_pos+0.1, decerr, width=0.2, yerr=decstd, align='center', alpha=0.5, ecolor='black', color='cornflowerblue', capsize=10, label='DEC')
+    ax.bar(x_pos-0.1, jptacc, width=0.2, yerr=jpterr, align='center', alpha=0.5, ecolor='black', color='orange', capsize=10, label='JPT')
+    ax.bar(x_pos+0.1, decacc, width=0.2, yerr=decerr, align='center', alpha=0.5, ecolor='black', color='cornflowerblue', capsize=10, label='DEC')
     ax.set_ylabel('MSE/f1_score')
     ax.set_xticks(x_pos)
     ax.set_xticklabels(varnames)
@@ -241,30 +240,32 @@ def plot_confusion_matrix():
 
     # Save the figure and show
     plt.tight_layout()
-    plt.savefig('bar_plot_with_error_bars.png')
+    plt.xticks(rotation=-45)
+    plt.savefig(os.path.join(d, f'{prefix}-crossvalidation.svg'))
     plt.show()
 
 
 class EvaluationMatrix:
-    def __init__(self, variable, symbolic=False):
-        self.variable = variable
+    def __init__(self, varname, symbolic=False):
+        self.varname = varname
         self.symbolic = symbolic
-        self.res = []
+        self.res = defaultdict(list)
 
-    def update(self, ground_truth, prediction):
-        self.res.append(tuple([ground_truth, prediction]))
+    def update(self, fld, ground_truth, prediction):
+        self.res[fld].append(tuple([ground_truth, prediction]))
 
     def accuracy(self):
+        res = list(chain(*self.res.values()))
         if self.symbolic:
-            return f1_score(list(zip(*self.res))[0], list(zip(*self.res))[1], average='macro')
+            return f1_score(list(zip(*res))[0], list(zip(*res))[1], average='macro')
         else:
-            return sum([abs(gt - exp)**2 for gt, exp in self.res])/len(self.res)
+            return mean_absolute_error(list(zip(*res))[0], list(zip(*res))[1])  # identical result
 
     def error(self):
         if self.symbolic:
-            return 5  # TODO
+            return np.std([f1_score(list(zip(*_res))[0], list(zip(*_res))[1], average='macro') for _res in self.res.values()])
         else:
-            return 5  # TODO
+            return np.std([mean_absolute_error(list(zip(*_res))[0], list(zip(*_res))[1]) for _res in self.res.values()])
 
 
 if __name__ == '__main__':
@@ -280,7 +281,6 @@ if __name__ == '__main__':
     logger.info(f'Overall cross validation on {len(data)}-instance dataset took {datetime.now() - ovstart}')
 
     plot_confusion_matrix()
-
 
     ###################### ONLY RUN COMPARE WITH ON ALREADY EXISTING DATA ##############################################
     # start = datetime.strptime('07.09.2021-12:01:58', '%d.%m.%Y-%H:%M:%S')
@@ -309,15 +309,5 @@ if __name__ == '__main__':
     #     data[col] = data[col].cat.set_categories(var.domain.labels.values())
     #
     # compare()
-
-    #######333333333333333333333############### RUN WITHOUT POOL #######333333333#######################################
-    # sep = "\n"
-    # res_jpt, res_dec = compare_no_pool()
-    # out(res_jpt, res_dec)
-    # logger.debug(f'Crossvalidation results: {sep.join(f"{v}: {j} | {d}" for v, j, d in zip(variables, res_jpt, res_dec))}')
-    #
-    # with open(os.path.join(d, f'{prefix}crossvalidation.result'), 'w+') as f:
-    #     f.write(sep.join(f"{v};{j};{d}" for v, j, d in zip(variables, res_jpt, res_dec)))
-    #######333333333333333333333############### /RUN WITHOUT POOL #######333333333######################################
-
+    # plot_confusion_matrix()
     ###################### /ONLY RUN COMPARE WITH ON ALREADY EXISTING DATA #############################################
