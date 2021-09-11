@@ -16,6 +16,7 @@ from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
 import dnutils
 from airlines_depdelay import preprocess_airline
+from examples.regression import preprocess_regression
 from jpt.trees import JPT
 
 # globals
@@ -49,6 +50,8 @@ def preprocess():
 
     if dataset == 'airline':
         data, variables = preprocess_airline()
+    elif dataset == 'regression':
+        data, variables = preprocess_regression()
     else:
         data, variables = None, None
 
@@ -229,6 +232,8 @@ def plot_confusion_matrix():
     jpterr = [vt.values[j.error()] if vt is not None else j.error() for vt, j in zip(vartypes, matjpt)]
 
     fig, ax = plt.subplots()
+    # ax.bar(x_pos-0.1, jptacc, width=0.2, yerr=[0]*len(variables), align='center', alpha=0.5, ecolor='black', color='orange', capsize=10, label='JPT')
+    # ax.bar(x_pos+0.1, decacc, width=0.2, yerr=[0]*len(variables), align='center', alpha=0.5, ecolor='black', color='cornflowerblue', capsize=10, label='DEC')
     ax.bar(x_pos-0.1, jptacc, width=0.2, yerr=jpterr, align='center', alpha=0.5, ecolor='black', color='orange', capsize=10, label='JPT')
     ax.bar(x_pos+0.1, decacc, width=0.2, yerr=decerr, align='center', alpha=0.5, ecolor='black', color='cornflowerblue', capsize=10, label='DEC')
     ax.set_ylabel('MSE/f1_score')
@@ -242,6 +247,7 @@ def plot_confusion_matrix():
     plt.tight_layout()
     plt.xticks(rotation=-45)
     plt.savefig(os.path.join(d, f'{prefix}-crossvalidation.svg'))
+    plt.savefig(os.path.join(d, f'{prefix}-crossvalidation.png'))
     plt.show()
 
 
@@ -269,7 +275,7 @@ class EvaluationMatrix:
 
 
 if __name__ == '__main__':
-    dataset = 'airline'
+    dataset = 'regression'
     ovstart = datetime.now()
     logger.info(f'Starting overall cross validation at {ovstart}')
 
