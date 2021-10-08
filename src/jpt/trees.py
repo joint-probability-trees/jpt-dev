@@ -448,7 +448,8 @@ class JPT(JPTBase):
 
     logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
-    def __init__(self, variables, targets=None, min_samples_leaf=1, min_impurity_improvement=None, max_leaves=None, max_depth=None):
+    def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
+                 max_leaves=None, max_depth=None):
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
