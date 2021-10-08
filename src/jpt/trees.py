@@ -818,6 +818,7 @@ class JPT(JPTBase):
         '''
         if plotvars == None:
             plotvars = []
+        plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
 
         title = ifnone(title, 'unnamed')
 
