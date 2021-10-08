@@ -17,13 +17,13 @@ from operator import itemgetter
 from matplotlib.backends.backend_pdf import PdfPages
 
 import dnutils
-from dnutils import first, out, ifnone, stop, ifnot
+from dnutils import first, out, ifnone, stop, ifnot, trace
 from dnutils.stats import Gaussian as Gaussian_, _matshape
 
 from scipy.stats import multivariate_normal, mvn, norm
 
 import numpy as np
-from numpy import iterable
+from numpy import iterable, isnan
 
 import matplotlib.pyplot as plt
 
@@ -578,21 +578,33 @@ class DataScalerProxy:
     def __init__(self, datascaler, inverse=False):
         self.datascaler = datascaler
         self.inverse = inverse
-        # self.__call__ = self.__getitem__
 
     def __call__(self, arg):
-        # out(arg, self[arg])
         return self[arg]
+
+    def transformer(self):
+        return lambda a: self[a]
 
     def __getitem__(self, item):
         if item in (np.NINF, np.PINF):
             return item
+        if item is None or isnan(item):
+            return 0
         return (self.datascaler.transform
                 if not self.inverse
                 else self.datascaler.inverse_transform)(np.array(item).reshape(1, -1))[0, 0]
 
     def transform(self, x):
         return self.datascaler.transform(x.reshape(-1, 1)).ravel()
+
+    def keys(self):
+        return R
+
+    def values(self):
+        return R
+
+    def __repr__(self):
+        return '<DataScalerProxy, mean=%f, var=%s>' % (self.datascaler.mean, self.datascaler.variance)
 
 
 class Numeric(Distribution):
@@ -779,6 +791,51 @@ class ScaledNumeric(Numeric):
     @classmethod
     def from_json(cls, data):
         return cls(quantile=QuantileDistribution.from_json(data['quantile']))
+
+
+class HashableOrderedDict(OrderedDict):
+    '''
+    Ordered dict that can be hashed.
+    '''
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __call__(self, arg):
+        return self[arg]
+
+    def __hash__(self):
+        return hash((tuple(self.values()), tuple(self.keys())))
+
+
+class OrderedDictProxy:
+    '''
+    This is a proxy class that mimics the interface of a regular dict
+    without inheriting from dict.
+    '''
+
+    def __init__(self, *args, **kwargs):
+        self._dict = HashableOrderedDict(*args, **kwargs)
+        self.values = self._dict.values
+        self.keys = self._dict.keys
+
+    def transformer(self):
+        return lambda a: self._dict[a]
+
+    def __getitem__(self, arg):
+        return self._dict[arg]
+
+    def __iter__(self):
+        return iter(self._dict)
+
+    def __call__(self, arg):
+        return self._dict[arg]
+
+    def __hash__(self):
+        return hash((tuple(self._dict.values()), tuple(self._dict.keys())))
+
+    def __len__(self):
+        return len(self._dict)
 
 
 class Multinomial(Distribution):
@@ -994,8 +1051,8 @@ class Bool(Multinomial):
     Wrapper class for Boolean domains and distributions.
     '''
 
-    values = OrderedDict([(False, 0), (True, 1)])
-    labels = OrderedDict([(0, False), (1, True)])
+    values = OrderedDictProxy([(False, 0), (True, 1)])
+    labels = OrderedDictProxy([(0, False), (1, True)])
 
     def __init__(self, params=None):
         if params is not None and not iterable(params):
@@ -1013,24 +1070,10 @@ class Bool(Multinomial):
         super().__setitem__(v, p)
 
 
-class HashableOrderedDict(OrderedDict):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # self.__call__ = self.__getitem__
-
-    def __call__(self, arg):
-        out(arg, self[arg])
-        return self[arg]
-
-    def __hash__(self):
-        return hash((tuple(self.values()), tuple(self.keys())))
-
-
 def SymbolicType(name, labels):
     t = type(name, (Multinomial,), {})
-    t.values = HashableOrderedDict([(lbl, val) for val, lbl in zip(range(len(labels)), labels)])
-    t.labels = HashableOrderedDict([(val, lbl) for val, lbl in zip(range(len(labels)), labels)])
+    t.values = OrderedDictProxy([(lbl, val) for val, lbl in zip(range(len(labels)), labels)])
+    t.labels = OrderedDictProxy([(val, lbl) for val, lbl in zip(range(len(labels)), labels)])
     return t
 
 

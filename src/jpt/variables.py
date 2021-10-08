@@ -214,7 +214,6 @@ def infer_from_dataframe(df, scale_numeric_types=True):
 
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
-        out(col, dtype)
         if dtype in (str, object):
             dom = SymbolicType('%s_TYPE' % col.upper(), labels=df[col].unique())
             var = SymbolicVariable(col, dom)

@@ -632,7 +632,8 @@ class JPT(JPTBase):
         # out(_data.flags)
         
         if isinstance(data, pd.DataFrame):
-            _data[:] = data.transform([var.domain.values for var in self.variables]).values.T
+            _data[:] = data.transform({c: v.domain.values.transformer()
+                                       for v, c in zip(self.variables, data.columns)}).values
         else:
             for i, (var, col) in enumerate(zip(self.variables, columns)):
                 _data[:, i] = [var.domain.values[v] for v in col]
