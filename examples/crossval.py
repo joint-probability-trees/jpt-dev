@@ -21,8 +21,9 @@ from jpt.trees import JPT
 
 # globals
 start = datetime.now()
-timeformat = "%Y-%m-%d-%H:%M:%S"
-d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}')
+timeformat = "%d.%m.%Y-%H:%M:%S"
+homedir = '../tests/'
+d = os.path.join(homedir, f'{start.strftime("%Y-%m-%d")}')
 prefix = f'{start.strftime(timeformat)}'
 data = variables = kf = None
 data_train = data_test = []
@@ -34,7 +35,7 @@ logger = dnutils.getlogger('/crossvalidation', level=dnutils.DEBUG)
 
 def init_globals():
     global d, start, prefix, logger, logger, dataset
-    d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-{dataset}')
+    d = os.path.join(homedir, f'{start.strftime("%Y-%m-%d")}-{dataset}')
     Path(d).mkdir(parents=True, exist_ok=True)
     prefix = f'{start.strftime(timeformat)}-{dataset}'
     dnutils.loggers({'/crossvalidation': dnutils.newlogger(dnutils.logs.console,
@@ -275,7 +276,8 @@ class EvaluationMatrix:
 
 
 if __name__ == '__main__':
-    dataset = 'regression'
+    dataset = 'airline'
+    homedir = '../tests/'
     ovstart = datetime.now()
     logger.info(f'Starting overall cross validation at {ovstart}')
 

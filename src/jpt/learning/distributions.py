@@ -724,7 +724,7 @@ class Numeric(Distribution):
         ax.plot(bounds,
                 self.cdf.multi_eval(bounds),
                 color='cornflowerblue',
-                # linestyle='dashed',
+                linestyle='dashed',
                 label='Piecewise linear CDF from bounds',
                 linewidth=2,
                 markersize=12)
