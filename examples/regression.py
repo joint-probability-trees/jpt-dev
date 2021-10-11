@@ -1,10 +1,53 @@
 import numpy as np
+import pandas as pd
+
 from dnutils import first, out
+import matplotlib
 from matplotlib import pyplot as plt
 
 from jpt.learning.distributions import Numeric, NumericType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable
+
+
+def preprocess_regression():
+
+    def f(x):
+        """The function to predict."""
+        # x -= 20
+        return x * np.sin(x)
+
+    # ----------------------------------------------------------------------
+    #  First the noiseless case
+    POINTS = 1000000
+    X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T
+    X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T, X))
+    # X = np.atleast_2d(np.random.uniform(-20, 10.0, size=int(POINTS))).T
+    X = X.astype(np.float32)
+    X = np.array(list(sorted(X)))
+
+    # Observations
+    y = f(X).ravel()
+
+    # Add some noise
+    dy = 1.5 + .5 * np.random.random(y.shape)
+    noise = np.random.normal(0, dy)
+    y += noise
+    y = y.astype(np.float32)
+
+    # Mesh the input space for evaluations of the real function, the prediction and
+    # its MSE
+    xx = np.atleast_2d(np.linspace(-30, 30, 500)).T
+    # xx = np.atleast_2d(np.linspace(-10, 20, 500)).T
+    xx = xx.astype(np.float32)
+
+    # Construct the predictive model
+    varx = NumericVariable('x', Numeric)  # , max_std=1)
+    vary = NumericVariable('y', Numeric)  # , max_std=1)
+
+    variables = [varx, vary]
+    data = pd.DataFrame(data={varx.name: X.ravel(), vary.name: y})
+    return data, variables
 
 
 def main():
@@ -44,8 +87,10 @@ def main():
     # varx = NumericVariable('x', NumericType('x', X), haze=.05, max_std=2)
     # vary = NumericVariable('y', NumericType('y', y), haze=.05, max_std=2)
 
+
     jpt = JPT(variables=[varx, vary], min_samples_leaf=.01)
     jpt.learn(columns=[X.ravel(), y])
+
     # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model
     confidence = .2
