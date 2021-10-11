@@ -20,8 +20,10 @@ from examples.regression import preprocess_regression
 from jpt.trees import JPT
 
 # globals
+from jpt.variables import infer_from_dataframe
+
 start = datetime.now()
-timeformat = "%d.%m.%Y-%H:%M:%S"
+timeformat = "%Y-%m-%d-%H:%M:%S"
 homedir = '../tests/'
 d = os.path.join(homedir, f'{start.strftime("%Y-%m-%d")}')
 prefix = f'{start.strftime(timeformat)}'
@@ -50,11 +52,14 @@ def preprocess():
     global data, variables, dataset
 
     if dataset == 'airline':
-        data, variables = preprocess_airline()
+        data = preprocess_airline()
     elif dataset == 'regression':
-        data, variables = preprocess_regression()
+        data = preprocess_regression()
     else:
-        data, variables = None, None
+        data = None
+
+    variables = infer_from_dataframe(data, scale_numeric_types=True)
+    data = data.sample(frac=0.0001)  # TODO remove; only for debugging
 
     # set variable value/code mappings for each symbolic variable
     catcols = data.select_dtypes(['object']).columns
@@ -139,7 +144,7 @@ def compare():
     res_jpt, res_dec = zip(*pool.map(compare_, [(i, [v.to_json() for v in variables]) for i, _ in enumerate(variables)]))
     pool.close()
     pool.join()
-    logger.debug(f'Crossvalidation results (error JPT | error DEC):\n{nsep.join(f"{v.name:<20}{j.accuracy():>10.3f} ({j.error():>10.3f}) | {d.accuracy():>10.3f} ({d.error():>10.3f})" for v, j, d in zip(variables, res_jpt, res_dec))}')
+    logger.debug(f'Crossvalidation results (accuracy JPT | error JPT || accuracy DEC | error DEC):\n{nsep.join(f"{v.name:<20}{j.accuracy():>10.3f} | {j.error():>10.3f} || {d.accuracy():>10.3f} | {d.error():>10.3f}" for v, j, d in zip(variables, res_jpt, res_dec))}')
 
     # save crossvalidation results to file
     with open(os.path.join(d, f'{prefix}-Matrix-DEC.pkl'), 'wb') as f:
@@ -212,12 +217,12 @@ def compare_(args):
     with open(os.path.join(d, f'{prefix}-Matrix-DEC-{compvariable}.pkl'), 'wb') as f:
         pickle.dump(em_dec, f)
 
-    logger.error(f'FINAL NUMBER OF ERRORS FOR VARIABLE {compvariable}: {errors} in {datapoints} data points')
+    logger.error(f'FINAL NUMBER OF ERRORS FOR VARIABLE {compvariable}: {int(errors)} in {int(datapoints)} data points')
     logger.warning(f'res_jpt | res_dec: {em_jpt.accuracy()} | {em_dec.accuracy()}: Comparing datapoint { dp_jpt } in decision tree loaded from {prefix}-FOLD-{fld_idx}-{compvariable}.pkl and JPT from {prefix}{fld_idx}-JPT.json')
     return em_jpt, em_dec
 
 
-def plot_confusion_matrix():
+def plot_confusion_matrix(show=True):
     x_pos = np.arange(len(variables))
     varnames = [v.name for v in variables]
     vartypes = [v.domain if v.numeric else None for v in variables]
@@ -249,7 +254,7 @@ def plot_confusion_matrix():
     plt.xticks(rotation=-45)
     plt.savefig(os.path.join(d, f'{prefix}-crossvalidation.svg'))
     plt.savefig(os.path.join(d, f'{prefix}-crossvalidation.png'))
-    plt.show()
+    if show: plt.show()
 
 
 class EvaluationMatrix:
@@ -288,7 +293,7 @@ if __name__ == '__main__':
 
     logger.info(f'Overall cross validation on {len(data)}-instance dataset took {datetime.now() - ovstart}')
 
-    plot_confusion_matrix()
+    plot_confusion_matrix(show=False)
 
     ###################### ONLY RUN COMPARE WITH ON ALREADY EXISTING DATA ##############################################
     # start = datetime.strptime('07.09.2021-12:01:58', '%d.%m.%Y-%H:%M:%S')

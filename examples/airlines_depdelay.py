@@ -13,7 +13,7 @@ from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 import dnutils
 from jpt.learning.distributions import Numeric, SymbolicType, NumericType
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable
+from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
 
 # globals
 start = datetime.now()
@@ -46,36 +46,12 @@ def preprocess_airline():
             logger.error('Could not download and/or parse file. Please download it manually and try again.')
             sys.exit(-1)
 
-    data = data.sample(frac=0.0001)
-    logger.info('creating types and variables...')
-    DepDelay_type = NumericType('DepDelay_type', np.array(data['DepDelay']))
-    Month_type = NumericType('Month_type', np.array(data['Month']))
-    DayofMonth_type = NumericType('DayofMonth_type', np.array(data['DayofMonth']))
-    DayOfWeek_type = NumericType('DayOfWeek_type', np.array(data['DayOfWeek']))
-    CRSDepTime_type = NumericType('CRSDepTime_type', np.array(data['CRSDepTime']))
-    CRSArrTime_type = NumericType('CRSArrTime_type', np.array(data['CRSArrTime']))
-    UniqueCarrier_type = SymbolicType('UniqueCarrier_type', data['UniqueCarrier'].unique())
-    Origin_type = SymbolicType('Origin_type', data['Origin'].unique())
-    Dest_type = SymbolicType('Dest_type', data['Dest'].unique())
-    Distance_type = NumericType('Distance_type', np.array(data['Distance']))
-
-    DepDelay = NumericVariable('DepDelay', DepDelay_type)
-    Month = NumericVariable('Month', Month_type)
-    DayofMonth = NumericVariable('DayofMonth', DayofMonth_type)
-    DayOfWeek = NumericVariable('DayOfWeek', DayOfWeek_type)
-    CRSDepTime = NumericVariable('CRSDepTime', CRSDepTime_type)
-    CRSArrTime = NumericVariable('CRSArrTime', CRSArrTime_type)
-    UniqueCarrier = SymbolicVariable('UniqueCarrier', UniqueCarrier_type)
-    Origin = SymbolicVariable('Origin', Origin_type)
-    Dest = SymbolicVariable('Dest', Dest_type)
-    Distance = NumericVariable('Distance', Distance_type)
-
-    variables = [DepDelay, Month, DayofMonth, DayOfWeek, CRSDepTime, CRSArrTime, UniqueCarrier, Origin, Dest, Distance]
-    return data, variables
+    return data
 
 
 def main():
-    data, variables = preprocess_airline()
+    data = preprocess_airline()
+    variables = infer_from_dataframe(data, scale_numeric_types=True)
     d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-airline')
     Path(d).mkdir(parents=True, exist_ok=True)
 
