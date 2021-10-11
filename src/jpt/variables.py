@@ -73,7 +73,7 @@ class Variable:
         return self._domain(params)
 
     def __str__(self):
-        return f'{self.name}[{self.domain.__name__}]'
+        return f'{self.name}[{self.domain.__name__}(%s)]' % {0: 'SYM', 1: 'NUM'}[self.numeric]
 
     def __repr__(self):
         return str(self)

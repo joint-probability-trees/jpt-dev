@@ -181,7 +181,8 @@ class Leaf(Node):
 
     def __str__(self):
         return (f'Leaf<ID: {self.idx}; '
-                f'VALUE: {",".join([f"{var.name}: {str(dist)}" for var, dist in self.distributions.items()])}; '
+                #f'VALUE: {",".join([f"{var.name}: {str(dist)}" for var, dist in self.distributions.items()])}; '
+                # 'PATH: %s' % format_path(self.)
                 f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}>')
 
     def __repr__(self):
@@ -476,6 +477,9 @@ class JPT(JPTBase):
 
     def c45(self, data, start, end, parent, child_idx, depth):
         '''
+        Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
+        ``indices``. The created node is put as a child with index ``child_idx`` to the children of
+        node ``parent``, if any.
 
         :param indices: the indices for the training samples used to calculate the gain
         :type indices:      [[int]]
@@ -483,10 +487,6 @@ class JPT(JPTBase):
         :type parent:       jpt.variables.Variable
         :param child_idx:   the index of the child in the current iteration
         :type child_idx:    int
-
-        Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
-        ``indices``. The created node is put as a child with index ``child_idx`` to the children of
-        node ``parent``, if any.
         '''
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
