@@ -6,11 +6,19 @@ import math
 import numbers
 
 import numpy as np
-from dnutils import first, ifnone
+from dnutils import first, ifnone, out
 
-from jpt.base.intervals import INC, EXC
-from jpt.learning.distributions import Multinomial, Numeric, ScaledNumeric, Distribution
-from jpt.base.constants import SYMBOL
+try:
+    from jpt.base.intervals import INC, EXC
+    from jpt.base.constants import SYMBOL
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+    from jpt.base.intervals import INC, EXC
+    from jpt.base.constants import SYMBOL
+
+
+from jpt.learning.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType
 
 
 class Variable:
@@ -198,3 +206,25 @@ class SymbolicVariable(Variable):
         elif type(assignment) is str:
             return '%s = %s' % (self.name, assignment)
 
+
+def infer_from_dataframe(df, scale_numeric_types=True):
+    '''
+    Creates the ``Variable`` instances from column types in a Pandas or Spark data frame.
+    '''
+
+    variables = []
+    for col, dtype in zip(df.columns, df.dtypes):
+        out(col, dtype)
+        if dtype in (str, object):
+            dom = SymbolicType('%s_TYPE' % col.upper(), labels=df[col].unique())
+            var = SymbolicVariable(col, dom)
+        elif dtype in (np.float64, np.int64, np.float32, np.int32):
+            if scale_numeric_types:
+                dom = NumericType('%s_TYPE' % col.upper(), df[col].unique())
+            else:
+                dom = Numeric
+            var = NumericVariable(col, dom)
+        else:
+            raise TypeError('Unknown column type:', col, '[%s]' % dtype)
+        variables.append(var)
+    return variables
