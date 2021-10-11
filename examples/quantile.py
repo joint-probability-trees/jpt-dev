@@ -1,4 +1,6 @@
 import pyximport
+import scipy.stats as stats
+
 pyximport.install()
 
 # from jpt.base.quantiles import QuantileDistribution
@@ -33,10 +35,13 @@ def qdata(data):
 
 
 def test_quantiles():
-    gauss1 = Gaussian(-1, 2).sample(100)
-    gauss2 = Gaussian(7, .5).sample(100)
-    gauss3 = Gaussian(3, .1).sample(100)
-    data = np.hstack([gauss1, gauss2, gauss3])
+    gauss1 = Gaussian(-1, 1.5)
+    g1data = gauss1.sample(100)
+    gauss2 = Gaussian(3, .08)
+    g2data = gauss2.sample(100)
+    gauss3 = Gaussian(7, .5)
+    g3data = gauss3.sample(100)
+    data = np.hstack([sorted(g1data), sorted(g2data), sorted(g3data)])
 
     reg = CDFRegressor(eps=.01)
     reg.fit(qdata(data))
@@ -45,11 +50,11 @@ def test_quantiles():
 
     points = np.array(reg.support_points)
 
-    plt.plot(points[:, 0], points[:, 1], label='QReg points', marker='x')
+    fig, ax = plt.subplots()
+    # ax.set_title("Quantiles")
 
-    plt.scatter(data, np.zeros(data.shape[0]), label='Raw data')
 
-    dist_all = QuantileDistribution(epsilon=1e-10)
+    dist_all = QuantileDistribution(epsilon=.1)
     dist_all.fit(data.reshape(-1, 1), None, 0)
 
 
@@ -79,27 +84,32 @@ def test_quantiles():
 
     # dist = QuantileDistribution.merge([dist1, dist2, dist3], [.333, .333, .333])
 
-    x = np.linspace(-7, 9, 500)
-    # cdf1 = dist1.cdf.multi_eval(x)
-    # cdf2 = dist2.cdf.multi_eval(x)
-    # cdf = dist.cdf.multi_eval(x)
+    # x = np.linspace(-7, 9, 500)
+    # cdf1 = dist_all.cdf.multi_eval(x)
+    # cdf2 = dist_all.cdf.multi_eval(x)
+    # cdf = dist_all.cdf.multi_eval(x)
 
     # out('CDF:', dist.cdf.pfmt())
 
-    # pdf = dist.pdf.multi_eval(x)
-    # ppf = dist.ppf.multi_eval(x)
+    # pdf = dist_all.pdf.multi_eval(x)
+    # ppf = dist_all.ppf.multi_eval(x)
 
     # out('PPF:', dist.ppf.pfmt())
 
     # out('PPF(1) =', dist.ppf.eval(1))
     # out('PPF(0) =', dist.ppf.eval(0))
 
-    plt.plot(np.sort(data), np.cumsum(np.ones(data.shape[0]) / data.shape[0]), label='Combined data distribution')
+    x = sorted(np.linspace(-4, 9, 300))
+    ax.plot(points[:, 0], points[:, 1], label='PLF of CDF', marker='o', color='orange')
+    ax.scatter(data, np.zeros(data.shape[0]), label='Raw data', marker='x', color='cornflowerblue')
+    ax.scatter(np.sort(data), np.cumsum(np.ones(data.shape[0]) / data.shape[0]), label='Combined data distribution', marker='+', color='black')
+    ax.plot(x, [gauss1.pdf(d) + gauss2.pdf(d) + gauss3.pdf(d) for d in x], label='Mixture of Gaussians', color='green')
     # plt.plot(x, cdf1, label='CDF-1')
     # plt.plot(x, cdf2, label='CDF-2')
     # plt.plot(x, cdf, label='Combined CDF')
-    # plt.plot(x, ppf, label='Percentile-point fct')
-    plt.plot(x, dist_all.cdf.multi_eval(x), label='All CDF')
+    # plt.plot(x, pdf, label='Percentile-point fct')
+    # ax.plot(x, dist_all.cdf.multi_eval(x), label='All CDF', linestyle='dashed')
+
 
     plt.grid()
     plt.legend()

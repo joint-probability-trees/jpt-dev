@@ -30,7 +30,7 @@ def plot_muesli():
     # pd.set_option('display.width', 1000)
 
     fig, ax = plt.subplots()
-    ax.set_title(f"Breakfast object positions")
+    # ax.set_title(f"Breakfast object positions")
     ax.set_xlabel('x')
     ax.set_ylabel('y')
 
@@ -39,17 +39,19 @@ def plot_muesli():
     colors = ['orange', 'cornflowerblue', 'green', 'yellow']
 
     # whether extra dimension (success) is used:
-    succ = False
+    succ = True
     if succ:
         for icon, clazz in zip(icons, df['Class'].unique()):
             samples = df[df['Class'] == clazz]
             for color, succ in zip(colors, df['Success'].unique()):
                 spls = samples[samples['Success'] == succ]
                 ax.scatter(spls['X'], spls['Y'], color=color, marker=icon, label=f'{clazz} $\u2192$ {succ}')
+            # ax.set_xticks([round(x, 2) for x in np.arange(sorted(df['X'])[0], sorted(df['X'])[-1], .02)])
     else:
         for color, icon, clazz in zip(colors, icons, df['Class'].unique()):
             samples = df[df['Class'] == clazz]
             ax.scatter(samples['X'], samples['Y'], color=color, marker=icon, label=clazz)
+            # ax.set_xticks([round(x, 2) for x in np.arange(sorted(df['X'])[0], sorted(df['X'])[-1], .02)])
 
     ax.legend()
     plt.show()
@@ -65,8 +67,8 @@ def test_muesli():
     data = pd.read_csv('../examples/data/muesli.csv')
     d = np.array(sorted(data['X']), dtype=np.float64)
 
-    quantiles = QuantileDistribution(epsilon=.0001)
-    quantiles.fit(d)
+    quantiles = QuantileDistribution(epsilon=.01)
+    quantiles.fit(d.reshape((-1, 1)), None, 0)
     d = Numeric(quantile=quantiles)
 
     interval = ContinuousSet(-2.05, -2.0)
@@ -75,8 +77,7 @@ def test_muesli():
 
     print(d.cdf.pfmt())
 
-    # TODO: check! This does not work anymore -> fix or delete
-    d.plot(title='Piecewise Linear CDF of Breakfast Data',
+    d.plot(title=' ',
            fname='BreakfastPiecewise',
            xlabel='X',
            view=True,
@@ -143,8 +144,8 @@ def picklemuesli():
 
 def main(*args):
     # plot_muesli()
-    # test_muesli()
-    muesli_tree()
+    test_muesli()
+    # muesli_tree()
     # picklemuesli()
 
 

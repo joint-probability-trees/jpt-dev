@@ -19,7 +19,7 @@ def preprocess_regression():
 
     # ----------------------------------------------------------------------
     #  First the noiseless case
-    POINTS = 1000000
+    POINTS = 10000
     X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T
     X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T, X))
     # X = np.atleast_2d(np.random.uniform(-20, 10.0, size=int(POINTS))).T
@@ -42,12 +42,12 @@ def preprocess_regression():
     xx = xx.astype(np.float32)
 
     # Construct the predictive model
-    varx = NumericVariable('x', Numeric)  # , max_std=1)
-    vary = NumericVariable('y', Numeric)  # , max_std=1)
+    # varx = NumericVariable('x', Numeric)  # , max_std=1)
+    # vary = NumericVariable('y', Numeric)  # , max_std=1)
 
-    variables = [varx, vary]
-    data = pd.DataFrame(data={varx.name: X.ravel(), vary.name: y})
-    return data, variables
+    # variables = [varx, vary]
+    data = pd.DataFrame(data={'x': X.ravel(), 'y': y})
+    return data
 
 
 def main():
