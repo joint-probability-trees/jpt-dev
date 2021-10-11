@@ -138,7 +138,7 @@ def compare():
     res_jpt, res_dec = zip(*pool.map(compare_, [(i, [v.to_json() for v in variables]) for i, _ in enumerate(variables)]))
     pool.close()
     pool.join()
-    logger.debug(f'Crossvalidation results (error JPT | error DEC):\n{nsep.join(f"{v.name:<20}{j.accuracy():.3f} ({j.error():.3f}) | {d.accuracy():.3f} ({d.error():.3f})" for v, j, d in zip(variables, res_jpt, res_dec))}')
+    logger.debug(f'Crossvalidation results (error JPT | error DEC):\n{nsep.join(f"{v.name:<20}{j.accuracy():>10.3f} ({j.error():>10.3f}) | {d.accuracy():>10.3f} ({d.error():>10.3f})" for v, j, d in zip(variables, res_jpt, res_dec))}')
 
     # save crossvalidation results to file
     with open(os.path.join(d, f'{prefix}-Matrix-DEC.pkl'), 'wb') as f:
