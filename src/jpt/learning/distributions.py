@@ -572,6 +572,9 @@ class Identity:
 
     __call__ = __getitem__
 
+    def transformer(self):
+        return lambda a: self[a]
+
 
 class DataScalerProxy:
 
