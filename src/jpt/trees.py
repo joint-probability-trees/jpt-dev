@@ -449,7 +449,7 @@ class JPT(JPTBase):
 
     logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
-    def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
+    def __init__(self, variables, targets=None, min_samples_leaf=1, min_impurity_improvement=None,
                  max_leaves=None, max_depth=None):
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
@@ -462,7 +462,7 @@ class JPT(JPTBase):
         :type min_samples_leaf:     int
         '''
         super().__init__(variables, targets=targets)
-        self.min_samples_leaf = min_samples_leaf
+        self._min_samples_leaf = min_samples_leaf
         self.min_impurity_improvement = min_impurity_improvement
         self._numsamples = 0
         self.innernodes = {}
@@ -473,7 +473,7 @@ class JPT(JPTBase):
         self.max_depth = max_depth or float('inf')
         self._node_counter = 0
         self.indices = None
-        self.impurity = Impurity(self)
+        self.impurity = None#Impurity(self)
 
     def c45(self, data, start, end, parent, child_idx, depth):
         '''
@@ -642,9 +642,9 @@ class JPT(JPTBase):
         self.indices[0] = 0
         np.cumsum(self.indices, out=self.indices)
         # Initialize the impurity calculation
+        self.impurity = Impurity(self)
         self.impurity.setup(_data, self.indices)
-        if type(self.min_samples_leaf) is float and 0 < self.min_samples_leaf < 1:
-            self.impurity.min_samples_leaf = max(1, int(len(_data) * self.min_samples_leaf))
+        self.impurity.min_samples_leaf = max(1, self.min_samples_leaf)
 
         JPT.logger.info('Data transformation... %d x %d' % _data.shape)
 
@@ -687,6 +687,12 @@ class JPT(JPTBase):
         JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
         # if logger.level >= 20:
         JPT.logger.debug(self)
+
+    @property
+    def min_samples_leaf(self):
+        if type(self._min_samples_leaf) is int: return self._min_samples_leaf
+        if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1: return int(self._min_samples_leaf*len(_data))
+        return 1
 
     @staticmethod
     def sample(sample, ft):
