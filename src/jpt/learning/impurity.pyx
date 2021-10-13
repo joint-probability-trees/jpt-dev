@@ -490,11 +490,17 @@ cdef class Impurity:
                 if last_iter:
                     impurity_improvement /= denom
                     impurity_improvement = (impurity_total - impurity_improvement) / impurity_total
-
+                    cnt = 0
                     for i in range(self.symbols[symbolic_idx]):
-                        if 0 < self.num_samples[i] < self.min_samples_leaf:
-                            impurity_improvement = 0
-                            break
+                        if self.num_samples[i] < self.min_samples_leaf:
+                            if self.num_samples[i] == 0:
+                                cnt += 1
+                            else:
+                                impurity_improvement = 0
+                                break
+                    if cnt >= self.symbols[symbolic_idx] - 1:  # Require splits with entropy > 0
+                        impurity_improvement = 0
+                        break
 
             else:  # numeric
                 impurity_improvement /= denom
