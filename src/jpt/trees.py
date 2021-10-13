@@ -644,7 +644,7 @@ class JPT(JPTBase):
         # Initialize the impurity calculation
         self.impurity.setup(_data, self.indices)
         if type(self.min_samples_leaf) is float and 0 < self.min_samples_leaf < 1:
-            self.impurity.min_samples_leaf = int(len(_data) * self.min_samples_leaf)
+            self.impurity.min_samples_leaf = max(1, int(len(_data) * self.min_samples_leaf))
 
         JPT.logger.info('Data transformation... %d x %d' % _data.shape)
 
@@ -665,7 +665,7 @@ class JPT(JPTBase):
         # Start the training
 
         started = datetime.datetime.now()
-        JPT.logger.info('Started learning of %s x %s at %s requiring at least %s samples per leaf' % (_data.shape[0], _data.shape[1], started, self.min_samples_leaf))
+        JPT.logger.info('Started learning of %s x %s at %s requiring at least %s samples per leaf' % (_data.shape[0], _data.shape[1], started, int(self.impurity.min_samples_leaf)))
         # build up tree
         self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
         while self.c45queue:
