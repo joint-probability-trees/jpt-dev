@@ -9,6 +9,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import tabulate
+from dnutils import out
 from matplotlib import pyplot as plt
 from sklearn.metrics import f1_score, mean_absolute_error
 from sklearn.model_selection import KFold
@@ -33,6 +35,8 @@ dataset = 'airline'
 folds = 10
 
 logger = dnutils.getlogger('/crossvalidation', level=dnutils.DEBUG)
+
+MIN_SAMPLES_LEAF = .01
 
 
 def init_globals():
@@ -59,7 +63,7 @@ def preprocess():
         data = None
 
     variables = infer_from_dataframe(data, scale_numeric_types=True)
-    data = data.sample(frac=0.0001)  # TODO remove; only for debugging
+    data = data.sample(frac=0.001)  # TODO remove; only for debugging
 
     # set variable value/code mappings for each symbolic variable
     catcols = data.select_dtypes(['object']).columns
@@ -79,13 +83,13 @@ def discrtree(i, fld_idx):
     X[catcols] = X[catcols].apply(lambda x: x.cat.codes)
 
     if var.numeric:
-        t = DecisionTreeRegressor(min_samples_leaf=int(data_train.shape[0]*.01))
+        t = DecisionTreeRegressor(min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
 
     else:
-        t = DecisionTreeClassifier(min_samples_leaf=int(data_train.shape[0]*.01))
+        t = DecisionTreeClassifier(min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
 
-    logger.debug(f'Pickling tree {var.name} for FOLD {fld_idx}...')
     t.fit(X, tgt)
+    logger.debug(f'Pickling tree {var.name} ({t.get_n_leaves()} leaves) for FOLD {fld_idx + 1}...')
     with open(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.pkl')), 'wb') as f:
         pickle.dump(t, f)
 
@@ -108,7 +112,7 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
 
     # learn full JPT
     logger.debug(f'Learning full JPT over all variables for FOLD {fld_idx}...')
-    jpt = JPT(variables=variables, min_samples_leaf=data_train.shape[0]*.01)
+    jpt = JPT(variables=variables, min_samples_leaf=MIN_SAMPLES_LEAF)
     jpt.learn(columns=data_train.values.T)
     jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
     jpt.plot(title=f'{prefix}-FOLD-{fld_idx}', directory=d, view=False)
@@ -145,6 +149,20 @@ def compare():
     pool.close()
     pool.join()
     logger.debug(f'Crossvalidation results (accuracy JPT | error JPT || accuracy DEC | error DEC):\n{nsep.join(f"{v.name:<20}{j.accuracy():>10.3f} | {j.error():>10.3f} || {d.accuracy():>10.3f} | {d.error():>10.3f}" for v, j, d in zip(variables, res_jpt, res_dec))}')
+    logger.debug('Numeric Variable Results:')
+    logger.debug(tabulate.tabulate([[v.name,
+                                     j.accuracy(),
+                                     j.error(),
+                                     d.accuracy(),
+                                     d.error()] for v, j, d in zip(variables, res_jpt, res_dec) if v.numeric],
+                                   headers=['Variable', 'JPT-MAE', '(+/-)', 'DEC-MAE', '(+/-)']))
+    logger.debug('Symbolic Variable Results:')
+    logger.debug(tabulate.tabulate([[v.name,
+                                     j.accuracy(),
+                                     j.error(),
+                                     d.accuracy(),
+                                     d.error()] for v, j, d in zip(variables, res_jpt, res_dec) if v.symbolic],
+                                   headers=['Variable', 'JPT-F1', '(+/-)', 'DEC-F1', '(+/-)']))
 
     # save crossvalidation results to file
     with open(os.path.join(d, f'{prefix}-Matrix-DEC.pkl'), 'wb') as f:
@@ -192,9 +210,11 @@ def compare_(args):
             dectree = pickle.load(f)
 
         # for each data point in the test dataset check results and store them
+        do_print = np.inf
         for n, (index, row) in enumerate(testdata.iterrows()):
-            if not n % 10000:
-                logger.debug(f'Pool #{p._identity[0]} ({compvariable}) and FOLD {fld_idx} is now at data point {n}...')
+            if (n / testdata.size * 100) % 10 < do_print:
+                logger.debug(f'Pool #{p._identity[0]} ({compvariable}) and FOLD {fld_idx} is now at {n / testdata.size * 100}%...')
+                do_print = (n / testdata.size * 100) % 10
 
             # ground truth
             var_gt = row[compvariable]
@@ -206,7 +226,7 @@ def compare_(args):
             jptexp = jpt.expectation([compvariable], dp_jpt, fail_on_unsatisfiability=False)
             if jptexp is None:
                 errors += 1.
-                logger.warning(f'Errors in Pool #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}) (unsatisfiable query: {dp_jpt})')
+                # logger.warning(f'Errors in Pool #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}) (unsatisfiable query: {dp_jpt})')
             else:
                 em_jpt.update(fld_idx, var_gt, jptexp[0].result)
                 em_dec.update(fld_idx, var_gt, dectree.predict([dp_dec])[0])
@@ -269,7 +289,7 @@ class EvaluationMatrix:
     def accuracy(self):
         res = list(chain(*self.res.values()))
         if self.symbolic:
-            return f1_score(list(zip(*res))[0], list(zip(*res))[1], average='macro')
+            return f1_score(list(zip(*res))[0], list(zip(*res))[1], average='micro')
         else:
             return mean_absolute_error(list(zip(*res))[0], list(zip(*res))[1])  # identical result
 
@@ -294,6 +314,7 @@ if __name__ == '__main__':
     logger.info(f'Overall cross validation on {len(data)}-instance dataset took {datetime.now() - ovstart}')
 
     plot_confusion_matrix(show=False)
+
 
     ###################### ONLY RUN COMPARE WITH ON ALREADY EXISTING DATA ##############################################
     # start = datetime.strptime('07.09.2021-12:01:58', '%d.%m.%Y-%H:%M:%S')
