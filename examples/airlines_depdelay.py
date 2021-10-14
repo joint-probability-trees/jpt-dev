@@ -41,7 +41,7 @@ def preprocess_airline():
         logger.warning(f'The file containing this dataset is not in the repository, as it is very large.\nI will try downloading file {remote_src} now...')
         try:
             data = pd.read_csv(remote_src, delimiter=',', skip_blank_lines=True, quoting=0, header=0)
-            data.to_csv(local_src)
+            data.to_csv(local_src, index=False)
             logger.info(f'Success! Downloaded dataset containing {data.shape[0]} instances of {data.shape[1]} features each')
         except pd.errors.ParserError:
             logger.error('Could not download and/or parse file. Please download it manually and try again.')
