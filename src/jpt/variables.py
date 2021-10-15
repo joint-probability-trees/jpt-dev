@@ -207,7 +207,7 @@ class SymbolicVariable(Variable):
             return '%s = %s' % (self.name, assignment)
 
 
-def infer_from_dataframe(df, scale_numeric_types=True):
+def infer_from_dataframe(df, scale_numeric_types=True, min_impurity_improvement=None, haze=None, max_std=None, precision=None):
     '''
     Creates the ``Variable`` instances from column types in a Pandas or Spark data frame.
     '''
@@ -216,13 +216,13 @@ def infer_from_dataframe(df, scale_numeric_types=True):
     for col, dtype in zip(df.columns, df.dtypes):
         if dtype in (str, object):
             dom = SymbolicType('%s_TYPE' % col.upper(), labels=df[col].unique())
-            var = SymbolicVariable(col, dom)
+            var = SymbolicVariable(col, dom, min_impurity_improvement=min_impurity_improvement, )
         elif dtype in (np.float64, np.int64, np.float32, np.int32):
             if scale_numeric_types:
                 dom = NumericType('%s_TYPE' % col.upper(), df[col].unique())
             else:
                 dom = Numeric
-            var = NumericVariable(col, dom)
+            var = NumericVariable(col, dom, min_impurity_improvement=min_impurity_improvement, haze=haze, max_std=max_std, precision=precision)
         else:
             raise TypeError('Unknown column type:', col, '[%s]' % dtype)
         variables.append(var)
