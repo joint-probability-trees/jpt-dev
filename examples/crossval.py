@@ -4,11 +4,14 @@ import pickle
 from collections import defaultdict
 from datetime import datetime
 from itertools import chain
-from multiprocessing import current_process
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import tabulate
+from sklearn import datasets
+
+from dnutils import out
 from matplotlib import pyplot as plt
 from sklearn.metrics import f1_score, mean_absolute_error
 from sklearn.model_selection import KFold
@@ -34,6 +37,8 @@ folds = 10
 
 logger = dnutils.getlogger('/crossvalidation', level=dnutils.DEBUG)
 
+MIN_SAMPLES_LEAF = .05
+
 
 def init_globals():
     global d, start, prefix, logger, logger, dataset
@@ -53,13 +58,20 @@ def preprocess():
 
     if dataset == 'airline':
         data = preprocess_airline()
+        # data = data[['DayOfWeek', 'CRSDepTime', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest', 'Distance']]
+        data = data[['UniqueCarrier', 'Origin', 'Dest']]
     elif dataset == 'regression':
         data = preprocess_regression()
+    elif dataset == 'iris':
+        iris = datasets.load_iris()
+        data = pd.DataFrame(data=iris['data'], columns=iris['feature_names'])
+        data['species'] = [['setosa', 'versicolor', 'virginica'][x] for x in iris['target']]  # convert target integers to symbolics and add to dataframe
     else:
         data = None
 
     variables = infer_from_dataframe(data, scale_numeric_types=True)
-    data = data.sample(frac=0.0001)  # TODO remove; only for debugging
+    # data = data.sample(frac=0.0001)  # TODO remove; only for debugging
+    logger.debug(f'Loaded {len(data)} datapoints')
 
     # set variable value/code mappings for each symbolic variable
     catcols = data.select_dtypes(['object']).columns
@@ -79,13 +91,12 @@ def discrtree(i, fld_idx):
     X[catcols] = X[catcols].apply(lambda x: x.cat.codes)
 
     if var.numeric:
-        t = DecisionTreeRegressor(min_samples_leaf=int(data_train.shape[0]*.01))
-
+        t = DecisionTreeRegressor(min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
     else:
-        t = DecisionTreeClassifier(min_samples_leaf=int(data_train.shape[0]*.01))
+        t = DecisionTreeClassifier(min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
 
-    logger.debug(f'Pickling tree {var.name} for FOLD {fld_idx}...')
     t.fit(X, tgt)
+    logger.debug(f'Pickling tree {var.name} ({t.get_n_leaves()} leaves) for FOLD {fld_idx + 1}...')
     with open(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.pkl')), 'wb') as f:
         pickle.dump(t, f)
 
@@ -94,11 +105,11 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
     # for each split, learn separate regression/decision trees for each variable of training set and JPT over
     # entire training set and then compare the results for queries using test set
     # for fld_idx, (train_index, test_index) in enumerate(kf.split(data)):
-    logger.info(f'{"":=<100}\nFOLD {fld_idx}: Learning separate regression/decision trees for each variable...')
     global data_train, data_test
     data_train = data.iloc[train_index]
     data_test = data.iloc[test_index]
     data_test.to_pickle(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-testdata.data'))
+    logger.info(f'{"":=<100}\nFOLD {fld_idx}: Learning separate regression/decision trees for each variable...')
 
     # learn separate regression/decision trees for each variable simultaneously
     pool = multiprocessing.Pool()
@@ -108,7 +119,7 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
 
     # learn full JPT
     logger.debug(f'Learning full JPT over all variables for FOLD {fld_idx}...')
-    jpt = JPT(variables=variables, min_samples_leaf=data_train.shape[0]*.01)
+    jpt = JPT(variables=variables, min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
     jpt.learn(columns=data_train.values.T)
     jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
     jpt.plot(title=f'{prefix}-FOLD-{fld_idx}', directory=d, view=False)
@@ -144,7 +155,20 @@ def compare():
     res_jpt, res_dec = zip(*pool.map(compare_, [(i, [v.to_json() for v in variables]) for i, _ in enumerate(variables)]))
     pool.close()
     pool.join()
-    logger.debug(f'Crossvalidation results (accuracy JPT | error JPT || accuracy DEC | error DEC):\n{nsep.join(f"{v.name:<20}{j.accuracy():>10.3f} | {j.error():>10.3f} || {d.accuracy():>10.3f} | {d.error():>10.3f}" for v, j, d in zip(variables, res_jpt, res_dec))}')
+    logger.debug('Numeric Variable Results:')
+    logger.debug(tabulate.tabulate([[v.name,
+                                     j.accuracy(),
+                                     j.error(),
+                                     d.accuracy(),
+                                     d.error()] for v, j, d in zip(variables, res_jpt, res_dec) if v.numeric],
+                                   headers=['Variable', 'JPT-MAE', '(+/-)', 'DEC-MAE', '(+/-)']))
+    logger.debug('Symbolic Variable Results:')
+    logger.debug(tabulate.tabulate([[v.name,
+                                     j.accuracy(),
+                                     j.error(),
+                                     d.accuracy(),
+                                     d.error()] for v, j, d in zip(variables, res_jpt, res_dec) if v.symbolic],
+                                   headers=['Variable', 'JPT-F1', '(+/-)', 'DEC-F1', '(+/-)']))
 
     # save crossvalidation results to file
     with open(os.path.join(d, f'{prefix}-Matrix-DEC.pkl'), 'wb') as f:
@@ -162,7 +186,7 @@ def compare():
 
 
 def compare_(args):
-    p = current_process()
+    p = multiprocessing.current_process()
     compvaridx, json_var = args
     allvariables = [jv['name'] for jv in json_var]
     compvariable = allvariables[compvaridx]
@@ -177,7 +201,6 @@ def compare_(args):
     for fld_idx in range(folds):
         # load test dataset for fold fld_idx
         testdata = pd.read_pickle(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-testdata.data'))
-        # testdata = testdata.sample(frac=1)
         datapoints += len(testdata)
 
         # create mappings for categorical variables; later to be used to translate variable values to codes for dec tree
@@ -192,9 +215,10 @@ def compare_(args):
             dectree = pickle.load(f)
 
         # for each data point in the test dataset check results and store them
+        do_print = np.inf
         for n, (index, row) in enumerate(testdata.iterrows()):
-            if not n % 10000:
-                logger.debug(f'Pool #{p._identity[0]} ({compvariable}) and FOLD {fld_idx} is now at data point {n}...')
+            if not n % min(10000, int(len(testdata)*.1)):
+                logger.debug(f'Worker #{p._identity[0]} ({compvariable}) and FOLD {fld_idx} is now at data point {n}...')
 
             # ground truth
             var_gt = row[compvariable]
@@ -206,7 +230,7 @@ def compare_(args):
             jptexp = jpt.expectation([compvariable], dp_jpt, fail_on_unsatisfiability=False)
             if jptexp is None:
                 errors += 1.
-                logger.warning(f'Errors in Pool #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}) (unsatisfiable query: {dp_jpt})')
+                logger.warning(f'Errors in Worker #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}); current data point: {n} (unsatisfiable query: {dp_jpt})')
             else:
                 em_jpt.update(fld_idx, var_gt, jptexp[0].result)
                 em_dec.update(fld_idx, var_gt, dectree.predict([dp_dec])[0])
@@ -218,6 +242,16 @@ def compare_(args):
         pickle.dump(em_dec, f)
 
     logger.error(f'FINAL NUMBER OF ERRORS FOR VARIABLE {compvariable}: {int(errors)} in {int(datapoints)} data points')
+    try:
+        em_jpt.accuracy()
+        em_dec.accuracy()
+    except:
+        res = list(chain(*em_jpt.res.values()))
+        logger.error('PANIK JPT', list(zip(*res))[1])
+        res = list(chain(*em_dec.res.values()))
+        logger.error('PANIK DEC', list(zip(*res))[1])
+
+
     logger.warning(f'res_jpt | res_dec: {em_jpt.accuracy()} | {em_dec.accuracy()}: Comparing datapoint { dp_jpt } in decision tree loaded from {prefix}-FOLD-{fld_idx}-{compvariable}.pkl and JPT from {prefix}{fld_idx}-JPT.json')
     return em_jpt, em_dec
 
@@ -269,7 +303,7 @@ class EvaluationMatrix:
     def accuracy(self):
         res = list(chain(*self.res.values()))
         if self.symbolic:
-            return f1_score(list(zip(*res))[0], list(zip(*res))[1], average='macro')
+            return f1_score(list(zip(*res))[0], list(zip(*res))[1], average='micro')
         else:
             return mean_absolute_error(list(zip(*res))[0], list(zip(*res))[1])  # identical result
 
@@ -281,7 +315,7 @@ class EvaluationMatrix:
 
 
 if __name__ == '__main__':
-    dataset = 'airline'
+    dataset = 'iris'
     homedir = '../tests/'
     ovstart = datetime.now()
     logger.info(f'Starting overall cross validation at {ovstart}')
@@ -294,6 +328,7 @@ if __name__ == '__main__':
     logger.info(f'Overall cross validation on {len(data)}-instance dataset took {datetime.now() - ovstart}')
 
     plot_confusion_matrix(show=False)
+
 
     ###################### ONLY RUN COMPARE WITH ON ALREADY EXISTING DATA ##############################################
     # start = datetime.strptime('07.09.2021-12:01:58', '%d.%m.%Y-%H:%M:%S')

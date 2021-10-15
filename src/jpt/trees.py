@@ -340,7 +340,7 @@ class JPTBase:
         for var in variables:
             if not sum([w for _, w in distributions[var]]):
                 if fail_on_unsatisfiability:
-                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(self.variables, evidence))
+                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
                 else:
                     return None
 
@@ -692,7 +692,7 @@ class JPT(JPTBase):
     def min_samples_leaf(self):
         if type(self._min_samples_leaf) is int: return self._min_samples_leaf
         if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1: return int(self._min_samples_leaf*len(_data))
-        return 1
+        return int(self._min_samples_leaf)
 
     @staticmethod
     def sample(sample, ft):
