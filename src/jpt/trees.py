@@ -340,7 +340,7 @@ class JPTBase:
         for var in variables:
             if not sum([w for _, w in distributions[var]]):
                 if fail_on_unsatisfiability:
-                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(self.variables, evidence))
+                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
                 else:
                     return None
 
