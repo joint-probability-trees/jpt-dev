@@ -155,7 +155,6 @@ def compare():
     res_jpt, res_dec = zip(*pool.map(compare_, [(i, [v.to_json() for v in variables]) for i, _ in enumerate(variables)]))
     pool.close()
     pool.join()
-    logger.debug(f'Crossvalidation results (accuracy JPT | error JPT || accuracy DEC | error DEC):\n{nsep.join(f"{v.name:<20}{j.accuracy():>10.3f} | {j.error():>10.3f} || {d.accuracy():>10.3f} | {d.error():>10.3f}" for v, j, d in zip(variables, res_jpt, res_dec))}')
     logger.debug('Numeric Variable Results:')
     logger.debug(tabulate.tabulate([[v.name,
                                      j.accuracy(),
