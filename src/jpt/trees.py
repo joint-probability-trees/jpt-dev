@@ -692,7 +692,7 @@ class JPT(JPTBase):
     def min_samples_leaf(self):
         if type(self._min_samples_leaf) is int: return self._min_samples_leaf
         if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1: return int(self._min_samples_leaf*len(_data))
-        return 1
+        return int(self._min_samples_leaf)
 
     @staticmethod
     def sample(sample, ft):
