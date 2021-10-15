@@ -4,7 +4,6 @@ import pickle
 from collections import defaultdict
 from datetime import datetime
 from itertools import chain
-from multiprocessing import current_process
 from pathlib import Path
 
 import numpy as np
@@ -53,6 +52,8 @@ def preprocess():
 
     if dataset == 'airline':
         data = preprocess_airline()
+        # data = data[['DayOfWeek', 'CRSDepTime', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest', 'Distance']]
+        data = data[['UniqueCarrier', 'Origin', 'Dest']]
     elif dataset == 'regression':
         data = preprocess_regression()
     else:
@@ -60,6 +61,7 @@ def preprocess():
 
     variables = infer_from_dataframe(data, scale_numeric_types=True)
     data = data.sample(frac=0.0001)  # TODO remove; only for debugging
+    logger.debug(f'Loaded {len(data)} datapoints')
 
     # set variable value/code mappings for each symbolic variable
     catcols = data.select_dtypes(['object']).columns
@@ -79,10 +81,10 @@ def discrtree(i, fld_idx):
     X[catcols] = X[catcols].apply(lambda x: x.cat.codes)
 
     if var.numeric:
-        t = DecisionTreeRegressor(min_samples_leaf=int(data_train.shape[0]*.01))
+        t = DecisionTreeRegressor(min_samples_leaf=int(data_train.shape[0]*.05))
 
     else:
-        t = DecisionTreeClassifier(min_samples_leaf=int(data_train.shape[0]*.01))
+        t = DecisionTreeClassifier(min_samples_leaf=int(data_train.shape[0]*.05))
 
     logger.debug(f'Pickling tree {var.name} for FOLD {fld_idx}...')
     t.fit(X, tgt)
@@ -94,11 +96,11 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
     # for each split, learn separate regression/decision trees for each variable of training set and JPT over
     # entire training set and then compare the results for queries using test set
     # for fld_idx, (train_index, test_index) in enumerate(kf.split(data)):
-    logger.info(f'{"":=<100}\nFOLD {fld_idx}: Learning separate regression/decision trees for each variable...')
     global data_train, data_test
     data_train = data.iloc[train_index]
     data_test = data.iloc[test_index]
     data_test.to_pickle(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-testdata.data'))
+    logger.info(f'{"":=<100}\nFOLD {fld_idx}: Learning separate regression/decision trees for each variable...')
 
     # learn separate regression/decision trees for each variable simultaneously
     pool = multiprocessing.Pool()
@@ -162,7 +164,7 @@ def compare():
 
 
 def compare_(args):
-    p = current_process()
+    p = multiprocessing.current_process()
     compvaridx, json_var = args
     allvariables = [jv['name'] for jv in json_var]
     compvariable = allvariables[compvaridx]
@@ -177,7 +179,6 @@ def compare_(args):
     for fld_idx in range(folds):
         # load test dataset for fold fld_idx
         testdata = pd.read_pickle(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-testdata.data'))
-        # testdata = testdata.sample(frac=1)
         datapoints += len(testdata)
 
         # create mappings for categorical variables; later to be used to translate variable values to codes for dec tree
@@ -193,8 +194,8 @@ def compare_(args):
 
         # for each data point in the test dataset check results and store them
         for n, (index, row) in enumerate(testdata.iterrows()):
-            if not n % 10000:
-                logger.debug(f'Pool #{p._identity[0]} ({compvariable}) and FOLD {fld_idx} is now at data point {n}...')
+            if not n % min(10000, int(len(testdata)*.1)):
+                logger.debug(f'Worker #{p._identity[0]} ({compvariable}) and FOLD {fld_idx} is now at data point {n}...')
 
             # ground truth
             var_gt = row[compvariable]
@@ -206,7 +207,7 @@ def compare_(args):
             jptexp = jpt.expectation([compvariable], dp_jpt, fail_on_unsatisfiability=False)
             if jptexp is None:
                 errors += 1.
-                logger.warning(f'Errors in Pool #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}) (unsatisfiable query: {dp_jpt})')
+                logger.warning(f'Errors in Worker #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}); current data point: {n} (unsatisfiable query: {dp_jpt})')
             else:
                 em_jpt.update(fld_idx, var_gt, jptexp[0].result)
                 em_dec.update(fld_idx, var_gt, dectree.predict([dp_dec])[0])
