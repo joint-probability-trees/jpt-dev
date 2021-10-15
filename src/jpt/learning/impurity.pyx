@@ -462,7 +462,7 @@ cdef class Impurity:
                                          result=self.variance_improvements)
                 # self.check_variances(self.variance_improvements)
                 if numeric:
-                    impurity_improvement += mean(self.variance_improvements)
+                    impurity_improvement += mean(self.variance_improvements) * <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
                 else:
                     impurity_improvement += mean(self.variances_left) * <DTYPE_t> self.num_samples[VAL_IDX]\
                                                * <DTYPE_t> self.n_num_vars / (<DTYPE_t> n_samples * self.n_vars)
@@ -474,7 +474,7 @@ cdef class Impurity:
                     gini_improvement = (gini_total - (<DTYPE_t> samples_left / <DTYPE_t> n_samples * gini_left +
                                                       <DTYPE_t> samples_right / <DTYPE_t> n_samples * gini_right)) / gini_total
                     if numeric:
-                        impurity_improvement += gini_improvement
+                        impurity_improvement += gini_improvement * <DTYPE_t> self.n_sym_vars / <DTYPE_t> self.n_vars
                     else:
                         impurity_improvement += (gini_left * <DTYPE_t> self.num_samples[VAL_IDX]
                                                  * <DTYPE_t> self.n_sym_vars
