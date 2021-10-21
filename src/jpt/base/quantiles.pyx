@@ -658,7 +658,7 @@ cdef class QuantileDistribution:
                                                        INC, EXC))
                     ppf.functions.append(f.invert())
 
-            if ppf.intervals[-1].upper == 1:
+            if ppf.intervals[-1].upper >= 1:
                 ppf.intervals[-1].upper = one_plus_eps
             elif ppf.intervals[-1].upper < 1:
                 ppf.functions.append(LinearFunction.from_points((ppf.intervals[-1].upper,
@@ -668,7 +668,7 @@ cdef class QuantileDistribution:
 
             ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC))
             ppf.functions.append(Undefined())
-            assert np.isnan(ppf.eval(one_plus_eps)), (ppf.intervals[-1].lower, ppf.pfmt())
+            assert np.isnan(ppf.eval(one_plus_eps)), (ppf.intervals[-1].lower, ppf.intervals[-1], 'value:', ppf.intervals[-2].upper, ppf.eval(one_plus_eps), ppf.pfmt())
             assert not np.isnan(ppf.eval(1.)), ppf.pfmt()
             self._ppf = ppf
         return self._ppf
@@ -999,8 +999,8 @@ cdef class PiecewiseFunction(Function):
             if x in interval:
                 break
         else:
-            out(x, 'is undefined at x=%.3f' % x)
-            out(self.pfmt())
+            # out(x, 'is undefined at x=%.3f' % x)
+            # out(self.pfmt())
             return Undefined()
         return self.functions[i]
 
