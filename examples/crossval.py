@@ -19,7 +19,8 @@ from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
 import dnutils
 from airlines_depdelay import preprocess_airline
-from examples.regression import preprocess_regression
+from banana import preprocess_banana
+from regression import preprocess_regression
 from jpt.trees import JPT
 
 # globals
@@ -37,7 +38,7 @@ folds = 10
 
 logger = dnutils.getlogger('/crossvalidation', level=dnutils.DEBUG)
 
-MIN_SAMPLES_LEAF = .05
+MIN_SAMPLES_LEAF = .01
 
 
 def init_globals():
@@ -58,19 +59,22 @@ def preprocess():
 
     if dataset == 'airline':
         data = preprocess_airline()
-        # data = data[['DayOfWeek', 'CRSDepTime', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest', 'Distance']]
-        data = data[['UniqueCarrier', 'Origin', 'Dest']]
+        data = data[['DayOfWeek', 'CRSDepTime', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest', 'Distance']]
+        # data = data[['UniqueCarrier', 'Origin', 'Dest']]
     elif dataset == 'regression':
         data = preprocess_regression()
     elif dataset == 'iris':
         iris = datasets.load_iris()
         data = pd.DataFrame(data=iris['data'], columns=iris['feature_names'])
         data['species'] = [['setosa', 'versicolor', 'virginica'][x] for x in iris['target']]  # convert target integers to symbolics and add to dataframe
+    elif dataset == 'banana':
+        data = preprocess_banana()
     else:
         data = None
 
-    variables = infer_from_dataframe(data, scale_numeric_types=True)
-    # data = data.sample(frac=0.0001)  # TODO remove; only for debugging
+    variables = infer_from_dataframe(data, scale_numeric_types=True, precision=0.01)
+    if dataset == 'airline':
+        data = data.sample(frac=0.001)  # TODO remove; only for debugging
     logger.debug(f'Loaded {len(data)} datapoints')
 
     # set variable value/code mappings for each symbolic variable
@@ -122,7 +126,7 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
     jpt = JPT(variables=variables, min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
     jpt.learn(columns=data_train.values.T)
     jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
-    jpt.plot(title=f'{prefix}-FOLD-{fld_idx}', directory=d, view=False)
+    # jpt.plot(title=f'{prefix}-FOLD-{fld_idx}', directory=d, view=False)
     logger.debug(jpt)
 
     logger.info(f'FOLD {fld_idx}: done!\n{"":=<100}\n')
@@ -315,7 +319,7 @@ class EvaluationMatrix:
 
 
 if __name__ == '__main__':
-    dataset = 'iris'
+    dataset = 'banana'
     homedir = '../tests/'
     ovstart = datetime.now()
     logger.info(f'Starting overall cross validation at {ovstart}')

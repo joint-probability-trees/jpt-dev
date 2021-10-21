@@ -1,19 +1,14 @@
-import multiprocessing
 import os
-import pickle
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
-from sklearn.model_selection import KFold
-from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
 
 import dnutils
-from jpt.learning.distributions import Numeric, SymbolicType, NumericType
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
+from jpt.variables import infer_from_dataframe
 
 # globals
 start = datetime.now()
