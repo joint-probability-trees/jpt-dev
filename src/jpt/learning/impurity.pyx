@@ -519,7 +519,7 @@ cdef class Impurity:
                             cnt += 1
                         elif self.num_samples[i] < min_samples:
                             min_samples = self.num_samples[i]
-                    if min_samples < self.min_samples_leaf / (self.symbols[sample_idx] - cnt):
+                    if min_samples < self.min_samples_leaf / (self.symbols[symbolic_idx] - cnt):
                         impurity_improvement = 0
                         break
                     # if cnt >= self.symbols[symbolic_idx] - 1:  # Require splits with entropy > 0
