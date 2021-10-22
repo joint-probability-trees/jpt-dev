@@ -592,19 +592,10 @@ class JPT(JPTBase):
                                  str(parent),
                                  ''.join([self._p(r, indent + 5) for r in ifnone(parent.children, [])]))
 
-    def learn(self, data=None, rows=None, columns=None):
-        '''Fits the ``data`` into a regression tree.
-
-        :param data:    The training examples (assumed in row-shape)
-        :type data:     [[str or float or bool]]; (according to `self.variables`)
-        :param rows:    The training examples (assumed in row-shape)
-        :type rows:     [[str or float or bool]]; (according to `self.variables`)
-        :param columns: The training examples (assumed in row-shape)
-        :type columns:  [[str or float or bool]]; (according to `self.variables`)
+    def _preprocess_data(self, data=None, rows=None, columns=None):
         '''
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Check and prepare the data
+        Transform the input data into an internal representation.
+        '''
         if sum(d is not None for d in (data, rows, columns)) != 1:
             raise ValueError('Only either of the three is allowed.')
 
@@ -627,16 +618,31 @@ class JPT(JPTBase):
         else:
             raise ValueError('No data given.')
 
-        global _data
-        _data = np.ndarray(shape=shape, dtype=np.float64, order='C')
-        # out(_data.flags)
-        
+        data_ = np.ndarray(shape=shape, dtype=np.float64, order='C')
+
         if isinstance(data, pd.DataFrame):
-            _data[:] = data.transform({c: v.domain.values.transformer()
+            data_[:] = data.transform({c: v.domain.values.transformer()
                                        for v, c in zip(self.variables, data.columns)}).values
         else:
             for i, (var, col) in enumerate(zip(self.variables, columns)):
-                _data[:, i] = [var.domain.values[v] for v in col]
+                data_[:, i] = [var.domain.values[v] for v in col]
+        return data_
+
+
+    def learn(self, data=None, rows=None, columns=None):
+        '''Fits the ``data`` into a regression tree.
+
+        :param data:    The training examples (assumed in row-shape)
+        :type data:     [[str or float or bool]]; (according to `self.variables`)
+        :param rows:    The training examples (assumed in row-shape)
+        :type rows:     [[str or float or bool]]; (according to `self.variables`)
+        :param columns: The training examples (assumed in row-shape)
+        :type columns:  [[str or float or bool]]; (according to `self.variables`)
+        '''
+        # --------------------------------------------------------------------------------------------------------------
+        # Check and prepare the data
+        global _data
+        _data = self._preprocess_data(data=data, rows=rows, columns=columns)
 
         self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
         self.indices[0] = 0
