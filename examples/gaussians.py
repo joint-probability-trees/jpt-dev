@@ -13,11 +13,11 @@ from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 
 
-def main():
-    gauss1 = Gaussian([-.25, -.25], [[.2, -.11], [-.11, .1]])
+def preprocess_gaussian():
+    gauss1 = Gaussian([-.25, -.25], [[.2, -.07], [-.07, .1]])
     gauss2 = Gaussian([.5, 1], [[.2, .07], [.07, .05]])
 
-    SAMPLES = 500
+    SAMPLES = 200
 
     gauss1_data = gauss1.sample(SAMPLES)
     gauss2_data = gauss2.sample(SAMPLES)
@@ -27,6 +27,12 @@ def main():
     plt.scatter(gauss2_data[:, 0], gauss2_data[:, 1], color='b', marker='x')
 
     df = DataFrame({'X': all_data[:, 0], 'Y': all_data[:, 1], 'Color': ['R'] * SAMPLES + ['B'] * SAMPLES})
+    return df
+
+
+def main():
+    df = preprocess_gaussian()
+    out(df)
 
     varx = NumericVariable('X', Numeric, precision=.1)
     vary = NumericVariable('Y', Numeric, precision=.1)

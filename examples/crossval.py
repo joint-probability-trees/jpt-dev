@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pydot as pydot
 import tabulate
 from sklearn import datasets
 
@@ -15,12 +16,14 @@ from dnutils import out
 from matplotlib import pyplot as plt
 from sklearn.metrics import f1_score, mean_absolute_error
 from sklearn.model_selection import KFold
-from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier
+from sklearn.tree import DecisionTreeRegressor, DecisionTreeClassifier, plot_tree, export_graphviz
 
 import dnutils
 from airlines_depdelay import preprocess_airline
 from banana import preprocess_banana
 from regression import preprocess_regression
+from restaurant import preprocess_restaurant
+from gaussians import preprocess_gaussian
 from jpt.trees import JPT
 
 # globals
@@ -38,7 +41,7 @@ folds = 10
 
 logger = dnutils.getlogger('/crossvalidation', level=dnutils.DEBUG)
 
-MIN_SAMPLES_LEAF = .01
+MIN_SAMPLES_LEAF = 0.1
 
 
 def init_globals():
@@ -59,8 +62,8 @@ def preprocess():
 
     if dataset == 'airline':
         data = preprocess_airline()
-        data = data[['DayOfWeek', 'CRSDepTime', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest', 'Distance']]
-        # data = data[['UniqueCarrier', 'Origin', 'Dest']]
+        # data = data[['DayOfWeek', 'CRSDepTime', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest', 'Distance']]
+        data = data[['UniqueCarrier', 'Origin', 'Dest']]
     elif dataset == 'regression':
         data = preprocess_regression()
     elif dataset == 'iris':
@@ -69,12 +72,18 @@ def preprocess():
         data['species'] = [['setosa', 'versicolor', 'virginica'][x] for x in iris['target']]  # convert target integers to symbolics and add to dataframe
     elif dataset == 'banana':
         data = preprocess_banana()
+    elif dataset == 'restaurant':
+        data = preprocess_restaurant()
+        data = data[['Price', 'Food', 'WaitEstimate']]
+        logger.debug('Restaurant data\n', data)
+    elif dataset == 'gaussian':
+        data = preprocess_gaussian()
     else:
         data = None
 
     variables = infer_from_dataframe(data, scale_numeric_types=True, precision=0.01)
     if dataset == 'airline':
-        data = data.sample(frac=0.001)  # TODO remove; only for debugging
+        data = data.sample(frac=0.00001)  # TODO remove; only for debugging
     logger.debug(f'Loaded {len(data)} datapoints')
 
     # set variable value/code mappings for each symbolic variable
@@ -95,14 +104,19 @@ def discrtree(i, fld_idx):
     X[catcols] = X[catcols].apply(lambda x: x.cat.codes)
 
     if var.numeric:
-        t = DecisionTreeRegressor(min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
+        t = DecisionTreeRegressor(min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF))
     else:
-        t = DecisionTreeClassifier(min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
+        t = DecisionTreeClassifier(min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF))
 
+    logger.warning('x\n', X, '\ntgt\n', tgt)
     t.fit(X, tgt)
     logger.debug(f'Pickling tree {var.name} ({t.get_n_leaves()} leaves) for FOLD {fld_idx + 1}...')
     with open(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.pkl')), 'wb') as f:
         pickle.dump(t, f)
+        plot_tree(t)
+        export_graphviz(t, out_file=os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.dot')))
+        (graph,) = pydot.graph_from_dot_file(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.dot')))
+        graph.write_png(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.png')))
 
 
 def fold(fld_idx, train_index, test_index, max_depth=8):
@@ -123,10 +137,11 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
 
     # learn full JPT
     logger.debug(f'Learning full JPT over all variables for FOLD {fld_idx}...')
-    jpt = JPT(variables=variables, min_samples_leaf=int(data_train.shape[0] * MIN_SAMPLES_LEAF))
+    jpt = JPT(variables=variables, min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF))
     jpt.learn(columns=data_train.values.T)
     jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
-    # jpt.plot(title=f'{prefix}-FOLD-{fld_idx}', directory=d, view=False)
+    if dataset in ['iris', 'banana', 'restaurant', 'gaussian']:
+        jpt.plot(title=f'{prefix}-FOLD-{fld_idx}', directory=d, view=False)
     logger.debug(jpt)
 
     logger.info(f'FOLD {fld_idx}: done!\n{"":=<100}\n')
@@ -221,7 +236,7 @@ def compare_(args):
         # for each data point in the test dataset check results and store them
         do_print = np.inf
         for n, (index, row) in enumerate(testdata.iterrows()):
-            if not n % min(10000, int(len(testdata)*.1)):
+            if not n % min(10000, max(1, int(len(testdata)*.1))):
                 logger.debug(f'Worker #{p._identity[0]} ({compvariable}) and FOLD {fld_idx} is now at data point {n}...')
 
             # ground truth
@@ -319,7 +334,13 @@ class EvaluationMatrix:
 
 
 if __name__ == '__main__':
-    dataset = 'banana'
+    # dataset = 'airline'
+    # dataset = 'regression'
+    # dataset = 'iris'
+    # dataset = 'banana'
+    # dataset = 'restaurant'
+    dataset = 'gaussian'
+
     homedir = '../tests/'
     ovstart = datetime.now()
     logger.info(f'Starting overall cross validation at {ovstart}')

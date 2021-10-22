@@ -1,6 +1,8 @@
 import os
 from datetime import datetime
 
+import pandas as pd
+
 from dnutils import out
 from jpt.base.sampling import wchoice
 from jpt.learning.distributions import Bool, SymbolicType
@@ -57,9 +59,14 @@ def restaurant():
     print(res.explain())
 
 
+def preprocess_restaurant():
+    f_csv = '../examples/data/restaurant.csv'
+    data = pd.read_csv(f_csv, sep=',').fillna(value='???')
+    return data
+
+
 def restaurantsample():
     # generate JPT from data sampled based on distributions from lecture data
-    import pandas as pd
     df = pd.read_csv(os.path.join('../', 'examples', 'data', 'restaurant.csv'))
 
     # declare variable types

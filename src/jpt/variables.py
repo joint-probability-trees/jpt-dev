@@ -214,7 +214,7 @@ def infer_from_dataframe(df, scale_numeric_types=True, min_impurity_improvement=
 
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
-        if dtype in (str, object):
+        if dtype in (str, object, bool):
             dom = SymbolicType('%s_TYPE' % col.upper(), labels=df[col].unique())
             var = SymbolicVariable(col, dom, min_impurity_improvement=min_impurity_improvement, )
         elif dtype in (np.float64, np.int64, np.float32, np.int32):
