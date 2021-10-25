@@ -24,25 +24,28 @@ cdef int RIGHT = 1
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-cdef inline void compute_var_improvements(DTYPE_t[::1] variances_total,
+cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
                                    DTYPE_t[::1] variances_left,
                                    DTYPE_t[::1] variances_right,
                                    SIZE_t samples_left,
-                                   SIZE_t samples_right,
-                                   DTYPE_t[::1] result) nogil:
-    result[:] = variances_total
+                                   SIZE_t samples_right) nogil:
+                                   # DTYPE_t[::1] result) nogil:
+    # result[:] = variances_total
     cdef SIZE_t i
+    cdef DTYPE_t result = mean(variances_total)
+    cdef DTYPE_t variances_new = 0
     cdef DTYPE_t n_samples = <DTYPE_t> samples_left + samples_right
 
     for i in range(variances_total.shape[0]):
-        result[i] -= ((variances_left[i] * <DTYPE_t> samples_left
-                       + variances_right[i] * <DTYPE_t> samples_right) / n_samples)
-
-    for i in range(variances_total.shape[0]):
-        if variances_total[i]:
-            result[i] /= variances_total[i]
-        else:
-            result[i] = 0
+        variances_new += ((variances_left[i] * <DTYPE_t> samples_left
+                           + variances_right[i] * <DTYPE_t> samples_right) / n_samples)
+    variances_new /= <DTYPE_t> variances_total.shape[0]
+    return (result - variances_new) / result
+    # for i in range(variances_total.shape[0]):
+    #     if variances_total[i]:
+    #         result[i] /= variances_total[i]
+    #     else:
+    #         result[i] = 0
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -442,13 +445,12 @@ cdef class Impurity:
                         variances(self.sq_sums_right, self.sums_right, samples_right, result=self.variances_right)
                     else:
                         self.variances_right[:] = 0
-                    compute_var_improvements(variances_total,
-                                             self.variances_left,
-                                             self.variances_right,
-                                             samples_left,
-                                             samples_right,
-                                             result=self.variance_improvements)
-                    impurity_improvement += mean(self.variance_improvements) * self.w_numeric
+                    impurity_improvement += compute_var_improvements(variances_total,
+                                                                     self.variances_left,
+                                                                     self.variances_right,
+                                                                     samples_left,
+                                                                     samples_right) * self.w_numeric
+                    # impurity_improvement += mean(self.variance_improvements)
                 else:
                     impurity_improvement += (mean(self.variances_total) - mean(self.variances_left)) / mean(self.variances_total)
                     impurity_improvement *= <DTYPE_t> self.num_samples[VAL_IDX] / <DTYPE_t> n_samples * self.w_numeric
@@ -484,7 +486,7 @@ cdef class Impurity:
                             cnt += 1
                         elif self.num_samples[i] < min_samples:
                             min_samples = self.num_samples[i]
-                    if min_samples < self.min_samples_leaf / (self.symbols[symbolic_idx] - cnt):
+                    if min_samples < 2 * self.min_samples_leaf / (self.symbols[symbolic_idx] - cnt):
                         impurity_improvement = 0
                         break
 
