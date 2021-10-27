@@ -549,29 +549,26 @@ cdef class QuantileDistribution:
                 data_buffer[1, count] = <DTYPE_t> i + 1
                 count += 1
         for i in range(count):
-            data_buffer[1, i] /= <DTYPE_t> n_samples
+            data_buffer[1, i] -= 1
+            data_buffer[1, i] /= <DTYPE_t> (n_samples - 1)
         data_buffer = np.ascontiguousarray(data_buffer[:, :count])
         cdef DTYPE_t[::1] x, y
         n_samples = count
 
         self._ppf = self._pdf = None
         # Use simple linear regression when fewer than min_samples_mars points are available
-        if 1 < n_samples < self.min_samples_mars:
-            x = data_buffer[0, :]
-            y = data_buffer[1, :]
-            self._cdf = PiecewiseFunction()
-            self._cdf.intervals.append(R.copy())
-            self._cdf.functions.append(LinearFunction(0, 0).fit(x, y))
-            self._cdf.ensure_left(ConstantFunction(0), x[0])
-            self._cdf.ensure_right(ConstantFunction(1), x[-1])
-
-        elif self.min_samples_mars <= n_samples:
-            # self._cdf = fit_piecewise(x, y,
-            #                           epsilon=self.epsilon,
-            #                           penalty=self.penalty, verbose=self.verbose)
-            # self._cdf.ensure_left(ConstantFunction(0), x[0])
-            # self._cdf.ensure_right(ConstantFunction(1), x[-1])
-            #
+        # if 1 < n_samples < self.min_samples_mars:
+        #     x = data_buffer[0, :]
+        #     y = data_buffer[1, :]
+        #     self._cdf = PiecewiseFunction()
+        #     self._cdf.intervals.append(R.copy())
+        #     self._cdf.functions.append(LinearFunction(0, 0).fit(x, y))
+        #     self._cdf.ensure_left(ConstantFunction(0), x[0])
+        #     self._cdf.ensure_right(ConstantFunction(1), x[-1])
+        #
+        # elif self.min_samples_mars <= n_samples:
+        alert = False
+        if n_samples > 1:
             regressor = CDFRegressor(eps=self.epsilon)
             regressor.fit(data_buffer)
             self._cdf = PiecewiseFunction()
@@ -579,21 +576,22 @@ cdef class QuantileDistribution:
             self._cdf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
             for left, right in pairwise(regressor.support_points):
                 self._cdf.functions.append(LinearFunction.from_points(tuple(left), tuple(right)))
+                if self._cdf.functions[-1].m < 1e-3:
+                    alert = True
                 self._cdf.intervals[-1].upper = left[0]
                 self._cdf.intervals.append(ContinuousSet(left[0], right[0], 1, 2))
             self._cdf.functions.append(ConstantFunction(1))
             self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
-
-        # self._cdf = regressor.cdf
-
+            if alert and len(self._cdf.intervals) == 3:
+                raise ValueError(self._cdf.pfmt() + '\n' + str(np.asarray(data_buffer)))
         else:
             x = data_buffer[0, :]
             y = data_buffer[1, :]
             self._cdf = PiecewiseFunction()
-            self._cdf.intervals.append(R.copy())
+            self._cdf.intervals.append(ContinuousSet(np.NINF, x[0], EXC, EXC))
             self._cdf.functions.append(ConstantFunction(0))
-            self._cdf.ensure_left(ConstantFunction(0), x[0])
-            self._cdf.ensure_right(ConstantFunction(1), x[-1])
+            self._cdf.intervals.append(ContinuousSet(x[0], np.PINF, INC, EXC))
+            self._cdf.functions.append(ConstantFunction(1))
 
         return self
 
@@ -670,11 +668,18 @@ cdef class QuantileDistribution:
             if ppf.intervals[-1].upper >= 1:
                 ppf.intervals[-1].upper = one_plus_eps
             elif ppf.intervals[-1].upper < 1:
-                if np.isnan(ppf.functions[-1].eval(ppf.intervals[-1].upper)):
-                    print(ppf.functions[-1], ppf.intervals[-1].upper, ppf.pfmt(), self._cdf.pfmt())
-                ppf.functions.append(LinearFunction.from_points((ppf.intervals[-1].upper,
-                                                                 ppf.functions[-1].eval(ppf.intervals[-1].upper)),
-                                                                (1, self.cdf.intervals[-1].lower)))
+                try:
+                    ppf.functions.append(LinearFunction.from_points((ppf.intervals[-1].upper,
+                                                                     ppf.functions[-1].eval(ppf.intervals[-1].upper)),
+                                                                    (1,
+                                                                     self.cdf.intervals[-1].lower)))
+                except ValueError:
+                    s = str(ppf.functions[-1].eval(ppf.intervals[-1].upper)) + '\n'
+                    s += str(self._cdf.pfmt()) + '\n'
+                    s += str(ppf.intervals[-1].upper) + '\n'
+                    s += str(ppf.functions[-1]) + '\n'
+                    s += str(ppf.pfmt())
+                    raise ValueError(s)
                 ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, one_plus_eps, INC, EXC))
 
             ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC))

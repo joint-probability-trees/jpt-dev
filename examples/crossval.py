@@ -108,7 +108,6 @@ def discrtree(i, fld_idx):
     else:
         t = DecisionTreeClassifier(min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF))
 
-    logger.warning('x\n', X, '\ntgt\n', tgt)
     t.fit(X, tgt)
     logger.debug(f'Pickling tree {var.name} ({t.get_n_leaves()} leaves) for FOLD {fld_idx + 1}...')
     with open(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.pkl')), 'wb') as f:
@@ -249,9 +248,12 @@ def compare_(args):
             jptexp = jpt.expectation([compvariable], dp_jpt, fail_on_unsatisfiability=False)
             if jptexp is None:
                 errors += 1.
-                logger.warning(f'Errors in Worker #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}); current data point: {n} (unsatisfiable query: {dp_jpt})')
+                # logger.warning(f'Errors in Worker #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}); current data point: {n} (unsatisfiable query: {dp_jpt})')
             else:
                 em_jpt.update(fld_idx, var_gt, jptexp[0].result)
+                if jptexp[0].result != jptexp[0].result:
+                    print(compvariable, dp_jpt)
+                    print(jpt)
                 em_dec.update(fld_idx, var_gt, dectree.predict([dp_dec])[0])
 
     with open(os.path.join(d, f'{prefix}-Matrix-JPT-{compvariable}.pkl'), 'wb') as f:
@@ -261,17 +263,8 @@ def compare_(args):
         pickle.dump(em_dec, f)
 
     logger.error(f'FINAL NUMBER OF ERRORS FOR VARIABLE {compvariable}: {int(errors)} in {int(datapoints)} data points')
-    try:
-        em_jpt.accuracy()
-        em_dec.accuracy()
-    except:
-        res = list(chain(*em_jpt.res.values()))
-        logger.error('PANIK JPT', list(zip(*res))[1])
-        res = list(chain(*em_dec.res.values()))
-        logger.error('PANIK DEC', list(zip(*res))[1])
-
-
     logger.warning(f'res_jpt | res_dec: {em_jpt.accuracy()} | {em_dec.accuracy()}: Comparing datapoint { dp_jpt } in decision tree loaded from {prefix}-FOLD-{fld_idx}-{compvariable}.pkl and JPT from {prefix}{fld_idx}-JPT.json')
+
     return em_jpt, em_dec
 
 

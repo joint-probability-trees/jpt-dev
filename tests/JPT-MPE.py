@@ -24,7 +24,7 @@ class JointProbabilityTreesMPE(unittest.TestCase):
         with open(f, 'rb') as fi:
             data = np.array(pickle.load(fi))
 
-        self.jpt = JPT(variables=[self.E, self.B, self.A, self.M, self.J], name='Alarm', min_impurity_improvement=0)
+        self.jpt = JPT(variables=[self.E, self.B, self.A, self.M, self.J], min_impurity_improvement=0)
         self.jpt.learn(rows=data)
 
     def test_infer_alarm_given_mary(self):
