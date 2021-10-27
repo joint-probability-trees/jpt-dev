@@ -4,7 +4,7 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
-
+import itertools
 import random
 from collections import deque
 from operator import itemgetter
@@ -424,10 +424,14 @@ cdef class LinearFunction(Function):
         cdef DTYPE_t x2 = p2[0], y2 = p2[1]
         if x1 == x2:
             raise ValueError('Points must have different coordinates to fit a line: p1=%s, p2=%s' % (p1, p2))
+        if any(np.isnan(p) for p in itertools.chain(p1, p2)):
+            raise ValueError('Arguments %s, %s are invalid.' % (p1, p2))
         if y2 == y1:
             return ConstantFunction(y2)
         cdef DTYPE_t m = (y2 - y1) / (x2 - x1)
         cdef DTYPE_t c = y1 - m * x1
+        assert not np.isnan(m) and not np.isnan(c), \
+            'Fitting linear function from %s to %s resulted in m=%s, c=%s' % (p1, p2, m, c)
         return LinearFunction(m, c)
 
     cpdef inline np.int32_t is_invertible(LinearFunction self):
@@ -643,6 +647,8 @@ cdef class QuantileDistribution:
             ppf.intervals.append(ContinuousSet(np.NINF, 0, EXC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
             ppf.functions.append(Undefined())
 
+            assert len(self._cdf.functions) > 1, self._cdf.pfmt()
+
             if len(self._cdf.functions) == 2:
                 ppf.intervals[-1].upper = 1
                 ppf.intervals.append(ContinuousSet(1, one_plus_eps, INC, EXC))
@@ -650,17 +656,22 @@ cdef class QuantileDistribution:
                 ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
                 ppf.functions.append(Undefined())
                 return ppf
-
+            lower = None
             for interval, f in zip(self._cdf.intervals[1:-1], self._cdf.functions[1:-1]):
                 if f.is_invertible():
-                    ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper,
+                    ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper if lower is None else lower,
                                                        f(interval.upper),
                                                        INC, EXC))
                     ppf.functions.append(f.invert())
-
+                    lower = None
+                else:
+                    lower = f.c if isinstance(f, LinearFunction) else f.value
+                    continue
             if ppf.intervals[-1].upper >= 1:
                 ppf.intervals[-1].upper = one_plus_eps
             elif ppf.intervals[-1].upper < 1:
+                if np.isnan(ppf.functions[-1].eval(ppf.intervals[-1].upper)):
+                    print(ppf.functions[-1], ppf.intervals[-1].upper, ppf.pfmt(), self._cdf.pfmt())
                 ppf.functions.append(LinearFunction.from_points((ppf.intervals[-1].upper,
                                                                  ppf.functions[-1].eval(ppf.intervals[-1].upper)),
                                                                 (1, self.cdf.intervals[-1].lower)))
@@ -668,7 +679,9 @@ cdef class QuantileDistribution:
 
             ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC))
             ppf.functions.append(Undefined())
-            assert np.isnan(ppf.eval(one_plus_eps)), (ppf.intervals[-1].lower, ppf.intervals[-1], 'value:', ppf.intervals[-2].upper, ppf.eval(one_plus_eps), ppf.pfmt())
+            assert np.isnan(ppf.eval(one_plus_eps)), \
+                (ppf.intervals[-1].lower, ppf.intervals[-1],
+                 'value:', ppf.intervals[-2].upper, ppf.eval(one_plus_eps), ppf.pfmt(), self._cdf.pfmt())
             assert not np.isnan(ppf.eval(1.)), ppf.pfmt()
             self._ppf = ppf
         return self._ppf

@@ -62,8 +62,8 @@ def preprocess():
 
     if dataset == 'airline':
         data = preprocess_airline()
-        # data = data[['DayOfWeek', 'CRSDepTime', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest', 'Distance']]
-        data = data[['UniqueCarrier', 'Origin', 'Dest']]
+        data = data[['DayOfWeek', 'CRSDepTime', 'Distance', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest']]  #
+        # data = data[['UniqueCarrier', 'Origin', 'Dest']]
     elif dataset == 'regression':
         data = preprocess_regression()
     elif dataset == 'iris':
@@ -81,9 +81,9 @@ def preprocess():
     else:
         data = None
 
-    variables = infer_from_dataframe(data, scale_numeric_types=True, precision=0.01)
+    variables = infer_from_dataframe(data, scale_numeric_types=True, precision=.01, haze=.01)
     if dataset == 'airline':
-        data = data.sample(frac=0.00001)  # TODO remove; only for debugging
+        data = data.sample(frac=0.001)  # TODO remove; only for debugging
     logger.debug(f'Loaded {len(data)} datapoints')
 
     # set variable value/code mappings for each symbolic variable
@@ -137,7 +137,7 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
 
     # learn full JPT
     logger.debug(f'Learning full JPT over all variables for FOLD {fld_idx}...')
-    jpt = JPT(variables=variables, min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF))
+    jpt = JPT(variables=variables, min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF / len(variables)))
     jpt.learn(columns=data_train.values.T)
     jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
     if dataset in ['iris', 'banana', 'restaurant', 'gaussian']:
@@ -334,12 +334,12 @@ class EvaluationMatrix:
 
 
 if __name__ == '__main__':
-    # dataset = 'airline'
+    dataset = 'airline'
     # dataset = 'regression'
     # dataset = 'iris'
     # dataset = 'banana'
     # dataset = 'restaurant'
-    dataset = 'gaussian'
+    # dataset = 'gaussian'
 
     homedir = '../tests/'
     ovstart = datetime.now()
