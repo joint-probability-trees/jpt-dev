@@ -26,7 +26,7 @@ from numpy cimport float64_t
 
 import warnings
 
-from .utils import pairwise
+from .utils import pairwise, normalized
 from .cutils cimport SIZE_t, DTYPE_t, sort
 
 from ..learning.cdfreg import CDFRegressor
@@ -698,23 +698,37 @@ cdef class QuantileDistribution:
         '''
         intervals = [ContinuousSet(np.NINF, np.PINF, EXC, EXC)]
         functions = [ConstantFunction(0)]
-        lower = sorted([(i.lower, f, w)
-                        for d, w in zip(distributions, weights)
-                        for i, f in zip(d.cdf.intervals, d.cdf.functions)],
-                       key=itemgetter(0))
-        upper = sorted([(i.upper, f, w)
-                        for d, w in zip(distributions, weights)
-                        for i, f in zip(d.cdf.intervals, d.cdf.functions)],
-                       key=itemgetter(0))
-
         # --------------------------------------------------------------------------------------------------------------
         # We preprocess the CDFs that are in the form of "jump" functions
         jumps = {}
         for w, cdf in [(w, d.cdf) for w, d in zip(weights, distributions) if len(d.cdf) == 2]:
-            jumps[cdf.intervals[0].upper] = jumps.get(cdf.intervals[0].upper, 0) + w
+            jumps[cdf.intervals[0].upper] = jumps.get(cdf.intervals[0].upper, Jump(cdf.intervals[0].upper, 1, 0))
+            jumps.get(cdf.intervals[0].upper).weight += w
+        print(jumps)
+        # --------------------------------------------------------------------------------------------------------------
+        lower = sorted([(i.lower, f, w)
+                        for d, w in zip(distributions, weights)
+                        for i, f in zip(d.cdf.intervals, d.cdf.functions) if not isinstance(f, ConstantFunction)]
+                       + [(j.knot, j, j.weight)
+                          for j in jumps.values()],
+                       key=itemgetter(0))
+        upper = sorted([(i.upper, f, w)
+                        for d, w in zip(distributions, weights)
+                        for i, f in zip(d.cdf.intervals, d.cdf.functions) if not isinstance(f, ConstantFunction)],
+                       key=itemgetter(0))
 
         # --------------------------------------------------------------------------------------------------------------
+        # If the first function is a jump, we have to eradicate its weight and re-normalize the other weights
+        print(lower)
+        if isinstance(lower[0][1], Jump):
+            new_weights = normalized([0] + [l[2] for l in lower[1:]])
+            lower = [(x, f, w_) for (x, f, w), w_ in zip(lower, new_weights)]
+            upper = [(x, f, w_) for (x, f, w), w_ in zip(upper, new_weights)]
+        print(lower)
+        # --------------------------------------------------------------------------------------------------------------
         m = 0
+        c = 0
+        pos = None
 
         while lower or upper:
             pivot = None
@@ -726,22 +740,34 @@ cdef class QuantileDistribution:
                 l, f, w = lower.pop(0)
                 if isinstance(f, ConstantFunction) or l == np.NINF:
                     continue
-                m += f.m * w
+                if isinstance(f, Jump) and isinstance(functions[-1], LinearFunction):
+                    # (m * l + c + w - (m * pos + c)) = m * (l - pos) + w
+                    functions[-1].m = (m * (l - pos) + w) / (l - pos)
+                    functions[-1].c = m * pos - functions[-1].m * l
+                    m = functions[-1].m
+                    c = functions[-1].c
+                    print('updated m:', m, l, pos, w)
+                elif isinstance(f, LinearFunction):
+                    m += f.m * w
                 pivot = l
+                pos = pivot
+                print('pivot', pivot)
 
             # Do the same for the upper bounds...
             while upper and (pivot is None and first(upper, first) <= first(lower, first, np.PINF) or
                    pivot == first(upper, first, np.PINF)):
                 u, f, w = upper.pop(0)
-                if isinstance(f, ConstantFunction) or u == np.PINF:
+                if isinstance(f, (ConstantFunction, Jump)) or u == np.PINF:
                     continue
                 m -= f.m * w
                 pivot = u
+                pos = pivot
 
             if pivot is None:
                 continue
+            c = -m * pos
 
-            if functions and m == functions[-1].m and functions[-1].eval(pivot) - m * pivot == functions[-1].c:
+            if m and m == functions[-1].m and functions[-1].eval(pivot) - m * pivot == functions[-1].c:
                 continue
             # Split the last interval at the pivot point
             intervals[-1].upper = pivot

@@ -24,6 +24,23 @@ class MyTestCase(unittest.TestCase):
         print(QuantileDistribution.merge([q1, q2], [.5, .5]).cdf.pfmt())
         self.assertEqual(True, False)  # add assertion here
 
+    def test_dist_merge_jump_functions(self):
+        data1 = np.array([[1.]], dtype=np.float64)
+        data2 = np.array([[2.]], dtype=np.float64)
+        data3 = np.array([[3.]], dtype=np.float64)
+        q1 = QuantileDistribution()
+        q2 = QuantileDistribution()
+        q3 = QuantileDistribution()
+        q1.fit(data1, np.array(range(data1.shape[0])), 0)
+        q2.fit(data2, np.array(range(data2.shape[0])), 0)
+        q3.fit(data3, np.array(range(data3.shape[0])), 0)
+        print(q1.cdf.pfmt())
+        print(q2.cdf.pfmt())
+        print(q3.cdf.pfmt())
+        print('===')
+        print(QuantileDistribution.merge([q1, q2, q3], [1/3] * 3).cdf.pfmt())
+        self.assertEqual(True, False)  # add assertion here
+
 
 if __name__ == '__main__':
     unittest.main()
