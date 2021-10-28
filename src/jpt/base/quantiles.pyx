@@ -315,7 +315,7 @@ cdef class LinearFunction(Function):
 
     def __str__(self):
         l = ('%.3fx' % self.m) if self.m else ''
-        op = '' if (not l and self.c > 0) else ('+' if self.c > 0 else '-')
+        op = '' if (not l and self.c > 0 or not self.c) else ('+' if self.c > 0 else '-')
         c = '' if not self.c else '%.3f' % abs(self.c)
         return ('%s %s %s' % (l, op, c)).strip()
 
@@ -709,8 +709,9 @@ cdef class QuantileDistribution:
 
         # --------------------------------------------------------------------------------------------------------------
         # We preprocess the CDFs that are in the form of "jump" functions
-
-        jumps = [cdf.intervals[0].upper for cdf in [d.cdf for d in distributions] if len(cdf) == 2]
+        jumps = {}
+        for w, cdf in [(w, d.cdf) for w, d in zip(weights, distributions) if len(d.cdf) == 2]:
+            jumps[cdf.intervals[0].upper] = jumps.get(cdf.intervals[0].upper, 0) + w
 
         # --------------------------------------------------------------------------------------------------------------
         m = 0
