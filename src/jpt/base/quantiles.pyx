@@ -706,6 +706,13 @@ cdef class QuantileDistribution:
                         for d, w in zip(distributions, weights)
                         for i, f in zip(d.cdf.intervals, d.cdf.functions)],
                        key=itemgetter(0))
+
+        # --------------------------------------------------------------------------------------------------------------
+        # We preprocess the CDFs that are in the form of "jump" functions
+
+        jumps = [cdf.intervals[0].upper for cdf in [d.cdf for d in distributions] if len(cdf) == 2]
+
+        # --------------------------------------------------------------------------------------------------------------
         m = 0
 
         while lower or upper:
@@ -753,6 +760,11 @@ cdef class QuantileDistribution:
         cdf.ensure_right(ConstantFunction(1), l or u)
         distribution = QuantileDistribution()
         distribution._cdf = cdf
+
+        if len(cdf.functions) == 3 and cdf.functions[1].m < 1e-4:
+            raise ValueError(cdf.pfmt() + '\n\n' + '\n---\n'.join([d.cdf.pfmt()
+                                                                   for d in distributions]) + '\n' + str(jumps))
+
         return distribution
 
     def to_json(self):
@@ -996,11 +1008,7 @@ cdef class PiecewiseFunction(Function):
         self.intervals = []
 
     cpdef inline DTYPE_t eval(PiecewiseFunction self, DTYPE_t x):
-        val = self.at(x).eval(x)
-        # if np.isnan(val):
-        #     print('eval returns', val, 'at', x, 'in')
-        #     print(self.pfmt())
-        return val
+        return self.at(x).eval(x)
 
     cpdef inline DTYPE_t[::1] multi_eval(PiecewiseFunction self, DTYPE_t[::1] x, DTYPE_t[::1] result=None):
         if result is None:
@@ -1017,13 +1025,11 @@ cdef class PiecewiseFunction(Function):
             if x in interval:
                 break
         else:
-            # out(x, 'is undefined at x=%.3f' % x)
-            # out(self.pfmt())
             return Undefined()
         return self.functions[i]
 
-    def __call__(self, x):
-        return self.eval(x)
+    def __len__(self):
+        return len(self.intervals)
 
     cpdef inline ContinuousSet interval_at(PiecewiseFunction self, DTYPE_t x):
         cdef int i
