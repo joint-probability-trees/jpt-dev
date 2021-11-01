@@ -1,12 +1,15 @@
 import pyximport
 pyximport.install()
 
+from jpt.base.intervals import ContinuousSet, INC, EXC
+
 import unittest
 import numpy as np
-from jpt.base.quantiles import QuantileDistribution
+from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
 
 
-class MyTestCase(unittest.TestCase):
+class TestCaseMerge(unittest.TestCase):
+
     def test_quantile_dist(self):
         data = np.array([[1.], [2.]], dtype=np.float64)
         q = QuantileDistribution()
@@ -42,7 +45,142 @@ class MyTestCase(unittest.TestCase):
         print(q.cdf.pfmt())
         print('---')
         print(q.ppf.pfmt())
-        self.assertEqual(True, False)  # add assertion here
+
+    def test_merge_jumps(self):
+        plf1 = PiecewiseFunction()
+        plf1.intervals.append(ContinuousSet.fromstring(']-inf,0.000['))
+        plf1.intervals.append(ContinuousSet.fromstring('[0.000, inf['))
+        plf1.functions.append(ConstantFunction(0))
+        plf1.functions.append(ConstantFunction(1))
+
+        plf2 = PiecewiseFunction()
+        plf2.intervals.append(ContinuousSet.fromstring(']-inf,0.5['))
+        plf2.intervals.append(ContinuousSet.fromstring('[0.5, inf['))
+        plf2.functions.append(ConstantFunction(0))
+        plf2.functions.append(ConstantFunction(1))
+
+        merged = QuantileDistribution.merge([QuantileDistribution.from_cdf(plf1),
+                                             QuantileDistribution.from_cdf(plf2)])
+
+        result = PiecewiseFunction()
+        result.intervals.append(ContinuousSet.fromstring(']-inf,0.0['))
+        result.intervals.append(ContinuousSet.fromstring('[0.0, .5['))
+        result.intervals.append(ContinuousSet.fromstring('[0.5, inf['))
+        result.functions.append(ConstantFunction(0))
+        result.functions.append(ConstantFunction(.5))
+        result.functions.append(ConstantFunction(1))
+        print(result.pfmt())
+
+        self.assertEqual(result, merged.cdf)
+
+
+class TestCasePPFTransform(unittest.TestCase):
+
+    def test_ppf_transform_jumps_only(self):
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet.fromstring(']-inf,1['))
+        cdf.intervals.append(ContinuousSet.fromstring('[1, 2['))
+        cdf.intervals.append(ContinuousSet.fromstring('[2, 3['))
+        cdf.intervals.append(ContinuousSet.fromstring('[3, 4['))
+        cdf.intervals.append(ContinuousSet.fromstring('[4, inf['))
+        cdf.functions.append(ConstantFunction(0))
+        cdf.functions.append(ConstantFunction(.25))
+        cdf.functions.append(ConstantFunction(.5))
+        cdf.functions.append(ConstantFunction(.75))
+        cdf.functions.append(ConstantFunction(1))
+        q = QuantileDistribution.from_cdf(cdf)
+
+        self.assertEqual(q.ppf, PiecewiseFunction.from_dict({
+            ']-∞,0.000[': None,
+            '[0.,.25[': ConstantFunction(1),
+            '[0.25,.5[': ConstantFunction(2),
+            '[0.5,.75[': ConstantFunction(3),
+            ContinuousSet(.75, np.nextafter(1, 2), INC, EXC): ConstantFunction(4),
+            ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC): None
+        }))
+
+    def test_ppf_transform(self):
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet.fromstring(']-inf,0.000['))
+        cdf.intervals.append(ContinuousSet.fromstring('[0.000, 1['))
+        cdf.intervals.append(ContinuousSet.fromstring('[1, 2['))
+        cdf.intervals.append(ContinuousSet.fromstring('[2, 3['))
+        cdf.intervals.append(ContinuousSet.fromstring('[3, inf['))
+        cdf.functions.append(ConstantFunction(0))
+        cdf.functions.append(LinearFunction.from_points((0, 0), (1, .5)))
+        cdf.functions.append(ConstantFunction(.5))
+        cdf.functions.append(LinearFunction.from_points((2, .5), (3, 1)))
+        cdf.functions.append(ConstantFunction(1))
+
+        q = QuantileDistribution.from_cdf(cdf)
+        self.assertEqual(q.ppf, PiecewiseFunction.from_dict({
+            ']-∞,0.000[': None,
+            '[0.0,.5[': str(LinearFunction.from_points((0, 0), (.5, 1))),
+            ContinuousSet(.5, np.nextafter(1, 2), INC, EXC): LinearFunction(2, 1),
+            ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC): None
+        }))
+
+
+class PLFTest(unittest.TestCase):
+
+    def test_plf_constant_from_dict(self):
+        d = {
+            ']-∞,1.000[': '0.0',
+            '[1.000,2.000[': '0.25',
+            '[3.000,4.000[': '0.5',
+            '[4.000,5.000[': '0.75',
+            '[5.000,∞[': '1.0'
+        }
+
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet.fromstring(']-inf,1['))
+        cdf.intervals.append(ContinuousSet.fromstring('[1, 2['))
+        cdf.intervals.append(ContinuousSet.fromstring('[3, 4['))
+        cdf.intervals.append(ContinuousSet.fromstring('[4, 5['))
+        cdf.intervals.append(ContinuousSet.fromstring('[5, inf['))
+        cdf.functions.append(ConstantFunction(0))
+        cdf.functions.append(ConstantFunction(.25))
+        cdf.functions.append(ConstantFunction(.5))
+        cdf.functions.append(ConstantFunction(.75))
+        cdf.functions.append(ConstantFunction(1))
+
+        self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
+
+    def test_plf_linear_from_dict(self):
+        d = {']-∞,0.000[': 'undef.', '[0.000,0.500[': '2.000x', '[0.500,1.000[': '2.000x + 1.000', '[1.000,∞[': None}
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet.fromstring(']-∞,0.000['))
+        cdf.intervals.append(ContinuousSet.fromstring('[0.000,0.500['))
+        cdf.intervals.append(ContinuousSet.fromstring('[0.500,1.000['))
+        cdf.intervals.append(ContinuousSet.fromstring('[1.000,∞['))
+        cdf.functions.append(Undefined())
+        cdf.functions.append(LinearFunction(2, 0))
+        cdf.functions.append(LinearFunction(2, 1))
+        cdf.functions.append(Undefined())
+
+        self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
+
+    def test_plf_mixed_from_dict(self):
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet.fromstring(']-inf,0.000['))
+        cdf.intervals.append(ContinuousSet.fromstring('[0.000, 1['))
+        cdf.intervals.append(ContinuousSet.fromstring('[1, 2['))
+        cdf.intervals.append(ContinuousSet.fromstring('[2, 3['))
+        cdf.intervals.append(ContinuousSet.fromstring('[3, inf['))
+        cdf.functions.append(ConstantFunction(0))
+        cdf.functions.append(LinearFunction.from_points((0, 0), (1, .5)))
+        cdf.functions.append(ConstantFunction(.5))
+        cdf.functions.append(LinearFunction.from_points((2, .5), (3, 1)))
+        cdf.functions.append(ConstantFunction(1))
+
+        self.assertEqual(cdf, PiecewiseFunction.from_dict({
+            ']-∞,0.000[': 0,
+            '[0.000,1.00[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2.000[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3.000,∞[': 1
+        }))
+
 
 
 if __name__ == '__main__':
