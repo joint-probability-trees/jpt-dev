@@ -7,7 +7,7 @@
 import itertools
 import random
 from collections import deque
-from operator import itemgetter
+from operator import itemgetter, attrgetter
 
 from dnutils import ifnot, out, first, stop
 # from pyearth import Earth
@@ -642,52 +642,41 @@ cdef class QuantileDistribution:
         elif self._ppf is None:
             ppf = PiecewiseFunction()
 
-            ppf.intervals.append(ContinuousSet(np.NINF, 0, EXC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
-            ppf.functions.append(Undefined())
+            ppf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
 
             assert len(self._cdf.functions) > 1, self._cdf.pfmt()
 
             if len(self._cdf.functions) == 2:
                 ppf.intervals[-1].upper = 1
+                ppf.functions.append(Undefined())
                 ppf.intervals.append(ContinuousSet(1, one_plus_eps, INC, EXC))
                 ppf.functions.append(ConstantFunction(self._cdf.intervals[-1].lower))
-                ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
+                ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC))
                 ppf.functions.append(Undefined())
                 return ppf
-            lower = None
-            for interval, f in zip(self._cdf.intervals[1:-1], self._cdf.functions[1:-1]):
-                if f.is_invertible():
-                    ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper if lower is None else lower,
-                                                       f(interval.upper),
-                                                       INC, EXC))
-                    ppf.functions.append(f.invert())
-                    lower = None
-                else:
-                    lower = f.c if isinstance(f, LinearFunction) else f.value
-                    continue
-            if ppf.intervals[-1].upper >= 1:
-                ppf.intervals[-1].upper = one_plus_eps
-            elif ppf.intervals[-1].upper < 1:
-                try:
-                    ppf.functions.append(LinearFunction.from_points((ppf.intervals[-1].upper,
-                                                                     ppf.functions[-1].eval(ppf.intervals[-1].upper)),
-                                                                    (1,
-                                                                     self.cdf.intervals[-1].lower)))
-                except ValueError:
-                    s = str(ppf.functions[-1].eval(ppf.intervals[-1].upper)) + '\n'
-                    s += str(self._cdf.pfmt()) + '\n'
-                    s += str(ppf.intervals[-1].upper) + '\n'
-                    s += str(ppf.functions[-1]) + '\n'
-                    s += str(ppf.pfmt())
-                    raise ValueError(s)
-                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, one_plus_eps, INC, EXC))
 
-            ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC))
-            ppf.functions.append(Undefined())
-            assert np.isnan(ppf.eval(one_plus_eps)), \
-                (ppf.intervals[-1].lower, ppf.intervals[-1],
-                 'value:', ppf.intervals[-2].upper, ppf.eval(one_plus_eps), ppf.pfmt(), self._cdf.pfmt())
-            assert not np.isnan(ppf.eval(1.)), ppf.pfmt()
+            for interval, f in zip(self._cdf.intervals, self._cdf.functions):
+
+                if f.is_invertible():
+                    ppf.functions.append(f.invert())
+                elif not f.c:
+                    ppf.functions.append(Undefined())
+                else:
+                    ppf.functions.append(LinearFunction(0, interval.lower))
+
+                if not np.isinf(interval.upper):
+                    ppf.intervals[-1].upper = f(interval.upper)
+                else:
+                    ppf.intervals[-1].upper = one_plus_eps
+                    ppf.functions.append(Undefined())
+                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.PINF, INC, EXC))
+
+            if not np.isnan(ppf.eval(one_plus_eps)):
+                raise ValueError('ppf:\n %s\n===cdf\n%s' % (ppf.pfmt(), self._cdf.pfmt()))
+
+            if np.isnan(ppf.eval(1.)):
+                raise ValueError('ppf:\n %s\n===cdf\n%s' % (ppf.pfmt(), self._cdf.pfmt()))
+
             self._ppf = ppf
         return self._ppf
 
@@ -704,7 +693,7 @@ cdef class QuantileDistribution:
         for w, cdf in [(w, d.cdf) for w, d in zip(weights, distributions) if len(d.cdf) == 2]:
             jumps[cdf.intervals[0].upper] = jumps.get(cdf.intervals[0].upper, Jump(cdf.intervals[0].upper, 1, 0))
             jumps.get(cdf.intervals[0].upper).weight += w
-        print(jumps)
+
         # --------------------------------------------------------------------------------------------------------------
         lower = sorted([(i.lower, f, w)
                         for d, w in zip(distributions, weights)
@@ -718,73 +707,62 @@ cdef class QuantileDistribution:
                        key=itemgetter(0))
 
         # --------------------------------------------------------------------------------------------------------------
-        # If the first function is a jump, we have to eradicate its weight and re-normalize the other weights
-        print(lower)
-        if isinstance(lower[0][1], Jump):
-            new_weights = normalized([0] + [l[2] for l in lower[1:]])
-            lower = [(x, f, w_) for (x, f, w), w_ in zip(lower, new_weights)]
-            upper = [(x, f, w_) for (x, f, w), w_ in zip(upper, new_weights)]
-        print(lower)
-        # --------------------------------------------------------------------------------------------------------------
         m = 0
         c = 0
-        pos = None
 
         while lower or upper:
             pivot = None
+            m_ = m
+            offset = 0
 
             # Process all function intervals whose lower bound is minimal and
             # smaller than the smallest upper interval bound
             while lower and (pivot is None and first(lower, first) <= first(upper, first, np.PINF) or
                    pivot == first(lower, first, np.PINF)):
                 l, f, w = lower.pop(0)
-                if isinstance(f, ConstantFunction) or l == np.NINF:
+                if isinstance(f, ConstantFunction) or l == np.NINF or isinstance(f, LinearFunction) and f.m == 0:
                     continue
-                if isinstance(f, Jump) and isinstance(functions[-1], LinearFunction):
-                    # (m * l + c + w - (m * pos + c)) = m * (l - pos) + w
-                    functions[-1].m = (m * (l - pos) + w) / (l - pos)
-                    functions[-1].c = m * pos - functions[-1].m * l
-                    m = functions[-1].m
-                    c = functions[-1].c
-                    print('updated m:', m, l, pos, w)
-                elif isinstance(f, LinearFunction):
-                    m += f.m * w
+                if isinstance(f, Jump):  # and isinstance(functions[-1], LinearFunction):
+                    offset += w
+                if isinstance(f, LinearFunction):
+                    m_ += f.m * w
                 pivot = l
-                pos = pivot
-                print('pivot', pivot)
 
             # Do the same for the upper bounds...
             while upper and (pivot is None and first(upper, first) <= first(lower, first, np.PINF) or
                    pivot == first(upper, first, np.PINF)):
                 u, f, w = upper.pop(0)
-                if isinstance(f, (ConstantFunction, Jump)) or u == np.PINF:
+                if isinstance(f, (ConstantFunction, Jump)) or u == np.PINF or isinstance(f, LinearFunction) and f.m == 0:
                     continue
-                m -= f.m * w
+                m_ -= f.m * w
                 pivot = u
-                pos = pivot
 
             if pivot is None:
                 continue
-            c = -m * pos
 
-            if m and m == functions[-1].m and functions[-1].eval(pivot) - m * pivot == functions[-1].c:
-                continue
-            # Split the last interval at the pivot point
+            y = m * pivot + c
+            m = m_
+            c = y - m * pivot + offset
+
             intervals[-1].upper = pivot
-            intervals.append(ContinuousSet(pivot, np.PINF, INC, EXC))
-            # Evaluate the old function at the new pivot point to get the intercept
-            functions.append(LinearFunction(m, functions[-1].eval(pivot) - m * pivot))
+            if (c or m) and (m != functions[-1].m or c != functions[-1].c):
+                # Split the last interval at the pivot point
+                intervals.append(ContinuousSet(pivot, np.PINF, INC, EXC))
+                # Evaluate the old function at the new pivot point to get the intercept
+                functions.append(LinearFunction(m, c))
 
         # If the merging ends with an "approximate" constant function
         # remove it. This may happen for numerical imprecision.
-        while len(functions) > 1 and abs(functions[-1].m) <= 1e-08:
+        while len(functions) > 1 and abs(functions[-1].m) <= 1e-08 and functions[-1].m:
             del intervals[-1]
             del functions[-1]
 
         cdf = PiecewiseFunction()
         cdf.functions = functions
         cdf.intervals = intervals
-        cdf.ensure_right(ConstantFunction(1), l or u)
+
+        cdf.ensure_right(ConstantFunction(1), cdf.intervals[-1].lower)
+
         distribution = QuantileDistribution()
         distribution._cdf = cdf
 

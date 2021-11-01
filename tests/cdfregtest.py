@@ -38,7 +38,10 @@ class MyTestCase(unittest.TestCase):
         print(q2.cdf.pfmt())
         print(q3.cdf.pfmt())
         print('===')
-        print(QuantileDistribution.merge([q1, q2, q3], [1/3] * 3).cdf.pfmt())
+        q = QuantileDistribution.merge([q1, q2, q3], [1/3] * 3)
+        print(q.cdf.pfmt())
+        print('---')
+        print(q.ppf.pfmt())
         self.assertEqual(True, False)  # add assertion here
 
 
