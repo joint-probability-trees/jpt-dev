@@ -266,6 +266,13 @@ cdef class ConstantFunction(Function):
     cpdef inline ConstantFunction copy(ConstantFunction self):
         return ConstantFunction(self.value)
 
+    def __eq__(self, other):
+        if not isinstance(other, Function):
+            raise TypeError('Cannot compare object of type %s to %s.' % (type(self).__name__, type(other).__name__))
+        if isinstance(other, (LinearFunction, ConstantFunction)):
+            return self.m == other.m and self.c == other.c
+        return False
+
     @property
     def m(self):
         return 0
