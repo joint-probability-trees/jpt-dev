@@ -341,7 +341,7 @@ cdef class LinearFunction(Function):
     def parse(s):
         if s == 'undef.' or s is None:
             return Undefined()
-        if isinstance(s, numbers.Rational):
+        if isinstance(s, numbers.Number):
             return ConstantFunction(s)
         match = s.split('x')
         if not match:
@@ -878,7 +878,7 @@ cdef class PiecewiseFunction(Function):
                 function = LinearFunction.parse(function)
             elif function is None:
                 function = Undefined()
-            elif isinstance(function, numbers.Rational):
+            elif isinstance(function, numbers.Number):
                 function = ConstantFunction(function)
             functions.append(function)
         fcts = sorted([(i, f) for (i, f) in zip(intervals, functions)], key=lambda a: a[0].lower)
