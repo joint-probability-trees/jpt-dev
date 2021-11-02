@@ -101,11 +101,11 @@ class TestCasePPFTransform(unittest.TestCase):
 
     def test_ppf_transform(self):
         cdf = PiecewiseFunction()
-        cdf.intervals.append(ContinuousSet.fromstring(']-inf,0.000['))
-        cdf.intervals.append(ContinuousSet.fromstring('[0.000, 1['))
-        cdf.intervals.append(ContinuousSet.fromstring('[1, 2['))
-        cdf.intervals.append(ContinuousSet.fromstring('[2, 3['))
-        cdf.intervals.append(ContinuousSet.fromstring('[3, inf['))
+        cdf.intervals.append(ContinuousSet.parse(']-inf,0.000['))
+        cdf.intervals.append(ContinuousSet.parse('[0.000, 1['))
+        cdf.intervals.append(ContinuousSet.parse('[1, 2['))
+        cdf.intervals.append(ContinuousSet.parse('[2, 3['))
+        cdf.intervals.append(ContinuousSet.parse('[3, inf['))
         cdf.functions.append(ConstantFunction(0))
         cdf.functions.append(LinearFunction.from_points((0, 0), (1, .5)))
         cdf.functions.append(ConstantFunction(.5))
@@ -133,11 +133,11 @@ class PLFTest(unittest.TestCase):
         }
 
         cdf = PiecewiseFunction()
-        cdf.intervals.append(ContinuousSet.fromstring(']-inf,1['))
-        cdf.intervals.append(ContinuousSet.fromstring('[1, 2['))
-        cdf.intervals.append(ContinuousSet.fromstring('[3, 4['))
-        cdf.intervals.append(ContinuousSet.fromstring('[4, 5['))
-        cdf.intervals.append(ContinuousSet.fromstring('[5, inf['))
+        cdf.intervals.append(ContinuousSet.parse(']-inf,1['))
+        cdf.intervals.append(ContinuousSet.parse('[1, 2['))
+        cdf.intervals.append(ContinuousSet.parse('[3, 4['))
+        cdf.intervals.append(ContinuousSet.parse('[4, 5['))
+        cdf.intervals.append(ContinuousSet.parse('[5, inf['))
         cdf.functions.append(ConstantFunction(0))
         cdf.functions.append(ConstantFunction(.25))
         cdf.functions.append(ConstantFunction(.5))
@@ -147,12 +147,17 @@ class PLFTest(unittest.TestCase):
         self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
 
     def test_plf_linear_from_dict(self):
-        d = {']-∞,0.000[': 'undef.', '[0.000,0.500[': '2.000x', '[0.500,1.000[': '2.000x + 1.000', '[1.000,∞[': None}
+        d = {
+            ']-∞,0.000[': 'undef.',
+            '[0.000,0.500[': '2.000x',
+            '[0.500,1.000[': '2.000x + 1.000',
+            '[1.000,∞[': None
+        }
         cdf = PiecewiseFunction()
-        cdf.intervals.append(ContinuousSet.fromstring(']-∞,0.000['))
-        cdf.intervals.append(ContinuousSet.fromstring('[0.000,0.500['))
-        cdf.intervals.append(ContinuousSet.fromstring('[0.500,1.000['))
-        cdf.intervals.append(ContinuousSet.fromstring('[1.000,∞['))
+        cdf.intervals.append(ContinuousSet.parse(']-∞,0.000['))
+        cdf.intervals.append(ContinuousSet.parse('[0.000,0.500['))
+        cdf.intervals.append(ContinuousSet.parse('[0.500,1.000['))
+        cdf.intervals.append(ContinuousSet.parse('[1.000,∞['))
         cdf.functions.append(Undefined())
         cdf.functions.append(LinearFunction(2, 0))
         cdf.functions.append(LinearFunction(2, 1))
@@ -162,11 +167,11 @@ class PLFTest(unittest.TestCase):
 
     def test_plf_mixed_from_dict(self):
         cdf = PiecewiseFunction()
-        cdf.intervals.append(ContinuousSet.fromstring(']-inf,0.000['))
-        cdf.intervals.append(ContinuousSet.fromstring('[0.000, 1['))
-        cdf.intervals.append(ContinuousSet.fromstring('[1, 2['))
-        cdf.intervals.append(ContinuousSet.fromstring('[2, 3['))
-        cdf.intervals.append(ContinuousSet.fromstring('[3, inf['))
+        cdf.intervals.append(ContinuousSet.parse(']-inf,0.000['))
+        cdf.intervals.append(ContinuousSet.parse('[0.000, 1['))
+        cdf.intervals.append(ContinuousSet.parse('[1, 2['))
+        cdf.intervals.append(ContinuousSet.parse('[2, 3['))
+        cdf.intervals.append(ContinuousSet.parse('[3, inf['))
         cdf.functions.append(ConstantFunction(0))
         cdf.functions.append(LinearFunction.from_points((0, 0), (1, .5)))
         cdf.functions.append(ConstantFunction(.5))
