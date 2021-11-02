@@ -11,7 +11,7 @@ import re
 from collections import deque
 from operator import itemgetter, attrgetter
 
-from dnutils import ifnot, out, first, stop
+from dnutils import ifnot, out, first, stop, ifnone
 # from pyearth import Earth
 # from pyearth._basis import ConstantBasisFunction, HingeBasisFunctionBase, LinearBasisFunction, HingeBasisFunction
 from scipy import stats
@@ -807,7 +807,7 @@ cdef class QuantileDistribution:
                 continue
 
             y = m * pivot + c
-            m = m_
+            m = m_ if abs(m_) > 1e-8 else 0
             c = y - m * pivot + offset
 
             intervals[-1].upper = pivot
@@ -815,7 +815,7 @@ cdef class QuantileDistribution:
                 # Split the last interval at the pivot point
                 intervals.append(ContinuousSet(pivot, np.PINF, INC, EXC))
                 # Evaluate the old function at the new pivot point to get the intercept
-                functions.append(LinearFunction(m, c))
+                functions.append(LinearFunction(m, c) if abs(m) > 1e-8 else ConstantFunction(c))
 
         # If the merging ends with an "approximate" constant function
         # remove it. This may happen for numerical imprecision.
@@ -1247,6 +1247,33 @@ cdef class PiecewiseFunction(Function):
 
     def __repr__(self):
         return self.pfmt()
+
+    def round(self, digits=None, include_intervals=True):
+        '''
+        Return a copy of this PLF, in which all parameters of sub-functions have been rounded by
+        the specified number of digits.
+
+        If ``include_intervals`` is ``False``, the parameter values of the intervals will not be affected by
+        this operation.
+        '''
+        digits = ifnone(digits, 3)
+        round_ = lambda x: round(x, ndigits=digits)
+
+        plf = PiecewiseFunction()
+        for interval, function in zip(self.intervals, self.functions):
+            if include_intervals:
+                interval = interval.copy()
+                interval.lower = round_(interval.lower)
+                interval.upper = round_(interval.upper)
+            plf.intervals.append(interval)
+            if isinstance(function, LinearFunction):
+                function = LinearFunction(round_(function.m), round_(function.c))
+            elif isinstance(function, ConstantFunction):
+                function = ConstantFunction(round_(function.value))
+            else:
+                raise TypeError('Unknown function type in PiecewiseFunction: "%s"' % type(function).__name__)
+            plf.functions.append(function)
+        return plf
 
 # cpdef object fit_piecewise(DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t epsilon=np.nan,
 #                            DTYPE_t penalty=np.nan, DTYPE_t[::1] weights=None,
