@@ -83,7 +83,7 @@ def preprocess():
 
     variables = infer_from_dataframe(data, scale_numeric_types=True, precision=.01, haze=.01)
     if dataset == 'airline':
-        data = data.sample(frac=0.001)  # TODO remove; only for debugging
+        data = data.sample(frac=0.1)  # TODO remove; only for debugging
     logger.debug(f'Loaded {len(data)} datapoints')
 
     # set variable value/code mappings for each symbolic variable
@@ -109,7 +109,7 @@ def discrtree(i, fld_idx):
         t = DecisionTreeClassifier(min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF))
 
     t.fit(X, tgt)
-    logger.debug(f'Pickling tree {var.name} ({t.get_n_leaves()} leaves) for FOLD {fld_idx + 1}...')
+    logger.debug(f'Pickling tree {var.name} ({t.get_n_leaves()} leaves) for FOLD {fld_idx}...')
     with open(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.pkl')), 'wb') as f:
         pickle.dump(t, f)
         plot_tree(t)
