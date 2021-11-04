@@ -650,8 +650,37 @@ cdef class QuantileDistribution:
         if self._cdf is None:
             raise RuntimeError('No quantile distribution fitted. Call fit() first.')
         cdf_ = self.cdf.crop(interval)
+        cdf_.add_const(-cdf_.eval(cdf_.intervals[0].lower))
+
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet(np.NINF, cdf_.intervals[0].lower, EXC, EXC))
+        cdf.functions.append(ConstantFunction(0.))
+
+        alpha = cdf_.functions[-1].eval(cdf_.intervals[-1].upper)
+
+        for i, f in zip(cdf_.intervals, cdf_.functions):
+            y = cdf.functions[-1].eval(i.lower)
+            cdf.intervals.append(ContinuousSet(i.lower, i.upper, INC, EXC))
+
+            upper_ = np.nextafter(i.upper, i.upper-1)
+            if i.size() == 1:
+                # using upper_ here messes up test_posterior_crop_quantiledist_singleslice_inc
+                # -> creates additional function ∅ |--> 0.9999999999999998 = const.
+                cdf.functions.append(ConstantFunction((f.m/alpha) * (upper_-i.lower) + y))
+            else:
+                cdf.functions.append(LinearFunction.from_points((i.lower, y), (upper_, (f.m/alpha) * (upper_-i.lower) + y)))
+
+        if cdf.functions[-1] == ConstantFunction(1.):
+            cdf.intervals[-1].upper = np.PINF
+            cdf.intervals[-1].right = EXC
+            if len(cdf.intervals) > 1:
+                cdf.intervals[-1].lower = cdf.intervals[-2].upper
+        else:
+            cdf.functions.append(ConstantFunction(1.))
+            cdf.intervals.append(ContinuousSet(cdf.intervals[-1].upper, np.PINF, INC, EXC))
+
         result = QuantileDistribution(self.epsilon, self.penalty, min_samples_mars=self.min_samples_mars)
-        result._cdf = cdf_
+        result._cdf = cdf
         return result
 
     @property
