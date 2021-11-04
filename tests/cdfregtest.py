@@ -10,12 +10,24 @@ from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, Constant
 
 class TestCaseMerge(unittest.TestCase):
 
-    def test_quantile_dist(self):
+    def test_quantile_dist_linear(self):
         data = np.array([[1.], [2.]], dtype=np.float64)
         q = QuantileDistribution()
         q.fit(data, np.array([0, 1]), 0)
-        print(q.cdf.pfmt())
-        self.assertEqual(True, False)  # add assertion here
+        self.assertEqual(PiecewiseFunction.from_dict({
+            ']-∞,1.000[': '0.0',
+            '[1.000,2.000[': '1.000x - 1.000',
+            '[2.000,∞[': '1.0',
+            }), q.cdf)  # add assertion here
+
+    def test_quantile_dist_jump(self):
+        data = np.array([[2.]], dtype=np.float64)
+        q = QuantileDistribution()
+        q.fit(data, np.array([0]), 0)
+        self.assertEqual(PiecewiseFunction.from_dict({
+            ']-∞,2.000[': '0.0',
+            '[2.000,∞[': '1.0',
+        }), q.cdf)
 
     def test_dist_merge(self):
         data1 = np.array([[1.], [1.1], [1.1], [1.2], [1.4], [1.2], [1.3]], dtype=np.float64)
@@ -24,8 +36,15 @@ class TestCaseMerge(unittest.TestCase):
         q2 = QuantileDistribution()
         q1.fit(data1, np.array(range(data1.shape[0])), 0)
         q2.fit(data2, np.array(range(data2.shape[0])), 0)
-        print(QuantileDistribution.merge([q1, q2], [.5, .5]).cdf.pfmt())
-        self.assertEqual(True, False)  # add assertion here
+
+        self.assertEqual(PiecewiseFunction.from_dict({']-∞,1.000[': 0.0,
+                                                      '[1.000,1.200[': '1.667x - 1.667',
+                                                      '[1.200,1.400[': '0.833x - 0.667',
+                                                      '[1.400,5.000[': '0.500',
+                                                      '[5.000,5.300[': '1.389x - 6.444',
+                                                      '[5.300,5.400[': '0.833x - 3.500',
+                                                      '[5.400,∞[': '1.0'}),
+                         QuantileDistribution.merge([q1, q2], [.5, .5]).cdf.round())
 
     def test_dist_merge_jump_functions(self):
         data1 = np.array([[1.]], dtype=np.float64)
@@ -37,14 +56,12 @@ class TestCaseMerge(unittest.TestCase):
         q1.fit(data1, np.array(range(data1.shape[0])), 0)
         q2.fit(data2, np.array(range(data2.shape[0])), 0)
         q3.fit(data3, np.array(range(data3.shape[0])), 0)
-        print(q1.cdf.pfmt())
-        print(q2.cdf.pfmt())
-        print(q3.cdf.pfmt())
-        print('===')
         q = QuantileDistribution.merge([q1, q2, q3], [1/3] * 3)
-        print(q.cdf.pfmt())
-        print('---')
-        print(q.ppf.pfmt())
+        self.assertEqual(PiecewiseFunction.from_dict({']-∞,1[': 0,
+                                                      '[1,2[': 1/3,
+                                                      '[2,3[': 2/3,
+                                                      '[3.000,∞[': 1}),
+                         q.cdf)
 
     def test_merge_jumps(self):
         plf1 = PiecewiseFunction()
@@ -69,7 +86,6 @@ class TestCaseMerge(unittest.TestCase):
         result.functions.append(ConstantFunction(0))
         result.functions.append(ConstantFunction(.5))
         result.functions.append(ConstantFunction(1))
-        print(result.pfmt())
 
         self.assertEqual(result, merged.cdf)
 
