@@ -313,6 +313,31 @@ class JPTBase:
         r.weights = [w / p_e for w in r.weights]
         return r
 
+    def posterior(self, vars, evidence):
+        '''
+
+        :param vars:        the query variables of the posterior to be computed
+        :type vars:         list of jpt.variables.Variable
+        :param evidence:    the evidence given for the posterior to be computed
+        :return:            dict of {jpt.variables.Variable: jpt.learning.distributions.Distribution.values}
+        '''
+        # formulate query to be as broad as possible
+        query_ = self._prepropress_query({v: ContinuousSet().allnumbers() for v in vars})  # TODO: value None if variable is symbolic?
+        evidence_ = ifnone(evidence, {}, self._prepropress_query)
+        r = Result(query_, evidence_)
+
+        p_e = 0.
+
+        for leaf in self.apply(evidence_):
+            p_m = 1
+            for var in set(evidence_.keys()):
+                evidence_val = evidence_[var]
+                if var in leaf.path:
+                    newdist = leaf.distribution[var].crop(evidence_val)
+
+        # TODO
+
+
     def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True):
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
