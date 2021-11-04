@@ -551,13 +551,15 @@ cdef class ContinuousSet(NumberSet):
         return not self == other
 
     def __str__(self):
+        precision = '%.20f'
         if self.isempty():
             return _EMPTYSET
         if self.lower == self.upper and self.left == self.right == INC:
-            return '[%.3f]' % self.lower
+            # return '[%.3f]' % self.lower
+            return precision % self.lower
         return '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
-                                  '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
-                                  '∞' if self.upper == np.inf else ('%.3f' % self.upper),
+                                  '-∞' if self.lower == np.NINF else (precision % self.lower),
+                                  '∞' if self.upper == np.inf else (precision % self.upper),
                                   {INC: ']', EXC: '['}[int(self.right)])
 
     def __repr__(self):
