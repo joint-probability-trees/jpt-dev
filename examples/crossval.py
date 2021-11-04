@@ -136,7 +136,9 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
 
     # learn full JPT
     logger.debug(f'Learning full JPT over all variables for FOLD {fld_idx}...')
-    jpt = JPT(variables=variables, min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF / len(variables)))
+    jpt = JPT(variables=variables,
+              targets=[variables[5]],
+              min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF / len(variables)))
     jpt.learn(columns=data_train.values.T)
     jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
     if dataset in ['iris', 'banana', 'restaurant', 'gaussian']:

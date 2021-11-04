@@ -628,7 +628,6 @@ class JPT(JPTBase):
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
-
     def learn(self, data=None, rows=None, columns=None):
         '''Fits the ``data`` into a regression tree.
 
@@ -663,7 +662,7 @@ class JPT(JPTBase):
         for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(self.variables)])):# {var: var.dist(data=data[:, i]) }
             self.priors[self.variables[i].name] = self.variables[i].domain.from_json(prior)
         JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
-        self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
+        # self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
         pool.close()
         pool.join()
 
