@@ -328,9 +328,10 @@ cdef class LinearFunction(Function):
         return self.m * x + self.c
 
     def __str__(self):
-        l = ('%.3fx' % self.m) if self.m else ''
+        precision = '%20f'
+        l = (precision % self.m + 'x') if self.m else ''
         op = '' if (not l and self.c > 0 or not self.c) else ('+' if self.c > 0 else '-')
-        c = '0' if (not self.c and not self.m) else ('' if not self.c else '%.3f' % abs(self.c))
+        c = '0' if (not self.c and not self.m) else ('' if not self.c else precision % abs(self.c))
         return ('%s %s %s' % (l, op, c)).strip()
 
     def __repr__(self):
@@ -997,10 +998,7 @@ cdef class PiecewiseFunction(Function):
     cpdef inline str pfmt(PiecewiseFunction self):
         assert len(self.intervals) == len(self.functions), \
             ('Intervals: %s, Functions: %s' % (len(self.intervals), self.functions))
-        intstr = list(map(str, self.intervals))
-        funstr = list(map(str, self.functions))
-        space = max([len(i) for i in intstr])
-        return str('\n'.join(['%s |--> %s' % (i.ljust(space + 2, ' '), f) for i, f in zip(intstr, funstr)]))
+        return str('\n'.join([f'{str(i): <50} |--> {str(f)}' for i, f in zip(self.intervals, self.functions)]))
 
     cpdef PiecewiseFunction differentiate(PiecewiseFunction self):
         cdef PiecewiseFunction diff = PiecewiseFunction()
