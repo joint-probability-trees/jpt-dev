@@ -628,7 +628,6 @@ class JPT(JPTBase):
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
-
     def learn(self, data=None, rows=None, columns=None):
         '''Fits the ``data`` into a regression tree.
 
