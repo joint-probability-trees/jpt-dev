@@ -212,8 +212,8 @@ cdef class PiecewiseFunction(Function):
     '''
     # Class attributes
 
-    cdef readonly list intervals
-    cdef readonly list functions
+    cdef public list intervals
+    cdef public list functions
 
     # Class methods
 

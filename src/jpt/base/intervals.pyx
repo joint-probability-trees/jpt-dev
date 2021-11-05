@@ -326,6 +326,8 @@ cdef class ContinuousSet(NumberSet):
 
         return interval
 
+    parse = ContinuousSet.fromstring
+
     cpdef inline np.int32_t itype(ContinuousSet self):
         return self.right + self.left
 

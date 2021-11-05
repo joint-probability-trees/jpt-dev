@@ -62,8 +62,8 @@ def preprocess():
 
     if dataset == 'airline':
         data = preprocess_airline()
-        # data = data[['DayOfWeek', 'CRSDepTime', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest', 'Distance']]
-        data = data[['UniqueCarrier', 'Origin', 'Dest']]
+        data = data[['DayOfWeek', 'CRSDepTime', 'Distance', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest']]  #
+        # data = data[['UniqueCarrier', 'Origin', 'Dest']]
     elif dataset == 'regression':
         data = preprocess_regression()
     elif dataset == 'iris':
@@ -81,9 +81,9 @@ def preprocess():
     else:
         data = None
 
-    variables = infer_from_dataframe(data, scale_numeric_types=True, precision=0.01)
+    variables = infer_from_dataframe(data, scale_numeric_types=True, precision=.01, haze=.01)
     if dataset == 'airline':
-        data = data.sample(frac=0.00001)  # TODO remove; only for debugging
+        data = data.sample(frac=0.001)  # TODO remove; only for debugging
     logger.debug(f'Loaded {len(data)} datapoints')
 
     # set variable value/code mappings for each symbolic variable
@@ -108,7 +108,6 @@ def discrtree(i, fld_idx):
     else:
         t = DecisionTreeClassifier(min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF))
 
-    logger.warning('x\n', X, '\ntgt\n', tgt)
     t.fit(X, tgt)
     logger.debug(f'Pickling tree {var.name} ({t.get_n_leaves()} leaves) for FOLD {fld_idx + 1}...')
     with open(os.path.abspath(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-{var.name}.pkl')), 'wb') as f:
@@ -137,7 +136,7 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
 
     # learn full JPT
     logger.debug(f'Learning full JPT over all variables for FOLD {fld_idx}...')
-    jpt = JPT(variables=variables, min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF))
+    jpt = JPT(variables=variables, min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF / len(variables)))
     jpt.learn(columns=data_train.values.T)
     jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
     if dataset in ['iris', 'banana', 'restaurant', 'gaussian']:
@@ -249,9 +248,12 @@ def compare_(args):
             jptexp = jpt.expectation([compvariable], dp_jpt, fail_on_unsatisfiability=False)
             if jptexp is None:
                 errors += 1.
-                logger.warning(f'Errors in Worker #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}); current data point: {n} (unsatisfiable query: {dp_jpt})')
+                # logger.warning(f'Errors in Worker #{p._identity[0]} ({compvariable}, FOLD {fld_idx}): {errors} ({datapoints}); current data point: {n} (unsatisfiable query: {dp_jpt})')
             else:
                 em_jpt.update(fld_idx, var_gt, jptexp[0].result)
+                if jptexp[0].result != jptexp[0].result:
+                    print(compvariable, dp_jpt)
+                    print(jpt)
                 em_dec.update(fld_idx, var_gt, dectree.predict([dp_dec])[0])
 
     with open(os.path.join(d, f'{prefix}-Matrix-JPT-{compvariable}.pkl'), 'wb') as f:
@@ -261,17 +263,8 @@ def compare_(args):
         pickle.dump(em_dec, f)
 
     logger.error(f'FINAL NUMBER OF ERRORS FOR VARIABLE {compvariable}: {int(errors)} in {int(datapoints)} data points')
-    try:
-        em_jpt.accuracy()
-        em_dec.accuracy()
-    except:
-        res = list(chain(*em_jpt.res.values()))
-        logger.error('PANIK JPT', list(zip(*res))[1])
-        res = list(chain(*em_dec.res.values()))
-        logger.error('PANIK DEC', list(zip(*res))[1])
-
-
     logger.warning(f'res_jpt | res_dec: {em_jpt.accuracy()} | {em_dec.accuracy()}: Comparing datapoint { dp_jpt } in decision tree loaded from {prefix}-FOLD-{fld_idx}-{compvariable}.pkl and JPT from {prefix}{fld_idx}-JPT.json')
+
     return em_jpt, em_dec
 
 
@@ -334,12 +327,12 @@ class EvaluationMatrix:
 
 
 if __name__ == '__main__':
-    # dataset = 'airline'
+    dataset = 'airline'
     # dataset = 'regression'
     # dataset = 'iris'
     # dataset = 'banana'
     # dataset = 'restaurant'
-    dataset = 'gaussian'
+    # dataset = 'gaussian'
 
     homedir = '../tests/'
     ovstart = datetime.now()
