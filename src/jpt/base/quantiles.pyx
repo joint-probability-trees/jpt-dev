@@ -928,14 +928,24 @@ cdef class PiecewiseFunction(Function):
         return result
 
     cpdef inline Function at(PiecewiseFunction self, DTYPE_t x):
+        '''
+        Return the linear function segment at position ``x``.
+        '''
+        cdef idx = self.idx_at(x)
+        if idx != -1:
+            return self.functions[idx]
+        return None
+
+    cpdef inline int idx_at(PiecewiseFunction self, DTYPE_t x):
+        '''
+        Return the index of the function segment at position ``x``.
+        '''
         cdef int i
         cdef ContinuousSet interval
         for i, interval in enumerate(self.intervals):
             if x in interval:
-                break
-        else:
-            return None
-        return self.functions[i]
+                return i
+        return -1
 
     def __len__(self):
         return len(self.intervals)
