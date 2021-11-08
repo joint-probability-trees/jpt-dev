@@ -1248,7 +1248,7 @@ cdef class PiecewiseFunction(Function):
         cdef PiecewiseFunction result = PiecewiseFunction()
         for i, f in zip(self.intervals, self.functions):
             if i.intersects(interval):
-                intersection = i.intersection(interval)
+                intersection = i.intersection(interval, left=INC, right=EXC)
                 result.intervals.append(intersection)
                 result.functions.append(f)
         return result
