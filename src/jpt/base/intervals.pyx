@@ -473,13 +473,41 @@ cdef class ContinuousSet(NumberSet):
             return False
         return True
 
-    cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other):
+    cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other, int left=-1, int right=-1):
         if not self.intersects(other):
             return self.emptyset()
 
-        cdef np.int32_t left = max(self.left, other.left) if self.lower == other.lower else (self.left if self.lower > other.lower else other.left)
-        cdef np.int32_t right = max(self.right, other.right) if self.upper == other.upper else (self.right if self.upper < other.upper else other.right)
-        return ContinuousSet(max(self.lower, other.lower), min(self.upper, other.upper), left, right)
+        cdef np.int32_t left_ = max(self.left, other.left) if self.lower == other.lower\
+            else (self.left if self.lower > other.lower
+                  else other.left)
+        cdef np.int32_t right_ = max(self.right, other.right) if self.upper == other.upper\
+            else (self.right if self.upper < other.upper
+                  else other.right)
+
+        cdef ContinuousSet result = ContinuousSet(max(self.lower, other.lower),
+                                                  min(self.upper, other.upper),
+                                                  left_,
+                                                  right_)
+
+        cdef lower_minus_eps = np.nextafter(result.lower, result.lower - 1.)
+        cdef lower_plus_eps = np.nextafter(result.lower, result.lower + 1.)
+        cdef upper_minus_eps = np.nextafter(result.upper, result.upper - 1.)
+        cdef upper_plus_eps = np.nextafter(result.upper, result.upper + 1.)
+
+        if result.left == _INC and left == _EXC:
+            result.lower = lower_minus_eps
+            result.left = _EXC
+        elif result.left == _EXC and left == _INC:
+            result.lower = lower_plus_eps
+            result.left = _INC
+        if result.right == _INC and right == _EXC:
+            result.upper = upper_plus_eps
+            result.right = _EXC
+        elif result.right == _EXC and right == _INC:
+            result.upper = upper_minus_eps
+            result.right = _INC
+
+        return result
 
     cpdef inline NumberSet union(ContinuousSet self, ContinuousSet other):
         if not self.intersects(other) and not self.contiguous(other):

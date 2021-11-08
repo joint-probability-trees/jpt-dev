@@ -10,3 +10,4 @@ pandas
 dateparser
 dill
 arff
+ddt

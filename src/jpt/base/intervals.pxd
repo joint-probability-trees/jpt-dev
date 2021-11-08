@@ -76,7 +76,7 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef inline np.int32_t intersects(ContinuousSet self, ContinuousSet other)
 
-    cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other)
+    cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other, int left=*, int right=*)
 
     cpdef inline NumberSet union(ContinuousSet self, ContinuousSet other)
 
