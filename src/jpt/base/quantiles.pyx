@@ -328,10 +328,9 @@ cdef class LinearFunction(Function):
         return self.m * x + self.c
 
     def __str__(self):
-        precision = '%20f'
-        l = (precision % self.m + 'x') if self.m else ''
+        l = (str(self.m) + 'x') if self.m else ''
         op = '' if (not l and self.c > 0 or not self.c) else ('+' if self.c > 0 else '-')
-        c = '0' if (not self.c and not self.m) else ('' if not self.c else precision % abs(self.c))
+        c = '0' if (not self.c and not self.m) else ('' if not self.c else str(abs(self.c)))
         return ('%s %s %s' % (l, op, c)).strip()
 
     def __repr__(self):
@@ -649,16 +648,16 @@ cdef class QuantileDistribution:
         '''
         if self._cdf is None:
             raise RuntimeError('No quantile distribution fitted. Call fit() first.')
-        cdf_ = self.cdf.crop(interval)
-        cdf_.add_const(-cdf_.eval(cdf_.intervals[0].lower))
+        interval = interval.boundaries(INC, INC)
 
-        print(cdf_.pfmt())
+        cdf_ = self.cdf.crop(interval)
+        cdf_.add_const(-cdf_.eval(cdf_.intervals[0].lowermost()))
 
         cdf = PiecewiseFunction()
         cdf.intervals.append(ContinuousSet(np.NINF, cdf_.intervals[0].lower, EXC, EXC))
         cdf.functions.append(ConstantFunction(0.))
 
-        alpha = cdf_.functions[-1].eval(cdf_.intervals[-1].upper)
+        alpha = cdf_.functions[-1].eval(interval.uppermost())
 
         f_ = cdf_.functions[0]
         for i, f in zip(cdf_.intervals, cdf_.functions):
@@ -691,6 +690,8 @@ cdef class QuantileDistribution:
             if len(cdf.intervals) > 1:
                 cdf.intervals[-1].lower = cdf.intervals[-2].upper
         else:
+            if interval.uppermost() in cdf.intervals[-1]:
+                cdf.intervals[-1].upper = np.nextafter(cdf.intervals[-1].upper, cdf.intervals[-1].upper - 1)
             cdf.functions.append(ConstantFunction(1.))
             cdf.intervals.append(ContinuousSet(cdf.intervals[-1].upper, np.PINF, INC, EXC))
 

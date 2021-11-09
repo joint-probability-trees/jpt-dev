@@ -12,6 +12,7 @@ import math
 import numpy as np
 cimport numpy as np
 cimport cython
+from dnutils import ifnone
 
 cdef class NumberSet:
 
@@ -489,6 +490,10 @@ cdef class ContinuousSet(NumberSet):
                                                   left_,
                                                   right_)
 
+        return result.boundaries(left, right)
+
+    cpdef inline ContinuousSet boundaries(ContinuousSet self, int left= -1, int right= -1):
+        cdef ContinuousSet result = self.copy()
         cdef lower_minus_eps = np.nextafter(result.lower, result.lower - 1.)
         cdef lower_plus_eps = np.nextafter(result.lower, result.lower + 1.)
         cdef upper_minus_eps = np.nextafter(result.upper, result.upper - 1.)
@@ -506,7 +511,6 @@ cdef class ContinuousSet(NumberSet):
         elif result.right == _EXC and right == _INC:
             result.upper = upper_minus_eps
             result.right = _INC
-
         return result
 
     cpdef inline NumberSet union(ContinuousSet self, ContinuousSet other):
@@ -562,6 +566,12 @@ cdef class ContinuousSet(NumberSet):
         else:
             return np.finfo(np.float64).min
 
+    cpdef inline DTYPE_t uppermost(ContinuousSet self):
+        return self.upper if self.right == _INC else np.nextafter(self.upper, self.upper - 1)
+
+    cpdef inline DTYPE_t lowermost(ContinuousSet self):
+        return self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
+
     def __contains__(self, x):
         try:
             if isinstance(x, ContinuousSet):
@@ -579,15 +589,17 @@ cdef class ContinuousSet(NumberSet):
         return not self == other
 
     def __str__(self):
-        precision = '%.20f'
+        return self.pfmt()
+
+    def pfmt(self, fmtstr=None):
+        precision = ifnone(fmtstr, '%s')
         if self.isempty():
             return _EMPTYSET
         if self.lower == self.upper and self.left == self.right == INC:
-            # return '[%.3f]' % self.lower
             return precision % self.lower
         return '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
-                                  '-∞' if self.lower == np.NINF else (precision % self.lower),
-                                  '∞' if self.upper == np.inf else (precision % self.upper),
+                                  '-∞' if self.lower == np.NINF else (precision % float(self.lower)),
+                                  '∞' if self.upper == np.inf else (precision % float(self.upper)),
                                   {INC: ']', EXC: '['}[int(self.right)])
 
     def __repr__(self):

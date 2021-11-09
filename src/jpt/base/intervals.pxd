@@ -89,3 +89,9 @@ cdef class ContinuousSet(NumberSet):
     cpdef DTYPE_t[::1] linspace(ContinuousSet self, np.int32_t num, DTYPE_t default_step=*, DTYPE_t[::1] result=*)
 
     cpdef inline DTYPE_t fst(ContinuousSet self)
+
+    cpdef inline DTYPE_t uppermost(ContinuousSet self)
+
+    cpdef inline DTYPE_t lowermost(ContinuousSet self)
+
+    cpdef inline ContinuousSet boundaries(ContinuousSet self, int left=*, int right=*)
