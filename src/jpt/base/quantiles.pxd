@@ -254,5 +254,7 @@ cdef class PiecewiseFunction(Function):
 
     cpdef PiecewiseFunction crop(PiecewiseFunction self, ContinuousSet interval)
 
+    cpdef inline int idx_at(PiecewiseFunction self, DTYPE_t x)
+
 
 

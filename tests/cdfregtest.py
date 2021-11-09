@@ -204,6 +204,7 @@ class PLFTest(unittest.TestCase):
 
 
 class TestCasePosterior(unittest.TestCase):
+
     def setUp(self):
         self.d = {
             ']-∞,0.000[': 0.000,
@@ -223,15 +224,15 @@ class TestCasePosterior(unittest.TestCase):
     def test_posterior_crop_quantiledist_singleslice_inc(self):
         d = {
             ']-∞,0.300[': 0.000,
-            '[0.300,0.700[': LinearFunction.from_points((.3, 0.), (.7, 1.)),
-            '[0.700,∞[': 1.000
+            '[.3,.7[': LinearFunction.from_points((.3, 0.), (.7, 1.)),
+            ContinuousSet(np.nextafter(0.7, 0.7 + 1), np.PINF, INC, EXC): 1.000
         }
 
         interval = ContinuousSet(.3, .7)
         q = QuantileDistribution.from_cdf(self.cdf)
         q_ = q.crop(interval)
-
-        self.assertEqual(q_.cdf, PiecewiseFunction.from_dict(d))
+        print(q_.cdf.intervals[1].upper, q_.cdf.intervals[2].lower)
+        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
 
     def test_posterior_crop_quantiledist_singleslice_exc(self):
         d = {

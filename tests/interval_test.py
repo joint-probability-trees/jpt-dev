@@ -7,6 +7,7 @@ import unittest
 
 from jpt.base.intervals import ContinuousSet, INC, EXC, EMPTY
 
+
 @ddt
 class IntervalTest(unittest.TestCase):
 

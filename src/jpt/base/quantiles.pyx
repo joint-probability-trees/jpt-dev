@@ -652,23 +652,38 @@ cdef class QuantileDistribution:
         cdf_ = self.cdf.crop(interval)
         cdf_.add_const(-cdf_.eval(cdf_.intervals[0].lower))
 
+        print(cdf_.pfmt())
+
         cdf = PiecewiseFunction()
         cdf.intervals.append(ContinuousSet(np.NINF, cdf_.intervals[0].lower, EXC, EXC))
         cdf.functions.append(ConstantFunction(0.))
 
         alpha = cdf_.functions[-1].eval(cdf_.intervals[-1].upper)
 
+        f_ = cdf_.functions[0]
         for i, f in zip(cdf_.intervals, cdf_.functions):
+            if f == ConstantFunction(0.):
+                continue
             y = cdf.functions[-1].eval(i.lower)
-            cdf.intervals.append(ContinuousSet(i.lower, i.upper, INC, EXC))
+            c = (f.eval(i.lower) - f_.eval(i.lower)) * alpha  # If the function is continuous (no jump), c = 0
 
-            upper_ = np.nextafter(i.upper, i.upper-1)
-            if i.size() == 1:
+            cdf.intervals.append(ContinuousSet(i.lower, i.upper, INC, EXC))
+            upper_ = np.nextafter(i.upper, i.upper - 1)
+
                 # using upper_ here messes up test_posterior_crop_quantiledist_singleslice_inc
                 # -> creates additional function ∅ |--> 0.9999999999999998 = const.
-                cdf.functions.append(ConstantFunction((f.m/alpha) * (upper_-i.lower) + y))
+                # cdf.functions.append(ConstantFunction((f.m / alpha) * (upper_ - i.lower) + y))
+            # else:
+            if isinstance(f, ConstantFunction) or i.size() == 1:
+                cdf.functions.append(ConstantFunction(f.m / alpha * (upper_ - i.lower) + y))
             else:
-                cdf.functions.append(LinearFunction.from_points((i.lower, y), (upper_, (f.m/alpha) * (upper_-i.lower) + y)))
+                if not c:
+                    cdf.intervals[-1].lower = cdf.intervals[-1].lower = cdf.intervals[-2].upper
+                    # del cdf.functions[-1]
+                    # del cdf.intervals[-2]
+                # cdf.intervals[-1].upper = np.nextafter(cdf.intervals[-1].upper, cdf.intervals[-1].upper + 1)
+                cdf.functions.append(LinearFunction.from_points((i.lower, y + c),
+                                                                (upper_, (f.m / alpha) * (upper_ - i.lower) + y + c)))
 
         if cdf.functions[-1] == ConstantFunction(1.):
             cdf.intervals[-1].upper = np.PINF
@@ -719,7 +734,7 @@ cdef class QuantileDistribution:
         elif self._ppf is None:
             ppf = PiecewiseFunction()
 
-            ppf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC)) # np.nextafter(f(i.lower), f(i.lower) - 1),
+            ppf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
 
             assert len(self._cdf.functions) > 1, self._cdf.pfmt()
 
@@ -732,6 +747,7 @@ cdef class QuantileDistribution:
                 ppf.functions.append(Undefined())
                 self._ppf = ppf
                 return ppf
+
             y_cdf = 0
             for interval, f in zip(self._cdf.intervals, self._cdf.functions):
 
@@ -746,21 +762,30 @@ cdef class QuantileDistribution:
                     continue
 
                 if not np.isinf(interval.upper):
-                    ppf.intervals[-1].upper = f(interval.upper)
+                    ppf.intervals[-1].upper = min(one_plus_eps, f(interval.upper))
                 else:
                     ppf.intervals[-1].upper = one_plus_eps
 
                 ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.PINF, INC, EXC))
-                y_cdf = f(interval.upper)
+                y_cdf = min(one_plus_eps, f(interval.upper))
 
             ppf.intervals[-2].upper = ppf.intervals[-1].lower = one_plus_eps
             ppf.functions.append(Undefined())
 
             if not np.isnan(ppf.eval(one_plus_eps)):
-                raise ValueError('ppf:\n %s\n===cdf\n%s' % (ppf.pfmt(), self._cdf.pfmt()))
+                print(ppf.functions[ppf.idx_at(one_plus_eps)],
+                      ppf.functions[ppf.idx_at(one_plus_eps)].eval(one_plus_eps),
+                      ppf.eval(one_plus_eps))
+                raise ValueError('ppf(%.16f) = %.20f [fct: %d]:\n %s\n===cdf\n%s' % (one_plus_eps,
+                                                                                     ppf.eval(one_plus_eps),
+                                                                                     ppf.idx_at(one_plus_eps),
+                                                                                     ppf.pfmt(),
+                                                                                     self._cdf.pfmt()))
 
             if np.isnan(ppf.eval(1.)):
-                raise ValueError(str(one_plus_eps) + 'ppf:\n %s\n===cdf\n%s\nval' % (ppf.pfmt(), self._cdf.pfmt() + str(ppf.intervals[-1].lower) + ' ' + str(ppf.intervals[-2].upper) + ' ' + str(ppf.eval(1.)) + ' ' + str(ppf.eval(one_plus_eps))))
+                raise ValueError(str(one_plus_eps) +
+                                 'ppf:\n %s\n===cdf\n%s\nval' % (ppf.pfmt(),
+                                                                 self._cdf.pfmt() + str(ppf.intervals[-1].lower) + ' ' + str(ppf.intervals[-2].upper) + ' ' + str(ppf.eval(1.)) + ' ' + str(ppf.eval(one_plus_eps))))
 
             self._ppf = ppf
         return self._ppf
