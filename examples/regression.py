@@ -90,6 +90,7 @@ def main():
 
     jpt = JPT(variables=[varx, vary], min_samples_leaf=.01)
     jpt.learn(columns=[X.ravel(), y])
+    jpt.plot(view=True)
 
     # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model
