@@ -669,21 +669,15 @@ cdef class QuantileDistribution:
             cdf.intervals.append(ContinuousSet(i.lower, i.upper, INC, EXC))
             upper_ = np.nextafter(i.upper, i.upper - 1)
 
-                # using upper_ here messes up test_posterior_crop_quantiledist_singleslice_inc
-                # -> creates additional function ∅ |--> 0.9999999999999998 = const.
-                # cdf.functions.append(ConstantFunction((f.m / alpha) * (upper_ - i.lower) + y))
-            # else:
             if isinstance(f, ConstantFunction) or i.size() == 1:
+                # FIXME: this is where [1.0,1.0000000000000002[ |--> 0.9999999999999999 = const. is added
                 cdf.functions.append(ConstantFunction(f.m / alpha * (upper_ - i.lower) + y))
             else:
                 if not c:
+                    # TODO: why double cdf.intervals[-1].lower (or check index/lower/upper)
                     cdf.intervals[-1].lower = cdf.intervals[-1].lower = cdf.intervals[-2].upper
-                    # del cdf.functions[-1]
-                    # del cdf.intervals[-2]
-                # cdf.intervals[-1].upper = np.nextafter(cdf.intervals[-1].upper, cdf.intervals[-1].upper + 1)
-                cdf.functions.append(LinearFunction.from_points((i.lower, y + c),
+                    cdf.functions.append(LinearFunction.from_points((i.lower, y + c),
                                                                 (upper_, (f.m / alpha) * (upper_ - i.lower) + y + c)))
-
         if cdf.functions[-1] == ConstantFunction(1.):
             cdf.intervals[-1].upper = np.PINF
             cdf.intervals[-1].right = EXC
@@ -691,6 +685,7 @@ cdef class QuantileDistribution:
                 cdf.intervals[-1].lower = cdf.intervals[-2].upper
         else:
             if interval.uppermost() in cdf.intervals[-1]:
+                # FIXME: this is where [1.0,1.0000000000000002[ becomes ∅
                 cdf.intervals[-1].upper = np.nextafter(cdf.intervals[-1].upper, cdf.intervals[-1].upper - 1)
             cdf.functions.append(ConstantFunction(1.))
             cdf.intervals.append(ContinuousSet(cdf.intervals[-1].upper, np.PINF, INC, EXC))
