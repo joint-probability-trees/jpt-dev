@@ -47,15 +47,23 @@ def preprocess_airline():
 
 def main():
     data = preprocess_airline()
+    data = data[['DayOfWeek', 'CRSDepTime', 'Distance', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest']]  #
+    data = data.sample(frac=0.1)
     variables = infer_from_dataframe(data, scale_numeric_types=True)
     d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-airline')
     Path(d).mkdir(parents=True, exist_ok=True)
 
+    catcols = data.select_dtypes(['object']).columns
+    data[catcols] = data[catcols].astype('category')
+    for col, var in zip(catcols, [v for v in variables if v.symbolic]):
+        data[col] = data[col].cat.set_categories(var.domain.labels.values())
+
     # tree = JPT(variables=variables, min_samples_leaf=data.shape[0]*.01)
-    tree = JPT(variables=variables, max_depth=8)
+    # tree = JPT(variables=variables, max_depth=8)
+    tree = JPT(variables=variables, min_samples_leaf=int(data.shape[0] * 0.1 / len(variables)))
     tree.learn(columns=data.values.T)
     tree.save(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-airline.json'))
-    tree.plot(title='airline', directory=d, view=False)
+    tree.plot(title='airline', directory=d, view=True)
     logger.info(tree)
 
 
