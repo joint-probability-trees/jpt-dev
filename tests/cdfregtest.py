@@ -207,11 +207,11 @@ class TestCasePosterior(unittest.TestCase):
 
     def setUp(self):
         self.d = {
-            ']-∞,0.000[': 0.000,
-            '[0.000,0.300[': LinearFunction.from_points((0.000, 0.000), (.300, .250)),
-            '[0.300,0.700[': LinearFunction.from_points((.300, .250), (.700, .750)),
-            '[0.700,1.000[': LinearFunction.from_points((.700, .750), (1.000, 1.000)),
-            '[1.000,∞[': 1.000
+            ']-inf,0.[': 0.,
+            '[0.,.3[': LinearFunction.from_points((0., 0.), (.3, .25)),
+            '[.3,.7[': LinearFunction.from_points((.3, .25), (.7, .75)),
+            '[.7,1.[': LinearFunction.from_points((.7, .75), (1., 1.)),
+            '[1.,inf[': 1.
         }
         # results in
         #  ]-∞,0.000[      |--> 0.0
@@ -220,68 +220,68 @@ class TestCasePosterior(unittest.TestCase):
         # [0.700,1.000[   |--> 0.833x + 0.167
         # [1.000,∞[       |--> 1.0
         self.cdf = PiecewiseFunction.from_dict(self.d)
+        self.qdist = QuantileDistribution.from_cdf(self.cdf)
 
     def test_posterior_crop_quantiledist_singleslice_inc(self):
         d = {
-            ']-∞,0.300[': 0.000,
+            ']-inf,.3[': 0.,
             '[.3,.7[': LinearFunction.from_points((.3, 0.), (.7, 1.)),
-            '[.7,inf[': 1.000
+            '[.7,inf[': 1.
         }
 
         interval = ContinuousSet(.3, .7)
-        q = QuantileDistribution.from_cdf(self.cdf)
-        q_ = q.crop(interval)
+        q_ = self.qdist.crop(interval)
         self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
 
     def test_posterior_crop_quantiledist_singleslice_exc(self):
         d = {
-            ']-∞,0.300[': 0.000,
+            ']-inf,.3[': 0.,
             ContinuousSet(.3, np.nextafter(0.7, 0.7 - 1), INC, EXC):
                 LinearFunction.parse('2.5000000000000013x - 0.7500000000000003'),
-                # LinearFunction.from_points((.3, 0.), (np.nextafter(0.7, 0.7 - 1), 0.9999999999999999)),
-            ContinuousSet(np.nextafter(0.7, 0.7 - 1), np.PINF, INC, EXC): 1.000
+            ContinuousSet(np.nextafter(0.7, 0.7 - 1), np.PINF, INC, EXC): 1.
         }
         interval = ContinuousSet(.3, .7, INC, EXC)
-        q = QuantileDistribution.from_cdf(self.cdf)
-        q_ = q.crop(interval)
-
+        q_ = self.qdist.crop(interval)
         self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
 
     def test_posterior_crop_quantiledist_twoslice(self):
         d = {
-            ']-∞,0.300[': 0.,
-            '[0.300,0.700[': LinearFunction.from_points((.3, 0), (.7, 1)),
-            '[0.700,∞[': 1.
+            ']-inf,.3[': 0.,
+            # '[0.300,0.700[': LinearFunction.parse('1.6666666666666665x - 0.49999999999999994'),
+            # '[0.700,1.000[': LinearFunction.parse('1.1111111111111112x - 0.11111111111111127'),
+            '[.3,.7[': LinearFunction.from_points((.3, .0), (.7, .6666666666666665)),
+            '[.7,1.[': LinearFunction.from_points((.7, .6666666666666665), (1., .9999999999999999)),
+            '[1.,inf[': 1.
         }
 
         interval = ContinuousSet(.3, 1.)
-        q = QuantileDistribution.from_cdf(self.cdf)
-        q_ = q.crop(interval)
-        self.assertEqual(q_.cdf, PiecewiseFunction.from_dict(d))
+        q_ = self.qdist.crop(interval)
+        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
 
     def test_posterior_crop_quantiledist_intermediate(self):
         d = {
-            ']-∞,0.300[': 0.,
-            '[0.300,0.700[': LinearFunction.from_points((.3, 0), (.7, 1)),
-            '[0.700,∞[': 1.
+            ']-inf,.2[': 0.,
+            '[.2,.3[': LinearFunction.parse('1.25x - 0.25'),  # TODO
+            '[.3,.7[': LinearFunction.parse('1.8749999999999998x - 0.4374999999999999'),  # TODO
+            '[.7,inf[': 1.
         }
 
         interval = ContinuousSet(.2, .8)
-        q = QuantileDistribution.from_cdf(self.cdf)
-        q_ = q.crop(interval)
-        self.assertEqual(q_.cdf, PiecewiseFunction.from_dict(d))
+        q_ = self.qdist.crop(interval)
+        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
 
     def test_posterior_crop_quantiledist_full(self):
         d = {
-            ']-∞,0.300[': 0.,
-            '[0.300,0.700[': LinearFunction.from_points((.3, 0), (.7, 1)),
-            '[0.700,∞[': 1.
+            ']-inf,-1.5[': 0.,
+            '[-1.5,.3[': LinearFunction.parse('0.8333333333333334x'),  # TODO
+            '[.3,.7[': LinearFunction.parse('0.8333333333333334 = const.'),  # TODO
+            '[.7,inf[': 1.
         }
 
         interval = ContinuousSet(-1.5, 1.5)
-        q = QuantileDistribution.from_cdf(self.cdf)
-        q_ = q.crop(interval)
-        self.assertEqual(q_.cdf, PiecewiseFunction.from_dict(d))
+        q_ = self.qdist.crop(interval)
+        print(q_.cdf)
+        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
 
 
 if __name__ == '__main__':
