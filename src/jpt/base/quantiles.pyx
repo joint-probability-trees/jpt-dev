@@ -1284,7 +1284,7 @@ cdef class PiecewiseFunction(Function):
             if i.intersects(interval):
                 intersection = i.intersection(interval, left=INC, right=EXC)
                 result.intervals.append(intersection)
-                result.functions.append(f)
+                result.functions.append(f.copy())
         return result
 
     def to_json(self):
