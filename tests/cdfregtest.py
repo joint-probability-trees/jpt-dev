@@ -207,10 +207,10 @@ class PLFTest(unittest.TestCase):
 
 class TestCasePosterior(unittest.TestCase):
 
-    # @classmethod
-    # def setUpClass(cls):
-    def setup(self):
-        self.d = {
+    @classmethod
+    def setUpClass(cls):
+        print('Setting up test class', cls.__name__)
+        d = {
             ']-inf,0.[': 0.,
             '[0.,.3[': LinearFunction.from_points((0., 0.), (.3, .25)),
             '[.3,.7[': LinearFunction.from_points((.3, .25), (.7, .75)),
@@ -223,10 +223,11 @@ class TestCasePosterior(unittest.TestCase):
         # [0.300,0.700[   |--> 1.250x - 0.125
         # [0.700,1.000[   |--> 0.833x + 0.167
         # [1.000,∞[       |--> 1.0
-        self.cdf = PiecewiseFunction.from_dict(self.d)
-        self.qdist = QuantileDistribution.from_cdf(self.cdf)
-        print('SET UP TEST')
+        cdf = PiecewiseFunction.from_dict(d)
+        cls.qdist = QuantileDistribution.from_cdf(cdf)
 
+    def setUp(self):
+        print('Setting up test method', self._testMethodName)
 
     def test_posterior_crop_quantiledist_singleslice_inc(self):
         d = {
@@ -296,21 +297,19 @@ class TestCasePosterior(unittest.TestCase):
         self.assertEqual(self.expected, self.actual.cdf)
 
     def tearDown(self):
-        print('Tearing down', self)
-        # print(self.actual, self.expected)
-        x = np.linspace(-2, 2, 500)
+        print('Tearing down test method', self._testMethodName)
+        x = np.linspace(-.5, 1.5, 100)
         actual = self.actual.cdf.multi_eval(x)
         expected = self.expected.multi_eval(x)
-        # orig = TestCasePosterior.qdist.cdf.multi_eval(x)
+        orig = self.qdist.cdf.multi_eval(x)
 
+        plt.plot(x, orig, label='original CDF')
         plt.plot(x, actual, label='actual CDF', marker='*')
         plt.plot(x, expected, label='expected CDF', marker='+')
-        # plt.plot(x, orig, label='original CDF', marker='-')
-        # plt.plot(x, pdf, label='Percentile-point fct')
-        # ax.plot(x, dist_all.cdf.multi_eval(x), label='All CDF', linestyle='dashed')
 
         plt.grid()
         plt.legend()
+        plt.title(self._testMethodName)
         plt.show()
 
 
