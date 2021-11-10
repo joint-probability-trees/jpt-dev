@@ -333,7 +333,9 @@ cdef class ContinuousSet(NumberSet):
         return self.right + self.left
 
     cpdef inline np.int32_t isempty(ContinuousSet self):
-        if self.lower >= self.upper:
+        if self.lower > self.upper:
+            return False
+        if self.lower == self.upper:
             return not self.isclosed()
         return np.nextafter(self.lower, self.upper) == self.upper and self.itype() == OPEN
 
