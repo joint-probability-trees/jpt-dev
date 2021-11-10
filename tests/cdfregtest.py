@@ -270,9 +270,10 @@ class TestCasePosterior(unittest.TestCase):
     def test_posterior_crop_quantiledist_intermediate(self):
         d = {
             ']-inf,.2[': 0.,
-            '[.2,.3[': LinearFunction.parse('1.25x - 0.25'),  # TODO
-            '[.3,.7[': LinearFunction.parse('1.8749999999999998x - 0.4374999999999999'),  # TODO
-            '[.7,inf[': 1.
+            '[.2,.3[': LinearFunction(1.25, -0.25),
+            '[.3,.7[': LinearFunction(1.8749999999999998, -0.4374999999999999),
+            '[.7,.8[':  LinearFunction(1.250000000000001, 0.11111111111111027),
+            '[.8,∞[': 1.0
         }
 
         interval = ContinuousSet(.2, .8)
@@ -283,9 +284,10 @@ class TestCasePosterior(unittest.TestCase):
     def test_posterior_crop_quantiledist_full(self):
         d = {
             ']-inf,-1.5[': 0.,
-            '[-1.5,.3[': LinearFunction.parse('0.8333333333333334x'),  # TODO
-            '[.3,.7[': LinearFunction.parse('0.8333333333333334 = const.'),  # TODO
-            '[.7,inf[': 1.
+            '[-1.5,.3[': LinearFunction(0.8333333333333334, 0),
+            '[.3,.7[': LinearFunction(1.25, 0.125),
+            '[.7,1[': LinearFunction(0.8333333333333335, 1.1666666666666665),
+            '[1, inf[': 1.
         }
 
         interval = ContinuousSet(-1.5, 1.5)
