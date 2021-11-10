@@ -236,8 +236,8 @@ class TestCasePosterior(unittest.TestCase):
             '[.7,inf[': 1.
         }
 
-        interval = ContinuousSet(.3, .7)
-        self.actual = self.qdist.crop(interval)
+        self.interval = ContinuousSet(.3, .7)
+        self.actual = self.qdist.crop(self.interval)
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected, self.actual.cdf)
 
@@ -248,23 +248,21 @@ class TestCasePosterior(unittest.TestCase):
                 LinearFunction.parse('2.5000000000000013x - 0.7500000000000003'),
             ContinuousSet(np.nextafter(0.7, 0.7 - 1), np.PINF, INC, EXC): 1.
         }
-        interval = ContinuousSet(.3, .7, INC, EXC)
-        self.actual = self.qdist.crop(interval)
+        self.interval = ContinuousSet(.3, .7, INC, EXC)
+        self.actual = self.qdist.crop(self.interval)
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected, self.actual.cdf)
 
     def test_posterior_crop_quantiledist_twoslice(self):
         d = {
             ']-inf,.3[': 0.,
-            # '[0.300,0.700[': LinearFunction.parse('1.6666666666666665x - 0.49999999999999994'),
-            # '[0.700,1.000[': LinearFunction.parse('1.1111111111111112x - 0.11111111111111127'),
             '[.3,.7[': LinearFunction.from_points((.3, .0), (.7, .6666666666666665)),
             '[.7,1.[': LinearFunction.from_points((.7, .6666666666666665), (1., .9999999999999999)),
             '[1.,inf[': 1.
         }
 
-        interval = ContinuousSet(.3, 1.)
-        self.actual = self.qdist.crop(interval)
+        self.interval = ContinuousSet(.3, 1.)
+        self.actual = self.qdist.crop(self.interval)
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected, self.actual.cdf)
 
@@ -273,43 +271,66 @@ class TestCasePosterior(unittest.TestCase):
             ']-inf,.2[': 0.,
             '[.2,.3[': LinearFunction(1.25, -0.25),
             '[.3,.7[': LinearFunction(1.8749999999999998, -0.4374999999999999),
-            '[.7,.8[':  LinearFunction(1.250000000000001, 0.11111111111111027),
+            '[.7,.8[': LinearFunction(1.25, 1.1102230246251565e-16),
             '[.8,∞[': 1.0
         }
 
-        interval = ContinuousSet(.2, .8)
-        self.actual = self.qdist.crop(interval)
+        self.interval = ContinuousSet(.2, .8)
+        self.actual = self.qdist.crop(self.interval)
         self.expected = PiecewiseFunction.from_dict(d)
-        self.assertEqual(self.expected, self.actual.cdf)
+        self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
 
     def test_posterior_crop_quantiledist_full(self):
+        self.interval = ContinuousSet(-1.5, 1.5)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = self.qdist.cdf
+        self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
+
+    def test_posterior_crop_quantiledist_ident(self):
+        self.interval = ContinuousSet(0, 1)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = self.qdist.cdf
+        self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
+
+    def test_posterior_crop_quantiledist_onepoint(self):
         d = {
-            ']-inf,-1.5[': 0.,
-            '[-1.5,.3[': LinearFunction(0.8333333333333334, 0),
-            '[.3,.7[': LinearFunction(1.25, 0.125),
-            '[.7,1[': LinearFunction(0.8333333333333335, 1.1666666666666665),
-            '[1, inf[': 1.
+            ']-inf,.3[': 0.,
+            '[.3,inf[': 1.
         }
 
-        interval = ContinuousSet(-1.5, 1.5)
-        self.actual = self.qdist.crop(interval)
+        self.interval = ContinuousSet(.3, .3)
+        self.actual = self.qdist.crop(self.interval)
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected, self.actual.cdf)
+
+    def test_posterior_crop_quantiledist_outside_r(self):
+        self.interval = ContinuousSet(1.5, 1.6)
+        self.actual = self.qdist.crop(self.interval)
+        self.assertIsNone(self.actual)
+
+    def test_posterior_crop_quantiledist_outside_l(self):
+        self.interval = ContinuousSet(-3, -2)
+        self.actual = self.qdist.crop(self.interval)
+        self.assertIsNone(self.actual)
 
     def tearDown(self):
         print('Tearing down test method', self._testMethodName)
-        x = np.linspace(-.5, 1.5, 100)
-        actual = self.actual.cdf.multi_eval(x)
-        expected = self.expected.multi_eval(x)
+        x = np.linspace(-2, 2, 100)
         orig = self.qdist.cdf.multi_eval(x)
+        if self.actual is not None:
+            actual = self.actual.cdf.multi_eval(x)
+        if hasattr(self, 'expected'):
+            expected = self.expected.multi_eval(x)
 
         plt.plot(x, orig, label='original CDF')
-        plt.plot(x, actual, label='actual CDF', marker='*')
-        plt.plot(x, expected, label='expected CDF', marker='+')
+        if self.actual is not None:
+            plt.plot(x, actual, label='actual CDF', marker='*')
+        if hasattr(self, 'expected'):
+            plt.plot(x, expected, label='expected CDF', marker='+')
 
         plt.grid()
         plt.legend()
-        plt.title(self._testMethodName)
+        plt.title(f'{self._testMethodName} - cropping {self.interval}')
         plt.show()
 
 
