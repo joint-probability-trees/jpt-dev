@@ -1,4 +1,6 @@
 import pyximport
+from matplotlib import pyplot as plt
+
 pyximport.install()
 
 from jpt.base.intervals import ContinuousSet, INC, EXC
@@ -205,7 +207,9 @@ class PLFTest(unittest.TestCase):
 
 class TestCasePosterior(unittest.TestCase):
 
-    def setUp(self):
+    # @classmethod
+    # def setUpClass(cls):
+    def setup(self):
         self.d = {
             ']-inf,0.[': 0.,
             '[0.,.3[': LinearFunction.from_points((0., 0.), (.3, .25)),
@@ -221,6 +225,8 @@ class TestCasePosterior(unittest.TestCase):
         # [1.000,∞[       |--> 1.0
         self.cdf = PiecewiseFunction.from_dict(self.d)
         self.qdist = QuantileDistribution.from_cdf(self.cdf)
+        print('SET UP TEST')
+
 
     def test_posterior_crop_quantiledist_singleslice_inc(self):
         d = {
@@ -230,8 +236,9 @@ class TestCasePosterior(unittest.TestCase):
         }
 
         interval = ContinuousSet(.3, .7)
-        q_ = self.qdist.crop(interval)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.actual = self.qdist.crop(interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
 
     def test_posterior_crop_quantiledist_singleslice_exc(self):
         d = {
@@ -241,8 +248,9 @@ class TestCasePosterior(unittest.TestCase):
             ContinuousSet(np.nextafter(0.7, 0.7 - 1), np.PINF, INC, EXC): 1.
         }
         interval = ContinuousSet(.3, .7, INC, EXC)
-        q_ = self.qdist.crop(interval)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.actual = self.qdist.crop(interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
 
     def test_posterior_crop_quantiledist_twoslice(self):
         d = {
@@ -255,8 +263,9 @@ class TestCasePosterior(unittest.TestCase):
         }
 
         interval = ContinuousSet(.3, 1.)
-        q_ = self.qdist.crop(interval)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.actual = self.qdist.crop(interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
 
     def test_posterior_crop_quantiledist_intermediate(self):
         d = {
@@ -267,8 +276,9 @@ class TestCasePosterior(unittest.TestCase):
         }
 
         interval = ContinuousSet(.2, .8)
-        q_ = self.qdist.crop(interval)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.actual = self.qdist.crop(interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
 
     def test_posterior_crop_quantiledist_full(self):
         d = {
@@ -279,9 +289,27 @@ class TestCasePosterior(unittest.TestCase):
         }
 
         interval = ContinuousSet(-1.5, 1.5)
-        q_ = self.qdist.crop(interval)
-        print(q_.cdf)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.actual = self.qdist.crop(interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
+
+    def tearDown(self):
+        print('Tearing down', self)
+        # print(self.actual, self.expected)
+        x = np.linspace(-2, 2, 500)
+        actual = self.actual.cdf.multi_eval(x)
+        expected = self.expected.multi_eval(x)
+        # orig = TestCasePosterior.qdist.cdf.multi_eval(x)
+
+        plt.plot(x, actual, label='actual CDF', marker='*')
+        plt.plot(x, expected, label='expected CDF', marker='+')
+        # plt.plot(x, orig, label='original CDF', marker='-')
+        # plt.plot(x, pdf, label='Percentile-point fct')
+        # ax.plot(x, dist_all.cdf.multi_eval(x), label='All CDF', linestyle='dashed')
+
+        plt.grid()
+        plt.legend()
+        plt.show()
 
 
 if __name__ == '__main__':
