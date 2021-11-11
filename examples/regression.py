@@ -124,6 +124,7 @@ def main():
     y_pred_ = [p.result if p else None for p in my_predictions]
     y_lower_ = [p.lower if p else None for p in my_predictions]
     y_upper_ = [p.upper if p else None for p in my_predictions]
+    posterior = jpt.posterior([varx], {vary: 0})
 
     # Plot the function, the prediction and the 90% confidence interval based on the MSE
     plt.plot(xx, f(xx), color='black', linestyle=':', linewidth='2', label=r'$f(x) = x\,\sin(x)$')
@@ -131,6 +132,7 @@ def main():
     plt.plot(xx, y_pred_, 'm-', label='JPT Prediction')
     plt.plot(xx, y_lower_, 'y--', label='%.1f%% Confidence bands' % (confidence * 100))
     plt.plot(xx, y_upper_, 'y--')
+    plt.plot(xx, posterior[varx].pdf.multi_eval(xx.ravel().astype(np.float64)), label='Posterior')
 
     plt.xlabel('$x$')
     plt.ylabel('$f(x)$')
