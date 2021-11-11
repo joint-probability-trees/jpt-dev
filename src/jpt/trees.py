@@ -23,7 +23,7 @@ import dnutils
 from dnutils import first, out, ifnone, stop
 from sklearn.tree import DecisionTreeRegressor
 
-from .learning.distributions import Distribution
+from .base.quantiles import QuantileDistribution
 from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
 
 from .learning.impurity import Impurity
@@ -321,22 +321,30 @@ class JPTBase:
         :param evidence:    the evidence given for the posterior to be computed
         :return:            dict of {jpt.variables.Variable: jpt.learning.distributions.Distribution.values}
         '''
-        # formulate query to be as broad as possible
-        query_ = self._prepropress_query({v: ContinuousSet().allnumbers() for v in vars})  # TODO: value None if variable is symbolic?
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
-        r = Result(query_, evidence_)
 
-        p_e = 0.
+        dists = defaultdict(list)
+        weights = defaultdict(list)
 
         for leaf in self.apply(evidence_):
-            p_m = 1
-            for var in set(evidence_.keys()):
-                evidence_val = evidence_[var]
-                if var in leaf.path:
-                    newdist = leaf.distribution[var].crop(evidence_val)
+            for var in vars:
+                evidence_val = evidence_.get(var)
+                distribution = leaf.distributions[var]
+                if evidence_val is not None:
+                    if var.numeric and var in leaf.path:
+                        evidence_val = evidence_val.intersection(leaf.path[var])
+                    elif var.symbolic and var in leaf.path:
+                        continue
+                    distribution = distribution.crop(evidence_val)
 
-        # TODO
+                dists[var].append(distribution)
+                weights[var].append(leaf.prior)
 
+        rdists = {}
+        for k, v in dists.items():
+            rdists[k] = QuantileDistribution.merge(v, weights=[float(i)/sum(weights[k]) for i in weights[k]])
+
+        return rdists
 
     def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True):
         '''
