@@ -1,6 +1,10 @@
 import pyximport
 from matplotlib import pyplot as plt
 
+from jpt.learning.distributions import Numeric
+from jpt.trees import JPT
+from jpt.variables import NumericVariable
+
 pyximport.install()
 
 from jpt.base.intervals import ContinuousSet, INC, EXC
@@ -331,6 +335,78 @@ class TestCaseQuantileCrop(unittest.TestCase):
         plt.grid()
         plt.legend()
         plt.title(f'{self._testMethodName} - cropping {self.interval}')
+        plt.show()
+
+
+class TestCasePosterior(unittest.TestCase):
+
+    @classmethod
+    def f(cls, x):
+        """The function to predict."""
+        return x * np.sin(x)
+
+    @classmethod
+    def setUpClass(cls):
+
+        print('Setting up test class', cls.__name__)
+
+        POINTS = 1000
+        X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T
+        X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T, X))
+        X = X.astype(np.float64)
+        cls.X = np.array(list(sorted(X)))
+
+        # Observations
+        y = TestCasePosterior.f(cls.X).ravel()
+
+        # Add some noise
+        dy = 1.5 + .5 * np.random.random(y.shape)
+        noise = np.random.normal(0, dy)
+        y += noise
+        cls.y = y.astype(np.float32)
+
+        # Mesh the input space for evaluations of the real function, the prediction and its MSE
+        xx = np.atleast_2d(np.linspace(-30, 30, 500)).T
+        cls.xx = xx.astype(np.float64)
+
+        cls.varx = NumericVariable('x', Numeric)  # , max_std=1)
+        cls.vary = NumericVariable('y', Numeric)  # , max_std=1)
+
+        cls.jpt = JPT(variables=[cls.varx, cls.vary], min_samples_leaf=.01)
+        cls.jpt.learn(columns=[cls.X.ravel(), cls.y])
+
+    def test_posterior_value_different_q_e(self):
+        self.q = [self.varx]
+        self.e = {self.vary: 0}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def test_posterior_interval_y_different_q_e(self):
+        self.q = [self.varx]
+        self.e = {self.vary: ContinuousSet(0, 5)}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def test_posterior_interval_x_different_q_e(self):
+        self.q = [self.vary]
+        self.e = {self.varx: ContinuousSet(-15, -10)}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def tearDown(self):
+        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+
+        # Plot the function, the prediction and the 90% confidence interval based on the MSE
+        plt.plot(self.xx, TestCasePosterior.f(self.xx), color='black', linestyle=':', linewidth='2', label=r'$f(x) = x\,\sin(x)$')
+        plt.plot(self.X, self.y, '.', color='gray', markersize=5, label='Training data')
+        for var in self.q:
+            if var not in self.posterior: continue
+            plt.plot(self.xx, self.posterior[var].pdf.multi_eval(self.xx.ravel().astype(np.float64)), label=f'Posterior P({var.name}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+
+        plt.xlabel('$x$')
+        plt.ylabel('$f(x)$')
+        plt.ylim(-10, 20)
+        plt.xlim(-25, 15)
+        plt.legend(loc='upper left')
+        plt.title(r'2D Regression Example ($\vartheta=%.2f\%%$)' % (.95 * 100))
+        plt.grid()
         plt.show()
 
 
