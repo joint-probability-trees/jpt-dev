@@ -327,6 +327,15 @@ class JPTBase:
         weights = defaultdict(list)
 
         for leaf in self.apply(evidence_):
+            likelihood = 1
+            for var in set(evidence_.keys()):
+                evidence_val = evidence_[var]
+                if var.numeric and var in leaf.path:
+                    evidence_val = evidence_val.intersection(leaf.path[var])
+                elif var.symbolic and var in leaf.path:
+                    continue
+                likelihood *= leaf.distributions[var]._p(evidence_val)
+
             for var in vars:
                 evidence_val = evidence_.get(var)
                 distribution = leaf.distributions[var]
@@ -338,7 +347,7 @@ class JPTBase:
                     distribution = distribution.crop(evidence_val)
 
                 dists[var].append(distribution)
-                weights[var].append(leaf.prior)
+                weights[var].append(leaf.prior * likelihood)
 
         rdists = {}
         for k, v in dists.items():
