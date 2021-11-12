@@ -1,9 +1,13 @@
+import statistics
+
 import pyximport
 from matplotlib import pyplot as plt
+from pandas import DataFrame
+from scipy.stats import norm
 
-from jpt.learning.distributions import Numeric
+from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
 from jpt.trees import JPT
-from jpt.variables import NumericVariable
+from jpt.variables import NumericVariable, SymbolicVariable
 
 pyximport.install()
 
@@ -343,69 +347,83 @@ class TestCasePosterior(unittest.TestCase):
     @classmethod
     def f(cls, x):
         """The function to predict."""
-        return x * np.sin(x)
+        # return x * np.sin(x)
+        import math
+        return x
 
     @classmethod
     def setUpClass(cls):
-
         print('Setting up test class', cls.__name__)
 
-        POINTS = 1000
-        X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T
-        X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T, X))
-        X = X.astype(np.float64)
-        cls.X = np.array(list(sorted(X)))
+        SAMPLES = 200
+        gauss1 = Gaussian([-.25, -.25], [[.2, -.07], [-.07, .1]])
+        gauss2 = Gaussian([.5, 1], [[.2, .07], [.07, .05]])
+        gauss1_data = gauss1.sample(SAMPLES)
+        gauss2_data = gauss2.sample(SAMPLES)
+        data = np.vstack([gauss1_data, gauss2_data])
 
-        # Observations
-        y = TestCasePosterior.f(cls.X).ravel()
+        cls.df = DataFrame({'X': data[:, 0], 'Y': data[:, 1], 'Color': ['R'] * SAMPLES + ['B'] * SAMPLES})
 
-        # Add some noise
-        dy = 1.5 + .5 * np.random.random(y.shape)
-        noise = np.random.normal(0, dy)
-        y += noise
-        cls.y = y.astype(np.float32)
-
-        # Mesh the input space for evaluations of the real function, the prediction and its MSE
-        xx = np.atleast_2d(np.linspace(-30, 30, 500)).T
-        cls.xx = xx.astype(np.float64)
-
-        cls.varx = NumericVariable('x', Numeric)  # , max_std=1)
-        cls.vary = NumericVariable('y', Numeric)  # , max_std=1)
+        cls.varx = NumericVariable('X', Numeric, precision=.1)
+        cls.vary = NumericVariable('Y', Numeric, precision=.1)
+        cls.varcolor = SymbolicVariable('Color', SymbolicType('ColorType', ['R', 'B']))
 
         cls.jpt = JPT(variables=[cls.varx, cls.vary], min_samples_leaf=.01)
-        cls.jpt.learn(columns=[cls.X.ravel(), cls.y])
+        # cls.jpt = JPT(variables=[cls.varx, cls.vary, cls.varcolor], min_samples_leaf=.1)  # TODO use this once symbolic variables are considered in posterior
+        cls.jpt.learn(cls.df[['X', 'Y']])
+        # cls.jpt.learn(cls.df)  # TODO use this once symbolic variables are considered in posterior
 
-    def test_posterior_value_different_q_e(self):
+    def test_posterior_x_given_y_interval(self):
+        self.q = [self.varx]
+        self.e = {self.vary: ContinuousSet(1, 1.5)}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def test_posterior_y_given_x_interval(self):
+        self.q = [self.vary]
+        self.e = {self.varx: ContinuousSet(1, 2)}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def test_posterior_x_given_y_value(self):
         self.q = [self.varx]
         self.e = {self.vary: 0}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-
-    def test_posterior_interval_y_different_q_e(self):
-        self.q = [self.varx]
-        self.e = {self.vary: ContinuousSet(0, 5)}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-
-    def test_posterior_interval_x_different_q_e(self):
-        self.q = [self.vary]
-        self.e = {self.varx: ContinuousSet(-15, -10)}
         self.posterior = self.jpt.posterior(self.q, self.e)
 
     def tearDown(self):
         print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
 
-        # Plot the function, the prediction and the 90% confidence interval based on the MSE
-        plt.plot(self.xx, TestCasePosterior.f(self.xx), color='black', linestyle=':', linewidth='2', label=r'$f(x) = x\,\sin(x)$')
-        plt.plot(self.X, self.y, '.', color='gray', markersize=5, label='Training data')
+        # Mesh the input space for evaluations of the real function, the prediction and its MSE
+        X = np.linspace(-2, 2, 100)
+        mean = statistics.mean(self.df['X'])
+        sd = statistics.stdev(self.df['X'])
+        meanr = statistics.mean(self.df[self.df['Color'] == 'R']['X'])
+        sdr = statistics.stdev(self.df[self.df['Color'] == 'R']['X'])
+        meanb = statistics.mean(self.df[self.df['Color'] == 'B']['X'])
+        sdb = statistics.stdev(self.df[self.df['Color'] == 'B']['X'])
+
+        xr = self.df[self.df['Color'] == 'R']['X']
+        xb = self.df[self.df['Color'] == 'B']['X']
+        yr = self.df[self.df['Color'] == 'R']['Y']
+        yb = self.df[self.df['Color'] == 'B']['Y']
+
+        # Plot the data, the pdfs of each dataset and of the datasets combined
+        plt.scatter(xr, yr, color='r', marker='.', label='Training data A')
+        plt.scatter(xb, yb, color='b', marker='.', label='Training data B')
+        plt.plot(sorted(self.df['X']), norm.pdf(sorted(self.df['X']), mean, sd), label='PDF combined')
+        plt.plot(sorted(xr), norm.pdf(sorted(xr), meanr, sdr), label='PDF A')
+        plt.plot(sorted(xb), norm.pdf(sorted(xb), meanb, sdb), label='PDF B')
+
+        # plot posterior
         for var in self.q:
             if var not in self.posterior: continue
-            plt.plot(self.xx, self.posterior[var].pdf.multi_eval(self.xx.ravel().astype(np.float64)), label=f'Posterior P({var.name}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+            plt.plot(X, self.posterior[var].cdf.multi_eval(X), label=f'Posterior P({var.name}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
 
         plt.xlabel('$x$')
         plt.ylabel('$f(x)$')
-        plt.ylim(-10, 20)
-        plt.xlim(-25, 15)
+        plt.ylim(-2, 5)
+        plt.xlim(-2, 2)
         plt.legend(loc='upper left')
-        plt.title(r'2D Regression Example ($\vartheta=%.2f\%%$)' % (.95 * 100))
+        theta = r'$\vartheta$'
+        plt.title(f'Posterior P({",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])}) ({theta}={.96*100:.2f}%)')
         plt.grid()
         plt.show()
 
