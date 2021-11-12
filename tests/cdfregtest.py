@@ -408,14 +408,14 @@ class TestCasePosterior(unittest.TestCase):
         # Plot the data, the pdfs of each dataset and of the datasets combined
         plt.scatter(xr, yr, color='r', marker='.', label='Training data A')
         plt.scatter(xb, yb, color='b', marker='.', label='Training data B')
-        plt.plot(sorted(self.df['X']), norm.pdf(sorted(self.df['X']), mean, sd), label='PDF combined')
-        plt.plot(sorted(xr), norm.pdf(sorted(xr), meanr, sdr), label='PDF A')
-        plt.plot(sorted(xb), norm.pdf(sorted(xb), meanb, sdb), label='PDF B')
+        plt.plot(sorted(self.df['X']), norm.pdf(sorted(self.df['X']), mean, sd), label='PDF of combined datasets')
+        plt.plot(sorted(xr), norm.pdf(sorted(xr), meanr, sdr), label='PDF of dataset A')
+        plt.plot(sorted(xb), norm.pdf(sorted(xb), meanb, sdb), label='PDF of dataset B')
 
         # plot posterior
         for var in self.q:
             if var not in self.posterior: continue
-            plt.plot(X, self.posterior[var].cdf.multi_eval(X), label=f'Posterior P({var.name}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+            plt.plot(X, self.posterior[var].cdf.multi_eval(X), label=f'Posterior of combined datasets')
 
         plt.xlabel('$x$')
         plt.ylabel('$f(x)$')
