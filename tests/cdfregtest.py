@@ -422,8 +422,7 @@ class TestCasePosterior(unittest.TestCase):
         plt.ylim(-2, 5)
         plt.xlim(-2, 2)
         plt.legend(loc='upper left')
-        theta = r'$\vartheta$'
-        plt.title(f'Posterior P({",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])}) ({theta}={.96*100:.2f}%)')
+        plt.title(f'Posterior P({",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
         plt.grid()
         plt.show()
 
