@@ -570,6 +570,11 @@ cdef class QuantileDistribution:
         self._pdf = None
         self._ppf = None
 
+    cpdef QuantileDistribution copy(QuantileDistribution self):
+        cdef QuantileDistribution result = QuantileDistribution(self.epsilon, self.penalty, min_samples_mars=self.min_samples_mars)
+        result._cdf = self.cdf.copy()
+        return result
+
     @staticmethod
     def from_cdf(cdf):
         d = QuantileDistribution()
@@ -649,30 +654,39 @@ cdef class QuantileDistribution:
         if self._cdf is None:
             raise RuntimeError('No quantile distribution fitted. Call fit() first.')
 
+        # if given interval is outside quantile boundaries, cropping would result in a non-valid quantile
+        if interval.uppermost() < self._cdf.intervals[0].upper or interval.lowermost() > self._cdf.intervals[-1].lower:
+            return None
+
+        # I: crop
         cdf_ = self.cdf.crop(interval)
+
+        # II: add constant to move to
         cdf_.add_const(-cdf_.eval(cdf_.intervals[0].lowermost()))
 
+        # everything left of the leftmost point of the cropped function evaluates to 0
         cdf = PiecewiseFunction()
         cdf.intervals.append(ContinuousSet(np.NINF, cdf_.intervals[0].lower, EXC, EXC))
         cdf.functions.append(ConstantFunction(0.))
 
+        # III: stretch function to represent a proper quantile fn
         alpha = cdf_.functions[-1].eval(interval.uppermost())
 
         f_ = cdf_.functions[0]
         for i, f in zip(cdf_.intervals, cdf_.functions):
             if f == ConstantFunction(0.):
-                cdf.intervals[-1].upper = i.lower
+                cdf.intervals[-1].upper = i.upper
                 continue
             y = cdf.functions[-1].eval(i.lower)
             c = (f.eval(i.lower) - f_.eval(i.lower)) * alpha  # If the function is continuous (no jump), c = 0
-
+            f_ = f
             cdf.intervals.append(ContinuousSet(i.lower, i.upper, INC, EXC))
             upper_ = np.nextafter(i.upper, i.upper - 1)
 
             if isinstance(f, ConstantFunction) or i.size() == 1:
-                cdf.functions.append(ConstantFunction(c))
+                cdf.functions.append(ConstantFunction(y + c))
             else:
-                cdf.intervals[-1].lower = cdf.intervals[-1].lower = cdf.intervals[-2].upper
+                cdf.intervals[-1].lower = cdf.intervals[-2].upper
                 cdf.functions.append(LinearFunction.from_points((i.lower, y + c),
                                                                 (upper_, (f.m / alpha) * (upper_ - i.lower) + y + c)))
         if cdf.functions[-1] == ConstantFunction(1.):
@@ -684,14 +698,19 @@ cdef class QuantileDistribution:
             if interval.uppermost() in cdf.intervals[-1]:
                 cdf.intervals[-1].upper = np.nextafter(cdf.intervals[-1].upper, cdf.intervals[-1].upper - 1)
 
+            # everything right of the rightmost point of the cropped function evaluates to 1
             cdf.functions.append(ConstantFunction(1.))
             cdf.intervals.append(ContinuousSet(cdf.intervals[-1].upper, np.PINF, INC, EXC))
 
         # Clean the function segments that might have become empty
-        for idx, i in enumerate(cdf.intervals):
-            if i.isempty():
-                del cdf.intervals[idx]
-                del cdf.functions[idx]
+        intervals_ = []
+        functions_ = []
+        for i, f in zip(cdf.intervals, cdf.functions):
+            if not i.isempty():
+                intervals_.append(i.copy())
+                functions_.append(f.copy())
+        cdf.functions = functions_
+        cdf.intervals = intervals_
 
         result = QuantileDistribution(self.epsilon, self.penalty, min_samples_mars=self.min_samples_mars)
         result._cdf = cdf
@@ -1284,7 +1303,7 @@ cdef class PiecewiseFunction(Function):
             if i.intersects(interval):
                 intersection = i.intersection(interval, left=INC, right=EXC)
                 result.intervals.append(intersection)
-                result.functions.append(f)
+                result.functions.append(f.copy())
         return result
 
     def to_json(self):

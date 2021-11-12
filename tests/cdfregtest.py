@@ -1,4 +1,14 @@
+import statistics
+
 import pyximport
+from matplotlib import pyplot as plt
+from pandas import DataFrame
+from scipy.stats import norm
+
+from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
+from jpt.trees import JPT
+from jpt.variables import NumericVariable, SymbolicVariable
+
 pyximport.install()
 
 from jpt.base.intervals import ContinuousSet, INC, EXC
@@ -203,10 +213,12 @@ class PLFTest(unittest.TestCase):
         }))
 
 
-class TestCasePosterior(unittest.TestCase):
+class TestCaseQuantileCrop(unittest.TestCase):
 
-    def setUp(self):
-        self.d = {
+    @classmethod
+    def setUpClass(cls):
+        print('Setting up test class', cls.__name__)
+        d = {
             ']-inf,0.[': 0.,
             '[0.,.3[': LinearFunction.from_points((0., 0.), (.3, .25)),
             '[.3,.7[': LinearFunction.from_points((.3, .25), (.7, .75)),
@@ -219,71 +231,201 @@ class TestCasePosterior(unittest.TestCase):
         # [0.300,0.700[   |--> 1.250x - 0.125
         # [0.700,1.000[   |--> 0.833x + 0.167
         # [1.000,∞[       |--> 1.0
-        self.cdf = PiecewiseFunction.from_dict(self.d)
-        self.qdist = QuantileDistribution.from_cdf(self.cdf)
+        cdf = PiecewiseFunction.from_dict(d)
+        cls.qdist = QuantileDistribution.from_cdf(cdf)
 
-    def test_posterior_crop_quantiledist_singleslice_inc(self):
+    def setUp(self):
+        print('Setting up test method', self._testMethodName)
+
+    def test_crop_quantiledist_singleslice_inc(self):
         d = {
             ']-inf,.3[': 0.,
             '[.3,.7[': LinearFunction.from_points((.3, 0.), (.7, 1.)),
             '[.7,inf[': 1.
         }
 
-        interval = ContinuousSet(.3, .7)
-        q_ = self.qdist.crop(interval)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.interval = ContinuousSet(.3, .7)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
 
-    def test_posterior_crop_quantiledist_singleslice_exc(self):
+    def test_crop_quantiledist_singleslice_exc(self):
         d = {
             ']-inf,.3[': 0.,
             ContinuousSet(.3, np.nextafter(0.7, 0.7 - 1), INC, EXC):
                 LinearFunction.parse('2.5000000000000013x - 0.7500000000000003'),
             ContinuousSet(np.nextafter(0.7, 0.7 - 1), np.PINF, INC, EXC): 1.
         }
-        interval = ContinuousSet(.3, .7, INC, EXC)
-        q_ = self.qdist.crop(interval)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.interval = ContinuousSet(.3, .7, INC, EXC)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
 
-    def test_posterior_crop_quantiledist_twoslice(self):
+    def test_crop_quantiledist_twoslice(self):
         d = {
             ']-inf,.3[': 0.,
-            # '[0.300,0.700[': LinearFunction.parse('1.6666666666666665x - 0.49999999999999994'),
-            # '[0.700,1.000[': LinearFunction.parse('1.1111111111111112x - 0.11111111111111127'),
             '[.3,.7[': LinearFunction.from_points((.3, .0), (.7, .6666666666666665)),
             '[.7,1.[': LinearFunction.from_points((.7, .6666666666666665), (1., .9999999999999999)),
             '[1.,inf[': 1.
         }
 
-        interval = ContinuousSet(.3, 1.)
-        q_ = self.qdist.crop(interval)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.interval = ContinuousSet(.3, 1.)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
 
-    def test_posterior_crop_quantiledist_intermediate(self):
+    def test_crop_quantiledist_intermediate(self):
         d = {
             ']-inf,.2[': 0.,
             '[.2,.3[': LinearFunction(1.25, -0.25),
             '[.3,.7[': LinearFunction(1.8749999999999998, -0.4374999999999999),
-            '[.7,.8[':  LinearFunction(1.250000000000001, 0.11111111111111027),
+            '[.7,.8[': LinearFunction(1.25, 1.1102230246251565e-16),
             '[.8,∞[': 1.0
         }
 
-        interval = ContinuousSet(.2, .8)
-        q_ = self.qdist.crop(interval)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.interval = ContinuousSet(.2, .8)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
 
-    def test_posterior_crop_quantiledist_full(self):
+    def test_crop_quantiledist_full(self):
+        self.interval = ContinuousSet(-1.5, 1.5)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = self.qdist.cdf
+        self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
+
+    def test_crop_quantiledist_ident(self):
+        self.interval = ContinuousSet(0, 1)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = self.qdist.cdf
+        self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
+
+    def test_crop_quantiledist_onepoint(self):
         d = {
-            ']-inf,-1.5[': 0.,
-            '[-1.5,.3[': LinearFunction(0.8333333333333334, 0),
-            '[.3,.7[': LinearFunction(1.25, 0.125),
-            '[.7,1[': LinearFunction(0.8333333333333335, 1.1666666666666665),
-            '[1, inf[': 1.
+            ']-inf,.3[': 0.,
+            '[.3,inf[': 1.
         }
 
-        interval = ContinuousSet(-1.5, 1.5)
-        q_ = self.qdist.crop(interval)
-        print(q_.cdf)
-        self.assertEqual(PiecewiseFunction.from_dict(d), q_.cdf)
+        self.interval = ContinuousSet(.3, .3)
+        self.actual = self.qdist.crop(self.interval)
+        self.expected = PiecewiseFunction.from_dict(d)
+        self.assertEqual(self.expected, self.actual.cdf)
+
+    def test_crop_quantiledist_outside_r(self):
+        self.interval = ContinuousSet(1.5, 1.6)
+        self.actual = self.qdist.crop(self.interval)
+        self.assertIsNone(self.actual)
+
+    def test_crop_quantiledist_outside_l(self):
+        self.interval = ContinuousSet(-3, -2)
+        self.actual = self.qdist.crop(self.interval)
+        self.assertIsNone(self.actual)
+
+    def tearDown(self):
+        print('Tearing down test method', self._testMethodName)
+        x = np.linspace(-2, 2, 100)
+        orig = self.qdist.cdf.multi_eval(x)
+        if self.actual is not None:
+            actual = self.actual.cdf.multi_eval(x)
+        if hasattr(self, 'expected'):
+            expected = self.expected.multi_eval(x)
+
+        plt.plot(x, orig, label='original CDF')
+        if self.actual is not None:
+            plt.plot(x, actual, label='actual CDF', marker='*')
+        if hasattr(self, 'expected'):
+            plt.plot(x, expected, label='expected CDF', marker='+')
+
+        plt.grid()
+        plt.legend()
+        plt.title(f'{self._testMethodName} - cropping {self.interval}')
+        plt.show()
+
+
+class TestCasePosterior(unittest.TestCase):
+
+    @classmethod
+    def f(cls, x):
+        """The function to predict."""
+        # return x * np.sin(x)
+        import math
+        return x
+
+    @classmethod
+    def setUpClass(cls):
+        print('Setting up test class', cls.__name__)
+
+        SAMPLES = 200
+        gauss1 = Gaussian([-.25, -.25], [[.2, -.07], [-.07, .1]])
+        gauss2 = Gaussian([.5, 1], [[.2, .07], [.07, .05]])
+        gauss1_data = gauss1.sample(SAMPLES)
+        gauss2_data = gauss2.sample(SAMPLES)
+        data = np.vstack([gauss1_data, gauss2_data])
+
+        cls.df = DataFrame({'X': data[:, 0], 'Y': data[:, 1], 'Color': ['R'] * SAMPLES + ['B'] * SAMPLES})
+
+        cls.varx = NumericVariable('X', Numeric, precision=.1)
+        cls.vary = NumericVariable('Y', Numeric, precision=.1)
+        cls.varcolor = SymbolicVariable('Color', SymbolicType('ColorType', ['R', 'B']))
+
+        cls.jpt = JPT(variables=[cls.varx, cls.vary], min_samples_leaf=.01)
+        # cls.jpt = JPT(variables=[cls.varx, cls.vary, cls.varcolor], min_samples_leaf=.1)  # TODO use this once symbolic variables are considered in posterior
+        cls.jpt.learn(cls.df[['X', 'Y']])
+        # cls.jpt.learn(cls.df)  # TODO use this once symbolic variables are considered in posterior
+
+    def test_posterior_x_given_y_interval(self):
+        self.q = [self.varx]
+        self.e = {self.vary: ContinuousSet(1, 1.5)}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def test_posterior_y_given_x_interval(self):
+        self.q = [self.vary]
+        self.e = {self.varx: ContinuousSet(1, 2)}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def test_posterior_x_given_y_value(self):
+        self.q = [self.varx]
+        self.e = {self.vary: 0}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def tearDown(self):
+        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+
+        # Mesh the input space for evaluations of the real function, the prediction and its MSE
+        X = np.linspace(-2, 2, 100)
+        mean = statistics.mean(self.df['X'])
+        sd = statistics.stdev(self.df['X'])
+        meanr = statistics.mean(self.df[self.df['Color'] == 'R']['X'])
+        sdr = statistics.stdev(self.df[self.df['Color'] == 'R']['X'])
+        meanb = statistics.mean(self.df[self.df['Color'] == 'B']['X'])
+        sdb = statistics.stdev(self.df[self.df['Color'] == 'B']['X'])
+
+        xr = self.df[self.df['Color'] == 'R']['X']
+        xb = self.df[self.df['Color'] == 'B']['X']
+        yr = self.df[self.df['Color'] == 'R']['Y']
+        yb = self.df[self.df['Color'] == 'B']['Y']
+
+        # Plot the data, the pdfs of each dataset and of the datasets combined
+        plt.scatter(xr, yr, color='r', marker='.', label='Training data A')
+        plt.scatter(xb, yb, color='b', marker='.', label='Training data B')
+        plt.plot(sorted(self.df['X']), norm.pdf(sorted(self.df['X']), mean, sd), label='PDF of combined datasets')
+        plt.plot(sorted(xr), norm.pdf(sorted(xr), meanr, sdr), label='PDF of dataset A')
+        plt.plot(sorted(xb), norm.pdf(sorted(xb), meanb, sdb), label='PDF of dataset B')
+
+        # plot posterior
+        for var in self.q:
+            if var not in self.posterior: continue
+            plt.plot(X, self.posterior[var].cdf.multi_eval(X), label=f'Posterior of combined datasets')
+
+        plt.xlabel('$x$')
+        plt.ylabel('$f(x)$')
+        plt.ylim(-2, 5)
+        plt.xlim(-2, 2)
+        plt.legend(loc='upper left')
+        theta = r'$\vartheta$'
+        plt.title(f'Posterior P({",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])}) ({theta}={.96*100:.2f}%)')
+        plt.grid()
+        plt.show()
 
 
 if __name__ == '__main__':

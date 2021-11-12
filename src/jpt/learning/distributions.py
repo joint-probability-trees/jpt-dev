@@ -679,11 +679,22 @@ class Numeric(Distribution):
     def p(self, value):
         pass
 
+    def copy(self):
+        dist = type(self)(quantile=self._quantile.copy())
+        dist.values = copy.copy(self.values)
+        dist.labels = copy.copy(self.labels)
+        return dist
+
     @staticmethod
     def merge(distributions, weights):
         if not all(distributions[0].__class__ == d.__class__ for d in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
         return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
+
+    def crop(self, interval):
+        dist = self.copy()
+        dist._quantile = self._quantile.crop(interval)
+        return dist
 
     @classmethod
     def type_to_json(cls):
