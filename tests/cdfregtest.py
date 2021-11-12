@@ -205,7 +205,7 @@ class PLFTest(unittest.TestCase):
         }))
 
 
-class TestCasePosterior(unittest.TestCase):
+class TestCaseQuantileCrop(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -229,7 +229,7 @@ class TestCasePosterior(unittest.TestCase):
     def setUp(self):
         print('Setting up test method', self._testMethodName)
 
-    def test_posterior_crop_quantiledist_singleslice_inc(self):
+    def test_crop_quantiledist_singleslice_inc(self):
         d = {
             ']-inf,.3[': 0.,
             '[.3,.7[': LinearFunction.from_points((.3, 0.), (.7, 1.)),
@@ -241,7 +241,7 @@ class TestCasePosterior(unittest.TestCase):
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected, self.actual.cdf)
 
-    def test_posterior_crop_quantiledist_singleslice_exc(self):
+    def test_crop_quantiledist_singleslice_exc(self):
         d = {
             ']-inf,.3[': 0.,
             ContinuousSet(.3, np.nextafter(0.7, 0.7 - 1), INC, EXC):
@@ -253,7 +253,7 @@ class TestCasePosterior(unittest.TestCase):
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected, self.actual.cdf)
 
-    def test_posterior_crop_quantiledist_twoslice(self):
+    def test_crop_quantiledist_twoslice(self):
         d = {
             ']-inf,.3[': 0.,
             '[.3,.7[': LinearFunction.from_points((.3, .0), (.7, .6666666666666665)),
@@ -266,7 +266,7 @@ class TestCasePosterior(unittest.TestCase):
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected, self.actual.cdf)
 
-    def test_posterior_crop_quantiledist_intermediate(self):
+    def test_crop_quantiledist_intermediate(self):
         d = {
             ']-inf,.2[': 0.,
             '[.2,.3[': LinearFunction(1.25, -0.25),
@@ -280,19 +280,19 @@ class TestCasePosterior(unittest.TestCase):
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
 
-    def test_posterior_crop_quantiledist_full(self):
+    def test_crop_quantiledist_full(self):
         self.interval = ContinuousSet(-1.5, 1.5)
         self.actual = self.qdist.crop(self.interval)
         self.expected = self.qdist.cdf
         self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
 
-    def test_posterior_crop_quantiledist_ident(self):
+    def test_crop_quantiledist_ident(self):
         self.interval = ContinuousSet(0, 1)
         self.actual = self.qdist.crop(self.interval)
         self.expected = self.qdist.cdf
         self.assertEqual(self.expected.round(digits=5), self.actual.cdf.round(digits=5))
 
-    def test_posterior_crop_quantiledist_onepoint(self):
+    def test_crop_quantiledist_onepoint(self):
         d = {
             ']-inf,.3[': 0.,
             '[.3,inf[': 1.
@@ -303,12 +303,12 @@ class TestCasePosterior(unittest.TestCase):
         self.expected = PiecewiseFunction.from_dict(d)
         self.assertEqual(self.expected, self.actual.cdf)
 
-    def test_posterior_crop_quantiledist_outside_r(self):
+    def test_crop_quantiledist_outside_r(self):
         self.interval = ContinuousSet(1.5, 1.6)
         self.actual = self.qdist.crop(self.interval)
         self.assertIsNone(self.actual)
 
-    def test_posterior_crop_quantiledist_outside_l(self):
+    def test_crop_quantiledist_outside_l(self):
         self.interval = ContinuousSet(-3, -2)
         self.actual = self.qdist.crop(self.interval)
         self.assertIsNone(self.actual)
