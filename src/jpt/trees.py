@@ -25,6 +25,7 @@ from sklearn.tree import DecisionTreeRegressor
 
 from .base.quantiles import QuantileDistribution
 from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+from .learning.distributions import Multinomial
 
 from .learning.impurity import Impurity
 from .base.constants import plotstyle, orange, green, SYMBOL
@@ -166,7 +167,6 @@ class Leaf(Node):
         '''Checks whether this leaf is consistent with the given ``query``.'''
         path = self.path
         for var in set(query.keys()).intersection(set(path.keys())):
-            # out(var, var.str_by_idx(query[var]), var.str_by_idx(path[var]))
             if var.symbolic:
                 if query.get(var) not in path.get(var):
                     return False
@@ -328,6 +328,8 @@ class JPTBase:
 
         for leaf in self.apply(evidence_):
             likelihood = 1
+            # check if path of candidate leaf is consistent with evidence
+            # (i.e. contains evicence variable with *correct* value or does not contain it at all)
             for var in set(evidence_.keys()):
                 evidence_val = evidence_[var]
                 if var.numeric and var in leaf.path:
@@ -349,9 +351,14 @@ class JPTBase:
                 dists[var].append(distribution)
                 weights[var].append(leaf.prior * likelihood)
 
-        rdists = {}
+        # initialize all query variables with None, in case dists is empty (i.e. no candidate leaves -> query unsatisfiable)
+        rdists = {v: None for v in vars}
         for k, v in dists.items():
-            rdists[k] = QuantileDistribution.merge(v, weights=[float(i)/sum(weights[k]) for i in weights[k]])
+            if sum(weights[k]) == 0: continue
+            elif k.numeric:
+                rdists[k] = QuantileDistribution.merge(v, weights=[float(i)/sum(weights[k]) for i in weights[k]])
+            elif k.symbolic:
+                rdists[k] = Multinomial.merge(v, weights=[float(i)/sum(weights[k]) for i in weights[k]])
 
         return rdists
 
