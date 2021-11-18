@@ -1,5 +1,6 @@
 import statistics
 
+import pandas as pd
 import pyximport
 from matplotlib import pyplot as plt
 from pandas import DataFrame
@@ -425,6 +426,152 @@ class TestCasePosteriorNumeric(unittest.TestCase):
         plt.title(f'Posterior P({",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
         plt.grid()
         plt.show()
+
+
+class TestCasePosteriorSymbolic(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        print('Setting up test class', cls.__name__)
+
+        f_csv = '../examples/data/restaurant.csv'
+        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
+        # 1 Bar[BAR_TYPE(SYM)], BOOl
+        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
+        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
+        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
+        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
+        # 6 Rain[RAIN_TYPE(SYM)], BOOL
+        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
+        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
+        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0--10, 10--30, 30--60, >60
+        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL (typically target variable)
+
+        cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
+        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.plot(title='Restaurant', filename='Restaurant', directory='TEST', view=False)
+
+    def test_posterior_symbolic_single_candidate_T(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[9]: '10--30', self.variables[8]: 'Thai'}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(True, self.posterior[self.q[-1]].expectation())
+
+    def test_posterior_symbolic_single_candidatet_F(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[9]: '10--30', self.variables[8]: 'Italian'}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(False, self.posterior[self.q[-1]].expectation())
+
+    def test_posterior_symbolic_evidence_not_in_path_T(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(True, self.posterior[self.q[-1]].expectation())
+
+    def test_posterior_symbolic_evidence_not_in_path_F(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(False, self.posterior[self.q[-1]].expectation())
+
+    def test_posterior_symbolic_unsatisfiable(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[9]: '10--30', self.variables[1]: True, self.variables[8]: 'French'}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertIsNone(self.posterior[self.q[-1]])
+
+    def tearDown(self):
+        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+
+
+class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        print('Setting up test class', cls.__name__)
+
+        f_csv = '../examples/data/restaurant-mixed.csv'
+        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
+        # 1 Bar[BAR_TYPE(SYM)], BOOl
+        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
+        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
+        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
+        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
+        # 6 Rain[RAIN_TYPE(SYM)], BOOL
+        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
+        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
+        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
+        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
+
+        cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
+        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.plot(title='Restaurant-Mixed', filename='Restaurant-Mixed', directory='TEST', view=False)
+
+    def test_posterior_mixed_single_candidate_T(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Thai'}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(True, self.posterior[self.q[-1]].expectation())
+
+    def test_posterior_mixed_single_candidatet_F(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Italian'}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(False, self.posterior[self.q[-1]].expectation())
+
+    def test_posterior_mixed_evidence_not_in_path_T(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(True, self.posterior[self.q[-1]].expectation())
+
+    def test_posterior_mixed_evidence_not_in_path_F(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(False, self.posterior[self.q[-1]].expectation())
+
+    def test_posterior_mixed_unsatisfiable(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        self.assertIsNone(self.posterior[self.q[-1]])
+
+    def test_posterior_mixed_numeric_query(self):
+        self.q = [self.variables[9]]
+        self.e = {self.variables[8]: 'Burger', self.variables[0]: False}
+        self.posterior = self.jpt.posterior(self.q, self.e)
+        print(self.posterior[self.q[-1]].cdf.pfmt())
+
+        # Mesh the input space for evaluations of the real function, the prediction and its MSE
+        X = np.linspace(-5, 65, 100)
+        xr = self.data[(self.data['Food'] == 'Burger') & (self.data['Alternatives'] == False)]['WaitEstimate']
+
+        # Plot the data, the pdfs of each dataset and of the datasets combined
+        plt.scatter(self.data['WaitEstimate'], [0]*len(self.data), color='b', marker='*', label='All training data')
+        plt.scatter(xr, [0]*len(xr), color='r', marker='.', label='Filtered training data')
+
+        # plot posterior
+        for var in self.q:
+            if var not in self.posterior: continue
+            plt.plot(X, self.posterior[var].cdf.multi_eval(np.array([var.domain.values[x] for x in X])), label=f'Posterior of dataset')
+
+        plt.xlabel('$WaitEstimate [min]$')
+        plt.ylabel('$f(x)$')
+        plt.ylim(-2, 2)
+        plt.xlim(-5, 65)
+        plt.legend(loc='upper left')
+        plt.title(f'Posterior P({",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'.replace('$', '\$'))
+        plt.grid()
+        plt.show()
+
+    def tearDown(self):
+        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
 
 
 if __name__ == '__main__':
