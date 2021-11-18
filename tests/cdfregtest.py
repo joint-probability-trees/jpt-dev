@@ -7,7 +7,7 @@ from scipy.stats import norm
 
 from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable
+from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
 
 pyximport.install()
 
@@ -342,7 +342,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         plt.show()
 
 
-class TestCasePosterior(unittest.TestCase):
+class TestCasePosteriorNumeric(unittest.TestCase):
 
     @classmethod
     def f(cls, x):
@@ -373,17 +373,17 @@ class TestCasePosterior(unittest.TestCase):
         cls.jpt.learn(cls.df[['X', 'Y']])
         # cls.jpt.learn(cls.df)  # TODO use this once symbolic variables are considered in posterior
 
-    def test_posterior_x_given_y_interval(self):
+    def test_posterior_numeric_x_given_y_interval(self):
         self.q = [self.varx]
         self.e = {self.vary: ContinuousSet(1, 1.5)}
         self.posterior = self.jpt.posterior(self.q, self.e)
 
-    def test_posterior_y_given_x_interval(self):
+    def test_posterior_numeric_y_given_x_interval(self):
         self.q = [self.vary]
         self.e = {self.varx: ContinuousSet(1, 2)}
         self.posterior = self.jpt.posterior(self.q, self.e)
 
-    def test_posterior_x_given_y_value(self):
+    def test_posterior_numeric_x_given_y_value(self):
         self.q = [self.varx]
         self.e = {self.vary: 0}
         self.posterior = self.jpt.posterior(self.q, self.e)
