@@ -9,7 +9,7 @@ import numpy as np
 from dnutils import first, ifnone, out
 
 try:
-    from jpt.base.intervals import INC, EXC
+    from jpt.base.intervals import INC, EXC, ContinuousSet
     from jpt.base.constants import SYMBOL
 except ModuleNotFoundError:
     import pyximport
@@ -162,7 +162,7 @@ class NumericVariable(Variable):
             else:
                 valstr = ', '.join([self.str(a, fmt) for a in assignment])
         else:
-             valstr = str(assignment)
+            valstr = str(ContinuousSet(self.domain.labels[assignment.lower], self.domain.labels[assignment.upper], assignment.left, assignment.right))
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
