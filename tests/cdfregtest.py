@@ -516,37 +516,37 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Thai'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, self.posterior[self.q[-1]].expectation())
+        self.assertEqual(True, self.posterior.dists[self.q[-1]].expectation())
 
     def test_posterior_mixed_single_candidatet_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Italian'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(False, self.posterior[self.q[-1]].expectation())
+        self.assertEqual(False, self.posterior.dists[self.q[-1]].expectation())
 
     def test_posterior_mixed_evidence_not_in_path_T(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, self.posterior[self.q[-1]].expectation())
+        self.assertEqual(True, self.posterior.dists[self.q[-1]].expectation())
 
     def test_posterior_mixed_evidence_not_in_path_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(False, self.posterior[self.q[-1]].expectation())
+        self.assertEqual(False, self.posterior.dists[self.q[-1]].expectation())
 
     def test_posterior_mixed_unsatisfiable(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertIsNone(self.posterior[self.q[-1]])
+        self.assertIsNone(self.posterior.dists[self.q[-1]])
 
     def test_posterior_mixed_numeric_query(self):
         self.q = [self.variables[9]]
         self.e = {self.variables[8]: 'Burger', self.variables[0]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        print(self.posterior[self.q[-1]].cdf.pfmt())
+        print(self.posterior.dists[self.q[-1]].cdf.pfmt())
 
         # Mesh the input space for evaluations of the real function, the prediction and its MSE
         X = np.linspace(-5, 65, 100)
@@ -558,8 +558,8 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
 
         # plot posterior
         for var in self.q:
-            if var not in self.posterior: continue
-            plt.plot(X, self.posterior[var].cdf.multi_eval(np.array([var.domain.values[x] for x in X])), label=f'Posterior of dataset')
+            if var not in self.posterior.dists: continue
+            plt.plot(X, self.posterior.dists[var].cdf.multi_eval(np.array([var.domain.values[x] for x in X])), label=f'Posterior of dataset')
 
         plt.xlabel('$WaitEstimate [min]$')
         plt.ylabel('$f(x)$')
