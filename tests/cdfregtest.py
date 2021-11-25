@@ -574,5 +574,91 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
         print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
 
 
+class TestCaseExpectation(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        print('Setting up test class', cls.__name__)
+
+        f_csv = '../examples/data/restaurant-mixed.csv'
+        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
+        # 1 Bar[BAR_TYPE(SYM)], BOOl
+        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
+        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
+        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
+        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
+        # 6 Rain[RAIN_TYPE(SYM)], BOOL
+        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
+        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
+        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
+        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
+
+        cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
+        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.plot(title='Restaurant-Mixed', filename='Restaurant-Mixed', directory='TEST', view=False)
+
+    def test_expectation_mixed_single_candidate_T(self):
+        # [WillWait, Friday]
+        self.q = [self.variables[-1], self.variables[2]]
+        # {WaitEstimate: [10,30], Food: Thai}
+        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Thai'}
+        self.expectation = self.jpt.expectation(self.q, self.e)
+        self.assertEqual([True, False], [e.result for e in self.expectation])
+
+    def test_expectation_mixed_unsatisfiable(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
+        self.assertRaises(ValueError, self.jpt.expectation, self.q, self.e)
+
+    def tearDown(self):
+        print('Tearing down test method', self._testMethodName, 'with expectation for', f'P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])}) = [{",".join([f"{q.name}: {e.result if e is not None else None}" for q, e in zip(self.q, self.expectation if hasattr(self, "expectation") else [None]*len(self.q))])}]')
+
+
+class TestCaseInference(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        print('Setting up test class', cls.__name__)
+
+        f_csv = '../examples/data/restaurant-mixed.csv'
+        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
+        # 1 Bar[BAR_TYPE(SYM)], BOOl
+        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
+        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
+        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
+        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
+        # 6 Rain[RAIN_TYPE(SYM)], BOOL
+        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
+        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
+        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
+        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
+
+        cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
+        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.plot(title='Restaurant-Mixed', filename='Restaurant-Mixed', directory='TEST', view=False)
+
+    def test_inference_mixed_single_candidate_T(self):
+        self.q = {self.variables[-1]: True, self.variables[2]: False}
+        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Thai'}
+        inf = self.jpt.infer(self.q, self.e)
+        print(inf.explain())
+        self.assertEqual(True, inf.result)
+
+    def test_inference_mixed_neu(self):
+        self.q = [self.variables[-1]]
+        self.e = {self.variables[-1]: True}
+        inf = self.jpt.posterior(self.q, self.e)
+        print(inf.explain())
+        self.assertEqual(True, inf.result)
+
+
+    def tearDown(self):
+        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+
+
 if __name__ == '__main__':
     unittest.main()
