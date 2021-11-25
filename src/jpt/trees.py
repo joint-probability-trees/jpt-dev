@@ -130,7 +130,7 @@ class DecisionNode(Node):
         node._path.append((self.dec_criterion, self.splits[idx]))
 
     def str_edge(self, idx):
-        return str(self.splits[idx] if self.dec_criterion.numeric else self.dec_criterion.domain.labels[idx])
+        return str(ContinuousSet(self.dec_criterion.domain.labels[self.splits[idx].lower], self.dec_criterion.domain.labels[self.splits[idx].upper], self.splits[idx].left, self.splits[idx].right) if self.dec_criterion.numeric else self.dec_criterion.domain.labels[idx])
 
     @property
     def str_node(self):
@@ -319,9 +319,10 @@ class JPTBase:
         :param vars:        the query variables of the posterior to be computed
         :type vars:         list of jpt.variables.Variable
         :param evidence:    the evidence given for the posterior to be computed
-        :return:            dict of {jpt.variables.Variable: jpt.learning.distributions.Distribution.values}
+        :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
+        r = PosteriorResult(vars, evidence)
 
         dists = defaultdict(list)
         weights = defaultdict(list)
@@ -350,17 +351,21 @@ class JPTBase:
 
                 dists[var].append(distribution)
                 weights[var].append(leaf.prior * likelihood)
+            r.candidates.append(leaf)
 
         # initialize all query variables with None, in case dists is empty (i.e. no candidate leaves -> query unsatisfiable)
-        rdists = {v: None for v in vars}
-        for k, v in dists.items():
-            if sum(weights[k]) == 0: continue
-            elif k.numeric:
-                rdists[k] = QuantileDistribution.merge(v, weights=[float(i)/sum(weights[k]) for i in weights[k]])
-            elif k.symbolic:
-                rdists[k] = Multinomial.merge(v, weights=[float(i)/sum(weights[k]) for i in weights[k]])
+        r.dists = {v: None for v in vars}
 
-        return rdists
+        for k, v in dists.items():
+            r.weights[k] = [float(i)/sum(weights[k]) for i in weights[k]]
+            if sum(weights[k]) == 0:
+                continue
+            elif k.numeric:
+                r.dists[k] = QuantileDistribution.merge(v, weights=r.weights[k])
+            elif k.symbolic:
+                r.dists[k] = Multinomial.merge(v, weights=r.weights[k])
+
+        return r
 
     def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True):
         '''
@@ -371,33 +376,18 @@ class JPTBase:
         conf_level = ifnone(confidence_level, .95)
         variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
                            set(self.variables) - set(evidence_))
-        distributions = {var: deque() for var in variables}
 
         result = {var: ExpectationResult(var, evidence_, conf_level) for var in variables}
-
-        for leaf in self.apply(evidence_):
-            p_m = 1
-            for var in set(evidence_.keys()):
-                evidence_val = evidence_[var]
-                if var.numeric and var in leaf.path:
-                    evidence_val = evidence_val.intersection(leaf.path[var])
-                p_m *= leaf.distributions[var]._p(evidence_val)
-            if p_m:
-                for var in variables:
-                    distributions[var].append((leaf.distributions[var], p_m))
+        posteriors = self.posterior(variables, evidence)
 
         for var in variables:
-            if not sum([w for _, w in distributions[var]]):
+            if posteriors.dists[var] is None:
                 if fail_on_unsatisfiability:
                     raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
                 else:
                     return None
 
-        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
-                                            normalized(np.array([w for _, w in distributions[var]],
-                                                                dtype=np.float64))) for var in distributions}
-
-        for var, dist in posteriors.items():
+        for var, dist in posteriors.dists.items():
             expectation = dist._expectation()
             result[var]._res = expectation
             if var.numeric:
@@ -941,7 +931,7 @@ class JPT(JPTBase):
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val)) for var, val in n.path.items()])}</TD>
+                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in n.path.items()])}</TD>
                                 </TR>
                                 '''
 
@@ -1157,3 +1147,17 @@ class MPEResult(Result):
 
     def format_result(self):
         return f'MPE({self.evidence}) = {format_path(self.path)}'
+
+
+class PosteriorResult(Result):
+
+    def __init__(self, query, evidence, dists=None, cand=None, w=None):
+        super().__init__(query, evidence, res=None, cand=cand)
+        self._w = ifnone(w, {})
+        self.dists = dists
+
+    def format_result(self):
+        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
+                                        ' | ' if self.evidence else '',
+                                        ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                        self.result * 100))
