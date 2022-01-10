@@ -44,7 +44,7 @@ folds = 10
 
 logger = dnutils.getlogger('/crossvalidation', level=dnutils.DEBUG)
 
-MIN_SAMPLES_LEAF = 0.1
+MIN_SAMPLES_LEAF = 0.2
 
 
 def init_globals():
@@ -320,6 +320,7 @@ class EvaluationMatrix:
         if self.symbolic:
             return f1_score(list(zip(*res))[0], list(zip(*res))[1], average='micro')
         else:
+            print(res)
             return mean_absolute_error(list(zip(*res))[0], list(zip(*res))[1])  # identical result
 
     def error(self):
