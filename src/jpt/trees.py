@@ -23,9 +23,16 @@ import dnutils
 from dnutils import first, out, ifnone, stop
 from sklearn.tree import DecisionTreeRegressor
 
-from .base.quantiles import QuantileDistribution
-from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
-from .learning.distributions import Multinomial
+try:
+    from .base.quantiles import QuantileDistribution
+    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+except ImportError:
+    import pyximport
+    pyximport.install()
+    from .base.quantiles import QuantileDistribution
+    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+
+from .learning.distributions import Multinomial, Numeric
 
 from .learning.impurity import Impurity
 from .base.constants import plotstyle, orange, green, SYMBOL
@@ -357,11 +364,11 @@ class JPTBase:
         r.dists = {v: None for v in vars}
 
         for k, v in dists.items():
-            r.weights[k] = [float(i)/sum(weights[k]) for i in weights[k]]
             if sum(weights[k]) == 0:
                 continue
-            elif k.numeric:
-                r.dists[k] = QuantileDistribution.merge(v, weights=r.weights[k])
+            r.weights[k] = [float(i)/sum(weights[k]) for i in weights[k]]
+            if k.numeric:
+                r.dists[k] = Numeric.merge(v, weights=r.weights[k])
             elif k.symbolic:
                 r.dists[k] = Multinomial.merge(v, weights=r.weights[k])
 

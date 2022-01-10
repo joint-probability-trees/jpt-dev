@@ -1,3 +1,6 @@
+# import pyximport
+# pyximport.install()
+
 import multiprocessing
 import os
 import pickle
@@ -327,9 +330,9 @@ class EvaluationMatrix:
 
 
 if __name__ == '__main__':
-    dataset = 'airline'
+    # dataset = 'airline'
     # dataset = 'regression'
-    # dataset = 'iris'
+    dataset = 'iris'
     # dataset = 'banana'
     # dataset = 'restaurant'
     # dataset = 'gaussian'
