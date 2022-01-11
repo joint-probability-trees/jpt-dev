@@ -320,19 +320,22 @@ class JPTBase:
         r.weights = [w / p_e for w in r.weights]
         return r
 
-    def posterior(self, vars, evidence):
+    def posterior(self, variables, evidence):
         '''
 
-        :param vars:        the query variables of the posterior to be computed
-        :type vars:         list of jpt.variables.Variable
+        :param variables:        the query variables of the posterior to be computed
+        :type variables:         list of jpt.variables.Variable
         :param evidence:    the evidence given for the posterior to be computed
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
-        r = PosteriorResult(vars, evidence)
+        r = PosteriorResult(variables, evidence)
 
-        dists = defaultdict(list)
+        distributions = defaultdict(list)
         weights = defaultdict(list)
+
+        likelihoods = []
+        priors = []
 
         for leaf in self.apply(evidence_):
             likelihood = 1
@@ -344,9 +347,15 @@ class JPTBase:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                likelihood *= leaf.distributions[var].pdf.eval(evidence_val.lower) if evidence_val.size() == 1 else leaf.distributions[var]._p(evidence_val)
+                if var.numeric:
+                    print(leaf.distributions[var].pdf.pfmt() + '=== [%s | %s]' % (evidence_val, leaf.distributions[var].pdf.eval(evidence_val)))
+                    likelihood *= leaf.distributions[var].pdf.eval(evidence_val)
+                else:
+                    likelihood *= leaf.distributions[var]._p(evidence_val)
+            likelihoods.append(likelihood)
+            priors.append(leaf.prior)
 
-            for var in vars:
+            for var in variables:
                 evidence_val = evidence_.get(var)
                 distribution = leaf.distributions[var]
                 if evidence_val is not None:
@@ -355,22 +364,29 @@ class JPTBase:
                     elif var.symbolic and var in leaf.path:
                         continue
                     distribution = distribution.crop(evidence_val)
+                distributions[var].append(distribution)
 
-                dists[var].append(distribution)
-                weights[var].append(leaf.prior * likelihood)
             r.candidates.append(leaf)
 
-        # initialize all query variables with None, in case dists is empty (i.e. no candidate leaves -> query unsatisfiable)
-        r.dists = {v: None for v in vars}
+        try:
+            likelihoods = normalized(likelihoods)
+        except ValueError:
+            # raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
+            return None
+        weights = [l * p for l, p in zip(likelihoods, priors)]
+        # weights[var].append(leaf.prior * likelihood)
 
-        for k, v in dists.items():
-            if sum(weights[k]) == 0:
-                continue
-            r.weights[k] = [float(i)/sum(weights[k]) for i in weights[k]]
-            if k.numeric:
-                r.dists[k] = Numeric.merge(v, weights=r.weights[k])
-            elif k.symbolic:
-                r.dists[k] = Multinomial.merge(v, weights=r.weights[k])
+        # initialize all query variables with None, in case dists is empty (i.e. no candidate leaves -> query unsatisfiable)
+        r.dists = {v: None for v in variables}
+
+        for var, dists in distributions.items():
+            # if sum(weights[k]) == 0:
+            #     continue
+            # r.weights[k] = [float(i)/sum(weights[k]) for i in weights[k]]
+            if var.numeric:
+                r.dists[var] = Numeric.merge(dists, weights=weights)
+            elif var.symbolic:
+                r.dists[var] = Multinomial.merge(dists, weights=weights)
 
         return r
 
