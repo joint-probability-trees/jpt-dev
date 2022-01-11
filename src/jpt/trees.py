@@ -344,7 +344,7 @@ class JPTBase:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                likelihood *= leaf.distributions[var]._p(evidence_val)
+                likelihood *= leaf.distributions[var].pdf.eval(evidence_val.lower) if evidence_val.size() == 1 else leaf.distributions[var]._p(evidence_val)
 
             for var in vars:
                 evidence_val = evidence_.get(var)
@@ -458,9 +458,17 @@ class JPTBase:
                 if isinstance(lbl, numbers.Number):
                     val = var.domain.values[lbl]
                     prior = self.priors[var.name]
-                    quantile = prior.cdf.eval(val)
-                    query_[var] = ContinuousSet(prior.ppf.eval(max(0, quantile - var.haze / 2)),
-                                                prior.ppf.eval(min(1, quantile + var.haze / 2)))
+                    quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
+                                                              prior.cdf.idx_at(val)))].eval(val)
+                    lower = quantile - var.haze / 2
+                    upper = quantile + var.haze / 2
+                    query_[var] = ContinuousSet(prior.ppf.functions[max(1,
+                                                                        min(len(prior.cdf) - 2,
+                                                                        prior.ppf.idx_at(lower)))].eval(lower),
+                                                prior.ppf.functions[min(len(prior.ppf) - 2,
+                                                                        max(1,
+                                                                        prior.ppf.idx_at(upper)))].eval(upper))
+                    query_[var] = ContinuousSet(val, val)
                     # if query_[var].lower >= query_[var].upper or np.isnan(query_[var].upper) or np.isnan(query_[var].lower):
                     #     out(prior.cdf.pfmt())
                     #     out(prior.ppf.pfmt())
@@ -495,7 +503,7 @@ class JPT(JPTBase):
 
     logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
-    def __init__(self, variables, targets=None, min_samples_leaf=1, min_impurity_improvement=None,
+    def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
                  max_leaves=None, max_depth=None):
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
