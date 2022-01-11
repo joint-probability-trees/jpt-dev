@@ -844,7 +844,8 @@ cdef class QuantileDistribution:
         # --------------------------------------------------------------------------------------------------------------
         m = 0
         c = 0
-
+        print(lower)
+        print(upper)
         while lower or upper:
             pivot = None
             m_ = m

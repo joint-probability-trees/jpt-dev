@@ -329,10 +329,10 @@ class JPTBase:
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
-        r = PosteriorResult(variables, evidence)
+        result = PosteriorResult(variables, evidence_)
+        variables = [self.varnames[v] if type(v) is str else v for v in variables]
 
         distributions = defaultdict(list)
-        weights = defaultdict(list)
 
         likelihoods = []
         priors = []
@@ -347,9 +347,9 @@ class JPTBase:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                if var.numeric:
-                    print(leaf.distributions[var].pdf.pfmt() + '=== [%s | %s]' % (evidence_val, leaf.distributions[var].pdf.eval(evidence_val)))
-                    likelihood *= leaf.distributions[var].pdf.eval(evidence_val)
+                if var.numeric and evidence_val.size() == 1:
+                    # print(leaf.distributions[var].pdf.pfmt() + '=== [%s | %s]' % (evidence_val, leaf.distributions[var].pdf.eval(evidence_val.lower)))
+                    likelihood *= leaf.distributions[var].pdf.eval(evidence_val.lower)
                 else:
                     likelihood *= leaf.distributions[var]._p(evidence_val)
             likelihoods.append(likelihood)
@@ -366,55 +366,55 @@ class JPTBase:
                     distribution = distribution.crop(evidence_val)
                 distributions[var].append(distribution)
 
-            r.candidates.append(leaf)
+            result.candidates.append(leaf)
 
+        weights = [l * p for l, p in zip(likelihoods, priors)]
         try:
-            likelihoods = normalized(likelihoods)
+            weights = normalized(weights)
         except ValueError:
             # raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
             return None
-        weights = [l * p for l, p in zip(likelihoods, priors)]
         # weights[var].append(leaf.prior * likelihood)
 
         # initialize all query variables with None, in case dists is empty (i.e. no candidate leaves -> query unsatisfiable)
-        r.dists = {v: None for v in variables}
+        result.dists = {v: None for v in variables}
 
         for var, dists in distributions.items():
             # if sum(weights[k]) == 0:
             #     continue
             # r.weights[k] = [float(i)/sum(weights[k]) for i in weights[k]]
             if var.numeric:
-                r.dists[var] = Numeric.merge(dists, weights=weights)
+                result.dists[var] = Numeric.merge(dists, weights=weights)
             elif var.symbolic:
-                r.dists[var] = Multinomial.merge(dists, weights=weights)
+                result.dists[var] = Multinomial.merge(dists, weights=weights)
 
-        return r
+        return result
 
     def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True):
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
         '''
-        evidence_ = self._prepropress_query(ifnone(evidence, {}))
-        conf_level = ifnone(confidence_level, .95)
-        variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
-                           set(self.variables) - set(evidence_))
-
-        result = {var: ExpectationResult(var, evidence_, conf_level) for var in variables}
         posteriors = self.posterior(variables, evidence)
+        conf_level = ifnone(confidence_level, .95)
 
-        for var in variables:
-            if posteriors.dists[var] is None:
-                if fail_on_unsatisfiability:
-                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
-                else:
-                    return None
+        variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
+                           set(self.variables) - set(evidence))
+
+        if posteriors is None:
+            if fail_on_unsatisfiability:
+                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+            else:
+                return None
+
+        result = {var: ExpectationResult(var, posteriors._evidence, conf_level) for var in variables}
 
         for var, dist in posteriors.dists.items():
             expectation = dist._expectation()
             result[var]._res = expectation
             if var.numeric:
                 exp_quantile = dist.cdf.eval(expectation)
+                print(dist.cdf.pfmt())
                 result[var]._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
                 result[var]._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
 
