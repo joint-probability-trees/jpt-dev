@@ -334,7 +334,7 @@ class JPTBase:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                likelihood *= leaf.distributions[var]._p(evidence_val)
+                likelihood *= leaf.distributions[var].pdf.eval(evidence_val.lower) if evidence_val.size() == 1 else leaf.distributions[var]._p(evidence_val)
 
             for var in vars:
                 evidence_val = evidence_.get(var)
@@ -464,6 +464,7 @@ class JPTBase:
                                                 prior.ppf.functions[min(len(prior.ppf) - 2,
                                                                         max(1,
                                                                         prior.ppf.idx_at(upper)))].eval(upper))
+                    query_[var] = ContinuousSet(val, val)
                     # if query_[var].lower >= query_[var].upper or np.isnan(query_[var].upper) or np.isnan(query_[var].lower):
                     #     out(prior.cdf.pfmt())
                     #     out(prior.ppf.pfmt())
