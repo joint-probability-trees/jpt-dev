@@ -1,6 +1,9 @@
 import pprint
 
 import pyximport
+
+from jpt.base.utils import format_path
+
 pyximport.install()
 import itertools
 import os
@@ -12,7 +15,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-from dnutils import out
+from dnutils import out, ifnone, first
 from jpt.base.quantiles import QuantileDistribution
 from jpt.learning.distributions import Numeric, Bool, SymbolicType, NumericType
 from jpt.trees import JPT, JPTBase
@@ -53,6 +56,36 @@ def plot_muesli():
             ax.scatter(samples['X'], samples['Y'], color=color, marker=icon, label=clazz)
             # ax.set_xticks([round(x, 2) for x in np.arange(sorted(df['X'])[0], sorted(df['X'])[-1], .02)])
 
+    ObjectType = SymbolicType('ObjectType', df['Class'].unique())
+
+    x = NumericVariable('X', Numeric, haze=.01)
+    y = NumericVariable('Y', Numeric, haze=.01)
+    o = SymbolicVariable('Object', ObjectType)
+    s = SymbolicVariable('Success', Bool)
+
+    # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
+
+    jpt = JPT([x, y, o, s], min_samples_leaf=.25)
+    jpt.learn(columns=df.values.T)
+
+    for leaf in jpt.leaves.values():
+        xlower = x.domain.labels[leaf.path[x].lower if x in leaf.path else -np.inf]
+        xupper = x.domain.labels[leaf.path[x].upper if x in leaf.path else np.inf]
+        ylower = y.domain.labels[leaf.path[y].lower if y in leaf.path else -np.inf]
+        yupper = y.domain.labels[leaf.path[y].upper if y in leaf.path else np.inf]
+        vlines = []
+        hlines = []
+        if xlower != np.NINF:
+            vlines.append(xlower)
+        if xupper != np.PINF:
+            vlines.append(xupper)
+        if ylower != np.NINF:
+            hlines.append(ylower)
+        if yupper != np.PINF:
+            hlines.append(yupper)
+        plt.vlines(vlines, max(ylower, df['Y'].min()), min(yupper, df['Y'].max()))
+        plt.hlines(hlines, max(xlower, df['X'].min()), min(xupper, df['X'].max()))
+
     ax.legend()
     plt.show()
 
@@ -90,14 +123,14 @@ def muesli_tree():
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
     XType = NumericType('XType', data['X'].values)
 
-    x = NumericVariable('X', XType, max_std=.1, precision=.01)
-    y = NumericVariable('Y', Numeric, max_std=.1, precision=.1)
+    x = NumericVariable('X', Numeric, haze=.01)
+    y = NumericVariable('Y', Numeric, haze=.01)
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 
     # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
 
-    jpt = JPT([x, y, o, s], min_samples_leaf=1)
+    jpt = JPT([x, y, o, s], min_samples_leaf=.25)
     jpt.learn(columns=data.values.T)
 
     # json_data = jpt.to_json()
@@ -116,11 +149,38 @@ def muesli_tree():
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
     print(jpt)
-    jpt.plot(plotvars=[x, y, o, s])
+    # jpt.plot(plotvars=[x, y, o, s])
 
     # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
     # r = jpt.reverse(q)
     # out('Query:', q, 'result:', pprint.pformat(r))
+    plot_conditional(jpt, x, y, evidence={o: 'BaerenMarkeFrischeAlpenmilch'})
+
+    for clazz in data['Class'].unique():
+        out(jpt.infer(query={o.name: clazz}, evidence={x.name: [.95 - FUZZYNESS, .95 + FUZZYNESS],
+                                                       y.name: [.45 - FUZZYNESS, .45 + FUZZYNESS]}))
+
+
+FUZZYNESS = .01
+
+
+def plot_conditional(jpt, qvarx, qvary, evidence=None, title=None):
+    x = np.linspace(.7, 1.05, 50)
+    y = np.linspace(.15, .55, 50)
+
+    X, Y = np.meshgrid(x, y)
+    Z = np.array([jpt.infer({qvarx: ContinuousSet(x - FUZZYNESS, x + FUZZYNESS),
+                             qvary: ContinuousSet(y - FUZZYNESS, y + FUZZYNESS)}, evidence=evidence).result for x, y, in zip(X.ravel(), Y.ravel())]).reshape(X.shape)
+
+    # fig = plt.figure()
+    ax = plt.axes(projection='3d')
+    ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none')
+    # ax.plot_wireframe(X, Y, Z, color='black')
+    # ax.contour(X, Y, Z, 10)
+    ax.set_title(ifnone(title, 'P(%s, %s|%s)' % (qvarx.name,
+                                                 qvary.name,
+                                                 format_path(evidence) if evidence else '$\emptyset$')))
+    plt.show()
 
 
 def picklemuesli():
@@ -144,8 +204,8 @@ def picklemuesli():
 
 def main(*args):
     # plot_muesli()
-    test_muesli()
-    # muesli_tree()
+    # test_muesli()
+    muesli_tree()
     # picklemuesli()
 
 
