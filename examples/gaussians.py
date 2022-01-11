@@ -61,16 +61,16 @@ def main():
         plt.hlines(hlines, max(xlower, -2.5), min(xupper, 2.5), color={0: 'r', 1: 'b', None: 'gray'}[first(leaf.path[varcolor]) if varcolor in leaf.path else None])
 
     # plt.show()
-    jpt.plot(view=True, plotvars=[varcolor])
+    # jpt.plot(view=True, plotvars=[varcolor])
 
-    _data = jpt._preprocess_data(df)
-    dec = DecisionTreeClassifier(min_samples_leaf=.1)
-    dec.fit(_data[:, :-1], _data[:, -1:])
-    plot_tree(dec)
-    plt.show()
+    # _data = jpt._preprocess_data(df)
+    # dec = DecisionTreeClassifier(min_samples_leaf=.1)
+    # dec.fit(_data[:, :-1], _data[:, -1:])
+    # plot_tree(dec)
+    # plt.show()
     # print(export_text(dec))
     # jpt.plot(plotvars=['X', 'Y', 'Color'])
-    # plot_conditional(jpt, varx, vary)
+    plot_conditional(jpt, varx, vary)
     # plot_conditional(jpt, varx, vary, {varcolor: 'R'})
     # plot_conditional(jpt, varx, vary, {varcolor: 'B'})
 

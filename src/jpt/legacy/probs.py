@@ -15,7 +15,7 @@ from scipy.stats import multivariate_normal
 import dnutils
 from dnutils import out
 from jpt.base.constants import avalailable_colormaps, plotstyle, ddarkblue
-from .distributions import MultiVariateGaussian
+from jpt.learning.distributions import MultiVariateGaussian
 
 logger = dnutils.getlogger(name='ProbsLogger', level=dnutils.ERROR)
 style.use(plotstyle)
