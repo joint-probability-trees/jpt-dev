@@ -57,6 +57,22 @@ class TestCaseMerge(unittest.TestCase):
                                                       '[5.400,∞[': '1.0'}),
                          QuantileDistribution.merge([q1, q2], [.5, .5]).cdf.round())
 
+    def test_dist_merge_singleton(self):
+        data1 = np.array([[1.], [1.1], [1.1], [1.2], [1.4], [1.2], [1.3]], dtype=np.float64)
+        data2 = np.array([[5.], [5.1], [5.2], [5.2], [5.2], [5.3], [5.4]], dtype=np.float64)
+        q1 = QuantileDistribution()
+        q2 = QuantileDistribution()
+        q1.fit(data1, np.array(range(data1.shape[0])), 0)
+        q2.fit(data2, np.array(range(data2.shape[0])), 0)
+
+        self.assertEqual(q2.cdf.round(),
+                         QuantileDistribution.merge([q1, q2], [0, 1]).cdf.round())
+
+    def test_dist_merge_throws(self):
+        self.assertRaises(ValueError,
+                          QuantileDistribution.merge,
+                          [1, 2, 3], [0, 0, 1.2])
+
     def test_dist_merge_jump_functions(self):
         data1 = np.array([[1.]], dtype=np.float64)
         data2 = np.array([[2.]], dtype=np.float64)

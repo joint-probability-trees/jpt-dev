@@ -581,6 +581,13 @@ cdef class QuantileDistribution:
         d._cdf = cdf
         return d
 
+    cpdef _assert_consistency(self):
+        if self._cdf is not None:
+            assert len(self._cdf.functions) > 1, self._cdf.pfmt()
+            assert len(self._cdf.intervals) == len(self._cdf.functions), \
+                '# intervals: %s != # functions: %s' % (len(self._cdf.intervals),
+                                                        len(self._cdf.functions))
+
     cpdef QuantileDistribution fit(self, DTYPE_t[:, ::1] data, SIZE_t[::1] rows, SIZE_t col):
         if rows is None:
             rows = np.arange(data.shape[0], dtype=np.int64)
@@ -608,17 +615,6 @@ cdef class QuantileDistribution:
         n_samples = count
 
         self._ppf = self._pdf = None
-        # Use simple linear regression when fewer than min_samples_mars points are available
-        # if 1 < n_samples < self.min_samples_mars:
-        #     x = data_buffer[0, :]
-        #     y = data_buffer[1, :]
-        #     self._cdf = PiecewiseFunction()
-        #     self._cdf.intervals.append(R.copy())
-        #     self._cdf.functions.append(LinearFunction(0, 0).fit(x, y))
-        #     self._cdf.ensure_left(ConstantFunction(0), x[0])
-        #     self._cdf.ensure_right(ConstantFunction(1), x[-1])
-        #
-        # elif self.min_samples_mars <= n_samples:
         alert = False
         if n_samples > 1:
             regressor = CDFRegressor(eps=self.epsilon)
@@ -644,6 +640,8 @@ cdef class QuantileDistribution:
             self._cdf.functions.append(ConstantFunction(0))
             self._cdf.intervals.append(ContinuousSet(x[0], np.PINF, INC, EXC))
             self._cdf.functions.append(ConstantFunction(1))
+
+        self._assert_consistency()
 
         return self
 
@@ -714,6 +712,9 @@ cdef class QuantileDistribution:
 
         result = QuantileDistribution(self.epsilon, self.penalty, min_samples_mars=self.min_samples_mars)
         result._cdf = cdf
+
+        result._assert_consistency()
+
         return result
 
     @property
@@ -754,7 +755,7 @@ cdef class QuantileDistribution:
 
             ppf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
 
-            assert len(self._cdf.functions) > 1, self._cdf.pfmt()
+            self._assert_consistency()
 
             if len(self._cdf.functions) == 2:
                 ppf.intervals[-1].upper = 1
@@ -818,6 +819,9 @@ cdef class QuantileDistribution:
         if weights is None:
             weights = [1. / len(distributions)] * len(distributions)
 
+        if abs(sum(weights) - 1) > 1e-8:
+            raise ValueError('Weights must sum to 1, got sum %s; %s' % (sum(weights), str(weights)))
+
         # --------------------------------------------------------------------------------------------------------------
         # We preprocess the CDFs that are in the form of "jump" functions
         jumps = {}
@@ -828,13 +832,13 @@ cdef class QuantileDistribution:
         # --------------------------------------------------------------------------------------------------------------
         lower = sorted([(i.lower, f, w)
                         for d, w in zip(distributions, weights)
-                        for i, f in zip(d.cdf.intervals, d.cdf.functions) if not isinstance(f, ConstantFunction)]
+                        for i, f in zip(d.cdf.intervals, d.cdf.functions) if not isinstance(f, ConstantFunction) and w > 0]
                        + [(j.knot, j, j.weight)
-                          for j in jumps.values()],
+                          for j in jumps.values() if j.weight > 0],
                        key=itemgetter(0))
         upper = sorted([(i.upper, f, w)
                         for d, w in zip(distributions, weights)
-                        for i, f in zip(d.cdf.intervals, d.cdf.functions) if not isinstance(f, ConstantFunction)],
+                        for i, f in zip(d.cdf.intervals, d.cdf.functions) if not isinstance(f, ConstantFunction) and w > 0],
                        key=itemgetter(0))
 
         # --------------------------------------------------------------------------------------------------------------
@@ -897,9 +901,7 @@ cdef class QuantileDistribution:
         distribution = QuantileDistribution()
         distribution._cdf = cdf
 
-        # if len(cdf.functions) == 3 and cdf.functions[1].m < 1e-4:
-        #     raise ValueError(cdf.pfmt() + '\n\n' + '\n---\n'.join([d.cdf.pfmt()
-        #                                                            for d in distributions]) + '\n' + str(jumps))
+        distribution._assert_consistency()
 
         return distribution
 
