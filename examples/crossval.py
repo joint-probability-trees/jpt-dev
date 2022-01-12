@@ -139,7 +139,7 @@ def fold(fld_idx, train_index, test_index, max_depth=8):
 
     # learn full JPT
     logger.debug(f'Learning full JPT over all variables for FOLD {fld_idx}...')
-    jpt = JPT(variables=variables, min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF / len(variables)))
+    jpt = JPT(variables=variables, min_samples_leaf=1 if dataset == 'restaurant' else int(data_train.shape[0] * MIN_SAMPLES_LEAF / (.5 * len(variables))))
     jpt.learn(columns=data_train.values.T)
     jpt.save(os.path.join(d, f'{prefix}-FOLD-{fld_idx}-JPT.json'))
     if dataset in ['iris', 'banana', 'restaurant', 'gaussian']:
@@ -320,7 +320,6 @@ class EvaluationMatrix:
         if self.symbolic:
             return f1_score(list(zip(*res))[0], list(zip(*res))[1], average='micro')
         else:
-            print(res)
             return mean_absolute_error(list(zip(*res))[0], list(zip(*res))[1])  # identical result
 
     def error(self):

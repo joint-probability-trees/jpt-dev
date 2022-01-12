@@ -72,6 +72,9 @@ class TestCaseMerge(unittest.TestCase):
         self.assertRaises(ValueError,
                           QuantileDistribution.merge,
                           [1, 2, 3], [0, 0, 1.2])
+        self.assertRaises(ValueError,
+                          QuantileDistribution.merge,
+                          [1, 2, 3], [0, float('nan'), 1])
 
     def test_dist_merge_jump_functions(self):
         data1 = np.array([[1.]], dtype=np.float64)

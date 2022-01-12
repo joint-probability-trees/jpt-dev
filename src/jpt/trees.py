@@ -347,11 +347,10 @@ class JPTBase:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                if var.numeric and evidence_val.size() == 1:
-                    # print(leaf.distributions[var].pdf.pfmt() + '=== [%s | %s]' % (evidence_val, leaf.distributions[var].pdf.eval(evidence_val.lower)))
-                    likelihood *= leaf.distributions[var].pdf.eval(evidence_val.lower)
-                else:
-                    likelihood *= leaf.distributions[var]._p(evidence_val)
+                # if var.numeric and evidence_val.size() == 1:
+                    # likelihood *= leaf.distributions[var].pdf.eval(evidence_val.lower)
+                # else:
+                likelihood *= leaf.distributions[var]._p(evidence_val)
             likelihoods.append(likelihood)
             priors.append(leaf.prior)
 
@@ -414,7 +413,6 @@ class JPTBase:
             result[var]._res = expectation
             if var.numeric:
                 exp_quantile = dist.cdf.eval(expectation)
-                print(dist.cdf.pfmt())
                 result[var]._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
                 result[var]._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
 
@@ -484,7 +482,7 @@ class JPTBase:
                                                 prior.ppf.functions[min(len(prior.ppf) - 2,
                                                                         max(1,
                                                                         prior.ppf.idx_at(upper)))].eval(upper))
-                    query_[var] = ContinuousSet(val, val)
+                    # query_[var] = ContinuousSet(val, val)
                     # if query_[var].lower >= query_[var].upper or np.isnan(query_[var].upper) or np.isnan(query_[var].lower):
                     #     out(prior.cdf.pfmt())
                     #     out(prior.ppf.pfmt())

@@ -821,6 +821,8 @@ cdef class QuantileDistribution:
 
         if abs(sum(weights) - 1) > 1e-8:
             raise ValueError('Weights must sum to 1, got sum %s; %s' % (sum(weights), str(weights)))
+        if any(np.isnan(w) for w in weights):
+            raise ValueError('Detected NaN in weight vector!')
 
         # --------------------------------------------------------------------------------------------------------------
         # We preprocess the CDFs that are in the form of "jump" functions
@@ -844,8 +846,7 @@ cdef class QuantileDistribution:
         # --------------------------------------------------------------------------------------------------------------
         m = 0
         c = 0
-        print(lower)
-        print(upper)
+
         while lower or upper:
             pivot = None
             m_ = m
@@ -901,8 +902,6 @@ cdef class QuantileDistribution:
 
         distribution = QuantileDistribution()
         distribution._cdf = cdf
-
-        distribution._assert_consistency()
 
         return distribution
 
