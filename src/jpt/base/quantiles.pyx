@@ -615,7 +615,6 @@ cdef class QuantileDistribution:
         n_samples = count
 
         self._ppf = self._pdf = None
-        alert = False
         if n_samples > 1:
             regressor = CDFRegressor(eps=self.epsilon)
             regressor.fit(data_buffer)
@@ -624,14 +623,10 @@ cdef class QuantileDistribution:
             self._cdf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
             for left, right in pairwise(regressor.support_points):
                 self._cdf.functions.append(LinearFunction.from_points(tuple(left), tuple(right)))
-                if self._cdf.functions[-1].m < 1e-3:
-                    alert = True
                 self._cdf.intervals[-1].upper = left[0]
                 self._cdf.intervals.append(ContinuousSet(left[0], right[0], 1, 2))
             self._cdf.functions.append(ConstantFunction(1))
             self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
-            if alert and len(self._cdf.intervals) == 3:
-                raise ValueError(self._cdf.pfmt() + '\n' + str(np.asarray(data_buffer)))
         else:
             x = data_buffer[0, :]
             y = data_buffer[1, :]
