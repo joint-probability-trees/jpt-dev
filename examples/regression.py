@@ -9,114 +9,57 @@ from jpt.learning.distributions import Numeric, NumericType, ScaledNumeric
 from jpt.trees import JPT
 from jpt.variables import NumericVariable
 
+# ----------------------------------------------------------------------------------------------------------------------
+# The function to predict
 
-def preprocess_regression():
 
-    def f(x):
-        """The function to predict."""
-        # x -= 20
-        return x * np.sin(x)
+def f(x):
+    return x * np.sin(x)
 
-    # ----------------------------------------------------------------------
-    #  First the noiseless case
-    POINTS = 10000
-    X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T
-    X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T, X))
-    # X = np.atleast_2d(np.random.uniform(-20, 10.0, size=int(POINTS))).T
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+def generate_data(func, x_lower, x_upper, n):
+    '''
+    Generate a ``DataFrame`` of ``n`` data samples with additive noise from the function ``func``.
+    '''
+    X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(n / 2))).T
+    X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(n / 2))).T, X))
     X = X.astype(np.float32)
     X = np.array(list(sorted(X)))
 
     # Observations
-    y = f(X).ravel()
+    y = func(X).ravel()
 
     # Add some noise
     dy = 1.5 + .5 * np.random.random(y.shape)
-    noise = np.random.normal(0, dy)
-    y += noise
+    y += np.random.normal(0, dy)
     y = y.astype(np.float32)
 
-    # Mesh the input space for evaluations of the real function, the prediction and
-    # its MSE
-    xx = np.atleast_2d(np.linspace(-30, 30, 500)).T
-    # xx = np.atleast_2d(np.linspace(-10, 20, 500)).T
-    xx = xx.astype(np.float32)
-
-    # Construct the predictive model
-    # varx = NumericVariable('x', Numeric)  # , max_std=1)
-    # vary = NumericVariable('y', Numeric)  # , max_std=1)
-
-    # variables = [varx, vary]
-    data = pd.DataFrame(data={'x': X.ravel(), 'y': y})
-    return data
+    return pd.DataFrame(data={'x': X.ravel(), 'y': y})
 
 
 def main():
-
-    def f(x):
-        """The function to predict."""
-        # x -= 20
-        return x * np.sin(x)
-
-    # ----------------------------------------------------------------------
-    #  First the noiseless case
-    POINTS = 1000
-    X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(POINTS / 2))).T
-    X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(POINTS / 2))).T, X))
-    # X = np.atleast_2d(np.random.uniform(-20, 10.0, size=int(POINTS))).T
-    X = X.astype(np.float32)
-    X = np.array(list(sorted(X)))
-
-    # Observations
-    y = f(X).ravel()
-
-    # Add some noise
-    dy = 1.5 + .5 * np.random.random(y.shape)
-    noise = np.random.normal(0, dy)
-    y += noise
-    y = y.astype(np.float32)
+    df = generate_data(f, -20, 10, 1000)
 
     # Mesh the input space for evaluations of the real function, the prediction and
     # its MSE
-    xx = np.atleast_2d(np.linspace(-30, 30, 500)).T
-    # xx = np.atleast_2d(np.linspace(-10, 20, 500)).T
+    xx = np.atleast_2d(np.linspace(-20, 15, 500)).T
+
     xx = xx.astype(np.float32)
 
     # Construct the predictive model
-    varx = NumericVariable('x', Numeric)  # , max_std=1)
-    vary = NumericVariable('y', Numeric)  # , max_std=1)
-    # varx = NumericVariable('x', NumericType('x', X), haze=.05, max_std=2)
-    # vary = NumericVariable('y', NumericType('y', y), haze=.05, max_std=2)
-
+    varx = NumericVariable('x', Numeric, haze=.01)
+    vary = NumericVariable('y', Numeric, haze=.01)
 
     jpt = JPT(variables=[varx, vary], min_samples_leaf=.01)
-    jpt.learn(columns=[X.ravel(), y])
+    jpt.learn(data=df)
+
     jpt.plot(view=True)
 
-    # jpt.plot(plotvars=[varx, vary])
     # Apply the JPT model
     confidence = .95
-    fig = plt.figure()
 
-    def vmax(x):
-        return 20 if x == np.NINF else x
-
-    # for leaf in jpt.leaves.values():
-    #     xlower = varx.domain.labels[leaf.path[varx].lower if varx in leaf.path else -np.inf]
-    #     xupper = varx.domain.labels[leaf.path[varx].upper if varx in leaf.path else np.inf]
-    #     ylower = vary.domain.labels[leaf.path[vary].lower if vary in leaf.path else -np.inf]
-    #     yupper = vary.domain.labels[leaf.path[vary].upper if vary in leaf.path else np.inf]
-    #     vlines = []
-    #     hlines = []
-    #     if xlower != np.NINF:
-    #         vlines.append(xlower)
-    #     if xupper != np.PINF:
-    #         vlines.append(xupper)
-    #     if ylower != np.NINF:
-    #         hlines.append(ylower)
-    #     if yupper != np.PINF:
-    #         hlines.append(yupper)
-    #     plt.vlines(vlines, max(ylower, -20), min(yupper, 20), color='lightgray')
-    #     plt.hlines(hlines, max(xlower, -30), min(xupper, 30), color='lightgray')
     my_predictions = [first(jpt.expectation([vary],
                                             evidence={varx: x_},
                                             confidence_level=confidence,
@@ -124,15 +67,16 @@ def main():
     y_pred_ = [p.result if p else None for p in my_predictions]
     y_lower_ = [p.lower if p else None for p in my_predictions]
     y_upper_ = [p.upper if p else None for p in my_predictions]
+
     posterior = jpt.posterior([varx], {vary: 0})
 
     # Plot the function, the prediction and the 90% confidence interval based on the MSE
     plt.plot(xx, f(xx), color='black', linestyle=':', linewidth='2', label=r'$f(x) = x\,\sin(x)$')
-    plt.plot(X, y, '.', color='gray', markersize=5, label='Training data')
+    plt.plot(df['x'].values, df['y'].values, '.', color='gray', markersize=5, label='Training data')
     plt.plot(xx, y_pred_, 'm-', label='JPT Prediction')
     plt.plot(xx, y_lower_, 'y--', label='%.1f%% Confidence bands' % (confidence * 100))
     plt.plot(xx, y_upper_, 'y--')
-    plt.plot(xx, posterior[varx].pdf.multi_eval(xx.ravel().astype(np.float64)), label='Posterior')
+    plt.plot(xx, posterior.dists[varx].pdf.multi_eval(xx.ravel().astype(np.float64)), label='Posterior')
 
     plt.xlabel('$x$')
     plt.ylabel('$f(x)$')

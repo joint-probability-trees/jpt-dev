@@ -347,9 +347,6 @@ class JPTBase:
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 elif var.symbolic and var in leaf.path:
                     continue
-                # if var.numeric and evidence_val.size() == 1:
-                    # likelihood *= leaf.distributions[var].pdf.eval(evidence_val.lower)
-                # else:
                 likelihood *= leaf.distributions[var]._p(evidence_val)
             likelihoods.append(likelihood)
             priors.append(leaf.prior)
@@ -371,17 +368,13 @@ class JPTBase:
         try:
             weights = normalized(weights)
         except ValueError:
-            # raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
             return None
-        # weights[var].append(leaf.prior * likelihood)
 
-        # initialize all query variables with None, in case dists is empty (i.e. no candidate leaves -> query unsatisfiable)
+        # initialize all query variables with None, in case dists
+        # is empty (i.e. no candidate leaves -> query unsatisfiable)
         result.dists = {v: None for v in variables}
 
         for var, dists in distributions.items():
-            # if sum(weights[k]) == 0:
-            #     continue
-            # r.weights[k] = [float(i)/sum(weights[k]) for i in weights[k]]
             if var.numeric:
                 result.dists[var] = Numeric.merge(dists, weights=weights)
             elif var.symbolic:
@@ -406,7 +399,10 @@ class JPTBase:
             else:
                 return None
 
-        result = {var: ExpectationResult(var, posteriors._evidence, conf_level) for var in variables}
+        result = {var: ExpectationResult(var,
+                                         posteriors._evidence,
+                                         conf_level)
+                  for var in variables}
 
         for var, dist in posteriors.dists.items():
             expectation = dist._expectation()
