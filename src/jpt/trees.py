@@ -20,7 +20,7 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, out, ifnone, stop
+from dnutils import first, out, ifnone, mapstr
 from sklearn.tree import DecisionTreeRegressor
 
 try:
@@ -32,7 +32,7 @@ except ImportError:
     from .base.quantiles import QuantileDistribution
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
 
-from .learning.distributions import Multinomial, Numeric
+from .learning.distributions import Multinomial, Numeric, Identity
 
 from .learning.impurity import Impurity
 from .base.constants import plotstyle, orange, green, SYMBOL
@@ -687,10 +687,14 @@ class JPT(JPTBase):
             raise ValueError('No data given.')
 
         data_ = np.ndarray(shape=shape, dtype=np.float64, order='C')
-
         if isinstance(data, pd.DataFrame):
-            data_[:] = data.transform({c: v.domain.values.transformer()
-                                       for v, c in zip(self.variables, data.columns)}).values
+            if set(self.varnames).symmetric_difference(set(data.columns)):
+                raise ValueError('Unknown variable names: %s'
+                                 % ', '.join(mapstr(set(self.varnames).symmetric_difference(set(data.columns)))))
+
+            data_[:] = data.transform({c: self.varnames[v].domain.values.transformer()
+                                       for v, c in zip(self.varnames, data.columns)},
+                                      ).values
         else:
             for i, (var, col) in enumerate(zip(self.variables, columns)):
                 data_[:, i] = [var.domain.values[v] for v in col]
