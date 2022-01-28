@@ -1,3 +1,5 @@
+import logging
+import os
 from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
 from csv import Dialect
 
@@ -7,6 +9,9 @@ import arff
 import csv
 
 from functools import reduce
+
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 from numpy import iterable
 
 from dnutils import ifnone, stop
@@ -253,3 +258,16 @@ def arfftocsv(arffpath, csvpath):
 
         for dp in data.get('data'):
             writer.writerow({k: convert(k, v) for k, v in zip(fieldnames, dp)})
+
+
+def save_plot(fig,  directory, fname, fmt='pdf'):
+    # save figure as PDF or PNG
+    if fmt == 'pdf':
+        logging.debug(
+            f"Saving distributions plot to {os.path.join(directory, f'{fname}.pdf')}")
+        with PdfPages(os.path.join(directory, f'{fname}.pdf')) as pdf:
+            pdf.savefig(fig)
+    else:
+        logging.debug(
+            f"Saving distributions plot to {os.path.join(directory, f'{fname}.png')}")
+        plt.savefig(os.path.join(directory, f'{fname}.png'))

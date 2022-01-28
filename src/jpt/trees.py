@@ -20,7 +20,7 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, out, ifnone, mapstr
+from dnutils import first, ifnone, mapstr
 from sklearn.tree import DecisionTreeRegressor
 
 try:
@@ -137,7 +137,11 @@ class DecisionNode(Node):
         node._path.append((self.dec_criterion, self.splits[idx]))
 
     def str_edge(self, idx):
-        return str(ContinuousSet(self.dec_criterion.domain.labels[self.splits[idx].lower], self.dec_criterion.domain.labels[self.splits[idx].upper], self.splits[idx].left, self.splits[idx].right) if self.dec_criterion.numeric else self.dec_criterion.domain.labels[idx])
+        return str(ContinuousSet(self.dec_criterion.domain.labels[self.splits[idx].lower],
+                                 self.dec_criterion.domain.labels[self.splits[idx].upper],
+                                 self.splits[idx].left,
+                                 self.splits[idx].right)
+                   if self.dec_criterion.numeric else self.dec_criterion.domain.labels[idx])
 
     @property
     def str_node(self):
@@ -755,7 +759,7 @@ class JPT(JPTBase):
             self.root = self.leaves[0]
 
         else:
-            out('NO INNER NODES!', self.innernodes, self.leaves)
+            JPT.logger.error('NO INNER NODES!', self.innernodes, self.leaves)
             self.root = None
 
         # --------------------------------------------------------------------------------------------------------------
@@ -887,9 +891,10 @@ class JPT(JPTBase):
         ft_best_idx = self.variables.index(ft_best)
         return ft_best_idx, sp_best, max_gain
 
-    def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True):
+    def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.
 
+        :param title:   (str) title of the plot
         :param filename: the name of the JPT (will also be used as filename; extension will be added automatically)
         :type filename: str
         :param directory: the location to save the SVG file to
@@ -898,8 +903,9 @@ class JPT(JPTBase):
         :type plotvars: <jpt.variables.Variable>
         :param view: whether the generated SVG file will be opened automatically
         :type view: bool
+        :param max_symb_values: limit the maximum number of symbolic values to this number
         '''
-        if plotvars == None:
+        if plotvars is None:
             plotvars = []
         plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
 
@@ -923,7 +929,15 @@ class JPT(JPTBase):
                 img = ''
                 for i, pvar in enumerate(plotvars):
                     img_name = html.escape(f'{pvar.name}-{n.idx}')
-                    n.distributions[pvar].plot(title=html.escape(pvar.name), fname=img_name, directory=directory, view=False)
+
+                    params = {} if pvar.numeric else {'horizontal': True,
+                                                      'max_values': max_symb_values}
+
+                    n.distributions[pvar].plot(title=html.escape(pvar.name),
+                                               fname=img_name,
+                                               directory=directory,
+                                               view=False,
+                                               **params)
                     img += (f'''{"<TR>" if i % rc == 0 else ""}
                                         <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
                                 {"</TR>" if i % rc == rc-1 or i == len(plotvars) - 1 else ""}

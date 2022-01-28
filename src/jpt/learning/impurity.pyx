@@ -184,7 +184,8 @@ cdef class Impurity:
         self.n_vars = len(tree.variables)
         self.priors = []
 
-        self.targets = np.array([i for i, v in enumerate(tree.variables) if tree.targets is None or v in tree.targets], dtype=np.int64)
+        self.targets = np.array([i for i, v in enumerate(tree.variables)
+                                 if tree.targets is None or v in tree.targets], dtype=np.int64)
 
         self.n_sym_vars = len(self.symbolic_vars)
 
@@ -324,7 +325,8 @@ cdef class Impurity:
         cdef int variable
 
         cdef deque[int] split_pos
-        self.index_buffer[self.start:self.end] = self.indices[self.start:self.end]
+        # self.index_buffer[self.start:self.end] = self.indices[self.start:self.end]
+        self.index_buffer[:n_samples] = self.indices[self.start:self.end]
 
         for variable in self.all_vars:
             symbolic = variable in self.symbolic_vars
@@ -336,7 +338,7 @@ cdef class Impurity:
                                                           denom,
                                                           self.variances_total if self.has_numeric_vars() else None,
                                                           gini_total,
-                                                          self.index_buffer[self.start:self.end],
+                                                          self.index_buffer,
                                                           &split_pos)
             if impurity_improvement > self.max_impurity_improvement:
                 self.max_impurity_improvement = impurity_improvement
@@ -345,7 +347,7 @@ cdef class Impurity:
                     self._best_split_pos.push_back(e)
 
                 self.best_var = variable
-                self.indices[self.start:self.end] = self.index_buffer[self.start:self.end]
+                self.indices[self.start:self.end] = self.index_buffer[:n_samples]
         return self.max_impurity_improvement
 
     cdef DTYPE_t evaluate_variable(Impurity self,
@@ -370,6 +372,16 @@ cdef class Impurity:
         for j in range(n_samples):
             f[j] = data[index_buffer[j], var_idx]
         sort(&f[0], &index_buffer[0], n_samples)
+        # print(f.shape, index_buffer.shape, n_samples)
+        # prev = np.NINF
+        # fprev = np.NINF
+        # for j in range(n_samples):
+        #     if f[j] < fprev:
+        #         raise ValueError('f j=%d[%d],  %s < %s' % (j, n_samples, f[j], fprev))
+        #     if data[index_buffer[j], var_idx] < prev:
+        #         raise ValueError('%s < %s' % (data[index_buffer[j], var_idx], prev))
+        #     prev = data[index_buffer[j], var_idx]
+        #     fprev = f[j]
         # --------------------------------------------------------------------------------------------------------------
         cdef int numeric = not symbolic
         
