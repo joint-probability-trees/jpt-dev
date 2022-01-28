@@ -9,9 +9,9 @@
 cimport numpy as np
 
 
-ctypedef double DTYPE_t          # Type of X
+ctypedef double DTYPE_t                  # Type of X
 ctypedef np.npy_float64 DOUBLE_t         # Type of y, sample_weight
-ctypedef np.int64_t SIZE_t              # Type for indices and counters
+ctypedef np.int64_t SIZE_t               # Type for indices and counters
 ctypedef np.npy_int32 INT32_t            # Signed 32 bit integer
 ctypedef np.npy_uint32 UINT32_t          # Unsigned 32 bit integer
 
@@ -25,6 +25,7 @@ from libc.math cimport log as ln
 
 
 cdef inline DTYPE_t mean(DTYPE_t[::1] arr) nogil:
+    '''Arithmetic mean in the vector ``arr``.'''
     cdef DTYPE_t result = 0
     cdef int i
     for i in range(arr.shape[0]):
@@ -44,31 +45,34 @@ cdef inline int alltrue(SIZE_t[::1] mask, SIZE_t[::1] pos) nogil:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Sorting alogorthm implementations from sklearn
+# Sorting algorithm implementations taken from sklearn
+# https://github.com/scikit-learn/scikit-learn/blob/main/sklearn/tree/_splitter.pyx
+
 
 cdef inline double ld(double x) nogil:
+    '''dual logarithm'''
     return ln(x) / ln(2.0)
 
 
-# Sort n-element arrays pointed to by Xf and samples, simultaneously,
-# by the values in Xf. Algorithm: Introsort (Musser, SP&E, 1997).
 cdef inline void sort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
+    '''Sort n-element arrays pointed to by Xf and samples, simultaneously,
+    by the values in Xf. Algorithm: Introsort (Musser, SP&E, 1997).'''
     if n == 0:
         return
     cdef int maxd = 2 * <int>ld(n)
     introsort(Xf, samples, n, maxd)
 
 
-cdef inline void swap(DTYPE_t* Xf, SIZE_t* samples,
-                      SIZE_t i, SIZE_t j) nogil:
-    # Helper for sort
+cdef inline void swap(DTYPE_t* Xf, SIZE_t* samples, SIZE_t i, SIZE_t j) nogil:
+    '''Swap two elements at indices ``i`` and ``j`` in ``Xf`` 
+    and their index positions in ``samples``.'''
     Xf[i], Xf[j] = Xf[j], Xf[i]
     samples[i], samples[j] = samples[j], samples[i]
 
 
-cdef inline DTYPE_t median3(DTYPE_t* Xf,SIZE_t n) nogil:
-    # Median of three pivot selection, after Bentley and McIlroy (1993).
-    # Engineering a sort function. SP&E. Requires 8/3 comparisons on average.
+cdef inline DTYPE_t median3(DTYPE_t* Xf, SIZE_t n) nogil:
+    '''Median of three pivot selection, after Bentley and McIlroy (1993).
+    Engineering a sort function. SP&E. Requires 8/3 comparisons on average.'''
     cdef DTYPE_t a = Xf[0], b = Xf[n / 2], c = Xf[n - 1]
     if a < b:
         if b < c:
@@ -86,10 +90,11 @@ cdef inline DTYPE_t median3(DTYPE_t* Xf,SIZE_t n) nogil:
         return b
 
 
-# Introsort with median of 3 pivot selection and 3-way partition function
-# (robust to repeated elements, e.g. lots of zero features).
-cdef inline void introsort(DTYPE_t* Xf, SIZE_t *samples,
-                    SIZE_t n, int maxd) nogil:
+cdef inline void introsort(DTYPE_t* Xf, SIZE_t *samples,  SIZE_t n, int maxd) nogil:
+    '''
+    Introsort with median of 3 pivot selection and 3-way partition function
+    (robust to repeated elements, e.g. lots of zero features).
+    '''
     cdef DTYPE_t pivot
     cdef SIZE_t i, l, r
 
@@ -123,7 +128,7 @@ cdef inline void introsort(DTYPE_t* Xf, SIZE_t *samples,
 
 cdef inline void sift_down(DTYPE_t* Xf, SIZE_t* samples,
                            SIZE_t start, SIZE_t end) nogil:
-    # Restore heap order in Xf[start:end] by moving the max element to start.
+    '''Restore heap order in Xf[start:end] by moving the max element to start.'''
     cdef SIZE_t child, maxind, root
 
     root = start
@@ -132,9 +137,9 @@ cdef inline void sift_down(DTYPE_t* Xf, SIZE_t* samples,
 
         # find max of root, left child, right child
         maxind = root
-        if child < end and Xf[samples[maxind]] < Xf[samples[child]]:
+        if child < end and Xf[maxind] < Xf[child]:
             maxind = child
-        if child + 1 < end and Xf[samples[maxind]] < Xf[samples[child] + 1]:
+        if child + 1 < end and Xf[maxind] < Xf[child + 1]:
             maxind = child + 1
 
         if maxind == root:
@@ -162,6 +167,10 @@ cdef inline void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
         swap(Xf, samples, 0, end)
         sift_down(Xf, samples, 0, end)
         end = end - 1
+
+
+cpdef inline test_sort(DTYPE_t[::1] arr, SIZE_t[::1] indices, SIZE_t n=-1):
+    sort(&arr[0], &indices[0], arr.shape[0] if n == -1 else n)
 
 
 cdef inline SIZE_t _bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t lower, SIZE_t upper) nogil:

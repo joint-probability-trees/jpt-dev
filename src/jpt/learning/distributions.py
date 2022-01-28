@@ -1,11 +1,10 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-from abc import ABC
 from collections import OrderedDict
 
 from sklearn.preprocessing import StandardScaler
 
-from jpt.base.utils import classproperty
+from jpt.base.utils import classproperty, save_plot
 
 import copy
 import math
@@ -14,10 +13,8 @@ import os
 import re
 from operator import itemgetter
 
-from matplotlib.backends.backend_pdf import PdfPages
-
 import dnutils
-from dnutils import first, out, ifnone, stop, ifnot, trace
+from dnutils import first, out, ifnone, stop, ifnot, project
 from dnutils.stats import Gaussian as Gaussian_, _matshape
 
 from scipy.stats import multivariate_normal, mvn, norm
@@ -737,17 +734,19 @@ class Numeric(Distribution):
             plt.ioff()
 
         fig, ax = plt.subplots()
-        ax.set_title(f'{title or f"Piecewise linear CDF of {self._cl}"}')
+        ax.set_title(f'{title or f"CDF of {self._cl}"}')
         ax.set_xlabel(xlabel)
         ax.set_ylabel('%')
         std = ifnot(np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
                     self.cdf.intervals[1].upper - self.cdf.intervals[1].lower) * 2
-        bounds = np.array([self.cdf.intervals[0].upper - std/2] +
+        bounds = np.array([self.cdf.intervals[0].upper - std / 2] +
                           [v.upper for v in self.cdf.intervals[:-2]] +
                           [self.cdf.intervals[-1].lower] +
-                          [self.cdf.intervals[-1].lower + std/2])
+                          [self.cdf.intervals[-1].lower + std / 2])
 
-        ax.plot(bounds,
+        bounds_ = np.array([self.labels[b] for b in bounds])
+
+        ax.plot(bounds_,
                 self.cdf.multi_eval(bounds),
                 color='cornflowerblue',
                 linestyle='dashed',
@@ -755,7 +754,7 @@ class Numeric(Distribution):
                 linewidth=2,
                 markersize=12)
 
-        ax.scatter(bounds[1:-1],
+        ax.scatter(bounds_[1:-1],
                    self.cdf.multi_eval(bounds[1:-1]),
                    color='orange',
                    marker='o',
@@ -763,14 +762,7 @@ class Numeric(Distribution):
         ax.legend()  # do we need a legend with only one plotted line?
         fig.tight_layout()
 
-        # save figure as PDF or PNG
-        if pdf:
-            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{fname or self.__class__.__name__}.pdf')}")
-            with PdfPages(os.path.join(directory, f'{fname or self.__class__.__name__}.pdf')) as pdf:
-                pdf.savefig(fig)
-        else:
-            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{fname or self.__class__.__name__}.png')}")
-            plt.savefig(os.path.join(directory, f'{fname or self.__class__.__name__}.png'))
+        save_plot(fig, directory, fname or self.__class__.__name__, fmt='pdf' if pdf else 'svg')
 
         if view:
             plt.show()
@@ -985,7 +977,7 @@ class Multinomial(Distribution):
     def from_json(cls, data):
         return cls(data['params'])
 
-    def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False):
+    def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
 
         :param title:       the name of the variable this distribution represents
@@ -1000,61 +992,61 @@ class Multinomial(Distribution):
         :type view:         bool
         :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
         :type horizontal:   bool
+        :param max_values:  maximum number of values to plot
+        :type max_values:   int
         :return:            None
         '''
         # Only save figures, do not show
         if not view:
             plt.ioff()
 
-        vals = [re.escape(str(x)) for x in self.labels]
-        x = np.arange(len(self.values))  # the label locations
+        max_values = ifnone(max_values, len(self.labels))
+
+        labels = list(sorted(list(enumerate(self.labels.values())),
+                             key=lambda x: self._params[x[0]],
+                             reverse=True))[:max_values]
+        labels = project(labels, 1)
+        probs = list(sorted(self._params, reverse=True))[:max_values]
+
+        vals = [re.escape(str(x)) for x in labels]
+
+        x = np.arange(max_values)  # the label locations
         # width = .35  # the width of the bars
-        err = [.015] * len(self.values)
+        err = [.015] * max_values
 
         fig, ax = plt.subplots()
         ax.set_title(f'{title or f"Distribution of {self._cl}"}')
 
         if horizontal:
-            bars = ax.barh(x, self._params, xerr=err, color='cornflowerblue', label='%', align='center')
-
+            ax.barh(x, probs, xerr=err, color='cornflowerblue', label='%', align='center')
             ax.set_xlabel('%')
             ax.set_yticks(x)
             ax.set_yticklabels(vals)
-
             ax.invert_yaxis()
             ax.set_xlim(left=0., right=1.)
 
             for p in ax.patches:
                 h = p.get_width() - .09 if p.get_width() >= .9 else p.get_width() + .03
-                plt.text(h, p.get_y() + p.get_height()/2,
+                plt.text(h, p.get_y() + p.get_height() / 2,
                          f'{p.get_width():.2f}',
                          fontsize=10, color='black', verticalalignment='center')
         else:
-            bars = ax.bar(x, self._params, yerr=err, color='cornflowerblue', label='%')
-
+            ax.bar(x, probs, yerr=err, color='cornflowerblue', label='%')
             ax.set_ylabel('%')
             ax.set_xticks(x)
             ax.set_xticklabels(vals)
-
             ax.set_ylim(bottom=0., top=1.)
 
             # print precise value labels on bars
             for p in ax.patches:
                 h = p.get_height() - .09 if p.get_height() >= .9 else p.get_height() + .03
-                plt.text(p.get_x() + p.get_width()/2, h,
+                plt.text(p.get_x() + p.get_width() / 2, h,
                          f'{p.get_height():.2f}',
                          rotation=90, fontsize=10, color='black', horizontalalignment='center')
 
         fig.tight_layout()
 
-        # save figure as PDF or PNG
-        if pdf:
-            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{fname or self.__class__.__name__}.pdf')}")
-            with PdfPages(os.path.join(directory, f'{fname or self.__class__.__name__}.pdf')) as pdf:
-                pdf.savefig(fig)
-        else:
-            logger.debug(f"Saving distributions plot to {os.path.join(directory, f'{fname or self.__class__.__name__}.png')}")
-            plt.savefig(os.path.join(directory, f'{fname or self.__class__.__name__}.png'))
+        save_plot(fig, directory, fname or self.__class__.__name__, fmt='pdf' if pdf else 'svg')
 
         if view:
             plt.show()
