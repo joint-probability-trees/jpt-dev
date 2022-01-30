@@ -4,6 +4,7 @@
 import hashlib
 import math
 import numbers
+from collections import OrderedDict
 
 import numpy as np
 from dnutils import first, ifnone
@@ -126,7 +127,7 @@ class NumericVariable(Variable):
     Represents a continuous variable.
     '''
 
-    def __init__(self, name, domain, min_impurity_improvement=None, haze=None, max_std=None, precision=None):
+    def __init__(self, name, domain=Numeric, min_impurity_improvement=None, haze=None, max_std=None, precision=None):
         super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
         self.haze = ifnone(haze, .05)
         self._max_std_lbl = ifnone(max_std, 0.)
@@ -277,3 +278,53 @@ def infer_from_dataframe(df, scale_numeric_types=True, min_impurity_improvement=
             raise TypeError('Unknown column type:', col, '[%s]' % dtype)
         variables.append(var)
     return variables
+
+
+class VariableMap:
+    '''
+    Convenience class for mapping a ``Variable`` object to anything else. This special map, however,
+    supports accessing the image set both by the variable object instance itself _and_ its name.
+    '''
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._variables = {}
+        self._map = OrderedDict(*args, **kwargs)
+
+    def __getitem__(self, key):
+        if isinstance(key, Variable):
+            return self.__getitem__(key.name)
+        return self._map.__getitem__(key)
+
+    def __setitem__(self, variable, value):
+        if not isinstance(variable, Variable):
+            raise ValueError('Illegal argument value: expected Variable, got %s.' % type(variable).__name__)
+        self._map[variable.name] = value
+        self._variables[variable.name] = variable
+
+    def __delitem__(self, key):
+        if isinstance(key, Variable):
+            self.__delitem__(key.name)
+            return
+        del self._map[key]
+        del self._variables[key]
+
+    def __contains__(self, item):
+        if isinstance(item, Variable):
+            return self.__contains__(item.name)
+        return item in self._map
+
+    def __iter__(self):
+        return iter((self._variables[name] for name in self._map))
+
+    def __len__(self):
+        return len(self._map)
+
+    def keys(self):
+        yield from (self._variables[name] for name in self._map.keys())
+
+    def values(self):
+        yield from self._map.values()
+
+    def items(self):
+        yield from ((self._variables[name], value) for name, value in self._map.items())
