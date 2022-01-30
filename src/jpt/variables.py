@@ -6,7 +6,7 @@ import math
 import numbers
 
 import numpy as np
-from dnutils import first, ifnone, out
+from dnutils import first, ifnone
 
 try:
     from jpt.base.intervals import INC, EXC, ContinuousSet
@@ -19,6 +19,10 @@ except ModuleNotFoundError:
 
 
 from jpt.learning.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Generic variable classes
 
 
 class Variable:
@@ -105,7 +109,6 @@ class Variable:
 
     @staticmethod
     def from_json(data):
-        # domain = Distribution.type_from_json(data['domain'])
         if data['type'] == 'numeric':
             return NumericVariable.from_json(data)
         elif data['type'] == 'symbolic':
@@ -114,7 +117,14 @@ class Variable:
             raise TypeError('Unknown distribution type: %s' % data['type'])
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# Numeric variables
+
+
 class NumericVariable(Variable):
+    '''
+    Represents a continuous variable.
+    '''
 
     def __init__(self, name, domain, min_impurity_improvement=None, haze=None, max_std=None, precision=None):
         super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
@@ -160,9 +170,12 @@ class NumericVariable(Variable):
             if len(assignment) == 1:
                 valstr = str(first(assignment))
             else:
-                valstr = ', '.join([self.str(a, fmt) for a in assignment])
+                valstr = ', '.join([self.str(a, fmt=fmt) for a in assignment])
         else:
-            valstr = str(ContinuousSet(self.domain.labels[assignment.lower], self.domain.labels[assignment.upper], assignment.left, assignment.right))
+            valstr = str(ContinuousSet(self.domain.labels[assignment.lower],
+                                       self.domain.labels[assignment.upper],
+                                       assignment.left,
+                                       assignment.right))
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
@@ -174,12 +187,19 @@ class NumericVariable(Variable):
                                self.name,
                                upper % ({INC: SYMBOL.LTE,
                                          EXC: SYMBOL.LT}[assignment.right],
-                                         self.domain.labels[assignment.upper]) if assignment.upper != np.PINF else '')
+                                        self.domain.labels[assignment.upper]) if assignment.upper != np.PINF else '')
         else:
             raise ValueError('Unknown format for numeric variable: %s.' % fmt)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# Classes to represent symbolic variables
+
+
 class SymbolicVariable(Variable):
+    '''
+    Represents a symbolic variable.
+    '''
 
     def __init__(self, name, domain, min_impurity_improvement=None):
         super().__init__(name,
@@ -207,22 +227,52 @@ class SymbolicVariable(Variable):
             return '%s = %s' % (self.name, assignment)
 
 
-def infer_from_dataframe(df, scale_numeric_types=True, min_impurity_improvement=None, haze=None, max_std=None, precision=None):
+# ----------------------------------------------------------------------------------------------------------------------
+# Convenience functions and classes
+
+def infer_from_dataframe(df, scale_numeric_types=True, min_impurity_improvement=None,
+                         haze=None, max_std=None, precision=None):
     '''
     Creates the ``Variable`` instances from column types in a Pandas or Spark data frame.
+
+    :param df:  the data frame object to generate the variables from.
+    :type df:   ``pandas.DataFrame``
+
+    :param scale_numeric_types: Whether of not to use scaled types for the numeric variables.
+    :type scale_numeric_types: bool
+
+    :param min_impurity_improvement:   the minimum imrovement that a split must induce to be acceptable.
+    :type min_impurity_improvement: ``float``
+
+    :param haze:
+    :type haze:         ``float``
+
+    :param max_std:
+    :type max_std:      ``float``
+
+    :param precision:
+    :type precision:    ``float`` in ``[0, 1]``
     '''
 
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
         if dtype in (str, object, bool):
             dom = SymbolicType('%s_TYPE' % col.upper(), labels=df[col].unique())
-            var = SymbolicVariable(col, dom, min_impurity_improvement=min_impurity_improvement, )
+            var = SymbolicVariable(col,
+                                   dom,
+                                   min_impurity_improvement=min_impurity_improvement)
+
         elif dtype in (np.float64, np.int64, np.float32, np.int32):
             if scale_numeric_types:
                 dom = NumericType('%s_TYPE' % col.upper(), df[col].unique())
             else:
                 dom = Numeric
-            var = NumericVariable(col, dom, min_impurity_improvement=min_impurity_improvement, haze=haze, max_std=max_std, precision=precision)
+            var = NumericVariable(col,
+                                  dom,
+                                  min_impurity_improvement=min_impurity_improvement,
+                                  haze=haze,
+                                  max_std=max_std,
+                                  precision=precision)
         else:
             raise TypeError('Unknown column type:', col, '[%s]' % dtype)
         variables.append(var)
