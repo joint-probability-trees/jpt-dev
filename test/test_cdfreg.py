@@ -1,22 +1,22 @@
 import statistics
 
 import pandas as pd
-import pyximport
 from matplotlib import pyplot as plt
 from pandas import DataFrame
 from scipy.stats import norm
 
-from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
-from jpt.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
-
-pyximport.install()
-
-from jpt.base.intervals import ContinuousSet, INC, EXC
-
 import unittest
 import numpy as np
-from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
+
+try:
+    from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
+    from jpt.trees import JPT
+    from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
+    from jpt.base.intervals import ContinuousSet, INC, EXC
+    from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
 
 
 class TestCaseMerge(unittest.TestCase):

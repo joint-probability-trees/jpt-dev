@@ -1,11 +1,12 @@
-import pyximport
-pyximport.install()
-
 from unittest import TestCase
 
 import numpy as np
 
-from jpt.base.cutils import test_sort
+try:
+    from jpt.base.cutils import test_sort
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
 
 
 class CUtilsTest(TestCase):
