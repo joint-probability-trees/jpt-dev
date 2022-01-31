@@ -843,6 +843,14 @@ class OrderedDictProxy:
     def __len__(self):
         return len(self._dict)
 
+    def __eq__(self, other):
+        if not isinstance(other, OrderedDictProxy):
+            return False
+        for self_, other_ in zip(self._dict.items(), other._dict.items()):
+            if self_[0] != other_[0] or self_[1] != other_[1]:
+                return False
+        return True
+
 
 class Multinomial(Distribution):
     '''
