@@ -900,7 +900,7 @@ class Multinomial(Distribution):
         return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self._params)])}]>;'
 
     def p(self, label):
-        return self._p(self.values[label])
+        return self._p(int(self.values[label]))
 
     def _p(self, value):
         return self._params[value]
@@ -1000,7 +1000,7 @@ class Multinomial(Distribution):
         if not view:
             plt.ioff()
 
-        max_values = ifnone(max_values, len(self.labels))
+        max_values = min(ifnone(max_values, len(self.labels)), len(self.labels))
 
         labels = list(sorted(list(enumerate(self.labels.values())),
                              key=lambda x: self._params[x[0]],
@@ -1016,7 +1016,6 @@ class Multinomial(Distribution):
 
         fig, ax = plt.subplots()
         ax.set_title(f'{title or f"Distribution of {self._cl}"}')
-
         if horizontal:
             ax.barh(x, probs, xerr=err, color='cornflowerblue', label='%', align='center')
             ax.set_xlabel('%')
@@ -1078,8 +1077,8 @@ class Bool(Multinomial):
 
 def SymbolicType(name, labels):
     t = type(name, (Multinomial,), {})
-    t.values = OrderedDictProxy([(lbl, val) for val, lbl in zip(range(len(labels)), labels)])
-    t.labels = OrderedDictProxy([(val, lbl) for val, lbl in zip(range(len(labels)), labels)])
+    t.values = OrderedDictProxy([(lbl, float(val)) for val, lbl in zip(range(len(labels)), labels)])
+    t.labels = OrderedDictProxy([(float(val), lbl) for val, lbl in zip(range(len(labels)), labels)])
     return t
 
 
