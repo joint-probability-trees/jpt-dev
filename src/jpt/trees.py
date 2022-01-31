@@ -1,7 +1,6 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import html
-import itertools
 import json
 import math
 import numbers
@@ -12,7 +11,6 @@ import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 
-import dill
 import numpy as np
 import pandas as pd
 from dnutils.stats import stopwatch
@@ -26,18 +24,23 @@ from sklearn.tree import DecisionTreeRegressor
 try:
     from .base.quantiles import QuantileDistribution
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+    from .base.constants import plotstyle, orange, green, SYMBOL
+    from .base.utils import list2interval, format_path, normalized
+    from .learning.impurity import Impurity
+    from .learning.distributions import Multinomial, Numeric, Identity
+    from .variables import Variable
 except ImportError:
     import pyximport
     pyximport.install()
+finally:
     from .base.quantiles import QuantileDistribution
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+    from .base.constants import plotstyle, orange, green, SYMBOL
+    from .base.utils import list2interval, format_path, normalized
+    from .learning.impurity import Impurity
+    from .learning.distributions import Multinomial, Numeric, Identity
+    from .variables import Variable
 
-from .learning.distributions import Multinomial, Numeric, Identity
-
-from .learning.impurity import Impurity
-from .base.constants import plotstyle, orange, green, SYMBOL
-from .base.utils import list2interval, format_path, normalized
-from .variables import Variable
 
 style.use(plotstyle)
 
@@ -1207,3 +1210,6 @@ class PosteriorResult(Result):
                                         ' | ' if self.evidence else '',
                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
                                         self.result * 100))
+
+    def __getitem__(self, item):
+        return self.dists[item]
