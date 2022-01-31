@@ -1,11 +1,13 @@
-import pyximport
-pyximport.install()
-
 from ddt import ddt, data, unpack
 import numpy as np
 import unittest
 
-from jpt.base.intervals import ContinuousSet, INC, EXC, EMPTY
+try:
+    from jpt.base.intervals import ContinuousSet, INC, EXC, EMPTY
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+    from jpt.base.intervals import ContinuousSet, INC, EXC, EMPTY
 
 
 @ddt
@@ -50,4 +52,3 @@ class IntervalTest(unittest.TestCase):
                          i1.intersection(i2, right=INC))
         self.assertEqual(i1.intersection(i2, right=INC),
                          i2.intersection(i1, right=INC))
-

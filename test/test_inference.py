@@ -4,10 +4,16 @@ import unittest
 
 import numpy as np
 
-from jpt.base.utils import Conditional
-from jpt.learning.distributions import Bool
-from jpt.trees import JPT
-from jpt.variables import SymbolicVariable
+try:
+    from jpt.learning.distributions import Bool
+    from jpt.trees import JPT
+    from jpt.variables import SymbolicVariable
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+    from jpt.learning.distributions import Bool
+    from jpt.trees import JPT
+    from jpt.variables import SymbolicVariable
 
 
 class JointProbabilityTreesMPE(unittest.TestCase):
