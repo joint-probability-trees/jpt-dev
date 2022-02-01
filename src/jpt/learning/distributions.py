@@ -4,7 +4,7 @@ from collections import OrderedDict
 
 from sklearn.preprocessing import StandardScaler
 
-from jpt.base.utils import classproperty, save_plot
+from jpt.base.utils import classproperty, save_plot, Unsatisfiability, normalized
 
 import copy
 import math
@@ -909,6 +909,9 @@ class Multinomial(Distribution):
             return f'{self._cl}<p=n/na>'
         return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self._params)])}]>;'
 
+    def copy(self):
+        return type(self)(params=self._params)
+
     def p(self, label):
         return self._p(int(self.values[label]))
 
@@ -940,6 +943,35 @@ class Multinomial(Distribution):
 
     def mpe(self):
         return self.expectation()
+
+    def _crop(self, incl_values=None, excl_values=None):
+        if incl_values and excl_values:
+            raise Unsatisfiability("Admissible and inadmissible values must be disjoint.")
+        posterior = self.copy()
+        if incl_values:
+            posterior._params[...] = 0
+            for i in incl_values:
+                posterior._params[int(i)] = self._params[int(i)]
+        if excl_values:
+            for i in excl_values:
+                posterior._params[int(i)] = 0
+        try:
+            params = normalized(posterior._params)
+        except ValueError:
+            raise Unsatisfiability('All values have zero probability [%s].' % type(self).__name__)
+        else:
+            posterior._params = np.array(params)
+        return posterior
+
+    def crop(self, incl_values=None, excl_values=None):
+        '''
+        Compute the posterior of the multinomial distribution.
+
+        ``values`` and ``exclude`` are indices of the values (labels) that are admitted and/or excluded.
+        '''
+        incl_values_ = [self.values[v] for v in incl_values] if incl_values is not None else None
+        excl_values_ = [self.values[v] for v in excl_values] if excl_values is not None else None
+        return self._crop(incl_values_, excl_values_)
 
     def fit(self, data, rows=None, col=None):
         self._params = np.zeros(shape=self.n_values, dtype=np.float64)
