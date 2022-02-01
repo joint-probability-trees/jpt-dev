@@ -882,8 +882,10 @@ class Multinomial(Distribution):
         return item in self.values
 
     @classmethod
-    def __len__(cls):
-        return len(cls.values)
+    def equiv(cls, other):
+        if not issubclass(other, Multinomial):
+            return False
+        return cls.__name__ == other.__name__ and cls.labels == other.labels and cls.values == other.values
 
     def __getitem__(self, value):
         return self.p(value)

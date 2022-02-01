@@ -22,6 +22,13 @@ class MultinomialTest(TestCase):
         DistABC = self.DistABC
         Dist123 = self.Dist123
 
+        self.assertTrue(DistABC.equiv(DistABC))
+        self.assertTrue(Dist123.equiv(Dist123))
+        self.assertFalse(DistABC.equiv(Dist123))
+
+        self.assertEqual(DistABC.n_values, 3)
+        self.assertEqual(Dist123.n_values, 5)
+
         self.assertTrue(issubclass(DistABC, Multinomial))
         self.assertTrue(issubclass(Dist123, Multinomial))
 
@@ -58,4 +65,11 @@ class MultinomialTest(TestCase):
 
     def test_serialization(self):
         '''(De-)Serialization of Multinomials'''
-        pass
+        DistABC = self.DistABC
+        Dist123 = self.Dist123
+
+        DistABC_ = DistABC.type_from_json(DistABC.type_to_json())
+        Dist123_ = Dist123.type_from_json(Dist123.type_to_json())
+
+        self.assertTrue(DistABC_.equiv(DistABC))
+        self.assertTrue(Dist123_.equiv(Dist123))
