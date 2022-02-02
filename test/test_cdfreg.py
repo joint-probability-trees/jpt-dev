@@ -8,6 +8,8 @@ from scipy.stats import norm
 import unittest
 import numpy as np
 
+from jpt.base.utils import Unsatisfiability
+
 try:
     from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
     from jpt.trees import JPT
@@ -333,15 +335,13 @@ class TestCaseQuantileCrop(unittest.TestCase):
 
     def test_crop_quantiledist_outside_r(self):
         self.interval = ContinuousSet(1.5, 1.6)
-        self.actual = self.qdist.crop(self.interval)
-        self.assertIsNone(self.actual)
+        self.assertRaises(Unsatisfiability, self.qdist.crop, self.interval)
 
     def test_crop_quantiledist_outside_l(self):
         self.interval = ContinuousSet(-3, -2)
-        self.actual = self.qdist.crop(self.interval)
-        self.assertIsNone(self.actual)
+        self.assertRaises(Unsatisfiability, self.qdist.crop, self.interval)
 
-    def tearDown(self):
+    def plot(self):
         print('Tearing down test method', self._testMethodName)
         x = np.linspace(-2, 2, 100)
         orig = self.qdist.cdf.multi_eval(x)
@@ -363,6 +363,11 @@ class TestCaseQuantileCrop(unittest.TestCase):
 
 
 class TestCasePosteriorNumeric(unittest.TestCase):
+
+    varx = None
+    vary = None
+    jpt = None
+    df = None
 
     @classmethod
     def f(cls, x):
@@ -408,8 +413,12 @@ class TestCasePosteriorNumeric(unittest.TestCase):
         self.e = {self.vary: 0}
         self.posterior = self.jpt.posterior(self.q, self.e)
 
-    def tearDown(self):
-        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+    def plot(self):
+        print('Tearing down test method',
+              self._testMethodName,
+              'with calculated posterior',
+              f'Posterior P('
+              f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
 
         # Mesh the input space for evaluations of the real function, the prediction and its MSE
         X = np.linspace(-2, 2, 100)
@@ -434,7 +443,8 @@ class TestCasePosteriorNumeric(unittest.TestCase):
 
         # plot posterior
         for var in self.q:
-            if var not in self.posterior: continue
+            if var not in self.posterior:
+                continue
             plt.plot(X, self.posterior[var].cdf.multi_eval(X), label=f'Posterior of combined datasets')
 
         plt.xlabel('$x$')
@@ -442,12 +452,17 @@ class TestCasePosteriorNumeric(unittest.TestCase):
         plt.ylim(-2, 5)
         plt.xlim(-2, 2)
         plt.legend(loc='upper left')
-        plt.title(f'Posterior P({",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+        plt.title(f'Posterior P('
+                  f'{",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
         plt.grid()
         plt.show()
 
 
 class TestCasePosteriorSymbolic(unittest.TestCase):
+
+    data = None
+    variables = None
+    jpt = None
 
     @classmethod
     def setUpClass(cls):
@@ -499,19 +514,25 @@ class TestCasePosteriorSymbolic(unittest.TestCase):
     def test_posterior_symbolic_unsatisfiable(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: '10--30', self.variables[1]: True, self.variables[8]: 'French'}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertIsNone(self.posterior[self.q[-1]])
+        self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
     def tearDown(self):
-        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+        print('Tearing down test method',
+              self._testMethodName,
+              'with calculated posterior',
+              f'Posterior P('
+              f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
 
 
 class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
 
+    data = None
+    variables = None
+    jpt = None
+
     @classmethod
     def setUpClass(cls):
         print('Setting up test class', cls.__name__)
-
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
@@ -535,65 +556,75 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Thai'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, self.posterior.dists[self.q[-1]].expectation())
+        self.assertEqual(True, self.posterior.distributions[self.q[-1]].expectation())
 
     def test_posterior_mixed_single_candidatet_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Italian'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(False, self.posterior.dists[self.q[-1]].expectation())
+        self.assertEqual(False, self.posterior.distributions[self.q[-1]].expectation())
 
     def test_posterior_mixed_evidence_not_in_path_T(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, self.posterior.dists[self.q[-1]].expectation())
+        self.assertEqual(True, self.posterior.distributions[self.q[-1]].expectation())
 
     def test_posterior_mixed_evidence_not_in_path_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(False, self.posterior.dists[self.q[-1]].expectation())
+        self.assertEqual(False, self.posterior.distributions[self.q[-1]].expectation())
 
     def test_posterior_mixed_unsatisfiable(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertIsNone(self.posterior.dists[self.q[-1]])
+        self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
     def test_posterior_mixed_numeric_query(self):
         self.q = [self.variables[9]]
         self.e = {self.variables[8]: 'Burger', self.variables[0]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        print(self.posterior.dists[self.q[-1]].cdf.pfmt())
+        print(self.posterior.distributions[self.q[-1]].cdf.pfmt())
 
         # Mesh the input space for evaluations of the real function, the prediction and its MSE
-        X = np.linspace(-5, 65, 100)
         xr = self.data[(self.data['Food'] == 'Burger') & (self.data['Alternatives'] == False)]['WaitEstimate']
 
         # Plot the data, the pdfs of each dataset and of the datasets combined
         plt.scatter(self.data['WaitEstimate'], [0]*len(self.data), color='b', marker='*', label='All training data')
         plt.scatter(xr, [0]*len(xr), color='r', marker='.', label='Filtered training data')
 
+    def plot(self):
+        print('Tearing down test method',
+              self._testMethodName,
+              'with calculated posterior',
+              f'Posterior P('
+              f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
         # plot posterior
+        X = np.linspace(-5, 65, 100)
         for var in self.q:
-            if var not in self.posterior.dists: continue
-            plt.plot(X, self.posterior.dists[var].cdf.multi_eval(np.array([var.domain.values[x] for x in X])), label=f'Posterior of dataset')
+            if var not in self.posterior.distributions: continue
+            plt.plot(X,
+                     self.posterior.distributions[var].cdf.multi_eval(np.array([var.domain.values[x] for x in X])),
+                     label=f'Posterior of dataset')
 
         plt.xlabel('$WaitEstimate [min]$')
         plt.ylabel('$f(x)$')
         plt.ylim(-2, 2)
         plt.xlim(-5, 65)
         plt.legend(loc='upper left')
-        plt.title(f'Posterior P({",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'.replace('$', '\$'))
+        plt.title(f'Posterior P('
+                  f'{",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'
+                  .replace('$', r'\$'))
         plt.grid()
         plt.show()
 
-    def tearDown(self):
-        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-
 
 class TestCaseExpectation(unittest.TestCase):
+
+    jpt = None
+    data = None
+    variables = None
 
     @classmethod
     def setUpClass(cls):
@@ -629,13 +660,22 @@ class TestCaseExpectation(unittest.TestCase):
     def test_expectation_mixed_unsatisfiable(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
-        self.assertRaises(ValueError, self.jpt.expectation, self.q, self.e)
+        self.assertRaises(Unsatisfiability, self.jpt.expectation, self.q, self.e)
 
     def tearDown(self):
-        print('Tearing down test method', self._testMethodName, 'with expectation for', f'P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])}) = [{",".join([f"{q.name}: {e.result if e is not None else None}" for q, e in zip(self.q, self.expectation if hasattr(self, "expectation") else [None]*len(self.q))])}]')
+        print('Tearing down test method',
+              self._testMethodName,
+              'with expectation for',
+              f'P({",".join([qv.name for qv in self.q])}|'
+              f'{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'
+              f' = [{",".join([f"{q.name}: {e.result if e is not None else None}" for q, e in zip(self.q, self.expectation if hasattr(self, "expectation") else [None]*len(self.q))])}]')
 
 
 class TestCaseInference(unittest.TestCase):
+
+    jpt = None
+    data = None
+    variables = None
 
     @classmethod
     def setUpClass(cls):
@@ -661,23 +701,20 @@ class TestCaseInference(unittest.TestCase):
         cls.jpt.plot(title='Restaurant-Mixed', filename='Restaurant-Mixed', directory='TEST', view=False)
 
     def test_inference_mixed_single_candidate_T(self):
-        self.q = {self.variables[-1]: True, self.variables[2]: False}
-        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Thai'}
-        inf = self.jpt.infer(self.q, self.e)
-        print(inf.explain())
-        self.assertEqual(True, inf.result)
+        self.q = {'WillWait': True}
+        self.e = {'WaitEstimate': [0, 10], 'Food': 'Thai'}
+        inference = self.jpt.infer(self.q, self.e)
+        self.assertEqual(2 / 3, inference.result)
 
     def test_inference_mixed_neu(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[-1]: True}
-        inf = self.jpt.posterior(self.q, self.e)
-        print(inf.explain())
-        self.assertEqual(True, inf.result)
+        posterior = self.jpt.posterior(self.q, self.e)
+        self.assertEqual(True, posterior.distributions['WillWait'].expectation())
 
-
-    def tearDown(self):
-        print('Tearing down test method', self._testMethodName, 'with calculated posterior', f'Posterior P({",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-
-
-if __name__ == '__main__':
-    unittest.main()
+    # def tearDown(self):
+    #     print('Tearing down test method',
+    #           self._testMethodName,
+    #           'with calculated posterior',
+    #           f'Posterior P(' +
+    #           f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k}={v}" for k, v in self.e.items()])})')

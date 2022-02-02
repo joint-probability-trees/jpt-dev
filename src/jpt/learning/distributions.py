@@ -4,7 +4,7 @@ from collections import OrderedDict
 
 from sklearn.preprocessing import StandardScaler
 
-from jpt.base.utils import classproperty, save_plot
+from jpt.base.utils import classproperty, save_plot, Unsatisfiability, normalized
 
 import copy
 import math
@@ -448,6 +448,9 @@ class MultiVariateGaussian(Gaussian):
             plt.show()
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 class Distribution:
     '''
     Abstract supertype of all domains and distributions
@@ -456,32 +459,48 @@ class Distribution:
     labels = None
 
     def __init__(self):
-        # used for str and repr methods to be able to print actual type of Distribution when created with jpt.variables.Variable
-        self._cl = f'{self.__class__.__name__}' + (f' ({self.__class__.__mro__[1].__name__})' if self.__module__ != __name__ else '')
+        # used for str and repr methods to be able to print actual type
+        # of Distribution when created with jpt.variables.Variable
+        self._cl = f'{self.__class__.__name__}' \
+                   + (f' ({self.__class__.__mro__[1].__name__})'
+                      if self.__module__ != __name__
+                      else '')
 
     def __hash__(self):
-        return hash(self.values)
+        return hash((type(self), self.values))
 
     def __getitem__(self, value):
         return self.p(value)
 
     def sample(self, n):
-        raise NotImplementedError
+        raise NotImplemented()
 
     def sample_one(self):
-        raise NotImplementedError
+        raise NotImplemented()
 
     def p(self, value):
-        raise NotImplementedError
+        raise NotImplemented()
 
     def _p(self, value):
-        raise NotImplementedError
+        raise NotImplemented()
 
     def expectation(self):
-        raise NotImplementedError
+        raise NotImplemented()
 
     def mpe(self):
-        raise NotImplementedError
+        raise NotImplemented()
+
+    def crop(self):
+        raise NotImplemented()
+
+    def _crop(self):
+        raise NotImplemented()
+
+    def merge(self):
+        raise NotImplemented()
+
+    def update(self):
+        raise NotImplemented()
 
     def fit(self, data, rows=None, col=None):
         raise NotImplementedError
@@ -501,10 +520,10 @@ class Distribution:
         :type view:         bool
         :return:            None
         '''
-        raise NotImplementedError
+        raise NotImplemented()
 
     def to_json(self):
-        raise NotImplementedError()
+        raise NotImplemented()
 
     @staticmethod
     def from_json(data):
@@ -535,11 +554,11 @@ class DataScaler(StandardScaler):
 
     @property
     def mean(self):
-        return self.mean_
+        return self.mean_[0]
 
     @property
     def variance(self):
-        return self.scale_
+        return self.scale_[0]
 
     def __getitem__(self, item):
         if item in (np.NINF, np.PINF):
@@ -547,14 +566,17 @@ class DataScaler(StandardScaler):
         return self.inverse_transform(np.array([item]))[0, 0]
 
     def to_json(self):
-        return {'mean': list(self.mean_),
-                'var': list(self.scale_)}
+        return {'mean_': list(self.mean_),
+                'scale_': list(self.scale_)}
+
+    def __eq__(self, other):
+        return self.mean == other.mean and self.variance == other.variance
 
     @staticmethod
     def from_json(data):
         scaler = DataScaler(None)
-        scaler.mean_ = np.array(data['mean'])
-        scaler.scale_ = np.array(data['var'])
+        scaler.mean_ = np.array(data['mean_'])
+        scaler.scale_ = np.array(data['scale_'])
         scaler.n_features_in_ = 1
         return scaler
 
@@ -572,15 +594,25 @@ class Identity:
     def transformer(self):
         return lambda a: self[a]
 
+    def __eq__(self, o):
+        return type(o) is Identity
+
 
 class DataScalerProxy:
 
     def __init__(self, datascaler, inverse=False):
         self.datascaler = datascaler
         self.inverse = inverse
+        self.mean = self.datascaler.mean
+        self.variance = self.datascaler.variance
 
     def __call__(self, arg):
         return self[arg]
+
+    def __eq__(self, o):
+        return (isinstance(o, DataScalerProxy) and
+                self.datascaler == o.datascaler and
+                self.inverse == o.inverse)
 
     def transformer(self):
         return lambda a: self[a]
@@ -597,10 +629,12 @@ class DataScalerProxy:
     def transform(self, x):
         return self.datascaler.transform(x.reshape(-1, 1)).ravel()
 
-    def keys(self):
+    @staticmethod
+    def keys():
         return R
 
-    def values(self):
+    @staticmethod
+    def values():
         return R
 
     def __repr__(self):
@@ -625,6 +659,18 @@ class Numeric(Distribution):
 
     def __getitem__(self, value):
         return self.p(value)
+
+    def __eq__(self, o):
+        if not issubclass(type(o), Numeric):
+            return False
+        return type(o).equiv(type(self)) and self.cdf == o.cdf
+
+    @classmethod
+    def equiv(cls, other):
+        return (issubclass(other, Numeric) and
+                type(cls).__name__ == type(other).__name__ and
+                cls.values == other.values and
+                cls.labels == other.labels)
 
     @property
     def cdf(self):
@@ -688,10 +734,16 @@ class Numeric(Distribution):
             raise TypeError('Only distributions of the same type can be merged.')
         return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
 
-    def crop(self, interval):
+    def _crop(self, interval):
         dist = self.copy()
         dist._quantile = self._quantile.crop(interval)
         return dist
+
+    def crop(self, interval):
+        interval_ = interval.copy()
+        interval_.lower = self.values[interval.lower]
+        interval_.upper = self.values[interval.upper]
+        return self._crop(interval_)
 
     @classmethod
     def type_to_json(cls):
@@ -713,12 +765,16 @@ class Numeric(Distribution):
         return cls
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
-        '''Generates a plot of the piecewise linear function representing the variable's cumulative distribution function
+        '''
+        Generates a plot of the piecewise linear function representing
+        the variable's cumulative distribution function
 
         :param title:       the name of the variable this distribution represents
         :type title:        str
         :param fname:       the name of the file to be stored
         :type fname:        str
+        :param xlabel:      the label of the x-axis
+        :type xlabel:       str
         :param directory:   the directory to store the generated plot files
         :type directory:    str
         :param pdf:         whether to store files as PDF. If false, a png is generated by default
@@ -874,6 +930,10 @@ class Multinomial(Distribution):
             raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
         self.to_json = self.inst_to_json
 
+    @property
+    def probabilities(self):
+        return self._params
+
     @classproperty
     def n_values(self):
         return len(self.values)
@@ -894,7 +954,7 @@ class Multinomial(Distribution):
         self._params[self.values[label]] = p
 
     def __eq__(self, other):
-        return type(self) is type(other) and (self._params == other._params).all()
+        return type(self) is type(other) and (self.probabilities == other.probabilities).all()
 
     def __hash__(self):
         return hash((Multinomial, self.values.values(), self.labels.values(), self._params))
@@ -902,18 +962,25 @@ class Multinomial(Distribution):
     def __str__(self):
         if self._p is None:
             return f'{self._cl}<p=n/a>'
-        return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._params)])}]>'
+        return f'{self._cl}<p=[{";".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self.probabilities)])}]>'
 
     def __repr__(self):
         if self._p is None:
-            return f'{self._cl}<p=n/na>'
-        return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self._params)])}]>;'
+            return f'{self._cl}<p=n/a>'
+        return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self.probabilities)])}]>;'
 
-    def p(self, label):
-        return self._p(int(self.values[label]))
+    def copy(self):
+        return type(self)(params=self._params)
 
-    def _p(self, value):
-        return self._params[value]
+    def p(self, labels):
+        if not isinstance(labels, set):
+            raise TypeError('Argument must be a set of values (got %s).' % labels)
+        return self._p({int(self.values[l]) for l in labels})
+
+    def _p(self, values):
+        if not isinstance(values, set):
+            raise TypeError('Argument must be a set of values (got %s).' % values)
+        return sum(self._params[int(v)] for v in values)
 
     def sample(self, n):
         '''Returns ``n`` sample `values` according to their respective probability'''
@@ -932,7 +999,7 @@ class Multinomial(Distribution):
         return self.labels[wchoice(self.values, self._params)]
 
     def _expectation(self):
-        '''Returns the value with the highest probability for each variable'''
+        '''Returns the value with the highest probability for this variable'''
         return max([(v, p) for v, p in zip(self.values.values(), self._params)], key=itemgetter(1))[0]
 
     def expectation(self):
@@ -940,6 +1007,35 @@ class Multinomial(Distribution):
 
     def mpe(self):
         return self.expectation()
+
+    def _crop(self, incl_values=None, excl_values=None):
+        if incl_values and excl_values:
+            raise Unsatisfiability("Admissible and inadmissible values must be disjoint.")
+        posterior = self.copy()
+        if incl_values:
+            posterior._params[...] = 0
+            for i in incl_values:
+                posterior._params[int(i)] = self._params[int(i)]
+        if excl_values:
+            for i in excl_values:
+                posterior._params[int(i)] = 0
+        try:
+            params = normalized(posterior._params)
+        except ValueError:
+            raise Unsatisfiability('All values have zero probability [%s].' % type(self).__name__)
+        else:
+            posterior._params = np.array(params)
+        return posterior
+
+    def crop(self, incl_values=None, excl_values=None):
+        '''
+        Compute the posterior of the multinomial distribution.
+
+        ``values`` and ``exclude`` are indices of the values (labels) that are admitted and/or excluded.
+        '''
+        incl_values_ = [self.values[v] for v in incl_values] if incl_values is not None else None
+        excl_values_ = [self.values[v] for v in excl_values] if excl_values is not None else None
+        return self._crop(incl_values_, excl_values_)
 
     def fit(self, data, rows=None, col=None):
         self._params = np.zeros(shape=self.n_values, dtype=np.float64)
@@ -960,11 +1056,15 @@ class Multinomial(Distribution):
 
     @staticmethod
     def merge(distributions, weights):
-        if not all(distributions[0].values == v.values for v in distributions):
+        if not all(type(distributions[0]).equiv(type(d)) for d in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
+        if abs(1 - sum(weights)) > 1e-10:
+            raise ValueError('Weights must sum to 1 (but is %s).' % sum(weights))
         params = np.zeros(distributions[0].n_values)
         for d, w in zip(distributions, weights):
-            params += d._params * w
+            params += d.probabilities * w
+        if abs(sum(params)) < 1e-10:
+            raise Unsatisfiability('Sum of weights must not be zero.')
         return type(distributions[0])(params=params)
 
     @classmethod

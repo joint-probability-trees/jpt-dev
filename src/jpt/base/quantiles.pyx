@@ -6,29 +6,23 @@
 # cython: cdivision=True
 import itertools
 import numbers
-import random
-import re
 from collections import deque
 from operator import itemgetter, attrgetter
 
-from dnutils import ifnot, out, first, stop, ifnone
-# from pyearth import Earth
-# from pyearth._basis import ConstantBasisFunction, HingeBasisFunctionBase, LinearBasisFunction, HingeBasisFunction
+from dnutils import ifnot, first, ifnone
 from scipy import stats
 from scipy.stats import norm
 
-from .intervals cimport ContinuousSet, RealSet, _INC, _EXC
+from .intervals cimport ContinuousSet, RealSet
 from .intervals import R, EMPTY, EXC, INC
 
 import numpy as np
 cimport numpy as np
 cimport cython
 
-from numpy cimport float64_t
-
 import warnings
 
-from .utils import pairwise, normalized
+from .utils import pairwise, Unsatisfiability
 from .cutils cimport SIZE_t, DTYPE_t, sort
 
 from ..learning.cdfreg import CDFRegressor
@@ -647,9 +641,14 @@ cdef class QuantileDistribution:
         if self._cdf is None:
             raise RuntimeError('No quantile distribution fitted. Call fit() first.')
 
-        # if given interval is outside quantile boundaries, cropping would result in a non-valid quantile
-        if interval.uppermost() < self._cdf.intervals[0].upper or interval.lowermost() > self._cdf.intervals[-1].lower:
-            return None
+        # if given interval is outside quantile boundaries,
+        # cropping would result in a non-valid quantile
+        if (interval.uppermost() < self._cdf.intervals[0].upper or
+                interval.lowermost() > self._cdf.intervals[-1].lower):
+            raise Unsatisfiability('CDF has zero Probability in '
+                                   '%s (should be in %s)' % (interval,
+                                                             ContinuousSet(self._cdf.intervals[0].upper,
+                                                                           self._cdf.intervals[-1].lower, EXC, EXC)))
 
         # I: crop
         cdf_ = self.cdf.crop(interval)
@@ -1326,14 +1325,14 @@ cdef class PiecewiseFunction(Function):
         this operation.
         '''
         digits = ifnone(digits, 3)
-        round_ = lambda x: round(x, ndigits=digits)
+        round_ = lambda x: np.round(x, decimals=digits)
 
         plf = PiecewiseFunction()
         for interval, function in zip(self.intervals, self.functions):
             if include_intervals:
                 interval = interval.copy()
-                interval.lower = round_(interval.lower)
-                interval.upper = round_(interval.upper)
+                interval.lower = round_(interval.lower) if not np.isinf(interval.lower) else interval.lower
+                interval.upper = round_(interval.upper) if not np.isinf(interval.upper) else interval.upper
             plf.intervals.append(interval)
             if isinstance(function, LinearFunction):
                 function = LinearFunction(round_(function.m), round_(function.c))

@@ -35,6 +35,8 @@ cdef class RealSet(NumberSet):
 
     cpdef inline np.int32_t intersects(RealSet self, RealSet other)
 
+    cpdef inline np.int32_t isdisjoint(RealSet self, RealSet other)
+
     cpdef inline RealSet intersection(RealSet self, RealSet other)
 
     cpdef inline RealSet union(RealSet self, RealSet other) except +
@@ -75,6 +77,8 @@ cdef class ContinuousSet(NumberSet):
     cpdef inline np.int32_t contiguous(ContinuousSet self, ContinuousSet other)
 
     cpdef inline np.int32_t intersects(ContinuousSet self, ContinuousSet other)
+
+    cpdef inline np.int32_t isdisjoint(ContinuousSet self, ContinuousSet other)
 
     cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other, int left=*, int right=*)
 

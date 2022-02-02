@@ -21,6 +21,10 @@ import dnutils
 from dnutils import first, ifnone, mapstr
 from sklearn.tree import DecisionTreeRegressor
 
+from .base.utils import list2interval, format_path, normalized, Unsatisfiability
+
+from .variables import Variable, VariableMap
+
 try:
     from .base.quantiles import QuantileDistribution
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
@@ -28,7 +32,7 @@ try:
     from .base.utils import list2interval, format_path, normalized
     from .learning.impurity import Impurity
     from .learning.distributions import Multinomial, Numeric, Identity
-    from .variables import Variable, VariableMap
+    from .variables import Variable
 except ImportError:
     import pyximport
     pyximport.install()
@@ -179,12 +183,8 @@ class Leaf(Node):
         '''Checks whether this leaf is consistent with the given ``query``.'''
         path = self.path
         for var in set(query.keys()).intersection(set(path.keys())):
-            if var.symbolic:
-                if query.get(var) not in path.get(var):
-                    return False
-            else:
-                if not path.get(var).intersects(query.get(var)):
-                    return False
+            if path.get(var).isdisjoint(query.get(var)):
+                return False
         return True
 
     @property
@@ -323,12 +323,15 @@ class JPTBase:
         r.weights = [w / p_e for w in r.weights]
         return r
 
-    def posterior(self, variables, evidence):
+    def posterior(self, variables, evidence, fail_on_unsatisfiability=True):
         '''
 
         :param variables:        the query variables of the posterior to be computed
         :type variables:         list of jpt.variables.Variable
         :param evidence:    the evidence given for the posterior to be computed
+        :param fail_on_unsatisfiability: wether or not an ``Unsatisfiability`` error is raised if the
+                                         likelihood of the evidence is 0.
+        :type fail_on_unsatisfiability:  bool
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
@@ -345,24 +348,21 @@ class JPTBase:
             # check if path of candidate leaf is consistent with evidence
             # (i.e. contains evicence variable with *correct* value or does not contain it at all)
             for var in set(evidence_.keys()):
-                evidence_val = evidence_[var]
-                if var.numeric and var in leaf.path:
-                    evidence_val = evidence_val.intersection(leaf.path[var])
-                elif var.symbolic and var in leaf.path:
-                    continue
-                likelihood *= leaf.distributions[var]._p(evidence_val)
+                evidence_set = evidence_[var]
+                if var in leaf.path:
+                    evidence_set = evidence_set.intersection(leaf.path[var])
+                likelihood *= leaf.distributions[var]._p(evidence_set)
             likelihoods.append(likelihood)
             priors.append(leaf.prior)
 
             for var in variables:
-                evidence_val = evidence_.get(var)
+                evidence_set = evidence_.get(var)
                 distribution = leaf.distributions[var]
-                if evidence_val is not None:
-                    if var.numeric and var in leaf.path:
-                        evidence_val = evidence_val.intersection(leaf.path[var])
-                    elif var.symbolic and var in leaf.path:
-                        continue
-                    distribution = distribution.crop(evidence_val)
+                if evidence_set is not None:
+                    if var in leaf.path:
+                        evidence_set = evidence_set.intersection(leaf.path[var])
+                        print(evidence_set, distribution)
+                        distribution = distribution.crop(evidence_set)
                 distributions[var].append(distribution)
 
             result.candidates.append(leaf)
@@ -371,17 +371,19 @@ class JPTBase:
         try:
             weights = normalized(weights)
         except ValueError:
+            if fail_on_unsatisfiability:
+                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence))
             return None
 
         # initialize all query variables with None, in case dists
         # is empty (i.e. no candidate leaves -> query unsatisfiable)
-        result.dists = {v: None for v in variables}
+        result.distributions = VariableMap()
 
         for var, dists in distributions.items():
             if var.numeric:
-                result.dists[var] = Numeric.merge(dists, weights=weights)
+                result.distributions[var] = Numeric.merge(dists, weights=weights)
             elif var.symbolic:
-                result.dists[var] = Multinomial.merge(dists, weights=weights)
+                result.distributions[var] = Multinomial.merge(dists, weights=weights)
 
         return result
 
@@ -390,7 +392,7 @@ class JPTBase:
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
         '''
-        posteriors = self.posterior(variables, evidence)
+        posteriors = self.posterior(variables, evidence, fail_on_unsatisfiability=fail_on_unsatisfiability)
         conf_level = ifnone(confidence_level, .95)
 
         variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
@@ -398,7 +400,7 @@ class JPTBase:
 
         if posteriors is None:
             if fail_on_unsatisfiability:
-                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                raise Unsatisfiability('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
             else:
                 return None
 
@@ -407,7 +409,7 @@ class JPTBase:
                                          conf_level)
                   for var in variables}
 
-        for var, dist in posteriors.dists.items():
+        for var, dist in posteriors.distributions.items():
             expectation = dist._expectation()
             result[var]._res = expectation
             if var.numeric:
@@ -462,14 +464,16 @@ class JPTBase:
         that can be further processed.
         '''
         # Transform lists into a numeric interval:
-        query_ = {var if isinstance(var, Variable)
-                  else self.varnames[var]: list2interval(val) if type(val) in (list, tuple) else val for var, val in query.items()}
+        query_ = VariableMap()
         # Transform single numeric values in to intervals given by the haze
         # parameter of the respective variable:
-        for var, lbl in list(query_.items()):
+        for key, arg in query.items():
+            var = key if isinstance(key, Variable) else self.varnames[key]
             if var.numeric:
-                if isinstance(lbl, numbers.Number):
-                    val = var.domain.values[lbl]
+                if type(arg) is list:
+                    arg = list2interval(arg)
+                if isinstance(arg, numbers.Number):
+                    val = var.domain.values[arg]
                     prior = self.priors[var.name]
                     quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
                                                               prior.cdf.idx_at(val)))].eval(val)
@@ -477,21 +481,18 @@ class JPTBase:
                     upper = quantile + var.haze / 2
                     query_[var] = ContinuousSet(prior.ppf.functions[max(1,
                                                                         min(len(prior.cdf) - 2,
-                                                                        prior.ppf.idx_at(lower)))].eval(lower),
+                                                                            prior.ppf.idx_at(lower)))].eval(lower),
                                                 prior.ppf.functions[min(len(prior.ppf) - 2,
                                                                         max(1,
                                                                         prior.ppf.idx_at(upper)))].eval(upper))
-                    # query_[var] = ContinuousSet(val, val)
-                    # if query_[var].lower >= query_[var].upper or np.isnan(query_[var].upper) or np.isnan(query_[var].lower):
-                    #     out(prior.cdf.pfmt())
-                    #     out(prior.ppf.pfmt())
-                    #     stop(var, lbl, val, quantile, query_[var].lower, query_[var].upper)
-                elif isinstance(lbl, ContinuousSet):
-                    query_[var] = ContinuousSet(var.domain.values[lbl.lower],
-                                                var.domain.values[lbl.upper], lbl.left, lbl.right)
+                elif isinstance(arg, ContinuousSet):
+                    query_[var] = ContinuousSet(var.domain.values[arg.lower],
+                                                var.domain.values[arg.upper], arg.left, arg.right)
             if var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
-                query_[var] = var.domain.values[lbl]
+                if not type(arg) is set:
+                    arg = {arg}
+                query_[var] = {var.domain.values[v] for v in arg}
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
 
@@ -1199,7 +1200,7 @@ class PosteriorResult(Result):
     def __init__(self, query, evidence, dists=None, cand=None, w=None):
         super().__init__(query, evidence, res=None, cand=cand)
         self._w = ifnone(w, {})
-        self.dists = dists
+        self.distributions = dists
 
     def format_result(self):
         return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
@@ -1208,4 +1209,4 @@ class PosteriorResult(Result):
                                         self.result * 100))
 
     def __getitem__(self, item):
-        return self.dists[item]
+        return self.distributions[item]
