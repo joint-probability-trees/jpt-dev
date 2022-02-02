@@ -193,6 +193,9 @@ cdef class RealSet(NumberSet):
                     return True
         return False
 
+    cpdef inline np.int32_t isdisjoint(RealSet self, RealSet other):
+        return not self.intersects(other)
+
     cpdef inline RealSet intersection(RealSet self, RealSet other):
         '''Computes the intersection of this value range with ``other``.
 
@@ -475,6 +478,10 @@ cdef class ContinuousSet(NumberSet):
         if self.upper == other.lower and (self.right == _EXC or other.left == _EXC):
             return False
         return True
+
+    cpdef inline np.int32_t isdisjoint(ContinuousSet self, ContinuousSet other):
+        '''Equivalent to ``not self.intersects(other)'''
+        return not self.intersects(other)
 
     cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other, int left=-1, int right=-1):
         if not self.intersects(other):
