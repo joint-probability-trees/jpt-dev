@@ -154,7 +154,7 @@ class NumericVariable(Variable):
     @property
     def _max_std(self):
         if issubclass(self.domain, ScaledNumeric):
-            return self._max_std_lbl / math.sqrt(self.domain.values.datascaler.variance[0])
+            return self._max_std_lbl / math.sqrt(self.domain.values.datascaler.variance)
         else:
             return self._max_std_lbl
 
@@ -319,6 +319,11 @@ class VariableMap:
 
     def __len__(self):
         return len(self._map)
+
+    def get(self, key, default=None):
+        if key not in self:
+            return default
+        return self[key]
 
     def keys(self):
         yield from (self._variables[name] for name in self._map.keys())
