@@ -26,6 +26,14 @@ except ImportError:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+
+class Unsatisfiability(Exception):
+    '''Error that is raised on logically unsatisfiable inferences.'''
+    pass
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 def pairwise(seq):
     '''Iterate over all consecutive pairs in ``seq``.'''
     for e in seq:
