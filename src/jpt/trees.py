@@ -28,7 +28,7 @@ try:
     from .base.utils import list2interval, format_path, normalized
     from .learning.impurity import Impurity
     from .learning.distributions import Multinomial, Numeric, Identity
-    from .variables import Variable
+    from .variables import Variable, VariableMap
 except ImportError:
     import pyximport
     pyximport.install()
@@ -85,7 +85,7 @@ class Node:
 
     @property
     def path(self):
-        res = OrderedDict()
+        res = VariableMap()
         for var, vals in self._path:
             res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
         return res
@@ -108,18 +108,17 @@ class DecisionNode(Node):
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx, dec_criterion, parent=None):
+    def __init__(self, idx, variable, parent=None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
         :param splits:
         :type splits:
-        :param dec_criterion:   the split feature name
-        :type dec_criterion:    jpt.variables.Variable
+        :param variable:   the split feature name
+        :type variable:    jpt.variables.Variable
         '''
         self._splits = None
-        self.dec_criterion = dec_criterion
-        self.dec_criterion_val = None
+        self.variable = variable
         super().__init__(idx, parent=parent)
         self.children = None  # [None] * len(self.splits)
 
@@ -130,35 +129,34 @@ class DecisionNode(Node):
     @splits.setter
     def splits(self, splits):
         if self.children is not None:
-            raise ValueError('children already set: %s' % self.children)
+            raise ValueError('Children already set: %s' % self.children)
         self._splits = splits
         self.children = [None] * len(self._splits)
 
     def set_child(self, idx, node):
         self.children[idx] = node
         node._path = list(self._path)
-        node._path.append((self.dec_criterion, self.splits[idx]))
+        node._path.append((self.variable, self.splits[idx]))
 
     def str_edge(self, idx):
-        return str(ContinuousSet(self.dec_criterion.domain.labels[self.splits[idx].lower],
-                                 self.dec_criterion.domain.labels[self.splits[idx].upper],
+        return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
+                                 self.variable.domain.labels[self.splits[idx].upper],
                                  self.splits[idx].left,
                                  self.splits[idx].right)
-                   if self.dec_criterion.numeric else self.dec_criterion.domain.labels[idx])
+                   if self.variable.numeric else self.variable.domain.labels[idx])
 
     @property
     def str_node(self):
-        return self.dec_criterion.name
+        return self.variable.name
 
     def __str__(self):
         return (f'DecisionNode<ID:{self.idx}; '
-                f'CRITERION: {self.dec_criterion.name}; '
-                f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}; '
-                f'#CHILDREN: {len(self.children)}>')
+                f'Variable: {self.variable.name} [%s]' % '; '.join(mapstr(self.splits)) +
+                f'Parent: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}; '
+                f'#children: {len(self.children)}>')
 
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
-        return str(self.dec_criterion.str(self.splits[idx], fmt='logic'))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -170,7 +168,7 @@ class Leaf(Node):
     '''
     def __init__(self, idx, parent=None, prior=None):
         super().__init__(idx, parent=parent)
-        self.distributions = OrderedDict()
+        self.distributions = VariableMap()
         self.prior = prior
 
     @property
@@ -195,28 +193,26 @@ class Leaf(Node):
 
     def __str__(self):
         return (f'Leaf<ID: {self.idx}; '
-                #f'VALUE: {",".join([f"{var.name}: {str(dist)}" for var, dist in self.distributions.items()])}; '
-                # 'PATH: %s' % format_path(self.)
-                f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}>')
+                f'parent: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}>')
 
     def __repr__(self):
         return f'LeafNode<{self.idx}> object at {hex(id(self))}'
 
     def to_json(self):
         return {'idx': self.idx,
-                'path': [[var.name, list(values) if var.symbolic else values.to_json()] for var, values in self.path.items()],
+                '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
                 'distributions': [[var.name, dist.to_json()] for var, dist in self.distributions.items()],
                 'leaf_prior': self.prior}
 
     @staticmethod
     def from_json(tree, data):
         leaf = Leaf(idx=data['idx'], prior=data['leaf_prior'])
-        leaf.distributions = OrderedDict([(tree.varnames[v],
+        leaf.distributions = VariableMap([(tree.varnames[v],
                                            tree.varnames[v].domain.from_json(d)) for v, d in data['distributions']])
-        leaf._path = OrderedDict()
-        for varname, values in data['path']:
+        leaf._path = []
+        for varname, split in data['_path']:
             var = tree.varnames[varname]
-            leaf.path[var] = set(values) if var.symbolic else ContinuousSet.from_json(values)
+            leaf._path.append((varname, set(split) if var.symbolic else ContinuousSet.from_json(split)))
         leaf.prior = data['leaf_prior']
         return leaf
 
