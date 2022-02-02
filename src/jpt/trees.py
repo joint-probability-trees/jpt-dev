@@ -600,7 +600,7 @@ class JPT(JPTBase):
             # divide examples into distinct sets for each value of ft_best
             # split_data = None  # {val: [] for val in ft_best.domain.values}
             node = DecisionNode(idx=len(self.allnodes),
-                                dec_criterion=ft_best,
+                                variable=ft_best,
                                 parent=parent)
             node.samples = n_samples
             # update path
