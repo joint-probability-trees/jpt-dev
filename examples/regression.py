@@ -76,7 +76,7 @@ def main():
     plt.plot(xx, y_pred_, 'm-', label='JPT Prediction')
     plt.plot(xx, y_lower_, 'y--', label='%.1f%% Confidence bands' % (confidence * 100))
     plt.plot(xx, y_upper_, 'y--')
-    plt.plot(xx, posterior.dists[varx].pdf.multi_eval(xx.ravel().astype(np.float64)), label='Posterior')
+    plt.plot(xx, posterior.distributions[varx].pdf.multi_eval(xx.ravel().astype(np.float64)), label='Posterior')
 
     plt.xlabel('$x$')
     plt.ylabel('$f(x)$')
