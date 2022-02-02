@@ -90,13 +90,13 @@ def restaurantsample():
 
     variables = [pa, hu, fo, fr, al, ba, pr, ra, re, we, wa]
 
-    def rec(vars, vals):
-        if not vars:
+    def rec(var, vals):
+        if not var:
             return [v[1] for v in vals]
             return
-        d = dist(vars[0], vals)
-        sample = wchoice(vars[0].domain.labels, d)
-        return rec(vars[1:], vals+[(vars[0], sample)])
+        d = dist(var[0], vals)
+        sample = wchoice(var[0].domain.labels, d)
+        return rec(var[1:], vals + [(var[0], sample)])
 
     def dist(var, vals):
         d_ = df
