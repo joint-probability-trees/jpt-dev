@@ -335,7 +335,6 @@ class JPTBase:
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
-        print(list(evidence_.items()))
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
 
@@ -405,20 +404,16 @@ class JPTBase:
             else:
                 return None
 
-        result = {var: ExpectationResult(var,
-                                         posteriors._evidence,
-                                         conf_level)
-                  for var in variables}
-
+        final = VariableMap()
         for var, dist in posteriors.distributions.items():
-            expectation = dist._expectation()
-            result[var]._res = expectation
+            result = ExpectationResult(var, posteriors._evidence, conf_level)
+            result._res = dist._expectation()
             if var.numeric:
-                exp_quantile = dist.cdf.eval(expectation)
-                result[var]._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
-                result[var]._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
-
-        return list(result.values())
+                exp_quantile = dist.cdf.eval(result._res)
+                result._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
+                result._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
+            final[var] = result
+        return final
 
     def mpe(self, evidence=None, fail_on_unsatisfiability=True):
         '''
