@@ -7,7 +7,7 @@ import numbers
 from collections import OrderedDict
 
 import numpy as np
-from dnutils import first, ifnone
+from dnutils import first, ifnone, out
 
 try:
     from jpt.base.intervals import INC, EXC, ContinuousSet
@@ -293,10 +293,16 @@ class VariableMap:
     supports accessing the image set both by the variable object instance itself _and_ its name.
     '''
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, data=None):
+        '''
+        ``data`` may be an iterable of (variable, value) pairs.
+        '''
+        super().__init__()
         self._variables = {}
-        self._map = OrderedDict(*args, **kwargs)
+        self._map = OrderedDict()
+        if data:
+            for var, value in data:
+                self[var] = value
 
     def __getitem__(self, key):
         if isinstance(key, Variable):
@@ -328,9 +334,11 @@ class VariableMap:
         return len(self._map)
 
     def __eq__(self, o):
+        out(list(self._map.items()))
+        out(list(o._map.items()))
         return (type(o) is VariableMap and
-                self._map == o._map and
-                self._variables == o._variables)
+                list(self._map.items()) == list(o._map.items()) and
+                list(self._variables.items()) == list(o._variables.items()))
 
     def get(self, key, default=None):
         if key not in self:

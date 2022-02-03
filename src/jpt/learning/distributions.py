@@ -663,12 +663,12 @@ class Numeric(Distribution):
     def __eq__(self, o):
         if not issubclass(type(o), Numeric):
             return False
-        return type(o).equiv(type(self)) and self.cdf == o.cdf
+        return type(o).equiv(type(self)) and self._quantile == o._quantile
 
     @classmethod
     def equiv(cls, other):
         return (issubclass(other, Numeric) and
-                type(cls).__name__ == type(other).__name__ and
+                cls.__name__ == other.__name__ and
                 cls.values == other.values and
                 cls.labels == other.labels)
 

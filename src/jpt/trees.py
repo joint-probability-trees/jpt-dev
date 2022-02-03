@@ -18,7 +18,7 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, ifnone, mapstr
+from dnutils import first, ifnone, mapstr, out
 from sklearn.tree import DecisionTreeRegressor
 
 from .base.utils import list2interval, format_path, normalized, Unsatisfiability
@@ -83,9 +83,7 @@ class Node:
         self.idx = idx
         self.parent = parent
         self.samples = 0.
-        self.children = None
         self._path = []
-        self.distributions = {}
 
     @property
     def path(self):
@@ -162,6 +160,13 @@ class DecisionNode(Node):
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
 
+    def __eq__(self, o):
+        return (type(self) is type(o) and
+                self.idx == o.idx and
+                self.parent == o.parent and
+                self.children == o.children and
+                self.splits == o.splits and
+                self.variable == o.variable)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -201,20 +206,29 @@ class Leaf(Node):
     def to_json(self):
         return {'idx': self.idx,
                 '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
-                'distributions': [[var.name, dist.to_json()] for var, dist in self.distributions.items()],
-                'leaf_prior': self.prior}
+                'distributions': self.distributions.to_json(),
+                'prior': self.prior}
 
     @staticmethod
     def from_json(tree, data):
-        leaf = Leaf(idx=data['idx'], prior=data['leaf_prior'])
-        leaf.distributions = VariableMap([(tree.varnames[v],
-                                           tree.varnames[v].domain.from_json(d)) for v, d in data['distributions']])
+        leaf = Leaf(idx=data['idx'], prior=data['prior'])
+        leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'])
         leaf._path = []
         for varname, split in data['_path']:
             var = tree.varnames[varname]
             leaf._path.append((varname, set(split) if var.symbolic else ContinuousSet.from_json(split)))
-        leaf.prior = data['leaf_prior']
+        leaf.prior = data['prior']
         return leaf
+
+    def __eq__(self, o):
+        out(self.distributions == o.distributions)
+        out(o.distributions.to_json())
+        out(self.distributions.to_json())
+        return (type(o) == type(self) and
+                self.idx == o.idx and
+                self._path == o._path and
+                self.distributions == o.distributions and
+                self.prior == o.prior)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -248,8 +262,16 @@ class JPTBase:
         jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
         jpt._targets = tuple(jpt.varnames[varname] for varname in data['targets'])
         jpt.leaves = {d['idx']: Leaf.from_json(jpt, d) for d in data['leaves']}
-        jpt.priors = {varname: jpt.varnames[varname].domain.from_json(dist) for varname, dist in data['priors'].items()}
+        jpt.priors = {varname: jpt.varnames[varname].domain.from_json(dist)
+                      for varname, dist in data['priors'].items()}
         return jpt
+
+    def __eq__(self, o):
+        out(self.leaves == o.leaves)
+        return (isinstance(o, JPTBase) and
+                self.variables == o.variables and
+                self.leaves == o.leaves and
+                self.priors == o.priors)
 
     def infer(self, query, evidence=None, fail_on_unsatisfiability=True):
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
@@ -450,7 +472,8 @@ class JPTBase:
                 return None
 
         posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
-                                            normalized([w for _, w in distributions[var]])) for var in distributions}
+                                            normalized([w for _, w in distributions[var]]))
+                      for var in distributions}
 
         for var, dist in posteriors.items():
             if var in evidence_:
@@ -493,6 +516,7 @@ class JPTBase:
                 if not type(arg) is set:
                     arg = {arg}
                 query_[var] = {var.domain.values[v] for v in arg}
+
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
 
@@ -541,7 +565,7 @@ class JPT(JPTBase):
         self.max_depth = max_depth or float('inf')
         self._node_counter = 0
         self.indices = None
-        self.impurity = None#Impurity(self)
+        self.impurity = None
 
     def c45(self, data, start, end, parent, child_idx, depth):
         '''
@@ -658,7 +682,8 @@ class JPT(JPTBase):
             return "{}None\n".format(" " * indent)
         return "{}{}\n{}".format(" " * indent,
                                  str(parent),
-                                 ''.join([self._p(r, indent + 5) for r in ifnone(parent.children, [])]))
+                                 ''.join([self._p(r, indent + 5) for r in ([] if isinstance(parent, Leaf)
+                                                                           else parent.children)]))
 
     def _preprocess_data(self, data=None, rows=None, columns=None):
         '''
@@ -772,7 +797,8 @@ class JPT(JPTBase):
     @property
     def min_samples_leaf(self):
         if type(self._min_samples_leaf) is int: return self._min_samples_leaf
-        if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1: return int(self._min_samples_leaf*len(_data))
+        if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
+            return int(self._min_samples_leaf*len(_data))
         return int(self._min_samples_leaf)
 
     @staticmethod
