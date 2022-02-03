@@ -15,7 +15,8 @@ except ModuleNotFoundError:
 
 
 from jpt.base.utils import Unsatisfiability
-from jpt.learning.distributions import SymbolicType, OrderedDictProxy, Multinomial, NumericType, Gaussian, Numeric
+from jpt.learning.distributions import SymbolicType, OrderedDictProxy, Multinomial, NumericType, Gaussian, Numeric, \
+    Distribution
 
 
 class MultinomialTest(TestCase):
@@ -128,6 +129,12 @@ class NumericTest(TestCase):
             NumericTest.GAUSSIAN = pickle.load(f)
         self.DistGauss = NumericType('Uniform', values=NumericTest.GAUSSIAN)
 
+    def test_hash(self):
+        hash(self.DistGauss)
+        d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
+        self.assertEqual(hash(d), hash(d.copy()))
+        self.assertNotEqual(hash(Numeric), hash(self.DistGauss))
+
     def test_creation(self):
         '''The creation of the numeric distributions'''
         DistGauss = self.DistGauss
@@ -153,7 +160,7 @@ class NumericTest(TestCase):
 
     def test_distribution_serialization(self):
         d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
-        self.assertEqual(d, Numeric.from_json(d.to_json()))
+        self.assertEqual(d, Distribution.from_json(d.to_json()))
 
     def test_manipulation(self):
         DistGauss = self.DistGauss

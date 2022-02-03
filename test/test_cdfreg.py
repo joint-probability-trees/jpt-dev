@@ -235,6 +235,16 @@ class PLFTest(unittest.TestCase):
             '[3.000,∞[': 1
         }))
 
+    def test_serialization(self):
+        plf = PiecewiseFunction.from_dict({
+            ']-∞,0.000[': 0,
+            '[0.000,1.00[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2.000[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3.000,∞[': 1
+        })
+        self.assertEqual(plf, PiecewiseFunction.from_json(plf.to_json()))
+
 
 class TestCaseQuantileCrop(unittest.TestCase):
 
@@ -259,6 +269,9 @@ class TestCaseQuantileCrop(unittest.TestCase):
 
     def setUp(self):
         print('Setting up test method', self._testMethodName)
+
+    def test_serialization(self):
+        self.assertEqual(self.qdist, QuantileDistribution.from_json(self.qdist.to_json()))
 
     def test_crop_quantiledist_singleslice_inc(self):
         d = {
@@ -651,25 +664,23 @@ class TestCaseExpectation(unittest.TestCase):
         cls.jpt.plot(title='Restaurant-Mixed', filename='Restaurant-Mixed', directory='TEST', view=False)
 
     def test_expectation_mixed_single_candidate_T(self):
-        # [WillWait, Friday]
-        self.q = [self.variables[-1], self.variables[2]]
-        # {WaitEstimate: [10,30], Food: Thai}
-        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Thai'}
+        self.q = ['WillWait', 'Friday']
+        self.e = {'WaitEstimate': [10, 30], 'Food': 'Thai'}
         self.expectation = self.jpt.expectation(self.q, self.e)
-        self.assertEqual([True, False], [e.result for e in self.expectation])
+        self.assertEqual([True, False], [e.result for e in self.expectation.values()])
 
     def test_expectation_mixed_unsatisfiable(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.expectation, self.q, self.e)
 
-    def tearDown(self):
-        print('Tearing down test method',
-              self._testMethodName,
-              'with expectation for',
-              f'P({",".join([qv.name for qv in self.q])}|'
-              f'{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'
-              f' = [{",".join([f"{q.name}: {e.result if e is not None else None}" for q, e in zip(self.q, self.expectation if hasattr(self, "expectation") else [None]*len(self.q))])}]')
+    # def tearDown(self):
+    #     print('Tearing down test method',
+    #           self._testMethodName,
+    #           'with expectation for',
+    #           f'P({",".join([qv.name for qv in self.q])}|'
+    #           f'{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'
+    #           f' = [{",".join([f"{q.name}: {e.result if e is not None else None}" for q, e in zip(self.q, self.expectation if hasattr(self, "expectation") else [None]*len(self.q))])}]')
 
 
 class TestCaseInference(unittest.TestCase):

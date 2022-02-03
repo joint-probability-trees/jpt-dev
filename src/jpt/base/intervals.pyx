@@ -285,6 +285,8 @@ cdef class ContinuousSet(NumberSet):
                  DTYPE_t upper=np.nan,
                  np.int32_t left=_INC,
                  np.int32_t right=_INC):
+        if lower > upper:
+            raise ValueError('Lower bound must not be smaller than upper bound (%s > %s)' % (lower, upper))
         self.lower = lower
         self.upper = upper
         self.left = left

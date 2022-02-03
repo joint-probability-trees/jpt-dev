@@ -17,7 +17,14 @@ class JPTTest(TestCase):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
-        jpt.plot(view=True)
+
+        jpt_ = JPT.from_json(jpt.to_json())
+
+        for l1, l2 in zip(jpt.leaves.values(), jpt_.leaves.values()):
+            self.assertEqual(l1, l2)
+
+        for n1, n2 in zip(jpt.innernodes.values(), jpt_.innernodes.values()):
+            self.assertEqual(n1, n2)
 
         self.assertEqual(jpt, JPT.from_json(jpt.to_json()))
 

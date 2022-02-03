@@ -31,7 +31,7 @@ try:
     from .base.constants import plotstyle, orange, green, SYMBOL
     from .base.utils import list2interval, format_path, normalized
     from .learning.impurity import Impurity
-    from .learning.distributions import Multinomial, Numeric, Identity
+    from .learning.distributions import Multinomial, Numeric, Identity, Distribution
     from .variables import Variable
 except ImportError:
     import pyximport
@@ -114,8 +114,6 @@ class DecisionNode(Node):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
-        :param splits:
-        :type splits:
         :param variable:   the split feature name
         :type variable:    jpt.variables.Variable
         '''
@@ -123,6 +121,38 @@ class DecisionNode(Node):
         self.variable = variable
         super().__init__(idx, parent=parent)
         self.children = None  # [None] * len(self.splits)
+
+    def __eq__(self, o):
+        return (type(self) is type(o) and
+                self.idx == o.idx and
+                (self.parent.idx
+                 if self.parent is not None else None) == (o.parent.idx if o.parent is not None else None) and
+                [n.idx for n in self.children] == [n.idx for n in o.children] and
+                self.splits == o.splits and
+                self.variable == o.variable and
+                self.samples == o.samples)
+
+    def to_json(self):
+        return {'idx': self.idx,
+                'parent': self.parent.idx if self.parent is not None else None,
+                'splits': [s.to_json() if isinstance(s, ContinuousSet) else s for s in self.splits],
+                'variable': self.variable.name,
+                '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
+                'children': [node.idx for node in self.children],
+                'samples': self.samples,
+                'child_idx': self.parent.children.index(self) if self.parent is not None else None}
+
+    @staticmethod
+    def from_json(jpt, data):
+        node = DecisionNode(idx=data['idx'], variable=jpt.varnames[data['variable']])
+        node.splits = [Interval.from_json(s) if node.variable.numeric else s for s in data['splits']]
+        node.children = [None] * len(node.splits)
+        node.parent = jpt.innernodes.get(data['parent'])
+        node.samples = data['samples']
+        if node.parent is not None:
+            node.parent.set_child(data['child_idx'], node)
+        jpt.innernodes[node.idx] = node
+        return node
 
     @property
     def splits(self):
@@ -160,20 +190,13 @@ class DecisionNode(Node):
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
 
-    def __eq__(self, o):
-        return (type(self) is type(o) and
-                self.idx == o.idx and
-                self.parent == o.parent and
-                self.children == o.children and
-                self.splits == o.splits and
-                self.variable == o.variable)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 class Leaf(Node):
     '''
-    Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
+    Represents a leaf node of the the :class:`jpt.learning.trees.Tree`.
     '''
     def __init__(self, idx, parent=None, prior=None):
         super().__init__(idx, parent=parent)
@@ -205,28 +228,28 @@ class Leaf(Node):
 
     def to_json(self):
         return {'idx': self.idx,
-                '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
                 'distributions': self.distributions.to_json(),
-                'prior': self.prior}
+                'prior': self.prior,
+                'samples': self.samples,
+                'parent': self.parent.idx if self.parent is not None else None,
+                'child_idx': self.parent.children.index(self)}
 
     @staticmethod
     def from_json(tree, data):
-        leaf = Leaf(idx=data['idx'], prior=data['prior'])
-        leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'])
+        leaf = Leaf(idx=data['idx'], prior=data['prior'], parent=tree.innernodes.get(data['parent']))
+        leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'], Distribution)
         leaf._path = []
-        for varname, split in data['_path']:
-            var = tree.varnames[varname]
-            leaf._path.append((varname, set(split) if var.symbolic else ContinuousSet.from_json(split)))
+        leaf.parent.set_child(data['child_idx'], leaf)
         leaf.prior = data['prior']
+        leaf.samples = data['samples']
+        tree.leaves[leaf.idx] = leaf
         return leaf
 
     def __eq__(self, o):
-        out(self.distributions == o.distributions)
-        out(o.distributions.to_json())
-        out(self.distributions.to_json())
         return (type(o) == type(self) and
                 self.idx == o.idx and
                 self._path == o._path and
+                self.samples == o.samples and
                 self.distributions == o.distributions and
                 self.prior == o.prior)
 
@@ -241,6 +264,8 @@ class JPTBase:
         self._targets = targets
         self.varnames = OrderedDict((var.name, var) for var in self._variables)
         self.leaves = {}
+        self.innernodes = {}
+        self.allnodes = ChainMap(self.innernodes, self.leaves)
         self.priors = {}
 
     @property
@@ -255,21 +280,25 @@ class JPTBase:
         return {'variables': [v.to_json() for v in self.variables],
                 'targets': [v.name for v in self.variables],
                 'leaves': [l.to_json() for l in self.leaves.values()],
+                'innernodes': [n.to_json() for n in self.innernodes.values()],
                 'priors': {varname: p.to_json() for varname, p in self.priors.items()}}
 
     @staticmethod
     def from_json(data):
         jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
         jpt._targets = tuple(jpt.varnames[varname] for varname in data['targets'])
-        jpt.leaves = {d['idx']: Leaf.from_json(jpt, d) for d in data['leaves']}
+        for d in data['innernodes']:
+            DecisionNode.from_json(jpt, d)
+        for d in data['leaves']:
+            Leaf.from_json(jpt, d)
         jpt.priors = {varname: jpt.varnames[varname].domain.from_json(dist)
                       for varname, dist in data['priors'].items()}
         return jpt
 
     def __eq__(self, o):
-        out(self.leaves == o.leaves)
         return (isinstance(o, JPTBase) and
                 self.variables == o.variables and
+                self.innernodes == o.innernodes and
                 self.leaves == o.leaves and
                 self.priors == o.priors)
 
@@ -414,11 +443,10 @@ class JPTBase:
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
         '''
-        posteriors = self.posterior(variables, evidence, fail_on_unsatisfiability=fail_on_unsatisfiability)
-        conf_level = ifnone(confidence_level, .95)
-
         variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
                            set(self.variables) - set(evidence))
+        posteriors = self.posterior(variables, evidence, fail_on_unsatisfiability=fail_on_unsatisfiability)
+        conf_level = ifnone(confidence_level, .95)
 
         if posteriors is None:
             if fail_on_unsatisfiability:
@@ -553,8 +581,6 @@ class JPT(JPTBase):
         self._min_samples_leaf = min_samples_leaf
         self.min_impurity_improvement = min_impurity_improvement
         self._numsamples = 0
-        self.innernodes = {}
-        self.allnodes = ChainMap(self.innernodes, self.leaves)
         self.root = None
         self.c45queue = deque()
         self.max_leaves = max_leaves

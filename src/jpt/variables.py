@@ -90,7 +90,7 @@ class Variable:
                 self.min_impurity_improvement == other.min_impurity_improvement)
 
     def __hash__(self):
-        return hash((type(self), hashlib.md5(self.name.encode()).hexdigest(), self.domain))
+        return hash((hashlib.md5(self.name.encode()).hexdigest(), self.domain))
 
     @property
     def symbolic(self):
@@ -139,6 +139,14 @@ class NumericVariable(Variable):
                 self.haze == o.haze and
                 self._max_std_lbl == o._max_std_lbl and
                 self.precision == o.precision)
+
+    def __hash__(self):
+        return hash((NumericVariable,
+                     hashlib.md5(self.name.encode()).hexdigest(),
+                     self.domain,
+                     self.haze,
+                     self.max_std,
+                     self.precision))
 
     @Variable.params.getter
     def params(self):
@@ -334,8 +342,6 @@ class VariableMap:
         return len(self._map)
 
     def __eq__(self, o):
-        out(list(self._map.items()))
-        out(list(o._map.items()))
         return (type(o) is VariableMap and
                 list(self._map.items()) == list(o._map.items()) and
                 list(self._variables.items()) == list(o._variables.items()))
@@ -358,9 +364,9 @@ class VariableMap:
         return {var.name: value.to_json() if hasattr(value, 'to_json') else value for var, value in self.items()}
 
     @staticmethod
-    def from_json(variables, d):
+    def from_json(variables, d, typ=None, args=()):
         vmap = VariableMap()
         varbyname = {var.name: var for var in variables}
         for vname, value in d.items():
-            vmap[varbyname[vname]] = value
+            vmap[varbyname[vname]] = typ.from_json(value, *args) if typ is not None and hasattr(typ, 'from_json') else value
         return vmap

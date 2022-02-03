@@ -13,6 +13,28 @@ except ModuleNotFoundError:
 @ddt
 class IntervalTest(unittest.TestCase):
 
+    @data(('[-10, 5]', ContinuousSet(-10, 5)),
+          (']5, 10]', ContinuousSet(5, 10, EXC)),
+          ('[0, 1]', ContinuousSet(0, 1)),
+          ('[2, 3]', ContinuousSet(2, 3)),
+          (']-inf,0[', ContinuousSet(np.NINF, 0, EXC, EXC)),
+          ('[0, inf[', ContinuousSet(0, np.PINF, INC, EXC)),
+          (']0,0[', ContinuousSet(0, 0, EXC, EXC)),
+          (']-1,-1[', ContinuousSet(-1, -1, EXC, EXC)))
+    @unpack
+    def test_creation_parsing(self, s, i):
+        '''Parsing and creation'''
+        self.assertEqual(ContinuousSet.parse(s), i)
+        self.assertEqual(hash(i), hash(i.copy()))
+
+    def test_value_check(self):
+        self.assertRaises(ValueError, ContinuousSet, 1, -1)
+
+    @data(']0, 0[',)
+    def test_emptyness(self, s):
+        self.assertTrue(ContinuousSet.parse(s).isempty(),
+                        msg='%s is not recognized empty.' % s)
+
     @data(('[-10, 5]', ']5, 10]'),
           ('[0, 1]', '[2, 3]'),
           (']-inf,0[', '[0, inf['),

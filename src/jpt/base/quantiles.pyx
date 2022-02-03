@@ -239,6 +239,9 @@ cdef class ConstantFunction(Function):
     def __init__(ConstantFunction self, DTYPE_t value):
         self.value = value
 
+    def __hash__(self):
+        return hash((ConstantFunction, self.value))
+
     def __call__(self, x=None):
         return self.eval(x)
 
@@ -314,6 +317,9 @@ cdef class LinearFunction(Function):
     def __init__(LinearFunction self, DTYPE_t m, DTYPE_t c):
         self.m = m
         self.c = c
+
+    def __hash__(self):
+        return hash((LinearFunction, self.m, self.c))
 
     def __call__(self, DTYPE_t x):
         return self.eval(x)
@@ -549,10 +555,10 @@ cdef class QuantileDistribution:
     Abstract base class for any quantile-parameterized cumulative data distribution.
     '''
 
-    cdef DTYPE_t epsilon
-    cdef DTYPE_t penalty
-    cdef np.int32_t verbose
-    cdef np.int32_t min_samples_mars
+    cdef public DTYPE_t epsilon
+    cdef public DTYPE_t penalty
+    cdef public np.int32_t verbose
+    cdef public np.int32_t min_samples_mars
     cdef PiecewiseFunction _cdf, _pdf, _ppf
 
     def __init__(self, epsilon=.01, penalty=3., min_samples_mars=5, verbose=False):
@@ -563,6 +569,22 @@ cdef class QuantileDistribution:
         self._cdf = None
         self._pdf = None
         self._ppf = None
+
+    def __hash__(self):
+        return hash((QuantileDistribution,
+                     self.epsilon,
+                     self.penalty,
+                     self.verbose,
+                     self.min_samples_mars,
+                     self._cdf))
+
+    def __eq__(self, o):
+        if not isinstance(o, QuantileDistribution):
+            raise TypeError('Illegal type: %s' % type(o).__name__)
+        return (self.epsilon == o.epsilon and
+                self.penalty == o.penalty and
+                self.min_samples_mars == o.min_samples_mars and
+                self.cdf == o.cdf)
 
     cpdef QuantileDistribution copy(QuantileDistribution self):
         cdef QuantileDistribution result = QuantileDistribution(self.epsilon, self.penalty, min_samples_mars=self.min_samples_mars)
@@ -923,6 +945,12 @@ cdef class PiecewiseFunction(Function):
     def __init__(PiecewiseFunction self):
         self.functions = []
         self.intervals = []
+
+    def __hash__(self):
+        return hash((PiecewiseFunction, ((i, f) for i, f in self.iter())))
+
+    def iter(self):
+        return zip(self.intervals, self.functions)
 
     def __eq__(self, other):
         if not isinstance(other, PiecewiseFunction):

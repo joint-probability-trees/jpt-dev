@@ -2,7 +2,7 @@ from types import GeneratorType
 from unittest import TestCase
 
 try:
-    from jpt.learning.distributions import Bool
+    from jpt.learning.distributions import Bool, Numeric
     from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable
 except ModuleNotFoundError:
     import pyximport
@@ -34,6 +34,10 @@ class VariableMapTest(TestCase):
 
         self.assertEqual('baz', varmap[C])
         self.assertEqual('baz', varmap['C'])
+
+    def test_hash(self):
+        hash(NumericVariable('bar'))
+        hash(SymbolicVariable('baz', domain=Bool))
 
     def test_iteration(self):
         '''Iteration over map elements'''

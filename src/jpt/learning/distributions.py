@@ -467,7 +467,7 @@ class Distribution:
                       else '')
 
     def __hash__(self):
-        return hash((type(self), self.values))
+        return hash((type(self), self.values, self.labels))
 
     def __getitem__(self, value):
         return self.p(value)
@@ -534,10 +534,16 @@ class Distribution:
 
     @staticmethod
     def type_from_json(data):
-        clazz = _DISTRIBUTIONS.get(data['type'])
-        if clazz is None:
+        typ = _DISTRIBUTION_TYPES.get(data['type'])
+        if typ is None:
             raise TypeError('Unknown distribution type: %s' % data['type'])
-        return clazz.type_from_json(data)
+        clazz = typ.type_from_json(data)
+        if clazz.__name__ in _DISTRIBUTIONS:
+            if not clazz.equiv(_DISTRIBUTIONS[clazz.__name__]):
+                raise TypeError('Distribution class named "%s" is ambiguous.' % clazz.__name__)
+        else:
+            _DISTRIBUTIONS[clazz.__name__] = clazz
+        return clazz
 
 
 class DataScaler(StandardScaler):
@@ -597,6 +603,9 @@ class Identity:
     def __eq__(self, o):
         return type(o) is Identity
 
+    def __hash__(self):
+        return hash(Identity)
+
 
 class DataScalerProxy:
 
@@ -605,6 +614,9 @@ class DataScalerProxy:
         self.inverse = inverse
         self.mean = self.datascaler.mean
         self.variance = self.datascaler.variance
+
+    def __hash__(self):
+        return hash((self.inverse, self.mean, self.variance))
 
     def __call__(self, arg):
         return self[arg]
@@ -663,7 +675,10 @@ class Numeric(Distribution):
     def __eq__(self, o):
         if not issubclass(type(o), Numeric):
             return False
-        return type(o).equiv(type(self)) and self._quantile == o._quantile
+        return type(o).equiv(type(self))  and self._quantile == o._quantile
+
+    def __hash__(self):
+        return hash((type(self), self.values, self.labels, self._quantile))
 
     @classmethod
     def equiv(cls, other):
@@ -1201,9 +1216,15 @@ def NumericType(name, values):
     return t
 
 
-_DISTRIBUTIONS = {
+_DISTRIBUTION_TYPES = {
     'numeric': Numeric,
     'scaled-numeric': ScaledNumeric,
     'symbolic': Multinomial
+}
+
+_DISTRIBUTIONS = {
+    'Numeric': Numeric,
+    'ScaledNumeric': ScaledNumeric,
+    'Multinomial': Multinomial
 }
 
