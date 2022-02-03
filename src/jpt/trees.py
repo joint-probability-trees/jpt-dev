@@ -18,7 +18,7 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, ifnone, mapstr
+from dnutils import first, ifnone, mapstr, out
 from sklearn.tree import DecisionTreeRegressor
 
 from .base.utils import list2interval, format_path, normalized, Unsatisfiability
@@ -29,8 +29,10 @@ try:
     from .base.quantiles import QuantileDistribution
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
     from .base.constants import plotstyle, orange, green, SYMBOL
+    from .base.utils import list2interval, format_path, normalized
     from .learning.impurity import Impurity
     from .learning.distributions import Multinomial, Numeric, Identity
+    from .variables import Variable
 except ImportError:
     import pyximport
     pyximport.install()
@@ -81,9 +83,7 @@ class Node:
         self.idx = idx
         self.parent = parent
         self.samples = 0.
-        self.children = None
         self._path = []
-        self.distributions = {}
 
     @property
     def path(self):
@@ -110,18 +110,17 @@ class DecisionNode(Node):
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx, dec_criterion, parent=None):
+    def __init__(self, idx, variable, parent=None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
         :param splits:
         :type splits:
-        :param dec_criterion:   the split feature name
-        :type dec_criterion:    jpt.variables.Variable
+        :param variable:   the split feature name
+        :type variable:    jpt.variables.Variable
         '''
         self._splits = None
-        self.dec_criterion = dec_criterion
-        self.dec_criterion_val = None
+        self.variable = variable
         super().__init__(idx, parent=parent)
         self.children = None  # [None] * len(self.splits)
 
@@ -132,36 +131,42 @@ class DecisionNode(Node):
     @splits.setter
     def splits(self, splits):
         if self.children is not None:
-            raise ValueError('children already set: %s' % self.children)
+            raise ValueError('Children already set: %s' % self.children)
         self._splits = splits
         self.children = [None] * len(self._splits)
 
     def set_child(self, idx, node):
         self.children[idx] = node
         node._path = list(self._path)
-        node._path.append((self.dec_criterion, self.splits[idx]))
+        node._path.append((self.variable, self.splits[idx]))
 
     def str_edge(self, idx):
-        return str(ContinuousSet(self.dec_criterion.domain.labels[self.splits[idx].lower],
-                                 self.dec_criterion.domain.labels[self.splits[idx].upper],
+        return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
+                                 self.variable.domain.labels[self.splits[idx].upper],
                                  self.splits[idx].left,
                                  self.splits[idx].right)
-                   if self.dec_criterion.numeric else self.dec_criterion.domain.labels[idx])
+                   if self.variable.numeric else self.variable.domain.labels[idx])
 
     @property
     def str_node(self):
-        return self.dec_criterion.name
+        return self.variable.name
 
     def __str__(self):
         return (f'DecisionNode<ID:{self.idx}; '
-                f'CRITERION: {self.dec_criterion.name}; '
-                f'PARENT: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}; '
-                f'#CHILDREN: {len(self.children)}>')
+                f'Variable: {self.variable.name} [%s]' % '; '.join(mapstr(self.splits)) +
+                f'Parent: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}; '
+                f'#children: {len(self.children)}>')
 
     def __repr__(self):
         return f'Node<{self.idx}> object at {hex(id(self))}'
-        return str(self.dec_criterion.str(self.splits[idx], fmt='logic'))
 
+    def __eq__(self, o):
+        return (type(self) is type(o) and
+                self.idx == o.idx and
+                self.parent == o.parent and
+                self.children == o.children and
+                self.splits == o.splits and
+                self.variable == o.variable)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -200,21 +205,30 @@ class Leaf(Node):
 
     def to_json(self):
         return {'idx': self.idx,
-                'path': [[var.name, list(values) if var.symbolic else values.to_json()] for var, values in self.path.items()],
-                'distributions': [[var.name, dist.to_json()] for var, dist in self.distributions.items()],
-                'leaf_prior': self.prior}
+                '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
+                'distributions': self.distributions.to_json(),
+                'prior': self.prior}
 
     @staticmethod
     def from_json(tree, data):
-        leaf = Leaf(idx=data['idx'], prior=data['leaf_prior'])
-        leaf.distributions = OrderedDict([(tree.varnames[v],
-                                           tree.varnames[v].domain.from_json(d)) for v, d in data['distributions']])
-        leaf._path = OrderedDict()
-        for varname, values in data['path']:
+        leaf = Leaf(idx=data['idx'], prior=data['prior'])
+        leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'])
+        leaf._path = []
+        for varname, split in data['_path']:
             var = tree.varnames[varname]
-            leaf.path[var] = set(values) if var.symbolic else ContinuousSet.from_json(values)
-        leaf.prior = data['leaf_prior']
+            leaf._path.append((varname, set(split) if var.symbolic else ContinuousSet.from_json(split)))
+        leaf.prior = data['prior']
         return leaf
+
+    def __eq__(self, o):
+        out(self.distributions == o.distributions)
+        out(o.distributions.to_json())
+        out(self.distributions.to_json())
+        return (type(o) == type(self) and
+                self.idx == o.idx and
+                self._path == o._path and
+                self.distributions == o.distributions and
+                self.prior == o.prior)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -248,8 +262,16 @@ class JPTBase:
         jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
         jpt._targets = tuple(jpt.varnames[varname] for varname in data['targets'])
         jpt.leaves = {d['idx']: Leaf.from_json(jpt, d) for d in data['leaves']}
-        jpt.priors = {varname: jpt.varnames[varname].domain.from_json(dist) for varname, dist in data['priors'].items()}
+        jpt.priors = {varname: jpt.varnames[varname].domain.from_json(dist)
+                      for varname, dist in data['priors'].items()}
         return jpt
+
+    def __eq__(self, o):
+        out(self.leaves == o.leaves)
+        return (isinstance(o, JPTBase) and
+                self.variables == o.variables and
+                self.leaves == o.leaves and
+                self.priors == o.priors)
 
     def infer(self, query, evidence=None, fail_on_unsatisfiability=True):
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
@@ -446,7 +468,8 @@ class JPTBase:
                 return None
 
         posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
-                                            normalized([w for _, w in distributions[var]])) for var in distributions}
+                                            normalized([w for _, w in distributions[var]]))
+                      for var in distributions}
 
         for var, dist in posteriors.items():
             if var in evidence_:
@@ -489,6 +512,7 @@ class JPTBase:
                 if not type(arg) is set:
                     arg = {arg}
                 query_[var] = {var.domain.values[v] for v in arg}
+
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
 
@@ -537,7 +561,7 @@ class JPT(JPTBase):
         self.max_depth = max_depth or float('inf')
         self._node_counter = 0
         self.indices = None
-        self.impurity = None#Impurity(self)
+        self.impurity = None
 
     def c45(self, data, start, end, parent, child_idx, depth):
         '''
@@ -596,7 +620,7 @@ class JPT(JPTBase):
             # divide examples into distinct sets for each value of ft_best
             # split_data = None  # {val: [] for val in ft_best.domain.values}
             node = DecisionNode(idx=len(self.allnodes),
-                                dec_criterion=ft_best,
+                                variable=ft_best,
                                 parent=parent)
             node.samples = n_samples
             # update path
@@ -654,7 +678,8 @@ class JPT(JPTBase):
             return "{}None\n".format(" " * indent)
         return "{}{}\n{}".format(" " * indent,
                                  str(parent),
-                                 ''.join([self._p(r, indent + 5) for r in ifnone(parent.children, [])]))
+                                 ''.join([self._p(r, indent + 5) for r in ([] if isinstance(parent, Leaf)
+                                                                           else parent.children)]))
 
     def _preprocess_data(self, data=None, rows=None, columns=None):
         '''
@@ -768,7 +793,8 @@ class JPT(JPTBase):
     @property
     def min_samples_leaf(self):
         if type(self._min_samples_leaf) is int: return self._min_samples_leaf
-        if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1: return int(self._min_samples_leaf*len(_data))
+        if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
+            return int(self._min_samples_leaf*len(_data))
         return int(self._min_samples_leaf)
 
     @staticmethod

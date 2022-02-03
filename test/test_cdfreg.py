@@ -1,4 +1,5 @@
 import statistics
+from unittest import TestCase
 
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -718,3 +719,26 @@ class TestCaseInference(unittest.TestCase):
     #           'with calculated posterior',
     #           f'Posterior P(' +
     #           f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k}={v}" for k, v in self.e.items()])})')
+
+
+class LinearFunctionTest(TestCase):
+
+    def test_equality(self):
+        f1 = LinearFunction(1, 1)
+        f2 = ConstantFunction(1)
+        f3 = LinearFunction(0, 1)
+
+        self.assertTrue(f1 == LinearFunction(1, 1))
+        self.assertTrue(f2 == ConstantFunction(1))
+        self.assertTrue(f3 == LinearFunction(0, 1))
+        self.assertEqual(f2, f3)
+
+    def test_serialization(self):
+        f1 = LinearFunction(1, 1)
+        f2 = ConstantFunction(1)
+        f3 = LinearFunction(0, 1)
+        self.assertEqual(f1, LinearFunction.from_json(f1.to_json()))
+        self.assertEqual(f2, LinearFunction.from_json(f2.to_json()))
+        self.assertEqual(f3, LinearFunction.from_json(f3.to_json()))
+
+

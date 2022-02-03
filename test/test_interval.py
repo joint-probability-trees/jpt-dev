@@ -52,3 +52,13 @@ class IntervalTest(unittest.TestCase):
                          i1.intersection(i2, right=INC))
         self.assertEqual(i1.intersection(i2, right=INC),
                          i2.intersection(i1, right=INC))
+
+    @data(('[-10, 5]',), (']5, 10]',),
+          ('[0, 1]',), ('[2, 3]',),
+          (']-inf,0[',), ('[0, inf[',),
+          ('[0, 1]',), (']0,0[',),
+          (']-1,-1[',), (']-1,-1[',))
+    @unpack
+    def test_serialization(self, i):
+        i = ContinuousSet.parse(i)
+        self.assertEqual(i, ContinuousSet.from_json(i.to_json()))

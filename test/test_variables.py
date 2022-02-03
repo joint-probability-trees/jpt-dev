@@ -3,7 +3,7 @@ from unittest import TestCase
 
 try:
     from jpt.learning.distributions import Bool
-    from jpt.variables import VariableMap, NumericVariable, SymbolicVariable
+    from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
@@ -77,3 +77,28 @@ class VariableMapTest(TestCase):
         del varmap['B']
         self.assertFalse('B' in varmap)
         self.assertFalse(B in varmap)
+
+    def test_serialization(self):
+        '''(De)serialization of a VariableMap'''
+        A, B, C = VariableMapTest.TEST_DATA
+        varmap = VariableMap()
+        varmap[A] = 'foo'
+        varmap[B] = 'bar'
+        varmap[C] = 'baz'
+        self.assertEqual(varmap, VariableMap.from_json([A, B, C], varmap.to_json()))
+
+
+class VariableTest(TestCase):
+    '''Test basic functionality of Variable classes.'''
+
+    TEST_DATA = [NumericVariable('A'),
+                 NumericVariable('B'),
+                 SymbolicVariable('C', Bool)]
+
+    def test_serialization(self):
+        '''Test (de)serialization of Variable classes'''
+        A, B, C = VariableTest.TEST_DATA
+
+        self.assertEqual(A, Variable.from_json(A.to_json()))
+        self.assertEqual(B, Variable.from_json(B.to_json()))
+        self.assertEqual(C, Variable.from_json(C.to_json()))

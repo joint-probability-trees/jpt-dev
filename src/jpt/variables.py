@@ -7,7 +7,7 @@ import numbers
 from collections import OrderedDict
 
 import numpy as np
-from dnutils import first, ifnone
+from dnutils import first, ifnone, out
 
 try:
     from jpt.base.intervals import INC, EXC, ContinuousSet
@@ -84,9 +84,10 @@ class Variable:
         return str(self)
 
     def __eq__(self, other):
-        return (self.name == other.name
-                and self.domain == other.domain
-                and self.min_impurity_improvement == other.min_impurity_improvement)
+        return (type(self) == type(other) and
+                self.name == other.name and
+                self.domain.equiv(other.domain) and
+                self.min_impurity_improvement == other.min_impurity_improvement)
 
     def __hash__(self):
         return hash((type(self), hashlib.md5(self.name.encode()).hexdigest(), self.domain))
@@ -132,6 +133,12 @@ class NumericVariable(Variable):
         self.haze = ifnone(haze, .05)
         self._max_std_lbl = ifnone(max_std, 0.)
         self.precision = ifnone(precision, .01)
+
+    def __eq__(self, o):
+        return (super().__eq__(o) and
+                self.haze == o.haze and
+                self._max_std_lbl == o._max_std_lbl and
+                self.precision == o.precision)
 
     @Variable.params.getter
     def params(self):
@@ -286,10 +293,16 @@ class VariableMap:
     supports accessing the image set both by the variable object instance itself _and_ its name.
     '''
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, data=None):
+        '''
+        ``data`` may be an iterable of (variable, value) pairs.
+        '''
+        super().__init__()
         self._variables = {}
-        self._map = OrderedDict(*args, **kwargs)
+        self._map = OrderedDict()
+        if data:
+            for var, value in data:
+                self[var] = value
 
     def __getitem__(self, key):
         if isinstance(key, Variable):
@@ -320,6 +333,13 @@ class VariableMap:
     def __len__(self):
         return len(self._map)
 
+    def __eq__(self, o):
+        out(list(self._map.items()))
+        out(list(o._map.items()))
+        return (type(o) is VariableMap and
+                list(self._map.items()) == list(o._map.items()) and
+                list(self._variables.items()) == list(o._variables.items()))
+
     def get(self, key, default=None):
         if key not in self:
             return default
@@ -333,3 +353,14 @@ class VariableMap:
 
     def items(self):
         yield from ((self._variables[name], value) for name, value in self._map.items())
+
+    def to_json(self):
+        return {var.name: value.to_json() if hasattr(value, 'to_json') else value for var, value in self.items()}
+
+    @staticmethod
+    def from_json(variables, d):
+        vmap = VariableMap()
+        varbyname = {var.name: var for var in variables}
+        for vname, value in d.items():
+            vmap[varbyname[vname]] = value
+        return vmap
