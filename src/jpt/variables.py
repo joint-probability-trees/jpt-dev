@@ -237,10 +237,12 @@ class SymbolicVariable(Variable):
                 return f'{self.name} {SYMBOL.IN} {{{valstr}}}'
             elif fmt == 'logic':
                 return ' v '.join([self.str(a, fmt=fmt) for a in assignment])
-        if isinstance(assignment, numbers.Integral):
+        if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         elif type(assignment) is str:
             return '%s = %s' % (self.name, assignment)
+        else:
+            raise TypeError('Illegal argument type: %s [%s]' % (type(assignment), str(assignment)))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -340,6 +342,9 @@ class VariableMap:
 
     def __len__(self):
         return len(self._map)
+
+    def __bool__(self):
+        return len(self)
 
     def __eq__(self, o):
         return (type(o) is VariableMap and

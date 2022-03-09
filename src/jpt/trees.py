@@ -10,6 +10,7 @@ import pickle
 import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
+from itertools import zip_longest
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,7 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, ifnone, mapstr, out
+from dnutils import first, ifnone, mapstr, out, err, fst
 from sklearn.tree import DecisionTreeRegressor
 
 from .base.utils import list2interval, format_path, normalized, Unsatisfiability
@@ -65,7 +66,10 @@ _pool = None
 
 def _prior(args):
     var_idx, json_var = args
-    return Variable.from_json(json_var).dist(data=_data, col=var_idx).to_json()
+    try:
+        return Variable.from_json(json_var).dist(data=_data, col=var_idx).to_json()
+    except ValueError as e:
+        raise ValueError('%s: %s' % (Variable.from_json(json_var), str(e)))
 
 
 class Node:
@@ -328,8 +332,15 @@ class JPTBase:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
-        query_ = self._prepropress_query(query)
-        evidence_ = ifnone(evidence, {}, self._prepropress_query)
+        querymap = VariableMap()
+        for key, value in query.items():
+            querymap[key if isinstance(key, Variable) else self.varnames[key]] = value
+        query_ = self._prepropress_query(querymap)
+        evidencemap = VariableMap()
+        if evidence:
+            for key, value in evidence.items():
+                evidencemap[key if isinstance(key, Variable) else self.varnames[key]] = value
+        evidence_ = ifnone(evidencemap, {}, self._prepropress_query)
 
         r = Result(query_, evidence_)
 
@@ -368,10 +379,11 @@ class JPTBase:
             if fail_on_unsatisfiability:
                 raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
             else:
-                return None
-
-        r.result = p_q / p_e
-        r.weights = [w / p_e for w in r.weights]
+                r.result = None
+                r.weights = None
+        else:
+            r.result = p_q / p_e
+            r.weights = [w / p_e for w in r.weights]
         return r
 
     def posterior(self, variables, evidence, fail_on_unsatisfiability=True):
@@ -739,9 +751,17 @@ class JPT(JPTBase):
                 raise ValueError('Unknown variable names: %s'
                                  % ', '.join(mapstr(set(self.varnames).symmetric_difference(set(data.columns)))))
 
-            data_[:] = data.transform({c: self.varnames[v].domain.values.transformer()
-                                       for v, c in zip(self.varnames, data.columns)},
-                                      ).values
+            # Check if the order of columns in the data frame is the same
+            # as the order of the variables.
+            if not all(c == v for c, v in zip_longest(data.columns, self.varnames)):
+                raise ValueError('Columns in DataFrame must coincide with variable order: %s' %
+                                 ', '.join(mapstr(self.varnames)))
+            transformations = {v: self.varnames[v].domain.values.transformer() for v in data.columns}
+            try:
+                data_[:] = data.transform(transformations).values
+            except ValueError:
+                err(transformations)
+                raise
         else:
             for i, (var, col) in enumerate(zip(self.variables, columns)):
                 data_[:, i] = [var.domain.values[v] for v in col]
@@ -1159,7 +1179,10 @@ class Result:
 
     @property
     def evidence(self):
-        return {k: (k.domain.labels[v] if k.symbolic else ContinuousSet(k.domain.labels[v.lower], k.domain.labels[v.upper], v.left, v.right)) for k, v in self._evidence.items()}
+        return {k: (k.domain.labels[fst(v)]
+                    if k.symbolic else ContinuousSet(k.domain.labels[v.lower],
+                                                     k.domain.labels[v.upper], v.left, v.right))
+                for k, v in self._evidence.items()}
 
     @property
     def result(self):
@@ -1186,10 +1209,9 @@ class Result:
         self._w = w
 
     def format_result(self):
-        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
-                                        ' | ' if self.evidence else '',
-                                        ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
-                                        self.result * 100))
+        return ('P(%s%s) = %.3f%%' % (format_path(self.query),
+                                      (' | %s' % format_path(self.evidence)) if self.evidence else '',
+                                      self.result * 100))
 
     def explain(self):
         result = self.format_result()
@@ -1220,9 +1242,10 @@ class ExpectationResult(Result):
         return self.query.domain.labels[self._res]
 
     def format_result(self):
-        left = 'E(%s%s%s; %s = %.3f)' % (self.query,
+        left = 'E(%s%s%s; %s = %.3f)' % (self.query.name,
                                          ' | ' if self.evidence else '',
-                                         ', '.join([var.str(val, fmt='logic') for var, val in self._evidence.items()]),
+                                         # ', '.join([var.str(val, fmt='logic') for var, val in self._evidence.items()]),
+                                         format_path(self.evidence),
                                          SYMBOL.THETA,
                                          self.theta)
         right = '[%.3f %s %.3f %s %.3f]' % (self.lower,
