@@ -132,7 +132,7 @@ cdef class Impurity:
     cdef SIZE_t[::1] numeric_vars, symbolic_vars, all_vars
     cdef public DTYPE_t min_samples_leaf
     cdef SIZE_t[::1] symbols
-    cdef SIZE_t n_num_vars, n_sym_vars, max_sym_domain, n_vars
+    cdef SIZE_t n_num_vars, n_sym_vars, max_sym_domain, n_vars, n_num_vars_total, n_sym_vars_total, n_vars_total
 
     cdef SIZE_t[:, ::1] symbols_left, \
         symbols_right, \
@@ -163,8 +163,6 @@ cdef class Impurity:
     cdef readonly  DTYPE_t max_impurity_improvement
     cdef DTYPE_t w_numeric
 
-    cdef public list priors
-
     @property
     def best_split_pos(self):
         return pydeque([e for e in self._best_split_pos])
@@ -178,17 +176,22 @@ cdef class Impurity:
         self.best_var = -1
         self.max_impurity_improvement = 0
 
-        self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables) if v.numeric], dtype=np.int64)
-        self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables) if v.symbolic], dtype=np.int64)
+        self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables)
+                                      if v.numeric and (tree.targets is None or v in tree.targets)],
+                                     dtype=np.int64)
+        self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
+                                       if v.symbolic and (tree.targets is None or v in tree.targets)],
+                                      dtype=np.int64)
         self.all_vars = np.concatenate((self.numeric_vars, self.symbolic_vars))
-        self.n_vars = len(tree.variables)
-        self.priors = []
+        self.n_vars = self.all_vars.shape[0]  # len(tree.variables)
 
         self.targets = np.array([i for i, v in enumerate(tree.variables)
                                  if tree.targets is None or v in tree.targets], dtype=np.int64)
 
         self.n_sym_vars = len(self.symbolic_vars)
+        self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
 
+        self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
         if self.n_sym_vars:
             # Thread-invariant buffers
             self.symbols = np.array([v.domain.n_values for v in tree.variables if v.symbolic], dtype=np.int64)
@@ -205,6 +208,7 @@ cdef class Impurity:
 
         self.num_samples = np.ndarray(shape=max(max(self.symbols) if self.n_sym_vars else 2, 2), dtype=np.int64)
         self.n_num_vars = len(self.numeric_vars)
+        self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric])
 
         if self.n_num_vars:
             # Thread-invariant buffers
@@ -328,7 +332,9 @@ cdef class Impurity:
         # self.index_buffer[self.start:self.end] = self.indices[self.start:self.end]
         self.index_buffer[:n_samples] = self.indices[self.start:self.end]
 
-        for variable in self.all_vars:
+        print(np.asarray(self.numeric_vars))
+        print(np.asarray(self.symbolic_vars))
+        for variable in range(self.n_vars_total):
             symbolic = variable in self.symbolic_vars
             symbolic_idx += symbolic
             split_pos.clear()
