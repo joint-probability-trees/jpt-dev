@@ -14,7 +14,7 @@ import re
 from operator import itemgetter
 
 import dnutils
-from dnutils import first, out, ifnone, stop, ifnot, project
+from dnutils import first, out, ifnone, stop, ifnot, project, mapstr
 from dnutils.stats import Gaussian as Gaussian_, _matshape
 
 from scipy.stats import multivariate_normal, mvn, norm
@@ -896,6 +896,9 @@ class OrderedDictProxy:
         self.values = self._dict.values
         self.keys = self._dict.keys
 
+    def __repr__(self):
+        return '<OrderedDictProxy #%d values=[%s]>' % (len(self), ';'.join(mapstr(self.keys())))
+
     def transformer(self):
         return lambda a: self._dict[a]
 
@@ -983,6 +986,9 @@ class Multinomial(Distribution):
         if self._p is None:
             return f'{self._cl}<p=n/a>'
         return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self.probabilities)])}]>;'
+
+    def sorted(self):
+        return sorted([(p, l) for p, l in zip(self._params, self.labels.values())], key=itemgetter(0), reverse=True)
 
     def copy(self):
         return type(self)(params=self._params)
