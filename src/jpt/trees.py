@@ -424,7 +424,6 @@ class JPTBase:
                 if evidence_set is not None:
                     if var in leaf.path:
                         evidence_set = evidence_set.intersection(leaf.path[var])
-                        print(evidence_set, distribution)
                         distribution = distribution.crop(evidence_set)
                 distributions[var].append(distribution)
 
