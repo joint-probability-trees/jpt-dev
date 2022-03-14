@@ -332,12 +332,12 @@ cdef class Impurity:
         # self.index_buffer[self.start:self.end] = self.indices[self.start:self.end]
         self.index_buffer[:n_samples] = self.indices[self.start:self.end]
 
-        print(np.asarray(self.numeric_vars))
-        print(np.asarray(self.symbolic_vars))
         for variable in range(self.n_vars_total):
             symbolic = variable in self.symbolic_vars
             symbolic_idx += symbolic
             split_pos.clear()
+            if variable in self.targets:
+                continue
             impurity_improvement = self.evaluate_variable(variable,
                                                           symbolic,
                                                           symbolic_idx,
@@ -378,16 +378,6 @@ cdef class Impurity:
         for j in range(n_samples):
             f[j] = data[index_buffer[j], var_idx]
         sort(&f[0], &index_buffer[0], n_samples)
-        # print(f.shape, index_buffer.shape, n_samples)
-        # prev = np.NINF
-        # fprev = np.NINF
-        # for j in range(n_samples):
-        #     if f[j] < fprev:
-        #         raise ValueError('f j=%d[%d],  %s < %s' % (j, n_samples, f[j], fprev))
-        #     if data[index_buffer[j], var_idx] < prev:
-        #         raise ValueError('%s < %s' % (data[index_buffer[j], var_idx], prev))
-        #     prev = data[index_buffer[j], var_idx]
-        #     fprev = f[j]
         # --------------------------------------------------------------------------------------------------------------
         cdef int numeric = not symbolic
         
