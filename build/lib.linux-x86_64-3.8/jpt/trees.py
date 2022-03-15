@@ -10,6 +10,8 @@ import pickle
 import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
+from itertools import zip_longest
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -18,7 +20,7 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, ifnone, mapstr, out
+from dnutils import first, ifnone, mapstr, out, err, fst
 from sklearn.tree import DecisionTreeRegressor
 
 from .base.utils import list2interval, format_path, normalized, Unsatisfiability
@@ -65,7 +67,10 @@ _pool = None
 
 def _prior(args):
     var_idx, json_var = args
-    return Variable.from_json(json_var).dist(data=_data, col=var_idx).to_json()
+    try:
+        return Variable.from_json(json_var).dist(data=_data, col=var_idx).to_json()
+    except ValueError as e:
+        raise ValueError('%s: %s' % (Variable.from_json(json_var), str(e)))
 
 
 class Node:
@@ -73,7 +78,7 @@ class Node:
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx, parent=None):
+    def __init__(self, idx:int, parent=None) -> None:
         '''
         :param idx:             the identifier of a node
         :type idx:              int
@@ -86,7 +91,7 @@ class Node:
         self._path = []
 
     @property
-    def path(self):
+    def path(self) -> VariableMap:
         res = VariableMap()
         for var, vals in self._path:
             res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
@@ -95,10 +100,10 @@ class Node:
     def format_path(self):
         return format_path(self.path)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'Node<{self.idx}>'
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
 
 
@@ -110,7 +115,7 @@ class DecisionNode(Node):
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx, variable, parent=None):
+    def __init__(self, idx:int, variable:Variable, parent:Node=None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
@@ -120,9 +125,9 @@ class DecisionNode(Node):
         self._splits = None
         self.variable = variable
         super().__init__(idx, parent=parent)
-        self.children = None  # [None] * len(self.splits)
+        self.children:None or List[Node] = None  # [None] * len(self.splits)
 
-    def __eq__(self, o):
+    def __eq__(self, o) -> bool:
         return (type(self) is type(o) and
                 self.idx == o.idx and
                 (self.parent.idx
@@ -132,7 +137,7 @@ class DecisionNode(Node):
                 self.variable == o.variable and
                 self.samples == o.samples)
 
-    def to_json(self):
+    def to_json(self) -> str:
         return {'idx': self.idx,
                 'parent': self.parent.idx if self.parent is not None else None,
                 'splits': [s.to_json() if isinstance(s, ContinuousSet) else s for s in self.splits],
@@ -155,7 +160,7 @@ class DecisionNode(Node):
         return node
 
     @property
-    def splits(self):
+    def splits(self) -> List:
         return self._splits
 
     @splits.setter
@@ -165,12 +170,12 @@ class DecisionNode(Node):
         self._splits = splits
         self.children = [None] * len(self._splits)
 
-    def set_child(self, idx, node):
+    def set_child(self, idx, node) -> None:
         self.children[idx] = node
         node._path = list(self._path)
         node._path.append((self.variable, self.splits[idx]))
 
-    def str_edge(self, idx):
+    def str_edge(self, idx) -> str:
         return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
                                  self.variable.domain.labels[self.splits[idx].upper],
                                  self.splits[idx].left,
@@ -178,16 +183,16 @@ class DecisionNode(Node):
                    if self.variable.numeric else self.variable.domain.labels[idx])
 
     @property
-    def str_node(self):
+    def str_node(self) -> str:
         return self.variable.name
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (f'DecisionNode<ID:{self.idx}; '
                 f'Variable: {self.variable.name} [%s]' % '; '.join(mapstr(self.splits)) +
                 f'Parent: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}; '
                 f'#children: {len(self.children)}>')
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
 
 
@@ -198,16 +203,16 @@ class Leaf(Node):
     '''
     Represents a leaf node of the the :class:`jpt.learning.trees.Tree`.
     '''
-    def __init__(self, idx, parent=None, prior=None):
+    def __init__(self, idx:int, parent:Node or None=None, prior=None):
         super().__init__(idx, parent=parent)
         self.distributions = VariableMap()
         self.prior = prior
 
     @property
-    def str_node(self):
+    def str_node(self) -> str:
         return ""
 
-    def applies(self, query):
+    def applies(self, query:VariableMap) -> bool:
         '''Checks whether this leaf is consistent with the given ``query``.'''
         path = self.path
         for var in set(query.keys()).intersection(set(path.keys())):
@@ -219,14 +224,14 @@ class Leaf(Node):
     def value(self):
         return self.distributions
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (f'Leaf<ID: {self.idx}; '
                 f'parent: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}>')
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'LeafNode<{self.idx}> object at {hex(id(self))}'
 
-    def to_json(self):
+    def to_json(self) -> str:
         return {'idx': self.idx,
                 'distributions': self.distributions.to_json(),
                 'prior': self.prior,
@@ -245,7 +250,7 @@ class Leaf(Node):
         tree.leaves[leaf.idx] = leaf
         return leaf
 
-    def __eq__(self, o):
+    def __eq__(self, o) -> bool:
         return (type(o) == type(self) and
                 self.idx == o.idx and
                 self._path == o._path and
@@ -256,27 +261,145 @@ class Leaf(Node):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+class Result:
+
+    def __init__(self, query, evidence, res=None, cand=None, w=None):
+        self.query = query
+        self._evidence = evidence
+        self._res = ifnone(res, [])
+        self._cand = ifnone(cand, [])
+        self._w = ifnone(w, [])
+
+    def __str__(self):
+        return self.format_result()
+
+    @property
+    def evidence(self):
+        return {k: (k.domain.labels[fst(v)]
+                    if k.symbolic else ContinuousSet(k.domain.labels[v.lower],
+                                                     k.domain.labels[v.upper], v.left, v.right))
+                for k, v in self._evidence.items()}
+
+    @property
+    def result(self):
+        return self._res
+
+    @result.setter
+    def result(self, res):
+        self._res = res
+
+    @property
+    def candidates(self):
+        return self._cand
+
+    @candidates.setter
+    def candidates(self, cand):
+        self._cand = cand
+
+    @property
+    def weights(self):
+        return self._w
+
+    @weights.setter
+    def weights(self, w):
+        self._w = w
+
+    def format_result(self):
+        return ('P(%s%s) = %.3f%%' % (format_path(self.query),
+                                      (' | %s' % format_path(self.evidence)) if self.evidence else '',
+                                      self.result * 100))
+
+    def explain(self):
+        result = self.format_result()
+        result += '\n'
+        for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
+            result += '%.3f%%: %s\n' % (weight, format_path({var: val for var, val in leaf.path.items() if var not in self.evidence}))
+        return result
+
+
+class ExpectationResult(Result):
+
+    def __init__(self, query, evidence, theta, lower=None, upper=None, res=None, cand=None, w=None):
+        super().__init__(query, evidence, res=res, cand=cand, w=w)
+        self.theta = theta
+        self._lower = lower
+        self._upper = upper
+
+    @property
+    def lower(self):
+        return self.query.domain.labels[self._lower]
+
+    @property
+    def upper(self):
+        return self.query.domain.labels[self._upper]
+
+    @property
+    def result(self):
+        return self.query.domain.labels[self._res]
+
+    def format_result(self):
+        left = 'E(%s%s%s; %s = %.3f)' % (self.query.name,
+                                         ' | ' if self.evidence else '',
+                                         # ', '.join([var.str(val, fmt='logic') for var, val in self._evidence.items()]),
+                                         format_path(self.evidence),
+                                         SYMBOL.THETA,
+                                         self.theta)
+        right = '[%.3f %s %.3f %s %.3f]' % (self.lower,
+                                            SYMBOL.ARROW_BAR_LEFT,
+                                            self.result,
+                                            SYMBOL.ARROW_BAR_RIGHT,
+                                            self.upper) if self.query.numeric else self.query.str(self.result)
+        return '%s = %s' % (left, right)
+
+
+class MPEResult(Result):
+
+    def __init__(self, evidence, res=None, cand=None, w=None):
+        super().__init__(None, evidence, res=res, cand=cand, w=w)
+        self.path = {}
+
+    def format_result(self):
+        return f'MPE({self.evidence}) = {format_path(self.path)}'
+
+
+class PosteriorResult(Result):
+
+    def __init__(self, query, evidence, dists=None, cand=None, w=None):
+        super().__init__(query, evidence, res=None, cand=cand)
+        self._w = ifnone(w, {})
+        self.distributions = dists
+
+    def format_result(self):
+        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
+                                        ' | ' if self.evidence else '',
+                                        ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
+                                        self.result * 100))
+
+    def __getitem__(self, item):
+        return self.distributions[item]
+        
 
 class JPTBase:
 
-    def __init__(self, variables, targets=None):
+    def __init__(self, variables:List[Variable], targets:None or List[Variable]=None):
         self._variables = tuple(variables)
         self._targets = targets
-        self.varnames = OrderedDict((var.name, var) for var in self._variables)
-        self.leaves = {}
-        self.innernodes = {}
-        self.allnodes = ChainMap(self.innernodes, self.leaves)
+        self.varnames:OrderedDict[str, Variable] = OrderedDict(
+                        (var.name, var) for var in self._variables)
+        self.leaves:Dict[int, Leaf] = {}
+        self.innernodes:Dict[int, DecisionNode] = {}
+        self.allnodes:Dict[int,Node] = ChainMap(self.innernodes, self.leaves)
         self.priors = {}
 
     @property
-    def variables(self):
+    def variables(self) -> List[Variable]:
         return self._variables
 
     @property
-    def targets(self):
+    def targets(self) -> List[Variable]:
         return self._targets
 
-    def to_json(self):
+    def to_json(self) -> str:
         return {'variables': [v.to_json() for v in self.variables],
                 'targets': [v.name for v in self.variables],
                 'leaves': [l.to_json() for l in self.leaves.values()],
@@ -284,7 +407,7 @@ class JPTBase:
                 'priors': {varname: p.to_json() for varname, p in self.priors.items()}}
 
     @staticmethod
-    def from_json(data):
+    def from_json(data) -> str:
         jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
         jpt._targets = tuple(jpt.varnames[varname] for varname in data['targets'])
         for d in data['innernodes']:
@@ -295,14 +418,14 @@ class JPTBase:
                       for varname, dist in data['priors'].items()}
         return jpt
 
-    def __eq__(self, o):
+    def __eq__(self, o) -> bool:
         return (isinstance(o, JPTBase) and
                 self.variables == o.variables and
                 self.innernodes == o.innernodes and
                 self.leaves == o.leaves and
                 self.priors == o.priors)
 
-    def infer(self, query, evidence=None, fail_on_unsatisfiability=True):
+    def infer(self, query, evidence=None, fail_on_unsatisfiability=True) -> Result:
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -328,8 +451,15 @@ class JPTBase:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
-        query_ = self._prepropress_query(query)
-        evidence_ = ifnone(evidence, {}, self._prepropress_query)
+        querymap = VariableMap()
+        for key, value in query.items():
+            querymap[key if isinstance(key, Variable) else self.varnames[key]] = value
+        query_ = self._prepropress_query(querymap)
+        evidencemap = VariableMap()
+        if evidence:
+            for key, value in evidence.items():
+                evidencemap[key if isinstance(key, Variable) else self.varnames[key]] = value
+        evidence_ = ifnone(evidencemap, {}, self._prepropress_query)
 
         r = Result(query_, evidence_)
 
@@ -368,13 +498,14 @@ class JPTBase:
             if fail_on_unsatisfiability:
                 raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence_))
             else:
-                return None
-
-        r.result = p_q / p_e
-        r.weights = [w / p_e for w in r.weights]
+                r.result = None
+                r.weights = None
+        else:
+            r.result = p_q / p_e
+            r.weights = [w / p_e for w in r.weights]
         return r
 
-    def posterior(self, variables, evidence, fail_on_unsatisfiability=True):
+    def posterior(self, variables, evidence, fail_on_unsatisfiability=True) -> Result:
         '''
 
         :param variables:        the query variables of the posterior to be computed
@@ -412,7 +543,6 @@ class JPTBase:
                 if evidence_set is not None:
                     if var in leaf.path:
                         evidence_set = evidence_set.intersection(leaf.path[var])
-                        print(evidence_set, distribution)
                         distribution = distribution.crop(evidence_set)
                 distributions[var].append(distribution)
 
@@ -438,7 +568,7 @@ class JPTBase:
 
         return result
 
-    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True):
+    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True) -> ExpectationResult:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -465,7 +595,7 @@ class JPTBase:
             final[var] = result
         return final
 
-    def mpe(self, evidence=None, fail_on_unsatisfiability=True):
+    def mpe(self, evidence=None, fail_on_unsatisfiability=True) -> MPEResult:
         '''
         Compute the (conditional) MPE state of the model.
         '''
@@ -505,7 +635,7 @@ class JPTBase:
             r.path.update({var: dist.mpe()})
         return r
 
-    def _prepropress_query(self, query):
+    def _prepropress_query(self, query) -> VariableMap:
         '''
         Transform a query entered by a user into an internal representation
         that can be further processed.
@@ -566,7 +696,7 @@ class JPT(JPTBase):
     logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
     def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
-                 max_leaves=None, max_depth=None):
+                 max_leaves=None, max_depth=None, variable_dependencies=None) -> None:
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -589,7 +719,14 @@ class JPT(JPTBase):
         self.indices = None
         self.impurity = None
 
-    def c45(self, data, start, end, parent, child_idx, depth):
+        #initialize the dependencies as fully dependent on each other.
+        #the interface isnt modified therefore the jpt should work as before if not
+        #specified different
+        if variable_dependencies is None:
+            self.variable_dependencies:Dict[Variable, List[Variable]] = \
+                dict(zip(self.variables, [self.variables]*len(self.variables)))
+
+    def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
         Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
         ``indices``. The created node is put as a child with index ``child_idx`` to the children of
@@ -687,19 +824,19 @@ class JPT(JPTBase):
 
             JPT.logger.debug('Created decision node', str(node))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return (f'{self.__class__.__name__}\n'
                 f'{self._p(self.root, 0)}\n'
                 f'JPT stats: #innernodes = {len(self.innernodes)}, '
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (f'{self.__class__.__name__}\n'
                 f'{self._p(self.root, 0)}\n'
                 f'JPT stats: #innernodes = {len(self.innernodes)}, '
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
-    def _p(self, parent, indent):
+    def _p(self, parent, indent) -> str:
         if parent is None:
             return "{}None\n".format(" " * indent)
         return "{}{}\n{}".format(" " * indent,
@@ -707,7 +844,7 @@ class JPT(JPTBase):
                                  ''.join([self._p(r, indent + 5) for r in ([] if isinstance(parent, Leaf)
                                                                            else parent.children)]))
 
-    def _preprocess_data(self, data=None, rows=None, columns=None):
+    def _preprocess_data(self, data=None, rows=None, columns=None) -> np.ndarray:
         '''
         Transform the input data into an internal representation.
         '''
@@ -739,15 +876,23 @@ class JPT(JPTBase):
                 raise ValueError('Unknown variable names: %s'
                                  % ', '.join(mapstr(set(self.varnames).symmetric_difference(set(data.columns)))))
 
-            data_[:] = data.transform({c: self.varnames[v].domain.values.transformer()
-                                       for v, c in zip(self.varnames, data.columns)},
-                                      ).values
+            # Check if the order of columns in the data frame is the same
+            # as the order of the variables.
+            if not all(c == v for c, v in zip_longest(data.columns, self.varnames)):
+                raise ValueError('Columns in DataFrame must coincide with variable order: %s' %
+                                 ', '.join(mapstr(self.varnames)))
+            transformations = {v: self.varnames[v].domain.values.transformer() for v in data.columns}
+            try:
+                data_[:] = data.transform(transformations).values
+            except ValueError:
+                err(transformations)
+                raise
         else:
             for i, (var, col) in enumerate(zip(self.variables, columns)):
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
-    def learn(self, data=None, rows=None, columns=None):
+    def learn(self, data=None, rows=None, columns=None) -> None:
         '''Fits the ``data`` into a regression tree.
 
         :param data:    The training examples (assumed in row-shape)
@@ -781,7 +926,7 @@ class JPT(JPTBase):
         for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(self.variables)])):# {var: var.dist(data=data[:, i]) }
             self.priors[self.variables[i].name] = self.variables[i].domain.from_json(prior)
         JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
-        self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
+        # self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
         pool.close()
         pool.join()
 
@@ -851,7 +996,7 @@ class JPT(JPTBase):
         else:
             return iv
 
-    def reverse(self, query, confidence=.5):
+    def reverse(self, query, confidence=.5) -> List[Tuple[Dict, List[Node]]]:
         '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
 
         :param query: a mapping from featurenames to either numeric value intervals or an iterable of categorical values
@@ -906,7 +1051,7 @@ class JPT(JPTBase):
         # nodes representing a path from a leaf to the root
         return paths
 
-    def compute_best_split(self, indices):
+    def compute_best_split(self, indices) -> Tuple[int, float ,float]:
         # calculate gains for each feature/target combination and normalize over targets
         gains_tgt = defaultdict(dict)
         for tgt in self.variables:
@@ -1060,7 +1205,7 @@ class JPT(JPTBase):
         dot = dot.unflatten(stagger=3)
         dot.render(view=view, cleanup=False)
 
-    def pickle(self, fpath):
+    def pickle(self, fpath) -> None:
         '''Pickles the fitted regression tree to a file at the given location ``fpath``.
 
         :param fpath: the location for the pickled file
@@ -1085,7 +1230,7 @@ class JPT(JPTBase):
                 raise Exception(f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.')
 
     @staticmethod
-    def calcnorm(sigma, mu, intervals):
+    def calcnorm(sigma, mu, intervals) -> float:
         '''Computes the CDF for a multivariate normal distribution.
 
         :param sigma: the standard deviation
@@ -1098,7 +1243,7 @@ class JPT(JPTBase):
         from scipy.stats import mvn
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], mu, sigma))
 
-    def sklearn_tree(self, data=None, targets=None):
+    def sklearn_tree(self, data=None, targets=None) -> DecisionTreeRegressor:
         if data is None:
             data = self.data
         assert data is not None, 'Gimme data!'
@@ -1110,7 +1255,7 @@ class JPT(JPTBase):
             tree.fit(data, data if targets is None else targets)
         return tree
 
-    def save(self, file):
+    def save(self, file) -> None:
         '''
         Write this JPT persistently to disk.
 
@@ -1143,118 +1288,3 @@ class DistributedJPT(JPTBase):
 
     def apply(self, query):
         pass
-
-
-class Result:
-
-    def __init__(self, query, evidence, res=None, cand=None, w=None):
-        self.query = query
-        self._evidence = evidence
-        self._res = ifnone(res, [])
-        self._cand = ifnone(cand, [])
-        self._w = ifnone(w, [])
-
-    def __str__(self):
-        return self.format_result()
-
-    @property
-    def evidence(self):
-        return {k: (k.domain.labels[v] if k.symbolic else ContinuousSet(k.domain.labels[v.lower], k.domain.labels[v.upper], v.left, v.right)) for k, v in self._evidence.items()}
-
-    @property
-    def result(self):
-        return self._res
-
-    @result.setter
-    def result(self, res):
-        self._res = res
-
-    @property
-    def candidates(self):
-        return self._cand
-
-    @candidates.setter
-    def candidates(self, cand):
-        self._cand = cand
-
-    @property
-    def weights(self):
-        return self._w
-
-    @weights.setter
-    def weights(self, w):
-        self._w = w
-
-    def format_result(self):
-        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
-                                        ' | ' if self.evidence else '',
-                                        ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
-                                        self.result * 100))
-
-    def explain(self):
-        result = self.format_result()
-        result += '\n'
-        for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '%.3f%%: %s\n' % (weight, format_path({var: val for var, val in leaf.path.items() if var not in self.evidence}))
-        return result
-
-
-class ExpectationResult(Result):
-
-    def __init__(self, query, evidence, theta, lower=None, upper=None, res=None, cand=None, w=None):
-        super().__init__(query, evidence, res=res, cand=cand, w=w)
-        self.theta = theta
-        self._lower = lower
-        self._upper = upper
-
-    @property
-    def lower(self):
-        return self.query.domain.labels[self._lower]
-
-    @property
-    def upper(self):
-        return self.query.domain.labels[self._upper]
-
-    @property
-    def result(self):
-        return self.query.domain.labels[self._res]
-
-    def format_result(self):
-        left = 'E(%s%s%s; %s = %.3f)' % (self.query,
-                                         ' | ' if self.evidence else '',
-                                         ', '.join([var.str(val, fmt='logic') for var, val in self._evidence.items()]),
-                                         SYMBOL.THETA,
-                                         self.theta)
-        right = '[%.3f %s %.3f %s %.3f]' % (self.lower,
-                                            SYMBOL.ARROW_BAR_LEFT,
-                                            self.result,
-                                            SYMBOL.ARROW_BAR_RIGHT,
-                                            self.upper) if self.query.numeric else self.query.str(self.result)
-        return '%s = %s' % (left, right)
-
-
-class MPEResult(Result):
-
-    def __init__(self, evidence, res=None, cand=None, w=None):
-        super().__init__(None, evidence, res=res, cand=cand, w=w)
-        self.path = {}
-
-    def format_result(self):
-        return f'MPE({self.evidence}) = {format_path(self.path)}'
-
-
-class PosteriorResult(Result):
-
-    def __init__(self, query, evidence, dists=None, cand=None, w=None):
-        super().__init__(query, evidence, res=None, cand=cand)
-        self._w = ifnone(w, {})
-        self.distributions = dists
-
-    def format_result(self):
-        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
-                                        ' | ' if self.evidence else '',
-                                        ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
-                                        self.result * 100))
-
-    def __getitem__(self, item):
-        return self.distributions[item]

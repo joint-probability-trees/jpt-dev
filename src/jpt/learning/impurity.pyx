@@ -163,6 +163,9 @@ cdef class Impurity:
     cdef readonly  DTYPE_t max_impurity_improvement
     cdef DTYPE_t w_numeric
 
+    cdef dict variable_dependencies
+    cdef dict index_dependencies
+
     @property
     def best_split_pos(self):
         return pydeque([e for e in self._best_split_pos])
@@ -227,6 +230,10 @@ cdef class Impurity:
             self.variance_improvements = np.ndarray(self.n_num_vars, dtype=np.float64)
 
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
+
+        #copy the dependency structure
+        self.variable_dependencies = tree.variable_dependencies
+        self.index_dependencies = tree.index_dependencies
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances):  # nogil:
         cdef int i
@@ -524,6 +531,18 @@ cdef class Impurity:
             self.sq_sums_left[i] += y * y
             self.sq_sums_right[i] = self.sq_sums_total[i] - self.sq_sums_left[i]
 
+
+    cdef inline void update_numeric_stats_with_dependencies(Impurity self, SIZE_t sample_idx, SIZE_t[::1] dependent_columns) nogil:
+        cdef SIZE_t var, i
+        cdef DTYPE_t y
+        for i in dependent_columns:
+            y = self.data[sample_idx, self.numeric_vars[i]]
+            self.sums_left[i] += y
+            self.sums_right[i] = self.sums_total[i] - self.sums_left[i]
+            self.sq_sums_left[i] += y * y
+            self.sq_sums_right[i] = self.sq_sums_total[i] - self.sq_sums_left[i]
+
+
     cdef inline void update_symbolic_stats(Impurity self, SIZE_t sample_idx) nogil:
         cdef SIZE_t i, j, validx
         for i in range(self.n_sym_vars):
@@ -531,3 +550,9 @@ cdef class Impurity:
             self.symbols_left[validx, i] += 1
             self.symbols_right[validx, i] = self.symbols_total[validx, i] - self.symbols_left[validx, i]
 
+    cdef inline void update_symbolic_stats_with_dependencies(Impurity self, SIZE_t sample_idx, SIZE_t[::1] dependent_columns) nogil:
+        cdef SIZE_t i, j, validx
+        for i in dependent_columns:
+            validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[i]]
+            self.symbols_left[validx, i] += 1
+            self.symbols_right[validx, i] = self.symbols_total[validx, i] - self.symbols_left[validx, i]

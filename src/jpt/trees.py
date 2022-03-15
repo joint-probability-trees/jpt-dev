@@ -696,7 +696,7 @@ class JPT(JPTBase):
     logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
     def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
-                 max_leaves=None, max_depth=None) -> None:
+                 max_leaves=None, max_depth=None, variable_dependencies=None) -> None:
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -719,6 +719,22 @@ class JPT(JPTBase):
         self.indices = None
         self.impurity = None
 
+        #initialize the dependencies as fully dependent on each other.
+        #the interface isnt modified therefore the jpt should work as before if not
+        #specified different
+        if variable_dependencies is None:
+            self.variable_dependencies: Dict[Variable, List[Variable]] = \
+                dict(zip(self.variables, [self.variables]*len(self.variables)))
+        else:
+            self.variable_dependencies: Dict[Variable, List[Variable]] = variable_dependencies
+
+        #also initialize the dependency structure as indices since it will be usefull in the c45 algorithm
+        self.index_dependencies: Dict[int, List[int]] = dict()
+        for key, value in self.variable_dependencies.items():
+            key_ = self.variables.index(key)
+            value_ = [self.variables.index(var) for var in value]
+            self.index_dependencies[key] = value
+
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
         Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
@@ -737,7 +753,8 @@ class JPT(JPTBase):
         # --------------------------------------------------------------------------------------------------------------
         n_samples = end - start
 
-        if n_samples > self.min_samples_leaf:
+        if n_samples > self.min_samples_leaf: # i think >= 2*self.min_samples_leaf is sufficient and better performing
+            #and self.impurity >= self.min_impurity_improvement
             impurity = self.impurity
             impurity.compute_best_split(start, end)
             max_gain = impurity.max_impurity_improvement
