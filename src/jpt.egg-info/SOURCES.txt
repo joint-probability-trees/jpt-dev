@@ -20,6 +20,7 @@ src/jpt/learning/impurity.cpp
 test/test_cdfreg.py
 test/test_cutils.py
 test/test_distributions.py
+test/test_impurity.py
 test/test_inference.py
 test/test_interval.py
 test/test_jpt.py
