@@ -5,3 +5,7 @@
 *.project
 *.settings/
 *.pydevproject
+*.cpp
+*/jpt.egg.info/
+*/build/*
+*/dist/*
