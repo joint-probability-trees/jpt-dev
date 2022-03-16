@@ -784,7 +784,7 @@ class JPT(JPTBase):
 
             if ft_best.symbolic:
                 # CASE SPLIT VARIABLE IS SYMBOLIC
-                node.splits = [{i_v} for i_v in range(ft_best.domain.n_values)]
+                node.splits = [{int(best_split)}]
 
                 # split examples into distinct sets for each value of the selected feature
                 prev = 0
@@ -956,9 +956,10 @@ class JPT(JPTBase):
 
     @property
     def min_samples_leaf(self):
-        if type(self._min_samples_leaf) is int: return self._min_samples_leaf
+        if type(self._min_samples_leaf) is int:
+            return self._min_samples_leaf
         if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
-            return int(self._min_samples_leaf*len(_data))
+            return int(self._min_samples_leaf * len(_data))
         return int(self._min_samples_leaf)
 
     @staticmethod

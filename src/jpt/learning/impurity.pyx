@@ -130,6 +130,7 @@ cdef class Impurity:
     cdef SIZE_t start, end
 
     cdef SIZE_t[::1] numeric_vars, symbolic_vars, all_vars
+    cdef SIZE_t[::1] numeric_features, symbolic_features
     cdef public DTYPE_t min_samples_leaf
     cdef SIZE_t[::1] symbols
     cdef SIZE_t n_num_vars, n_sym_vars, max_sym_domain, n_vars, n_num_vars_total, n_sym_vars_total, n_vars_total
@@ -157,15 +158,11 @@ cdef class Impurity:
     cdef DTYPE_t[::1] max_variances
 
     cdef SIZE_t[::1] num_samples
-    cdef SIZE_t[::1] targets
-    cdef deque[int] _best_split_pos
-    cdef readonly int best_var
+    cdef SIZE_t[::1] features
+    cdef readonly SIZE_t best_split_pos
+    cdef readonly SIZE_t best_var
     cdef readonly  DTYPE_t max_impurity_improvement
     cdef DTYPE_t w_numeric
-
-    @property
-    def best_split_pos(self):
-        return pydeque([e for e in self._best_split_pos])
 
     def __init__(self, tree):
         self.min_samples_leaf = tree.min_samples_leaf
@@ -174,6 +171,7 @@ cdef class Impurity:
         self.start = self.end = -1
 
         self.best_var = -1
+        self.best_split_pos = -1
         self.max_impurity_improvement = 0
 
         self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables)
@@ -182,16 +180,21 @@ cdef class Impurity:
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                        if v.symbolic and (tree.targets is None or v in tree.targets)],
                                       dtype=np.int64)
-        self.all_vars = np.concatenate((self.numeric_vars, self.symbolic_vars))
-        self.n_vars = self.all_vars.shape[0]  # len(tree.variables)
-
-        self.targets = np.array([i for i, v in enumerate(tree.variables)
-                                 if tree.targets is None or v in tree.targets], dtype=np.int64)
-
         self.n_sym_vars = len(self.symbolic_vars)
         self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
 
+        self.all_vars = np.concatenate((self.numeric_vars, self.symbolic_vars))
+        self.n_vars = self.all_vars.shape[0]  # len(tree.variables)
         self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
+
+        self.numeric_features = np.array([i for i, v in enumerate(tree.variables)
+                                         if v.numeric and (tree.targets is None or v not in tree.targets)],
+                                         dtype=np.int64)
+        self.symbolic_features = np.array([i for i, v in enumerate(tree.variables)
+                                          if v.symbolic and (tree.targets is None or v not in tree.targets)],
+                                         dtype=np.int64)
+        self.features = np.concatenate((self.numeric_features, self.symbolic_features))
+
         if self.n_sym_vars:
             # Thread-invariant buffers
             self.symbols = np.array([v.domain.n_values for v in tree.variables if v.symbolic], dtype=np.int64)
@@ -206,7 +209,7 @@ cdef class Impurity:
             self.gini_left = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
             self.gini_right = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
 
-        self.num_samples = np.ndarray(shape=max(max(self.symbols) if self.n_sym_vars else 2, 2), dtype=np.int64)
+        self.num_samples = np.ndarray(shape=2, dtype=np.int64)  # max(max(self.symbols) if self.n_sym_vars else 2, 2)
         self.n_num_vars = len(self.numeric_vars)
         self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric])
 
@@ -281,7 +284,6 @@ cdef class Impurity:
         self.start = start
         self.end = end
         cdef int n_samples = end - start
-        cdef np.float64_t denom = 0
 
         cdef np.float64_t impurity_total = 0
         cdef np.float64_t gini_total = 0
@@ -308,8 +310,6 @@ cdef class Impurity:
             if not self.check_max_variances(self.variances_total):
                 return 0
 
-            denom += 1
-
         if self.symbolic_vars.shape[0]:
             bincount(self.data,
                      self.indices[self.start:self.end],
@@ -318,7 +318,6 @@ cdef class Impurity:
 
             self.gini_impurity(self.symbols_total, n_samples, self.gini_impurities)
             gini_total = mean(self.gini_impurities)
-            denom += 1
         else:
             gini_total = 0
 
@@ -328,47 +327,59 @@ cdef class Impurity:
         cdef DTYPE_t impurity_improvement
         cdef int variable
 
-        cdef deque[int] split_pos
-        # self.index_buffer[self.start:self.end] = self.indices[self.start:self.end]
+        cdef SIZE_t split_pos
         self.index_buffer[:n_samples] = self.indices[self.start:self.end]
 
-        for variable in range(self.n_vars_total):
-            symbolic = variable in self.symbolic_vars
+        for variable in self.features:
+            symbolic = variable in self.symbolic_features
             symbolic_idx += symbolic
-            split_pos.clear()
-            if variable in self.targets:
-                continue
+
             impurity_improvement = self.evaluate_variable(variable,
                                                           symbolic,
                                                           symbolic_idx,
-                                                          denom,
                                                           self.variances_total if self.has_numeric_vars() else None,
                                                           gini_total,
                                                           self.index_buffer,
                                                           &split_pos)
             if impurity_improvement > self.max_impurity_improvement:
                 self.max_impurity_improvement = impurity_improvement
-                self._best_split_pos.clear()
-                for e in split_pos:
-                    self._best_split_pos.push_back(e)
-
                 self.best_var = variable
+                self.best_split_pos = split_pos
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
+
+        if self.best_var in self.symbolic_features:
+            print(self.best_var)
+            self.move_best_values_to_front(self.best_var,
+                                           self.data[self.best_split_pos, self.best_var],
+                                           &self.best_split_pos)
+            print(np.asarray(self.feat))
+            self.best_split_pos -= 1
+
         return self.max_impurity_improvement
+
+    cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos) nogil:
+        cdef SIZE_t n_samples = self.end - self.start
+        cdef int j
+        cdef DTYPE_t v
+        split_pos[0] = 0
+        for j in range(n_samples):
+            v = self.data[self.index_buffer[j], var_idx]
+            if v == value:
+                v = -1
+                split_pos[0] += 1
+            self.feat[j] = v
+        sort(&self.feat[0], &self.index_buffer[0], n_samples)
 
     cdef DTYPE_t evaluate_variable(Impurity self,
                                int var_idx,
                                int symbolic,
                                int symbolic_idx,
-                               DTYPE_t denom,
                                DTYPE_t[::1] variances_total,
                                DTYPE_t gini_total,
                                SIZE_t[::1] index_buffer,
-                               # DTYPE_t* best_split_val,
-                               deque[int]* best_split_pos) nogil:
+                               SIZE_t* best_split_pos) nogil:
         cdef DTYPE_t[:, ::1] data = self.data
         cdef DTYPE_t[::1] f = self.feat
-        # cdef SIZE_t[::1] indices = self.indices
         cdef DTYPE_t max_impurity_improvement = 0
         cdef SIZE_t start = self.start, end = self.end
         cdef SIZE_t n_samples = end - start
@@ -396,7 +407,7 @@ cdef class Impurity:
 
         self.num_samples[:] = 0
         cdef SIZE_t samples_left, samples_right
-        cdef DTYPE_t impurity_improvement = 0
+        cdef DTYPE_t impurity_improvement = 0.
         cdef DTYPE_t tmp_impurity_impr
 
         cdef SIZE_t VAL_IDX
@@ -416,8 +427,9 @@ cdef class Impurity:
                 samples_right = self.num_samples[RIGHT]
             else:
                 VAL_IDX = <SIZE_t> data[sample_idx, var_idx]
-                self.num_samples[VAL_IDX] += 1
-                samples_left = self.num_samples[VAL_IDX]
+                self.num_samples[LEFT] += 1
+                self.num_samples[RIGHT] = n_samples - self.num_samples[LEFT]
+                samples_left = self.num_samples[LEFT]
                 samples_right = n_samples - samples_left
 
             # Compute the numeric impurity by variance approximation
@@ -433,14 +445,8 @@ cdef class Impurity:
             if not last_iter:
                 if data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]:
                     continue
-                elif symbolic:
-                    best_split_pos[0].push_back(split_pos)
 
-            elif symbolic:
-                best_split_pos[0].push_back(split_pos)
-
-            if numeric:
-                impurity_improvement = 0
+            impurity_improvement = 0.
 
             if self.has_numeric_vars():
                 if samples_left > 1:
@@ -458,56 +464,40 @@ cdef class Impurity:
                                                                      self.variances_right,
                                                                      samples_left,
                                                                      samples_right) * self.w_numeric
-                    # impurity_improvement += mean(self.variance_improvements)
                 else:
                     impurity_improvement += (mean(self.variances_total) - mean(self.variances_left)) / mean(self.variances_total)
-                    impurity_improvement *= <DTYPE_t> self.num_samples[VAL_IDX] / <DTYPE_t> n_samples * self.w_numeric
+                    impurity_improvement *= <DTYPE_t> samples_left / <DTYPE_t> n_samples * self.w_numeric
 
             if self.has_symbolic_vars():
                 if gini_total:
                     self.gini_impurity(self.symbols_left, samples_left, self.gini_left)
-                    if numeric:
-                        self.gini_impurity(self.symbols_right, samples_right, self.gini_right)
-                        impurity_improvement += ((gini_total -
-                                                  mean(self.gini_left) * (<DTYPE_t> samples_left / <DTYPE_t> n_samples) -
-                                                  mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> n_samples)) / gini_total
-                                                  * (1 - self.w_numeric))
-                    else:
-                        tmp_impurity_impr = 0
-                        tmp_impurity_impr += (gini_total - mean(self.gini_left)) / gini_total
-                        tmp_impurity_impr *= <DTYPE_t> self.num_samples[VAL_IDX] / <DTYPE_t> n_samples * (1. - self.w_numeric)
-                        impurity_improvement += tmp_impurity_impr
+                    self.gini_impurity(self.symbols_right, samples_right, self.gini_right)
+                    impurity_improvement += ((gini_total -
+                                              mean(self.gini_left) * (<DTYPE_t> samples_left / <DTYPE_t> n_samples) -
+                                              mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> n_samples)) / gini_total
+                                              * (1 - self.w_numeric))
 
             if symbolic:
                 self.symbols_left[...] = 0
+                self.symbols_right[...] =  self.symbols_total[...]
                 self.gini_improvements[...] = 0
+                self.num_samples[...] = 0
 
                 if self.has_numeric_vars():
                     self.sums_left[...] = 0
                     self.sq_sums_left[...] = 0
 
-                if last_iter:
-                    cnt = 0
-                    min_samples = self.min_samples_leaf
-                    for i in range(self.symbols[symbolic_idx]):
-                        if self.num_samples[i] == 0:
-                            cnt += 1
-                        elif self.num_samples[i] < min_samples:
-                            min_samples = self.num_samples[i]
-                    if min_samples < 2 * self.min_samples_leaf / (self.symbols[symbolic_idx] - cnt):
-                        impurity_improvement = 0
-                        break
+            if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
+                impurity_improvement = 0.
 
-            else:  # numeric
-                if (samples_left < self.min_samples_leaf
-                    or samples_right < self.min_samples_leaf):
-                    #or not self.check_max_variances(self.variances_total)):
-                    impurity_improvement = 0
-            if (numeric or last_iter) and (impurity_improvement > max_impurity_improvement):
+            printf('%d new best: #%d [%f] --> %f\n',
+                   var_idx,
+                   split_pos,
+                   data[sample_idx, var_idx],
+                   impurity_improvement)
+            if impurity_improvement > max_impurity_improvement:
                 max_impurity_improvement = impurity_improvement
-                if numeric:  # Clear the split pos as in numeric vars we only have exactly one
-                    best_split_pos[0].clear()
-                    best_split_pos[0].push_back(split_pos)
+                best_split_pos[0] = split_pos
 
             if last_iter:
                 break
@@ -529,5 +519,5 @@ cdef class Impurity:
         for i in range(self.n_sym_vars):
             validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[i]]
             self.symbols_left[validx, i] += 1
-            self.symbols_right[validx, i] = self.symbols_total[validx, i] - self.symbols_left[validx, i]
+            self.symbols_right[validx, i] -= 1  # self.symbols_total[validx, i] - self.symbols_left[validx, i]
 
