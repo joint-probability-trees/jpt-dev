@@ -29,9 +29,9 @@ def main():
     tree = JPT(variables=variables, min_samples_leaf=100)
 
     tree.learn(data=df)
-
+    print(tree)
     leaves = list(tree.leaves.values())
-
+    exit()
     rows = 2
     cols = 7
     fig, axes = plt.subplots(rows, cols, figsize=(7, 2))
