@@ -20,6 +20,11 @@ try:
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
+    from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
+    from jpt.trees import JPT
+    from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
+    from jpt.base.intervals import ContinuousSet, INC, EXC
+    from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
 
 
 class TestCaseMerge(unittest.TestCase):

@@ -7,6 +7,7 @@ try:
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
+    from jpt.base.cutils import test_sort
 
 
 class CUtilsTest(TestCase):
