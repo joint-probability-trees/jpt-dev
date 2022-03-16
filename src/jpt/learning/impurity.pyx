@@ -17,6 +17,7 @@ from collections import deque as pydeque
 
 from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort
 
+
 cdef int LEFT = 0
 cdef int RIGHT = 1
 
@@ -163,8 +164,7 @@ cdef class Impurity:
     cdef readonly  DTYPE_t max_impurity_improvement
     cdef DTYPE_t w_numeric
 
-    cdef dict variable_dependencies
-    cdef dict index_dependencies
+    cdef np.int64_t[:,:] dependency_matrix
 
     @property
     def best_split_pos(self):
@@ -182,6 +182,7 @@ cdef class Impurity:
         self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                       if v.numeric and (tree.targets is None or v in tree.targets)],
                                      dtype=np.int64)
+
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                        if v.symbolic and (tree.targets is None or v in tree.targets)],
                                       dtype=np.int64)
@@ -232,8 +233,7 @@ cdef class Impurity:
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
         #copy the dependency structure
-        self.variable_dependencies = tree.variable_dependencies
-        self.index_dependencies = tree.index_dependencies
+        self.dependency_matrix = tree.dependency_matrix
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances):  # nogil:
         cdef int i
@@ -343,6 +343,7 @@ cdef class Impurity:
             symbolic = variable in self.symbolic_vars
             symbolic_idx += symbolic
             split_pos.clear()
+
             if variable in self.targets:
                 continue
             impurity_improvement = self.evaluate_variable(variable,
@@ -353,6 +354,7 @@ cdef class Impurity:
                                                           gini_total,
                                                           self.index_buffer,
                                                           &split_pos)
+
             if impurity_improvement > self.max_impurity_improvement:
                 self.max_impurity_improvement = impurity_improvement
                 self._best_split_pos.clear()
@@ -372,7 +374,7 @@ cdef class Impurity:
                                DTYPE_t gini_total,
                                SIZE_t[::1] index_buffer,
                                # DTYPE_t* best_split_val,
-                               deque[int]* best_split_pos) nogil:
+                               deque[int]* best_split_pos):
         cdef DTYPE_t[:, ::1] data = self.data
         cdef DTYPE_t[::1] f = self.feat
         # cdef SIZE_t[::1] indices = self.indices
@@ -386,7 +388,7 @@ cdef class Impurity:
             f[j] = data[index_buffer[j], var_idx]
         sort(&f[0], &index_buffer[0], n_samples)
         # --------------------------------------------------------------------------------------------------------------
-        cdef int numeric = not symbolic
+        cdef int numeric = not symbolic #TODO: bool?
         
         if self.col_is_constant(start, end, var_idx):
             return 0
@@ -427,12 +429,17 @@ cdef class Impurity:
                 samples_left = self.num_samples[VAL_IDX]
                 samples_right = n_samples - samples_left
 
+
+            #This part below got changed to only update stats on dependent stuff.
+
             # Compute the numeric impurity by variance approximation
             if self.has_numeric_vars():
+                #self.update_numeric_stats_with_dependencies(sample_idx, self.index_dependencies[var_idx]
                 self.update_numeric_stats(sample_idx)
 
             # Compute the symbolic impurity by the Gini index
             if self.has_symbolic_vars():
+                #self.update_symbolic_stats_with_dependencies(sample_idx, self.index_dependencies[var_idx])
                 self.update_symbolic_stats(sample_idx)
 
             # Skip calculation for identical values (i.e. until next 'real' splitpoint is reached:
@@ -532,10 +539,13 @@ cdef class Impurity:
             self.sq_sums_right[i] = self.sq_sums_total[i] - self.sq_sums_left[i]
 
 
-    cdef inline void update_numeric_stats_with_dependencies(Impurity self, SIZE_t sample_idx, SIZE_t[::1] dependent_columns) nogil:
+    cdef inline void update_numeric_stats_with_dependencies(Impurity self, SIZE_t sample_idx, np.int64_t[:] dependent_columns):
         cdef SIZE_t var, i
         cdef DTYPE_t y
+
         for i in dependent_columns:
+            if i == -1:
+                return
             y = self.data[sample_idx, self.numeric_vars[i]]
             self.sums_left[i] += y
             self.sums_right[i] = self.sums_total[i] - self.sums_left[i]
@@ -550,9 +560,11 @@ cdef class Impurity:
             self.symbols_left[validx, i] += 1
             self.symbols_right[validx, i] = self.symbols_total[validx, i] - self.symbols_left[validx, i]
 
-    cdef inline void update_symbolic_stats_with_dependencies(Impurity self, SIZE_t sample_idx, SIZE_t[::1] dependent_columns) nogil:
+    cdef inline void update_symbolic_stats_with_dependencies(Impurity self, SIZE_t sample_idx, np.int64_t[:] dependent_columns):
         cdef SIZE_t i, j, validx
         for i in dependent_columns:
+            if i == -1:
+                return
             validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[i]]
             self.symbols_left[validx, i] += 1
             self.symbols_right[validx, i] = self.symbols_total[validx, i] - self.symbols_left[validx, i]

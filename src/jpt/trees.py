@@ -729,11 +729,11 @@ class JPT(JPTBase):
             self.variable_dependencies: Dict[Variable, List[Variable]] = variable_dependencies
 
         #also initialize the dependency structure as indices since it will be usefull in the c45 algorithm
-        self.index_dependencies: Dict[int, List[int]] = dict()
+        self.dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
         for key, value in self.variable_dependencies.items():
             key_ = self.variables.index(key)
             value_ = [self.variables.index(var) for var in value]
-            self.index_dependencies[key] = value
+            self.dependency_matrix[key_, 0:len(value)] = value_
 
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
@@ -753,7 +753,7 @@ class JPT(JPTBase):
         # --------------------------------------------------------------------------------------------------------------
         n_samples = end - start
 
-        if n_samples > self.min_samples_leaf: # i think >= 2*self.min_samples_leaf is sufficient and better performing
+        if n_samples > self.min_samples_leaf: # TODO: i think >= 2*self.min_samples_leaf is sufficient and better performing
             #and self.impurity >= self.min_impurity_improvement
             impurity = self.impurity
             impurity.compute_best_split(start, end)
