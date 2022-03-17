@@ -784,29 +784,21 @@ class JPT(JPTBase):
 
             if ft_best.symbolic:
                 # CASE SPLIT VARIABLE IS SYMBOLIC
-                node.splits = [{int(best_split)}]
+                split_value = data[self.indices[start + best_split], ft_best_idx]
+                out(split_value)
+                node.splits = [{int(split_value)}, set(ft_best.domain.values.values()).difference({split_value})]
 
-                # split examples into distinct sets for each value of the selected feature
-                prev = 0
-                for i, val in enumerate(node.splits):
-                    if best_split and first(val) == data[self.indices[start + best_split[0]], ft_best_idx]:
-                        pos = best_split.popleft()
-                        self.c45queue.append((data, start + prev, start + pos + 1, node, i, depth + 1))
-                        prev = pos + 1
+                self.c45queue.append((data, start, start + best_split + 1, node, 0, depth + 1))
+                self.c45queue.append((data, start + best_split, end, node, 1, depth + 1))
 
             elif ft_best.numeric:
                 # CASE SPLIT VARIABLE IS NUMERIC
-                prev = 0
-                splits = [Interval(np.NINF, np.PINF, EXC, EXC)]
-                for i, pos in enumerate(best_split):
-                    splits[-1].upper = (data[self.indices[start + pos],
-                                             ft_best_idx] +
-                                        data[self.indices[start + pos + 1],
-                                             ft_best_idx]) / 2
-                    splits.append(Interval(splits[-1].upper, np.PINF, INC, EXC))
-                    self.c45queue.append((data, start + prev, start + pos + 1, node, i, depth + 1))
-                    prev = pos + 1
-                self.c45queue.append((data, start + prev, end, node, len(splits) - 1, depth + 1))
+                split_value = (data[self.indices[start + best_split], ft_best_idx] +
+                               data[self.indices[start + best_split + 1], ft_best_idx]) / 2
+                splits = [Interval(np.NINF, split_value, EXC, EXC),
+                          Interval(split_value, np.PINF, INC, EXC)]
+                self.c45queue.append((data, start, start + best_split + 1, node, 0, depth + 1))
+                self.c45queue.append((data, start + best_split + 1, end, node, 1, depth + 1))
                 node.splits = splits
 
             else:
