@@ -17,7 +17,6 @@ from collections import deque as pydeque
 
 from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort
 
-
 cdef int LEFT = 0
 cdef int RIGHT = 1
 
@@ -182,7 +181,6 @@ cdef class Impurity:
         self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                       if v.numeric and (tree.targets is None or v in tree.targets)],
                                      dtype=np.int64)
-
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                        if v.symbolic and (tree.targets is None or v in tree.targets)],
                                       dtype=np.int64)
@@ -343,7 +341,6 @@ cdef class Impurity:
             symbolic = variable in self.symbolic_vars
             symbolic_idx += symbolic
             split_pos.clear()
-
             if variable in self.targets:
                 continue
             impurity_improvement = self.evaluate_variable(variable,
@@ -354,7 +351,6 @@ cdef class Impurity:
                                                           gini_total,
                                                           self.index_buffer,
                                                           &split_pos)
-
             if impurity_improvement > self.max_impurity_improvement:
                 self.max_impurity_improvement = impurity_improvement
                 self._best_split_pos.clear()
@@ -374,7 +370,7 @@ cdef class Impurity:
                                DTYPE_t gini_total,
                                SIZE_t[::1] index_buffer,
                                # DTYPE_t* best_split_val,
-                               deque[int]* best_split_pos):
+                               deque[int]* best_split_pos) nogil:
         cdef DTYPE_t[:, ::1] data = self.data
         cdef DTYPE_t[::1] f = self.feat
         # cdef SIZE_t[::1] indices = self.indices
