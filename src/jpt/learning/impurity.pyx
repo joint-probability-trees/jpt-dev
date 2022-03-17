@@ -348,11 +348,9 @@ cdef class Impurity:
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
 
         if self.best_var in self.symbolic_features:
-            print(self.best_var)
             self.move_best_values_to_front(self.best_var,
                                            self.data[self.best_split_pos, self.best_var],
                                            &self.best_split_pos)
-            print(np.asarray(self.feat))
             self.best_split_pos -= 1
 
         return self.max_impurity_improvement
@@ -490,11 +488,6 @@ cdef class Impurity:
             if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
                 impurity_improvement = 0.
 
-            printf('%d new best: #%d [%f] --> %f\n',
-                   var_idx,
-                   split_pos,
-                   data[sample_idx, var_idx],
-                   impurity_improvement)
             if impurity_improvement > max_impurity_improvement:
                 max_impurity_improvement = impurity_improvement
                 best_split_pos[0] = split_pos

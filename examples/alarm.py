@@ -21,7 +21,7 @@ def alarm():
     M = SymbolicVariable('MaryCalls', Bool)
     J = SymbolicVariable('JohnCalls', Bool)
 
-    A_ = Conditional(Bool, [E.domain, B.domain])
+    A_ = Conditional(Bool, [B.domain, E.domain])
     A_[True, True] = Bool(.95)
     A_[True, False] = Bool(.94)
     A_[False, True] = Bool(.29)
@@ -41,7 +41,7 @@ def alarm():
 
         # Construct the CSV for learning
         data = []
-        for i in range(1000):
+        for i in range(10000):
             e = E.dist(.2).sample_one()
             b = B.dist(.1).sample_one()
             a = A_.sample_one([e, b])
@@ -81,8 +81,10 @@ def alarm():
     res = tree.infer(q, e)
     print(res.explain())
 
+    print(tree.posterior([A], evidence={M: True})[A]._params)
+
     # print_stopwatches()
-    # print('AVG', c/t)
+    print('AVG', c / t)
     tree.plot(plotvars=[E, B, A, M, J], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Alarm'))
 
 
