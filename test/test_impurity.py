@@ -54,8 +54,5 @@ class ImpurityTest(TestCase):
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
         impurity.setup(data, np.array(list(range(data.shape[0]))))
         impurity.compute_best_split(0, data.shape[0])
-        print(impurity.best_var,
-              ImpurityTest.variables[impurity.best_var],
-              ImpurityTest.variables[impurity.best_var].domain.labels[impurity.best_split_pos])
         self.assertNotEqual(impurity.best_var, -1)
         self.assertIs(ImpurityTest.variables[impurity.best_var], ImpurityTest.pa)
