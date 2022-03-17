@@ -164,6 +164,8 @@ cdef class Impurity:
     cdef DTYPE_t w_numeric
 
     cdef np.int64_t[:,:] dependency_matrix
+    cdef np.int64_t[:,:] numeric_dependency_matrix
+    cdef np.int64_t[:,:] symbolic_dependency_matrix
 
     @property
     def best_split_pos(self):
@@ -193,7 +195,6 @@ cdef class Impurity:
         self.n_sym_vars = len(self.symbolic_vars)
         self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
 
-        self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
         if self.n_sym_vars:
             # Thread-invariant buffers
             self.symbols = np.array([v.domain.n_values for v in tree.variables if v.symbolic], dtype=np.int64)
@@ -211,6 +212,8 @@ cdef class Impurity:
         self.num_samples = np.ndarray(shape=max(max(self.symbols) if self.n_sym_vars else 2, 2), dtype=np.int64)
         self.n_num_vars = len(self.numeric_vars)
         self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric])
+
+        self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
 
         if self.n_num_vars:
             # Thread-invariant buffers
@@ -231,7 +234,10 @@ cdef class Impurity:
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
         #copy the dependency structure
-        self.dependency_matrix = tree.dependency_matrix
+        self.dependency_matrix = np.asarray(tree.dependency_matrix)
+        self.numeric_dependency_matrix = np.asarray(tree.numeric_dependency_matrix)
+        self.symbolic_dependency_matrix = np.asarray(tree.symbolic_dependency_matrix)
+
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances):  # nogil:
         cdef int i
@@ -341,7 +347,7 @@ cdef class Impurity:
             symbolic = variable in self.symbolic_vars
             symbolic_idx += symbolic
             split_pos.clear()
-            if variable in self.targets:
+            if variable not in self.targets:
                 continue
             impurity_improvement = self.evaluate_variable(variable,
                                                           symbolic,
@@ -351,6 +357,7 @@ cdef class Impurity:
                                                           gini_total,
                                                           self.index_buffer,
                                                           &split_pos)
+
             if impurity_improvement > self.max_impurity_improvement:
                 self.max_impurity_improvement = impurity_improvement
                 self._best_split_pos.clear()
@@ -370,7 +377,7 @@ cdef class Impurity:
                                DTYPE_t gini_total,
                                SIZE_t[::1] index_buffer,
                                # DTYPE_t* best_split_val,
-                               deque[int]* best_split_pos) nogil:
+                               deque[int]* best_split_pos):
         cdef DTYPE_t[:, ::1] data = self.data
         cdef DTYPE_t[::1] f = self.feat
         # cdef SIZE_t[::1] indices = self.indices
@@ -430,13 +437,14 @@ cdef class Impurity:
 
             # Compute the numeric impurity by variance approximation
             if self.has_numeric_vars():
-                #self.update_numeric_stats_with_dependencies(sample_idx, self.index_dependencies[var_idx]
-                self.update_numeric_stats(sample_idx)
+                self.update_numeric_stats_with_dependencies(sample_idx, self.numeric_dependency_matrix[var_idx])
+                #self.update_numeric_stats(sample_idx)
 
             # Compute the symbolic impurity by the Gini index
             if self.has_symbolic_vars():
-                #self.update_symbolic_stats_with_dependencies(sample_idx, self.index_dependencies[var_idx])
-                self.update_symbolic_stats(sample_idx)
+                self.update_symbolic_stats_with_dependencies(sample_idx, self.symbolic_dependency_matrix[var_idx])
+                #self.update_symbolic_stats(sample_idx)
+
 
             # Skip calculation for identical values (i.e. until next 'real' splitpoint is reached:
             # for skipping, the sample must not be the last one (1) and consequtive values must be equal (2)

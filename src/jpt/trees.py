@@ -34,7 +34,7 @@ try:
     from .base.utils import list2interval, format_path, normalized
     from .learning.impurity import Impurity
     from .learning.distributions import Multinomial, Numeric, Identity, Distribution
-    from .variables import Variable
+    from .variables import Variable, SymbolicVariable, NumericVariable
 except ImportError:
     import pyximport
     pyximport.install()
@@ -399,6 +399,12 @@ class JPTBase:
     def targets(self) -> List[Variable]:
         return self._targets
 
+    def numeric_variables(self):
+        return [var for var in self.variables if isinstance(var, NumericVariable)]
+
+    def symbolic_variables(self):
+        return [var for var in self.variables if isinstance(var, SymbolicVariable)]
+
     def to_json(self) -> str:
         return {'variables': [v.to_json() for v in self.variables],
                 'targets': [v.name for v in self.variables],
@@ -568,7 +574,7 @@ class JPTBase:
 
         return result
 
-    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True) -> ExpectationResult:
+    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True) -> VariableMap[Variable, ExpectationResult]:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -730,10 +736,26 @@ class JPT(JPTBase):
 
         #also initialize the dependency structure as indices since it will be usefull in the c45 algorithm
         self.dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+
+        #dependencies to numeric varaibles for every variable
+        self.numeric_dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+
+        #dependencies to symbolic variables for every variable
+        self.symbolic_dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+
+        #convert variable dependency structure to index dependency structure for easy interpretation in cython
         for key, value in self.variable_dependencies.items():
             key_ = self.variables.index(key)
             value_ = [self.variables.index(var) for var in value]
+            numeric_dependencies = [self.numeric_variables().index(var) for var in value if
+                                    isinstance(var, NumericVariable)]
+            symbolic_dependencies = [self.symbolic_variables().index(var) for var in value if
+                                     isinstance(var, SymbolicVariable)]
             self.dependency_matrix[key_, 0:len(value)] = value_
+            self.numeric_dependency_matrix[key_, 0:len(numeric_dependencies)] = numeric_dependencies
+            self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
+
+
 
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
