@@ -176,11 +176,18 @@ class DecisionNode(Node):
         node._path.append((self.variable, self.splits[idx]))
 
     def str_edge(self, idx) -> str:
-        return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
-                                 self.variable.domain.labels[self.splits[idx].upper],
-                                 self.splits[idx].left,
-                                 self.splits[idx].right)
-                   if self.variable.numeric else self.variable.domain.labels[idx])
+        if self.variable.numeric:
+            return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
+                                     self.variable.domain.labels[self.splits[idx].upper],
+                                     self.splits[idx].left,
+                                     self.splits[idx].right))
+        else:
+            negate = len(self.splits[1]) > 1
+            if negate:
+                label = self.variable.domain.labels[fst(self.splits[0])]
+                return '%s%s' % ('\u00AC' if idx > 0 else '', label)
+            else:
+                return str(self.variable.domain.labels[fst(self.splits[idx])])
 
     @property
     def str_node(self) -> str:
@@ -377,11 +384,11 @@ class PosteriorResult(Result):
 
     def __getitem__(self, item):
         return self.distributions[item]
-        
+
 
 class JPTBase:
 
-    def __init__(self, variables:List[Variable], targets:None or List[Variable]=None):
+    def __init__(self, variables, targets=None):
         self._variables = tuple(variables)
         self._targets = targets
         self.varnames:OrderedDict[str, Variable] = OrderedDict(
@@ -1216,7 +1223,7 @@ class JPT(JPTBase):
                 raise Exception(f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.')
 
     @staticmethod
-    def calcnorm(sigma, mu, intervals) -> float:
+    def calcnorm(sigma, mu, intervals):
         '''Computes the CDF for a multivariate normal distribution.
 
         :param sigma: the standard deviation

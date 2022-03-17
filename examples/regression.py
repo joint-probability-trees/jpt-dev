@@ -58,15 +58,17 @@ def main():
     jpt.plot(view=True)
 
     # Apply the JPT model
-    confidence = .95
+    confidence = .7
 
-    my_predictions = [first(jpt.expectation([vary],
-                                            evidence={varx: x_},
-                                            confidence_level=confidence,
-                                            fail_on_unsatisfiability=False)) for x_ in xx.ravel()]
-    y_pred_ = [p.result if p else None for p in my_predictions]
-    y_lower_ = [p.lower if p else None for p in my_predictions]
-    y_upper_ = [p.upper if p else None for p in my_predictions]
+    my_predictions = [jpt.expectation([vary],
+                                      evidence={varx: [x_ - .1, x_ + .1]},
+                                      confidence_level=confidence,
+                                      fail_on_unsatisfiability=False) for x_ in xx.ravel()]
+    # for p in my_predictions:
+    #     print(p)
+    y_pred_ = [(p[vary].result if p is not None else None) for p in my_predictions]
+    y_lower_ = [(p[vary].lower if p is not None else None) for p in my_predictions]
+    y_upper_ = [(p[vary].upper if p is not None else None) for p in my_predictions]
 
     posterior = jpt.posterior([varx], {vary: 0})
 
