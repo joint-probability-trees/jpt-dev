@@ -8,12 +8,9 @@
 
 import numpy as np
 cimport numpy as np
-cimport cython
-from libc.stdio cimport printf
-from libcpp.deque cimport deque
+import tabulate
 
-from dnutils import ifnone, out, stop
-from collections import deque as pydeque
+from dnutils import mapstr
 
 from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort
 
@@ -513,4 +510,22 @@ cdef class Impurity:
             validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[i]]
             self.symbols_left[validx, i] += 1
             self.symbols_right[validx, i] -= 1  # self.symbols_total[validx, i] - self.symbols_left[validx, i]
+
+    def to_string(self):
+        return tabulate.tabulate(zip(['# symbolic variables',
+                                      'symbolic variables',
+                                      '# numeric variables',
+                                      'numeric variables',
+                                      '# symbolic features',
+                                      'symbolic features',
+                                      '# numeric features',
+                                      'numeric features'],
+                                     [len(self.symbolic_vars),
+                                      ','.join(mapstr(self.symbolic_vars)),
+                                      len(self.numeric_vars),
+                                      ','.join(mapstr(self.numeric_vars)),
+                                      len(self.symbolic_features),
+                                      ','.join(mapstr(self.symbolic_features)),
+                                      len(self.numeric_features),
+                                      ','.join(mapstr(self.numeric_features))]))
 
