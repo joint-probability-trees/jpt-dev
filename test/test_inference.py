@@ -37,7 +37,7 @@ class JointProbabilityTreesMPE(unittest.TestCase):
         q = {self.A: True}
         e = {self.M: True}
         res = self.jpt.infer(q, e)
-        self.assertAlmostEqual(.15009, res.result, places=5)
+        self.assertAlmostEqual(.92352, res.result, places=5)
 
     def test_infer_alarm(self):
         q = {self.A: True}
