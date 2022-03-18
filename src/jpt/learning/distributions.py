@@ -729,10 +729,12 @@ class Numeric(Distribution):
         return self
 
     def _p(self, value):
-        if isinstance(value, numbers.Number):
+        if isinstance(value, numbers.Number) and np.isinf(self.pdf.eval(value)):
             return 0
+        elif value.lower == value.upper and not value.isempty() and np.isinf(self.pdf.eval(value.lower)):
+            return 1
         return ((self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
-               (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
+                (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
 
     def p(self, value):
         pass
@@ -985,23 +987,24 @@ class Multinomial(Distribution):
     def __repr__(self):
         if self._p is None:
             return f'{self._cl}<p=n/a>'
-        return f'\n{self._cl}<p=[\n{sepcomma.join([f"  {v}={p:.3}"for v, p in zip(self.labels, self.probabilities)])}]>;'
+        return f'\n{self._cl}<p=[\n{sepcomma.join([f" {v}={p:.3}" for v, p in zip(self.labels, self.probabilities)])}]>;'
 
     def sorted(self):
-        return sorted([(p, l) for p, l in zip(self._params, self.labels.values())], key=itemgetter(0), reverse=True)
+        return sorted([(p, l) for p, l in zip(self._params, self.labels.values())],
+                      key=itemgetter(0), reverse=True)
 
     def copy(self):
         return type(self)(params=self._params)
 
     def p(self, labels):
-        if not isinstance(labels, set):
-            raise TypeError('Argument must be a set of values (got %s).' % labels)
-        return self._p({int(self.values[l]) for l in labels})
+        if not iterable(labels):
+            raise TypeError('Argument must be iterable (got %s).' % type(labels))
+        return self._p(self.values[label] for label in labels)
 
     def _p(self, values):
-        if not isinstance(values, set):
-            raise TypeError('Argument must be a set of values (got %s).' % values)
-        return sum(self._params[int(v)] for v in values)
+        if not all(isinstance(v, numbers.Integral) for v in values):
+            raise TypeError('All arguments must be integers.')
+        return sum(self._params[v] for v in values)
 
     def sample(self, n):
         '''Returns ``n`` sample `values` according to their respective probability'''
@@ -1208,8 +1211,8 @@ class Bool(Multinomial):
 
 def SymbolicType(name, labels):
     t = type(name, (Multinomial,), {})
-    t.values = OrderedDictProxy([(lbl, float(val)) for val, lbl in zip(range(len(labels)), labels)])
-    t.labels = OrderedDictProxy([(float(val), lbl) for val, lbl in zip(range(len(labels)), labels)])
+    t.values = OrderedDictProxy([(lbl, int(val)) for val, lbl in zip(range(len(labels)), labels)])
+    t.labels = OrderedDictProxy([(int(val), lbl) for val, lbl in zip(range(len(labels)), labels)])
     return t
 
 
