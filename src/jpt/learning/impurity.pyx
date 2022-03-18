@@ -9,6 +9,7 @@
 import numpy as np
 cimport numpy as np
 import tabulate
+from libc.stdio cimport printf
 
 from dnutils import mapstr
 
@@ -257,9 +258,9 @@ cdef class Impurity:
             result[i] -= 1
             result[i] /= 1. / (<DTYPE_t> self.symbols[i]) - 1.
 
-    cdef inline int col_is_constant(Impurity self, long start, long end, long col) nogil:
+    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil:
         cdef DTYPE_t v_ = nan, v
-        cdef long i
+        cdef SIZE_t i
         for i in range(start, end):
             v = self.data[self.indices[i], col]
             if v_ == v: continue
@@ -330,7 +331,7 @@ cdef class Impurity:
         for variable in self.features:
             symbolic = variable in self.symbolic_features
             symbolic_idx += symbolic
-
+            split_pos = -1
             impurity_improvement = self.evaluate_variable(variable,
                                                           symbolic,
                                                           symbolic_idx,
@@ -346,9 +347,8 @@ cdef class Impurity:
 
         if self.best_var in self.symbolic_features:
             self.move_best_values_to_front(self.best_var,
-                                           self.data[self.best_split_pos, self.best_var],
+                                           self.data[start + self.best_split_pos, self.best_var],
                                            &self.best_split_pos)
-            self.best_split_pos -= 1
 
         return self.max_impurity_improvement
 
@@ -356,7 +356,7 @@ cdef class Impurity:
         cdef SIZE_t n_samples = self.end - self.start
         cdef int j
         cdef DTYPE_t v
-        split_pos[0] = 0
+        split_pos[0] = -1
         for j in range(n_samples):
             v = self.data[self.index_buffer[j], var_idx]
             if v == value:
@@ -386,7 +386,6 @@ cdef class Impurity:
         sort(&f[0], &index_buffer[0], n_samples)
         # --------------------------------------------------------------------------------------------------------------
         cdef int numeric = not symbolic
-        
         if self.col_is_constant(start, end, var_idx):
             return 0
         # Prepare the stats

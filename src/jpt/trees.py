@@ -73,6 +73,15 @@ def _prior(args):
         raise ValueError('%s: %s' % (Variable.from_json(json_var), str(e)))
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# Global constants
+
+DISCRIMINATIVE = 'discriminative'
+GENERATIVE = 'generative'
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 class Node:
     '''
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
@@ -219,7 +228,7 @@ class Leaf(Node):
     def str_node(self) -> str:
         return ""
 
-    def applies(self, query:VariableMap) -> bool:
+    def applies(self, query: VariableMap) -> bool:
         '''Checks whether this leaf is consistent with the given ``query``.'''
         path = self.path
         for var in set(query.keys()).intersection(set(path.keys())):
@@ -726,95 +735,81 @@ class JPT(JPTBase):
         self.indices = None
         self.impurity = None
 
-    def c45(self, data, start, end, parent, child_idx, depth) -> None:
+    def c45(self, data: np.ndarray, start: int, end: int, parent: Node, child_idx: int, depth: int) -> None:
         '''
         Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
         ``indices``. The created node is put as a child with index ``child_idx`` to the children of
         node ``parent``, if any.
 
-        :param indices: the indices for the training samples used to calculate the gain
-        :type indices:      [[int]]
+        :param data:        the indices for the training samples used to calculate the gain
+        :type data:         [[int]]
         :param parent:      the parent node of the current iteration, initially the root node
-        :type parent:       jpt.variables.Variable
         :param child_idx:   the index of the child in the current iteration
         :type child_idx:    int
         '''
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
-        # --------------------------------------------------------------------------------------------------------------
         n_samples = end - start
 
         if n_samples > self.min_samples_leaf:
             impurity = self.impurity
-            impurity.compute_best_split(start, end)
-            max_gain = impurity.max_impurity_improvement
-            best_split = impurity.best_split_pos
+            max_gain = impurity.compute_best_split(start, end)
 
-            if impurity.best_var != -1:
-                ft_best_idx = impurity.best_var
-                ft_best = self.variables[ft_best_idx]  # if ft_best_idx is not None else None
-            else:
-                ft_best = None
+            if max_gain:
+                split_pos = impurity.best_split_pos
+                split_var_idx = impurity.best_var
+                split_var = self.variables[split_var_idx]
 
         else:
             max_gain = 0
-            ft_best = None
-            sp_best = None
-            ft_best_idx = None
+            split_var = None
+            split_var_idx = None
 
-        # create decision node splitting on ft_best or leaf node if min_samples_leaf criterion is not met
-        if max_gain <= min_impurity_improvement or depth >= self.max_depth:
-            leaf = Leaf(idx=len(self.allnodes),
-                        parent=parent)
+        if max_gain <= min_impurity_improvement or depth >= self.max_depth:  # -----------------------------------------
+            leaf = node = Leaf(idx=len(self.allnodes), parent=parent)
+
             if parent is not None:
                 parent.set_child(child_idx, leaf)
 
             for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.dist(data=data, rows=self.indices[start:end], col=i)
+                leaf.distributions[v] = v.dist(data=data,
+                                               rows=self.indices[start:end], col=i)
 
             leaf.prior = n_samples / data.shape[0]
             leaf.samples = n_samples
 
             self.leaves[leaf.idx] = leaf
 
-            JPT.logger.debug('Created leaf', str(leaf))
-
-        else:
-            # divide examples into distinct sets for each value of ft_best
-            # split_data = None  # {val: [] for val in ft_best.domain.values}
+        else:  # -------------------------------------------------------------------------------------------------------
             node = DecisionNode(idx=len(self.allnodes),
-                                variable=ft_best,
+                                variable=split_var,
                                 parent=parent)
             node.samples = n_samples
-            # update path
             self.innernodes[node.idx] = node
 
-            if ft_best.symbolic:
-                # CASE SPLIT VARIABLE IS SYMBOLIC
-                split_value = data[self.indices[start + best_split], ft_best_idx]
-                out(split_value)
-                node.splits = [{int(split_value)}, set(ft_best.domain.values.values()).difference({split_value})]
+            if split_var.symbolic:  # ----------------------------------------------------------------------------------
+                split_value = data[self.indices[start + split_pos], split_var_idx]
+                splits = [{int(split_value)},
+                          set(split_var.domain.values.values()) - {split_value}]
 
-                self.c45queue.append((data, start, start + best_split + 1, node, 0, depth + 1))
-                self.c45queue.append((data, start + best_split, end, node, 1, depth + 1))
-
-            elif ft_best.numeric:
-                # CASE SPLIT VARIABLE IS NUMERIC
-                split_value = (data[self.indices[start + best_split], ft_best_idx] +
-                               data[self.indices[start + best_split + 1], ft_best_idx]) / 2
+            elif split_var.numeric:  # ---------------------------------------------------------------------------------
+                split_value = sum(data[self.indices[start + split_pos]:self.indices[start + split_pos + 1],
+                                  split_var_idx].T) / 2
                 splits = [Interval(np.NINF, split_value, EXC, EXC),
                           Interval(split_value, np.PINF, INC, EXC)]
-                self.c45queue.append((data, start, start + best_split + 1, node, 0, depth + 1))
-                self.c45queue.append((data, start + best_split + 1, end, node, 1, depth + 1))
-                node.splits = splits
 
-            else:
-                raise TypeError('Unknown variable type: %s.' % type(ft_best).__name__)
+            else:  # ---------------------------------------------------------------------------------------------------
+                raise TypeError('Unknown variable type: %s.' % type(split_var).__name__)
 
-            if parent is not None:
-                parent.set_child(child_idx, node)
+            self.c45queue.append((data, start, start + split_pos + 1, node, 0, depth + 1))
+            self.c45queue.append((data, start + split_pos + 1, end, node, 1, depth + 1))
 
-            JPT.logger.debug('Created decision node', str(node))
+            node.splits = splits
+
+        JPT.logger.debug('Created', str(node))
+
+        if parent is not None:
+            parent.set_child(child_idx, node)
 
     def __str__(self) -> str:
         return (f'{self.__class__.__name__}\n'
@@ -931,6 +926,14 @@ class JPT(JPTBase):
                                                                     _data.shape[1],
                                                                     started,
                                                                     int(self.impurity.min_samples_leaf)))
+        learning = GENERATIVE if self.targets is None else DISCRIMINATIVE
+        JPT.logger.info('Learning is %s. ' % learning)
+        if learning == DISCRIMINATIVE:
+            JPT.logger.info('Target variables (%d): %s\n'
+                            'Feature variables (%d): %s' % (len(self.targets),
+                                                            ', '.join(mapstr(self.targets)),
+                                                            len(self.variables) - len(self.targets),
+                                                            ', '.join(mapstr(set(self.variables) - set(self.targets)))))
         # build up tree
         self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
         while self.c45queue:
