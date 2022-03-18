@@ -373,5 +373,10 @@ class VariableMap:
         vmap = VariableMap()
         varbyname = {var.name: var for var in variables}
         for vname, value in d.items():
-            vmap[varbyname[vname]] = typ.from_json(value, *args) if typ is not None and hasattr(typ, 'from_json') else value
+            vmap[varbyname[vname]] = (typ.from_json(value, *args)
+                                      if typ is not None and hasattr(typ, 'from_json')
+                                      else value)
         return vmap
+
+    def __repr__(self):
+        return '<VariableMap {%s}>' % ','.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()])
