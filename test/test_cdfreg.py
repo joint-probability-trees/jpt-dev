@@ -555,7 +555,7 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
         print('Setting up test class', cls.__name__)
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=False, precision=.01, haze=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
@@ -567,17 +567,18 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
         # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
         # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
-
+        import logging
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
+        JPT.logger.setLevel(logging.DEBUG)
         cls.jpt.learn(columns=cls.data.values.T)
-        cls.jpt.plot(title='Restaurant-Mixed',
+        cls.jpt.plot(plotvars=['Food', 'WaitEstimate'], title='Restaurant-Mixed',
                      filename='Restaurant-Mixed',
                      directory=tempfile.gettempdir(),
-                     view=False)
+                     view=True)
 
     def test_posterior_mixed_single_candidate_T(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Thai'}
+        self.q = ['WillWait']
+        self.e = {'WaitEstimate': [0, 0], 'Food': 'Thai'}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual(True, self.posterior.distributions[self.q[-1]].expectation())
 
