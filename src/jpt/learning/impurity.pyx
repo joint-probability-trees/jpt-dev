@@ -163,9 +163,9 @@ cdef class Impurity:
     cdef DTYPE_t w_numeric
 
 
-    cdef np.int64_t[:,:] dependency_matrix
-    cdef np.int64_t[:,:] numeric_dependency_matrix
-    cdef np.int64_t[:,:] symbolic_dependency_matrix
+    cdef SIZE_t[:, ::1] dependency_matrix
+    cdef SIZE_t[:, ::1] numeric_dependency_matrix
+    cdef SIZE_t[:, ::1] symbolic_dependency_matrix
 
 
     def __init__(self, tree):
@@ -239,9 +239,9 @@ cdef class Impurity:
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
         #copy the dependency structure
-        self.dependency_matrix = np.asarray(tree.dependency_matrix)
-        self.numeric_dependency_matrix = np.asarray(tree.numeric_dependency_matrix)
-        self.symbolic_dependency_matrix = np.asarray(tree.symbolic_dependency_matrix)
+        self.dependency_matrix = tree.dependency_matrix
+        self.numeric_dependency_matrix = tree.numeric_dependency_matrix
+        self.symbolic_dependency_matrix = tree.symbolic_dependency_matrix
 
     #@property
     #def best_split_pos(self):
@@ -361,11 +361,6 @@ cdef class Impurity:
             symbolic = variable in self.symbolic_features
             symbolic_idx += symbolic
             split_pos = -1
-
-            #split_pos.clear()
-            #if variable not in self.targets:
-             #   continue
-
             impurity_improvement = self.evaluate_variable(variable,
                                                           symbolic,
                                                           symbolic_idx,
@@ -407,7 +402,7 @@ cdef class Impurity:
                                DTYPE_t[::1] variances_total,
                                DTYPE_t gini_total,
                                SIZE_t[::1] index_buffer,
-                               SIZE_t* best_split_pos):
+                               SIZE_t* best_split_pos) nogil:
 
         cdef DTYPE_t[:, ::1] data = self.data
         cdef DTYPE_t[::1] f = self.feat
@@ -465,19 +460,19 @@ cdef class Impurity:
                 samples_left = self.num_samples[LEFT]
                 samples_right = n_samples - samples_left
 
-
-            #This part below got changed to only update stats on dependent stuff.
+            # This part below got changed to only update stats on dependent stuff.
 
             # Compute the numeric impurity by variance approximation
             if self.has_numeric_vars():
-                self.update_numeric_stats_with_dependencies(sample_idx, self.numeric_dependency_matrix[var_idx])
+                self.update_numeric_stats_with_dependencies(sample_idx,
+                                                            self.numeric_dependency_matrix[var_idx, :])
                 #self.update_numeric_stats(sample_idx)
 
             # Compute the symbolic impurity by the Gini index
             if self.has_symbolic_vars():
-                self.update_symbolic_stats_with_dependencies(sample_idx, self.symbolic_dependency_matrix[var_idx])
+                self.update_symbolic_stats_with_dependencies(sample_idx,
+                                                             self.symbolic_dependency_matrix[var_idx, :])
                 #self.update_symbolic_stats(sample_idx)
-
 
             # Skip calculation for identical values (i.e. until next 'real' splitpoint is reached:
             # for skipping, the sample must not be the last one (1) and consequtive values must be equal (2)
@@ -549,18 +544,21 @@ cdef class Impurity:
             self.sq_sums_right[i] = self.sq_sums_total[i] - self.sq_sums_left[i]
 
 
-    cdef inline void update_numeric_stats_with_dependencies(Impurity self, SIZE_t sample_idx, np.int64_t[:] dependent_columns):
-        cdef SIZE_t var, i
+    cdef inline void update_numeric_stats_with_dependencies(Impurity self,
+                                                            SIZE_t sample_idx,
+                                                            SIZE_t[::1] dependent_columns) nogil:
+        cdef SIZE_t var, i, dep_var
         cdef DTYPE_t y
 
-        for i in dependent_columns:
-            if i == -1:
+        for i in range(dependent_columns.shape[0]):
+            dep_var = dependent_columns[i]
+            if dep_var == -1:
                 return
-            y = self.data[sample_idx, self.numeric_vars[i]]
-            self.sums_left[i] += y
-            self.sums_right[i] = self.sums_total[i] - self.sums_left[i]
-            self.sq_sums_left[i] += y * y
-            self.sq_sums_right[i] = self.sq_sums_total[i] - self.sq_sums_left[i]
+            y = self.data[sample_idx, self.numeric_vars[dep_var]]
+            self.sums_left[dep_var] += y
+            self.sums_right[dep_var] = self.sums_total[dep_var] - self.sums_left[dep_var]
+            self.sq_sums_left[dep_var] += y * y
+            self.sq_sums_right[dep_var] = self.sq_sums_total[dep_var] - self.sq_sums_left[dep_var]
 
 
     cdef inline void update_symbolic_stats(Impurity self, SIZE_t sample_idx) nogil:
@@ -588,11 +586,15 @@ cdef class Impurity:
                                       len(self.numeric_features),
                                       ','.join(mapstr(self.numeric_features))]))
 
-    cdef inline void update_symbolic_stats_with_dependencies(Impurity self, SIZE_t sample_idx, np.int64_t[:] dependent_columns):
-        cdef SIZE_t i, j, validx
-        for i in dependent_columns:
-            if i == -1:
+    cdef inline void update_symbolic_stats_with_dependencies(Impurity self,
+                                                             SIZE_t sample_idx,
+                                                             SIZE_t[::1] dependent_columns) nogil:
+        cdef SIZE_t i, j, validx, dep_var
+        for i in range(dependent_columns.shape[0]):
+            dep_var = dependent_columns[i]
+            if dep_var == -1:
                 return
-            validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[i]]
-            self.symbols_left[validx, i] += 1
-            self.symbols_right[validx, i] = self.symbols_total[validx, i] - self.symbols_left[validx, i]
+            validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[dep_var]]
+            self.symbols_left[validx, dep_var] += 1
+            self.symbols_right[validx, dep_var] = (self.symbols_total[validx, dep_var] -
+                                                   self.symbols_left[validx, dep_var])
