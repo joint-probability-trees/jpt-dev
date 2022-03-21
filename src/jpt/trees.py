@@ -744,25 +744,30 @@ class JPT(JPTBase):
         self.indices = None
         self.impurity = None
 
-        #initialize the dependencies as fully dependent on each other.
-        #the interface isnt modified therefore the jpt should work as before if not
-        #specified different
+        # initialize the dependencies as fully dependent on each other.
+        # the interface isn't modified therefore the jpt should work as before if not
+        # specified different
         if variable_dependencies is None:
             self.variable_dependencies: Dict[Variable, List[Variable]] = \
                 dict(zip(self.variables, [self.variables]*len(self.variables)))
         else:
             self.variable_dependencies: Dict[Variable, List[Variable]] = variable_dependencies
 
-        #also initialize the dependency structure as indices since it will be usefull in the c45 algorithm
-        self.dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+        # also initialize the dependency structure as indices since it will be usefull in the c45 algorithm
+        self.dependency_matrix = np.full((len(self.variables), len(self.variables)),
+                                         -1, dtype=np.int64)
 
-        #dependencies to numeric varaibles for every variable
-        self.numeric_dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+        # dependencies to numeric varaibles for every variable
+        self.numeric_dependency_matrix = np.full((len(self.variables), len(self.variables)),
+                                                 -1,
+                                                 dtype=np.int64)
 
-        #dependencies to symbolic variables for every variable
-        self.symbolic_dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+        # dependencies to symbolic variables for every variable
+        self.symbolic_dependency_matrix = np.full((len(self.variables), len(self.variables)),
+                                                  -1,
+                                                  dtype=np.int64)
 
-        #convert variable dependency structure to index dependency structure for easy interpretation in cython
+        # convert variable dependency structure to index dependency structure for easy interpretation in cython
         for key, value in self.variable_dependencies.items():
             key_ = self.variables.index(key)
             value_ = [self.variables.index(var) for var in value]
@@ -773,8 +778,6 @@ class JPT(JPTBase):
             self.dependency_matrix[key_, 0:len(value)] = value_
             self.numeric_dependency_matrix[key_, 0:len(numeric_dependencies)] = numeric_dependencies
             self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
-
-
 
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
