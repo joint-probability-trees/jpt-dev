@@ -590,7 +590,10 @@ class JPTBase:
 
         return result
 
-    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True) -> VariableMap:
+    def expectation(self, variables=None,
+                    evidence=None,
+                    confidence_level=None,
+                    fail_on_unsatisfiability=True) -> ExpectationResult:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -833,8 +836,8 @@ class JPT(JPTBase):
                           set(split_var.domain.values.values()) - {split_value}]
 
             elif split_var.numeric:  # ---------------------------------------------------------------------------------
-                split_value = sum(data[self.indices[start + split_pos]:self.indices[start + split_pos + 1],
-                                  split_var_idx].T) / 2
+                split_value = (data[self.indices[start + split_pos], split_var_idx] +
+                               data[self.indices[start + split_pos + 1], split_var_idx]) / 2
                 splits = [Interval(np.NINF, split_value, EXC, EXC),
                           Interval(split_value, np.PINF, INC, EXC)]
 

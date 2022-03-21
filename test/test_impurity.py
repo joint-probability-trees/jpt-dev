@@ -59,4 +59,9 @@ class ImpurityTest(TestCase):
         impurity.compute_best_split(0, data.shape[0])
         self.assertNotEqual(impurity.best_var, -1)
         self.assertIs(ImpurityTest.variables[impurity.best_var], ImpurityTest.pa)
-        jpt.learn(ImpurityTest.data)
+        self.assertEqual([-1, -1, -1, -1, 1, 1, 1, 1, 1, 1, 2, 2],
+                         list(np.asarray(impurity.feat, dtype=np.int32)))
+        self.assertEqual({0, 2, 5, 7}, set(impurity.indices[:4]))
+        self.assertEqual({1, 3, 4, 8, 9, 11}, set(impurity.indices[4:10]))
+        self.assertEqual({6, 10}, set(impurity.indices[10:]))
+
