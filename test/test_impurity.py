@@ -1,3 +1,4 @@
+import logging
 import os
 from unittest import TestCase
 
@@ -47,6 +48,7 @@ class ImpurityTest(TestCase):
                                   ImpurityTest.fo, ImpurityTest.we, ImpurityTest.wa]
 
     def test_symbolic(self):
+        JPT.logger.setLevel(logging.DEBUG)
         jpt = JPT(variables=ImpurityTest.variables, targets=[ImpurityTest.wa])
         data = jpt._preprocess_data(ImpurityTest.data)
         trees._data = data
@@ -56,3 +58,4 @@ class ImpurityTest(TestCase):
         impurity.compute_best_split(0, data.shape[0])
         self.assertNotEqual(impurity.best_var, -1)
         self.assertIs(ImpurityTest.variables[impurity.best_var], ImpurityTest.pa)
+        jpt.learn(ImpurityTest.data)
