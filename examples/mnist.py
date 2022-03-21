@@ -7,10 +7,11 @@ from matplotlib import pyplot as plt
 from jpt.learning.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
-
+import tqdm
 
 def main():
     from sklearn.datasets import load_digits
+    import sklearn.metrics
     mnist = load_digits()
 
     # Create the names of the numeric variables
@@ -26,12 +27,18 @@ def main():
     variables = ([SymbolicVariable('digit', domain=DigitType)] +
                  [NumericVariable(pixel, Numeric) for pixel in pixels])
 
-    tree = JPT(variables=variables, min_samples_leaf=100)
+
+    #create a "fully connected" dependency matrix
+    dependencies = []
+    for var in variables:
+        dependencies.append([v_ for v_ in variables ])
+    dependencies = dict(zip(variables, dependencies))
+
+    tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
 
     tree.learn(data=df)
-
     leaves = list(tree.leaves.values())
-
+    
     rows = 2
     cols = 7
     fig, axes = plt.subplots(rows, cols, figsize=(7, 2))
@@ -47,6 +54,7 @@ def main():
 
     plt.tight_layout()
     plt.show()
+    
     tree.plot()
 
 
