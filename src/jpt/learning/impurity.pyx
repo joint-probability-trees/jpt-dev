@@ -123,8 +123,8 @@ cdef inline void bincount(DTYPE_t[:, ::1] data,
 cdef class Impurity:
 
     cdef DTYPE_t [:, ::1] data
-    cdef SIZE_t [::1] indices, index_buffer
-    cdef DTYPE_t[::1] feat
+    cdef readonly SIZE_t [::1] indices, index_buffer
+    cdef readonly DTYPE_t[::1] feat
     cdef SIZE_t start, end
 
     cdef SIZE_t[::1] numeric_vars, symbolic_vars, all_vars
