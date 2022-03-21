@@ -34,7 +34,7 @@ try:
     from .base.utils import list2interval, format_path, normalized
     from .learning.impurity import Impurity
     from .learning.distributions import Multinomial, Numeric, Identity, Distribution
-    from .variables import Variable
+    from .variables import Variable, SymbolicVariable, NumericVariable
 except ImportError:
     import pyximport
     pyximport.install()
@@ -415,6 +415,12 @@ class JPTBase:
     def targets(self) -> List[Variable]:
         return self._targets
 
+    def numeric_variables(self):
+        return [var for var in self.variables if isinstance(var, NumericVariable)]
+
+    def symbolic_variables(self):
+        return [var for var in self.variables if isinstance(var, SymbolicVariable)]
+
     def to_json(self) -> str:
         return {'variables': [v.to_json() for v in self.variables],
                 'targets': [v.name for v in self.variables],
@@ -584,7 +590,7 @@ class JPTBase:
 
         return result
 
-    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True) -> ExpectationResult:
+    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True) -> VariableMap:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -712,7 +718,7 @@ class JPT(JPTBase):
     logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
     def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
-                 max_leaves=None, max_depth=None) -> None:
+                 max_leaves=None, max_depth=None, variable_dependencies=None) -> None:
         '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
         induced by its training samples in the nodes so we can later make statements
         about the confidence of the prediction.
@@ -735,7 +741,39 @@ class JPT(JPTBase):
         self.indices = None
         self.impurity = None
 
-    def c45(self, data: np.ndarray, start: int, end: int, parent: Node, child_idx: int, depth: int) -> None:
+        #initialize the dependencies as fully dependent on each other.
+        #the interface isnt modified therefore the jpt should work as before if not
+        #specified different
+        if variable_dependencies is None:
+            self.variable_dependencies: Dict[Variable, List[Variable]] = \
+                dict(zip(self.variables, [self.variables]*len(self.variables)))
+        else:
+            self.variable_dependencies: Dict[Variable, List[Variable]] = variable_dependencies
+
+        #also initialize the dependency structure as indices since it will be usefull in the c45 algorithm
+        self.dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+
+        #dependencies to numeric varaibles for every variable
+        self.numeric_dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+
+        #dependencies to symbolic variables for every variable
+        self.symbolic_dependency_matrix = np.full((len(self.variables), len(self.variables)), -1, dtype=int)
+
+        #convert variable dependency structure to index dependency structure for easy interpretation in cython
+        for key, value in self.variable_dependencies.items():
+            key_ = self.variables.index(key)
+            value_ = [self.variables.index(var) for var in value]
+            numeric_dependencies = [self.numeric_variables().index(var) for var in value if
+                                    isinstance(var, NumericVariable)]
+            symbolic_dependencies = [self.symbolic_variables().index(var) for var in value if
+                                     isinstance(var, SymbolicVariable)]
+            self.dependency_matrix[key_, 0:len(value)] = value_
+            self.numeric_dependency_matrix[key_, 0:len(numeric_dependencies)] = numeric_dependencies
+            self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
+
+
+
+    def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
         Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
         ``indices``. The created node is put as a child with index ``child_idx`` to the children of
@@ -790,7 +828,7 @@ class JPT(JPTBase):
 
             if split_var.symbolic:  # ----------------------------------------------------------------------------------
                 split_value = int(data[self.indices[start + split_pos], split_var_idx])
-                out(split_value, split_var.domain.labels.values())
+                #out(split_value, split_var.domain.labels.values())
                 splits = [{split_value},
                           set(split_var.domain.values.values()) - {split_value}]
 

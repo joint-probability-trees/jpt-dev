@@ -9,4 +9,4 @@
 */jpt.egg-info/**
 build/**
 dist/**
-*/TEST/*
+**/TEST/**
