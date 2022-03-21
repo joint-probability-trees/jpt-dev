@@ -203,10 +203,10 @@ class DecisionNode(Node):
         return self.variable.name
 
     def __str__(self) -> str:
-        return (f'DecisionNode<ID:{self.idx}; '
-                f'Variable: {self.variable.name} [%s]' % '; '.join(mapstr(self.splits)) +
-                f'Parent: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}; '
-                f'#children: {len(self.children)}>')
+        return (f'<DecisionNode #{self.idx} '
+                f'{self.variable.name} = [%s]' % '; '.join(self.str_edge(i) for i in range(len(self.splits))) +
+                f'; parent-#: {self.parent.idx if self.parent is not None else None}'
+                f'; #children: {len(self.children)}>')
 
     def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
@@ -741,30 +741,31 @@ class JPT(JPTBase):
         ``indices``. The created node is put as a child with index ``child_idx`` to the children of
         node ``parent``, if any.
 
-        :param data:        the indices for the training samples used to calculate the gain
-        :type data:         [[int]]
-        :param parent:      the parent node of the current iteration, initially the root node
-        :param child_idx:   the index of the child in the current iteration
-        :type child_idx:    int
+        :param data:        the indices for the training samples used to calculate the gain.
+        :param start:       the starting index in the data.
+        :param end:         the stopping index in the data.
+        :param parent:      the parent node of the current iteration, initially the root node.
+        :param child_idx:   the index of the child in the current iteration.
+        :param depth:       the depth of the tree in the current recursion level.
         '''
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
         n_samples = end - start
+        split_var_idx = split_pos = -1
+        split_var = None
 
-        if n_samples > self.min_samples_leaf:
-            impurity = self.impurity
-            max_gain = impurity.compute_best_split(start, end)
+        impurity = self.impurity
+        max_gain = impurity.compute_best_split(start, end)
 
-            if max_gain:
-                split_pos = impurity.best_split_pos
-                split_var_idx = impurity.best_var
-                split_var = self.variables[split_var_idx]
+        if max_gain:
+            split_pos = impurity.best_split_pos
+            split_var_idx = impurity.best_var
+            split_var = self.variables[split_var_idx]
 
-        else:
-            max_gain = 0
-            split_var = None
-            split_var_idx = None
-
+        JPT.logger.debug('Data range: %d-%d,' % (start, end),
+                         'split var:', split_var,
+                         ', split_pos:', split_pos,
+                         ', gain:', max_gain)
         if max_gain <= min_impurity_improvement or depth >= self.max_depth:  # -----------------------------------------
             leaf = node = Leaf(idx=len(self.allnodes), parent=parent)
 
@@ -788,8 +789,9 @@ class JPT(JPTBase):
             self.innernodes[node.idx] = node
 
             if split_var.symbolic:  # ----------------------------------------------------------------------------------
-                split_value = data[self.indices[start + split_pos], split_var_idx]
-                splits = [{int(split_value)},
+                split_value = int(data[self.indices[start + split_pos], split_var_idx])
+                out(split_value, split_var.domain.labels.values())
+                splits = [{split_value},
                           set(split_var.domain.values.values()) - {split_value}]
 
             elif split_var.numeric:  # ---------------------------------------------------------------------------------
@@ -1162,7 +1164,7 @@ class JPT(JPTBase):
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items() if self.targets is None or v in self.targets])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
