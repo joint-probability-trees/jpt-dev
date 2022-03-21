@@ -249,6 +249,17 @@ cdef class Impurity:
         return self.symbolic_vars.shape[0]
 
     cdef inline void gini_impurity(Impurity self, SIZE_t[:, ::1] counts, SIZE_t n_samples, DTYPE_t[::1] result) nogil:
+        '''
+        Following the gini impurity measure (normalized by the number of possible symbolic values:
+            ..
+            In the uniform distribution: -Gini_u(C) = -|C|/|C| + |C|/|C|^2 = 1/|C| - 1
+            
+             Gini(C) = 1 / Gini_u(C) * \sum_c (P(c) * (1 - P(c)) = 1 / Gini_u(C) * \sum_c (P(c) - P(c)^2)
+            -Gini(C) = 1 / Gini_u(C) * (\sum_c P(c)^2 - \sum_c P(c)) | \sum_c P(c) = 1 
+            -Gini(C) = 1 / Gini_u(C) * (\sum_c P(c)^2 - 1)
+             Gini(C) = 1 / -Gini_u(C) * (\sum_c P(c)^2 - 1)
+             Gini(C) = (\sum_c P(c)^2 - 1) / (1 / |C| - 1)
+        '''
         cdef SIZE_t i, j
         result[...] = 0
         for i in range(self.n_sym_vars):
