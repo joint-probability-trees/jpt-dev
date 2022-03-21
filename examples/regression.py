@@ -1,11 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from dnutils import first, out
-import matplotlib
 from matplotlib import pyplot as plt
 
-from jpt.learning.distributions import Numeric, NumericType, ScaledNumeric
 from jpt.trees import JPT
 from jpt.variables import NumericVariable
 
@@ -42,30 +39,29 @@ def generate_data(func, x_lower, x_upper, n):
 def main():
     df = generate_data(f, -20, 10, 1000)
 
-    # Mesh the input space for evaluations of the real function, the prediction and
-    # its MSE
-    xx = np.atleast_2d(np.linspace(-20, 15, 500)).T
-
-    xx = xx.astype(np.float32)
+    # Mesh the input space for evaluations of the real function,
+    # the prediction and its MSE
+    xx = np.atleast_2d(np.linspace(-20, 15, 500)).astype(np.float32).T
 
     # Construct the predictive model
-    varx = NumericVariable('x', Numeric, haze=.01)
-    vary = NumericVariable('y', Numeric, haze=.01)
+    varx = NumericVariable('x')
+    vary = NumericVariable('y')
 
-    jpt = JPT(variables=[varx, vary], min_samples_leaf=.01)
+    # For discrimintive learning, uncomment the following line:
+    jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
+    # For generative learning, uncomment the following line:
+    jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
+
     jpt.learn(data=df)
-
     jpt.plot(view=True)
 
     # Apply the JPT model
-    confidence = .7
+    confidence = .95
 
     my_predictions = [jpt.expectation([vary],
-                                      evidence={varx: [x_ - .1, x_ + .1]},
+                                      evidence={varx: [x_ - .5, x_ + .5]},
                                       confidence_level=confidence,
                                       fail_on_unsatisfiability=False) for x_ in xx.ravel()]
-    # for p in my_predictions:
-    #     print(p)
     y_pred_ = [(p[vary].result if p is not None else None) for p in my_predictions]
     y_lower_ = [(p[vary].lower if p is not None else None) for p in my_predictions]
     y_upper_ = [(p[vary].upper if p is not None else None) for p in my_predictions]
