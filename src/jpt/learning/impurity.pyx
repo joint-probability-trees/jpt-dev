@@ -347,23 +347,23 @@ cdef class Impurity:
 
         if self.best_var in self.symbolic_features:
             self.move_best_values_to_front(self.best_var,
-                                           self.data[start + self.best_split_pos, self.best_var],
+                                           self.data[self.indices[start + self.best_split_pos], self.best_var],
                                            &self.best_split_pos)
 
         return self.max_impurity_improvement
 
-    cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos) nogil:
+    cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos):  #nogil
         cdef SIZE_t n_samples = self.end - self.start
         cdef int j
         cdef DTYPE_t v
         split_pos[0] = -1
         for j in range(n_samples):
-            v = self.data[self.index_buffer[j], var_idx]
+            v = self.data[self.indices[self.start + j], var_idx]
             if v == value:
                 v = -1
                 split_pos[0] += 1
             self.feat[j] = v
-        sort(&self.feat[0], &self.index_buffer[0], n_samples)
+        sort(&self.feat[0], &self.indices[self.start], n_samples)
 
     cdef DTYPE_t evaluate_variable(Impurity self,
                                int var_idx,
