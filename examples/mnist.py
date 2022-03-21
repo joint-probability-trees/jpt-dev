@@ -27,12 +27,10 @@ def main():
     variables = ([SymbolicVariable('digit', domain=DigitType)] +
                  [NumericVariable(pixel, Numeric) for pixel in pixels])
 
-
-    #create a "fully connected" dependency matrix
-    dependencies = []
+    # create a "fully connected" dependency matrix
+    dependencies = {}
     for var in variables:
-        dependencies.append([v_ for v_ in variables ])
-    dependencies = dict(zip(variables, dependencies))
+        dependencies[var] = [v_ for v_ in variables]
 
     tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
 
