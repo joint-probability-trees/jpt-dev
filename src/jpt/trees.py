@@ -415,11 +415,34 @@ class JPTBase:
     def targets(self) -> List[Variable]:
         return self._targets
 
-    def numeric_variables(self):
+    @property
+    def features(self) -> List[Variable]:
+        return [var for var in self.variables if var not in self.targets]
+
+    @property
+    def numeric_variables(self) -> List[Variable]:
         return [var for var in self.variables if isinstance(var, NumericVariable)]
 
-    def symbolic_variables(self):
+    @property
+    def symbolic_variables(self) -> List[Variable]:
         return [var for var in self.variables if isinstance(var, SymbolicVariable)]
+
+    @property
+    def numeric_targets(self) -> List[Variable]:
+        return [var for var in self.targets if isinstance(var, NumericVariable)]
+
+    @property
+    def symbolic_targets(self) -> List[Variable]:
+        return [var for var in self.targets if isinstance(var, SymbolicVariable)]
+
+    @property
+    def numeric_features(self) -> List[Variable]:
+        return [var for var in self.features if isinstance(var, NumericVariable)]
+
+    @property
+    def symbolic_features(self) -> List[Variable]:
+        return [var for var in self.features if isinstance(var, SymbolicVariable)]
+
 
     def to_json(self) -> str:
         return {'variables': [v.to_json() for v in self.variables],
@@ -731,6 +754,9 @@ class JPT(JPTBase):
         :type variables:            [jpt.variables.Variable]
         :param min_samples_leaf:    the minimum number of samples required to generate a leaf node
         :type min_samples_leaf:     int
+        :param variable_dependencies: A dict that maps every variable to a list of variables that are 
+                                        directly dependent to that variable.
+        :type variable_dependencies: None or Dict from variable to list of variables 
         '''
         super().__init__(variables, targets=targets)
         self._min_samples_leaf = min_samples_leaf
@@ -769,13 +795,44 @@ class JPT(JPTBase):
 
         # convert variable dependency structure to index dependency structure for easy interpretation in cython
         for key, value in self.variable_dependencies.items():
+            
+            # get the index version of the dependent variables and store them
             key_ = self.variables.index(key)
             value_ = [self.variables.index(var) for var in value]
-            numeric_dependencies = [self.numeric_variables().index(var) for var in value if
-                                    isinstance(var, NumericVariable)]
-            symbolic_dependencies = [self.symbolic_variables().index(var) for var in value if
-                                     isinstance(var, SymbolicVariable)]
-            self.dependency_matrix[key_, 0:len(value)] = value_
+            self.dependency_matrix[key_, 0:len(value_)] = value_
+            
+            # create lists to store the index dependencies for only numeric/symbolic variables
+            numeric_dependencies = []
+            symbolic_dependencies = []
+
+            for dependent_variable in value:
+                #skip dependent variables if one is not allowed to purify them
+                if self.targets and dependent_variable not in self.targets:
+                    continue
+                
+                # get index of numeric dependent variable
+                if isinstance(dependent_variable, NumericVariable):
+                    if self.targets:
+                        numeric_dependencies.append(
+                            self.numeric_targets.index(dependent_variable)
+                            )
+                    else:
+                        numeric_dependencies.append(
+                            self.numeric_variables.index(dependent_variable)
+                            )
+
+                # get indices of symbolic dependent variable
+                elif isinstance(dependent_variable, SymbolicVariable):
+                    if self.targets:
+                        symbolic_dependencies.append(
+                            self.symbolic_targets.index(dependent_variable)
+                            )
+                    else:
+                        symbolic_dependencies.append(
+                            self.symbolic_variables.index(dependent_variable)
+                            )
+
+            # save the index dependencies to the matrix later used to calculate impurities
             self.numeric_dependency_matrix[key_, 0:len(numeric_dependencies)] = numeric_dependencies
             self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
 
