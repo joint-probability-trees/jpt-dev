@@ -834,7 +834,6 @@ class JPT(JPTBase):
 
             if split_var.symbolic:  # ----------------------------------------------------------------------------------
                 split_value = int(data[self.indices[start + split_pos], split_var_idx])
-                #out(split_value, split_var.domain.labels.values())
                 splits = [{split_value},
                           set(split_var.domain.values.values()) - {split_value}]
 
@@ -1092,39 +1091,6 @@ class JPT(JPTBase):
         # elements of path are tuples (a, b) with a being mappings of {var: confidence} and b being an ordered list of
         # nodes representing a path from a leaf to the root
         return paths
-
-    def compute_best_split(self, indices) -> Tuple[int, float ,float]:
-        # calculate gains for each feature/target combination and normalize over targets
-        gains_tgt = defaultdict(dict)
-        for tgt in self.variables:
-            maxval = 0.
-            for ft in self.variables:
-                gains_tgt[tgt][ft] = self.gains(indices, ft, tgt)
-                maxval = max(maxval, *gains_tgt[tgt][ft].values())
-
-            # normalize gains for comparability
-            gains_tgt[tgt] = {ft: {v: g / maxval if maxval > 0. else 0 for v, g in gains_tgt[tgt][ft].items()} for ft in self._variables}
-
-        # determine (harmonic) mean of target gains
-        gains_ft_hm = defaultdict(lambda: defaultdict(dict))
-        for tgt, fts in gains_tgt.items():
-            for ft, sps in fts.items():
-                for sp, spval in sps.items():
-                    gains_ft_hm[ft][sp][tgt] = spval
-
-        # determine attribute with highest normalized information gain and its index
-        max_gain = -1
-        sp_best = None
-        ft_best = None
-        for ft, sps in gains_ft_hm.items():
-            for sp, tgts in sps.items():
-                hm = np.mean(list(gains_ft_hm[ft][sp].values()))
-                if max_gain < hm:
-                    sp_best = sp
-                    ft_best = ft
-                    max_gain = hm
-        ft_best_idx = self.variables.index(ft_best)
-        return ft_best_idx, sp_best, max_gain
 
     def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.
