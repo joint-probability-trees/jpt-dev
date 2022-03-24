@@ -1095,6 +1095,51 @@ class JPT(JPTBase):
         else:
             return iv
 
+    def likelihood(self, queries:np.ndarray, minimum_probability=pow(10, -10)) -> np.ndarray:
+        '''Get the probabilities of a list of worlds. The worlds must be fully assigned with 
+        single numbers (no intervals). 
+        
+        :param queries: An array containing the worlds. The shape is (x, len(variables)).
+        :type queries: np.array
+        :param minimum_probability: If the probability of a sample is 0 (which is possible
+            due to numeric approximations) the probability will be replaced with 
+            'minimum_probability'.
+        :type minimum_probability: float
+        Returns: An np.array with shape (x, ) containing the probabilities.
+        '''
+        probabilities = np.ones(len(queries))
+
+        for leaf in self.leaves.values():
+            leaf:Leaf = leaf #for syntax highlighting
+
+            true_query_indices = np.ones(len(queries)) #indices for queries that are in this leaf
+            
+            for variable, restriction in leaf.path.items():
+                idx = self.variables.index(variable)
+                column = queries[:, idx]
+                if isinstance(variable, NumericVariable): 
+                    true_indices = np.where((column > restriction.lower) & (column <= restriction.upper), 1, 0)
+                elif isinstance(variable, SymbolicVariable):
+                    true_indices = np.where(column==list(restriction)[0], 1, 0)
+                
+                true_query_indices *= true_indices
+
+            for variable, distribution in leaf.distributions.items():
+                idx = self.variables.index(variable)
+
+                if isinstance(variable, SymbolicVariable):
+                    probs = distribution._params[queries[:,idx].astype(int)] * true_query_indices
+
+                elif isinstance(variable, NumericVariable):
+                    probs = np.asarray(distribution.pdf.multi_eval(queries[:,idx].copy(order='C')))
+                    probs[(probs==float("inf")).nonzero()] = 1.
+                    probs = np.minimum(probs, np.ones(len(probs))) * true_query_indices
+                
+                probs[np.argwhere(true_query_indices == 0)] = 1
+                probabilities *= probs 
+        
+        return np.maximum(probabilities, minimum_probability)
+
     def reverse(self, query, confidence=.5) -> List[Tuple[Dict, List[Node]]]:
         '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
 
