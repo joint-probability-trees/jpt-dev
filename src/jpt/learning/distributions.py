@@ -473,37 +473,40 @@ class Distribution:
         return self.p(value)
 
     def sample(self, n):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def sample_one(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def p(self, value):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def _p(self, value):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def expectation(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def mpe(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def crop(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def _crop(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def merge(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def update(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def fit(self, data, rows=None, col=None):
-        raise NotImplementedError
+        raise NotImplementedError()
+
+    def kl_divergence(self, other):
+        raise NotImplementedError()
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the distribution.
@@ -520,10 +523,10 @@ class Distribution:
         :type view:         bool
         :return:            None
         '''
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def to_json(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     @staticmethod
     def from_json(data):
