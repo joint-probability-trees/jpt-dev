@@ -1,6 +1,6 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 from sklearn.preprocessing import StandardScaler
 
@@ -14,7 +14,7 @@ import re
 from operator import itemgetter
 
 import dnutils
-from dnutils import first, out, ifnone, stop, ifnot, project, mapstr
+from dnutils import first, out, ifnone, stop, ifnot, project, mapstr, pairwise
 from dnutils.stats import Gaussian as Gaussian_, _matshape
 
 from scipy.stats import multivariate_normal, mvn, norm
@@ -28,7 +28,7 @@ from jpt.base.constants import sepcomma
 from jpt.base.sampling import wsample, wchoice
 
 try:
-    from ..base.intervals import R
+    from ..base.intervals import R, ContinuousSet
     from ..base.quantiles import QuantileDistribution, LinearFunction
 except ImportError:
     import pyximport
@@ -714,7 +714,7 @@ class Numeric(Distribution):
         for i, f in zip(self.cdf.intervals, self.cdf.functions):
             if i.lower == np.NINF or i.upper == np.PINF:
                 continue
-            e += (self.cdf.eval(i.upper) - self.cdf.eval(i.lower)) * (i.upper + i.lower) / 2  # (f.m if isinstance(f, LinearFunction) else 0) *
+            e += (self.cdf.eval(i.upper) - self.cdf.eval(i.lower)) * (i.upper + i.lower) / 2
             singular = False
         return e if not singular else i.lower
 
@@ -742,6 +742,32 @@ class Numeric(Distribution):
     def p(self, value):
         pass
 
+    def kl_divergence(self, other):
+        if type(other) is not type(self):
+            raise TypeError('Can only compute KL divergence between '
+                            'distributions of the same type, got %s' % type(other))
+        self_ = [(i.lower, f.value, None) for i, f in self.pdf.iter()]
+        other_ = [(i.lower, None, f.value) for i, f in other.pdf.iter()]
+        all_ = deque(sorted(self_ + other_, key=itemgetter(0)))
+        queue = deque()
+        while all_:
+            v, p, q = all_.popleft()
+            if queue and v == queue[-1][0]:
+                if p is not None:
+                    queue[-1][1] = p
+                if q is not None:
+                    queue[-1][2] = q
+            else:
+                queue.append([v, p, q])
+        result = 0
+        p, q = 0, 0
+        for (x0, p_, q_), (x1, _, _) in pairwise(queue):
+            p = ifnone(p_, p)
+            q = ifnone(q_, q)
+            i = ContinuousSet(x0, x1)
+            result += self._p(i) * (self._p(i) - other._p(i)) ** 2
+        return result
+
     def copy(self):
         dist = type(self)(quantile=self._quantile.copy())
         dist.values = copy.copy(self.values)
@@ -753,6 +779,17 @@ class Numeric(Distribution):
         if not all(distributions[0].__class__ == d.__class__ for d in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
         return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
+
+    def update(self, dist, weight):
+        if not 0 <= weight <= 1:
+            raise ValueError('Weight must be in [0, 1]')
+        if type(dist) is not type(self):
+            raise TypeError('Can only update with distribution of the same type, got %s' % type(dist))
+        tmp = Numeric.merge([self, dist], normalized([1, weight]))
+        self.values = tmp.values
+        self.labels = tmp.labels
+        self._quantile = tmp._quantile
+        return self
 
     def _crop(self, interval):
         dist = self.copy()
@@ -1034,6 +1071,15 @@ class Multinomial(Distribution):
 
     def mpe(self):
         return self.expectation()
+
+    def kl_divergence(self, other):
+        if type(other) is not type(self):
+            raise TypeError('Can only compute KL divergence between '
+                            'distributions of the same type, got %s' % type(other))
+        result = 0
+        for v in range(self.n_values):
+            result += self._params[v] * (self._params[v] - other._params[v]) ** 2
+        return result
 
     def _crop(self, incl_values=None, excl_values=None):
         if incl_values and excl_values:

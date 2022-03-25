@@ -118,6 +118,33 @@ class MultinomialTest(TestCase):
         self.assertEqual(d1, d3)
         self.assertEqual(d1.update(d2, 0), d1)
 
+    def test_kldiv_equality(self):
+        DistABC = self.DistABC
+        d1 = DistABC(params=[1 / 2, 1 / 4, 1 / 4])
+        d2 = DistABC(params=[1 / 2, 1 / 4, 1 / 4])
+        self.assertEqual(d1.kl_divergence(d2), 0)
+        self.assertEqual(d1.kl_divergence(d1), 0)
+        self.assertEqual(0, DistABC(params=[1, 0, 0]).kl_divergence(DistABC(params=[1, 0, 0])))
+
+    def test_kldiv_inequality(self):
+        DistABC = self.DistABC
+        d1 = DistABC(params=[.5, .25, .25])
+        d2 = DistABC(params=[.25, .5, .25])
+        self.assertEqual(0.046875, d1.kl_divergence(d2))
+
+    def test_kldiv_extreme_inequality(self):
+        DistABC = self.DistABC
+        d1 = DistABC(params=[1, 0, 0])
+        d2 = DistABC(params=[0, .5, .5])
+        self.assertEqual(1, d1.kl_divergence(d2))
+
+    def test_kldiv_type(self):
+        DistABC = self.DistABC
+        d1 = DistABC(params=[.5, .25, .25])
+        self.assertRaises(TypeError, d1.kl_divergence, Numeric().fit(np.array([[1], [2], [3]],
+                                                                              dtype=np.float64),
+                                                                     col=0))
+
 
 class NumericTest(TestCase):
     '''Test class for ``Numeric`` distributions'''
@@ -176,5 +203,33 @@ class NumericTest(TestCase):
         f1 = d.crop(ContinuousSet(.1, .9, EXC, EXC)).cdf.round(10)
         f2 = ground_truth.round(10)
         self.assertEqual(f1, f2)
+
+    def test_kldiv_equality(self):
+        DistGauss = self.DistGauss
+        data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
+        dist1 = DistGauss().fit(data1, col=0)
+        self.assertEqual(0, dist1.kl_divergence(dist1))
+
+    def test_kldiv_inequality(self):
+        DistGauss = self.DistGauss
+        data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
+        data2 = np.array([DistGauss.values[l] for l in np.linspace(.5, 1.5, 20)]).reshape(-1, 1)
+        dist1 = DistGauss().fit(data1, col=0)
+        dist2 = DistGauss().fit(data2, col=0)
+        self.assertEqual(0.125, dist1.kl_divergence(dist2))
+
+    def test_kldiv_inequality_extreme(self):
+        DistGauss = self.DistGauss
+        data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
+        data2 = np.array([DistGauss.values[l] for l in np.linspace(5, 10, 20)]).reshape(-1, 1)
+        dist1 = DistGauss().fit(data1, col=0)
+        dist2 = DistGauss().fit(data2, col=0)
+        self.assertEqual(1, dist1.kl_divergence(dist2))
+
+    def test_kldiv_type(self):
+        DistGauss = self.DistGauss
+        data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
+        d1 = DistGauss().fit(data1, col=0)
+        self.assertRaises(TypeError, d1.kl_divergence, ...)
 
 
