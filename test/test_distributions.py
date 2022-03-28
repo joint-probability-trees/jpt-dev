@@ -25,7 +25,7 @@ class MultinomialTest(TestCase):
     # the 2nd component is the relevant one / the last point is to be ignored
     # then, the distribution is 5 / 10, 3 / 10, 2 / 10
     DATA = np.array([[1, 0, 8], [1, 0, 8], [1, 0, 8], [1, 1, 8], [1, 1, 8],
-                     [1, 2, 8], [1, 0, 8], [1, 1, 8], [1, 2, 8], [1, 0, 8], [1, 0, 8]])
+                     [1, 2, 8], [1, 0, 8], [1, 1, 8], [1, 2, 8], [1, 0, 8], [1, 0, 8]], dtype=np.float64)
 
     def setUp(self) -> None:
         self.DistABC = SymbolicType('TestTypeString', labels=['A', 'B', 'C'])
