@@ -35,6 +35,12 @@ def main():
     tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
 
     tree.learn(data=df)
+    
+    #calculate log likelihood
+    queries = np.append(np.expand_dims(mnist.target, -1), mnist.data, axis=1)
+    likelihood = tree.likelihood(queries)
+    print("log-likelihood of tree:", np.sum(np.log(likelihood)))
+
     leaves = list(tree.leaves.values())
     
     rows = 2
