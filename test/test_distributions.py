@@ -130,7 +130,7 @@ class MultinomialTest(TestCase):
         DistABC = self.DistABC
         d1 = DistABC(params=[.5, .25, .25])
         d2 = DistABC(params=[.25, .5, .25])
-        self.assertEqual(0.046875, d1.kl_divergence(d2))
+        self.assertEqual(0.1875, d1.kl_divergence(d2))
 
     def test_kldiv_extreme_inequality(self):
         DistABC = self.DistABC
@@ -216,7 +216,7 @@ class NumericTest(TestCase):
         data2 = np.array([DistGauss.values[l] for l in np.linspace(.5, 1.5, 20)]).reshape(-1, 1)
         dist1 = DistGauss().fit(data1, col=0)
         dist2 = DistGauss().fit(data2, col=0)
-        self.assertEqual(0.125, dist1.kl_divergence(dist2))
+        self.assertEqual(0.25, dist1.kl_divergence(dist2))
 
     def test_kldiv_inequality_extreme(self):
         DistGauss = self.DistGauss

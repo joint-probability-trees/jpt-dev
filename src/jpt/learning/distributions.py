@@ -765,7 +765,7 @@ class Numeric(Distribution):
             p = ifnone(p_, p)
             q = ifnone(q_, q)
             i = ContinuousSet(x0, x1)
-            result += self._p(i) * (self._p(i) - other._p(i)) ** 2
+            result += self._p(i) * abs(self._p(i) - other._p(i))
         return result
 
     def copy(self):
@@ -1078,7 +1078,7 @@ class Multinomial(Distribution):
                             'distributions of the same type, got %s' % type(other))
         result = 0
         for v in range(self.n_values):
-            result += self._params[v] * (self._params[v] - other._params[v]) ** 2
+            result += self._params[v] * abs(self._params[v] - other._params[v])
         return result
 
     def _crop(self, incl_values=None, excl_values=None):
