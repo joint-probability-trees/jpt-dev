@@ -2,6 +2,8 @@
 '''
 import html
 import json
+from threading import Lock
+
 import math
 import numbers
 import operator
@@ -60,6 +62,7 @@ _data = None
 _data_queue = mp.Queue()
 _node_queue = mp.Queue()
 _pool = None
+_lock = Lock()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -442,7 +445,6 @@ class JPTBase:
     @property
     def symbolic_features(self) -> List[Variable]:
         return [var for var in self.features if isinstance(var, SymbolicVariable)]
-
 
     def to_json(self) -> str:
         return {'variables': [v.to_json() for v in self.variables],
@@ -895,7 +897,6 @@ class JPT(JPTBase):
 
             if split_var.symbolic:  # ----------------------------------------------------------------------------------
                 split_value = int(data[self.indices[start + split_pos], split_var_idx])
-                #out(split_value, split_var.domain.labels.values())
                 splits = [{split_value},
                           set(split_var.domain.values.values()) - {split_value}]
 
@@ -996,72 +997,73 @@ class JPT(JPTBase):
         :param columns: The training examples (assumed in row-shape)
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
         '''
-        # --------------------------------------------------------------------------------------------------------------
-        # Check and prepare the data
-        global _data
-        _data = self._preprocess_data(data=data, rows=rows, columns=columns)
+        with _lock:
+            # ----------------------------------------------------------------------------------------------------------
+            # Check and prepare the data
+            global _data
+            _data = self._preprocess_data(data=data, rows=rows, columns=columns)
 
-        self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
-        self.indices[0] = 0
-        np.cumsum(self.indices, out=self.indices)
-        # Initialize the impurity calculation
-        self.impurity = Impurity(self)
-        self.impurity.setup(_data, self.indices)
-        self.impurity.min_samples_leaf = max(1, self.min_samples_leaf)
+            self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
+            self.indices[0] = 0
+            np.cumsum(self.indices, out=self.indices)
+            # Initialize the impurity calculation
+            self.impurity = Impurity(self)
+            self.impurity.setup(_data, self.indices)
+            self.impurity.min_samples_leaf = max(1, self.min_samples_leaf)
 
-        JPT.logger.info('Data transformation... %d x %d' % _data.shape)
+            JPT.logger.info('Data transformation... %d x %d' % _data.shape)
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Determine the prior distributions
-        started = datetime.datetime.now()
-        JPT.logger.info('Learning prior distributions...')
-        self.priors = {}
-        pool = mp.Pool()
-        for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(self.variables)])):# {var: var.dist(data=data[:, i]) }
-            self.priors[self.variables[i].name] = self.variables[i].domain.from_json(prior)
-        JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
-        # self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
-        pool.close()
-        pool.join()
+            # ----------------------------------------------------------------------------------------------------------
+            # Determine the prior distributions
+            started = datetime.datetime.now()
+            JPT.logger.info('Learning prior distributions...')
+            self.priors = {}
+            pool = mp.Pool()
+            for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(self.variables)])):# {var: var.dist(data=data[:, i]) }
+                self.priors[self.variables[i].name] = self.variables[i].domain.from_json(prior)
+            JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
+            # self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
+            pool.close()
+            pool.join()
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Start the training
+            # ----------------------------------------------------------------------------------------------------------
+            # Start the training
 
-        started = datetime.datetime.now()
-        JPT.logger.info('Started learning of %s x %s at %s '
-                        'requiring at least %s samples per leaf' % (_data.shape[0],
-                                                                    _data.shape[1],
-                                                                    started,
-                                                                    int(self.impurity.min_samples_leaf)))
-        learning = GENERATIVE if self.targets is None else DISCRIMINATIVE
-        JPT.logger.info('Learning is %s. ' % learning)
-        if learning == DISCRIMINATIVE:
-            JPT.logger.info('Target variables (%d): %s\n'
-                            'Feature variables (%d): %s' % (len(self.targets),
-                                                            ', '.join(mapstr(self.targets)),
-                                                            len(self.variables) - len(self.targets),
-                                                            ', '.join(mapstr(set(self.variables) - set(self.targets)))))
-        # build up tree
-        self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
-        while self.c45queue:
-            self.c45(*self.c45queue.popleft())
+            started = datetime.datetime.now()
+            JPT.logger.info('Started learning of %s x %s at %s '
+                            'requiring at least %s samples per leaf' % (_data.shape[0],
+                                                                        _data.shape[1],
+                                                                        started,
+                                                                        int(self.impurity.min_samples_leaf)))
+            learning = GENERATIVE if self.targets is None else DISCRIMINATIVE
+            JPT.logger.info('Learning is %s. ' % learning)
+            if learning == DISCRIMINATIVE:
+                JPT.logger.info('Target variables (%d): %s\n'
+                                'Feature variables (%d): %s' % (len(self.targets),
+                                                                ', '.join(mapstr(self.targets)),
+                                                                len(self.variables) - len(self.targets),
+                                                                ', '.join(mapstr(set(self.variables) - set(self.targets)))))
+            # build up tree
+            self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
+            while self.c45queue:
+                self.c45(*self.c45queue.popleft())
 
-        if self.innernodes:
-            self.root = self.innernodes[0]
+            if self.innernodes:
+                self.root = self.innernodes[0]
 
-        elif self.leaves:
-            self.root = self.leaves[0]
+            elif self.leaves:
+                self.root = self.leaves[0]
 
-        else:
-            JPT.logger.error('NO INNER NODES!', self.innernodes, self.leaves)
-            self.root = None
+            else:
+                JPT.logger.error('NO INNER NODES!', self.innernodes, self.leaves)
+                self.root = None
 
-        # --------------------------------------------------------------------------------------------------------------
-        # Print the statistics
+            # ----------------------------------------------------------------------------------------------------------
+            # Print the statistics
 
-        JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
-        # if logger.level >= 20:
-        JPT.logger.debug(self)
+            JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
+            # if logger.level >= 20:
+            JPT.logger.debug(self)
 
     @property
     def min_samples_leaf(self):
@@ -1198,39 +1200,6 @@ class JPT(JPTBase):
         # elements of path are tuples (a, b) with a being mappings of {var: confidence} and b being an ordered list of
         # nodes representing a path from a leaf to the root
         return paths
-
-    def compute_best_split(self, indices) -> Tuple[int, float ,float]:
-        # calculate gains for each feature/target combination and normalize over targets
-        gains_tgt = defaultdict(dict)
-        for tgt in self.variables:
-            maxval = 0.
-            for ft in self.variables:
-                gains_tgt[tgt][ft] = self.gains(indices, ft, tgt)
-                maxval = max(maxval, *gains_tgt[tgt][ft].values())
-
-            # normalize gains for comparability
-            gains_tgt[tgt] = {ft: {v: g / maxval if maxval > 0. else 0 for v, g in gains_tgt[tgt][ft].items()} for ft in self._variables}
-
-        # determine (harmonic) mean of target gains
-        gains_ft_hm = defaultdict(lambda: defaultdict(dict))
-        for tgt, fts in gains_tgt.items():
-            for ft, sps in fts.items():
-                for sp, spval in sps.items():
-                    gains_ft_hm[ft][sp][tgt] = spval
-
-        # determine attribute with highest normalized information gain and its index
-        max_gain = -1
-        sp_best = None
-        ft_best = None
-        for ft, sps in gains_ft_hm.items():
-            for sp, tgts in sps.items():
-                hm = np.mean(list(gains_ft_hm[ft][sp].values()))
-                if max_gain < hm:
-                    sp_best = sp
-                    ft_best = ft
-                    max_gain = hm
-        ft_best_idx = self.variables.index(ft_best)
-        return ft_best_idx, sp_best, max_gain
 
     def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.
