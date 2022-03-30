@@ -1044,6 +1044,8 @@ class Multinomial(Distribution):
     def _p(self, values):
         if not all(isinstance(v, numbers.Integral) for v in values):
             raise TypeError('All arguments must be integers.')
+        if not values:
+            raise ValueError('values must not be empty.')
         return sum(self._params[v] for v in values)
 
     def sample(self, n):
