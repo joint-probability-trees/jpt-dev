@@ -505,7 +505,6 @@ class TestCasePosteriorSymbolic(unittest.TestCase):
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
         cls.jpt.learn(columns=cls.data.values.T)
-        cls.jpt.plot(title='Restaurant', filename='Restaurant', directory=tempfile.gettempdir(), view=False)
 
     def test_posterior_symbolic_single_candidate_T(self):
         self.q = [self.variables[-1]]
@@ -571,10 +570,10 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
         JPT.logger.setLevel(logging.DEBUG)
         cls.jpt.learn(columns=cls.data.values.T)
-        cls.jpt.plot(plotvars=['Food', 'WaitEstimate'], title='Restaurant-Mixed',
-                     filename='Restaurant-Mixed',
-                     directory=tempfile.gettempdir(),
-                     view=True)
+        # cls.jpt.plot(plotvars=['Food', 'WaitEstimate'], title='Restaurant-Mixed',
+        #              filename='Restaurant-Mixed',
+        #              directory=tempfile.gettempdir(),
+        #              view=True)
 
     def test_posterior_mixed_single_candidate_T(self):
         self.q = ['WillWait']
@@ -671,7 +670,7 @@ class TestCaseExpectation(unittest.TestCase):
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
         cls.jpt.learn(columns=cls.data.values.T)
-        cls.jpt.plot(title='Restaurant-Mixed', filename='Restaurant-Mixed', directory=tempfile.gettempdir(), view=False)
+        # cls.jpt.plot(title='Restaurant-Mixed', filename='Restaurant-Mixed', directory=tempfile.gettempdir(), view=False)
 
     def test_expectation_mixed_single_candidate_T(self):
         self.q = ['WillWait', 'Friday']
@@ -720,10 +719,10 @@ class TestCaseInference(unittest.TestCase):
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
         cls.jpt.learn(columns=cls.data.values.T)
-        cls.jpt.plot(title='Restaurant-Mixed',
-                     filename='Restaurant-Mixed',
-                     directory=tempfile.gettempdir(),
-                     view=False)
+        # cls.jpt.plot(title='Restaurant-Mixed',
+        #              filename='Restaurant-Mixed',
+        #              directory=tempfile.gettempdir(),
+        #              view=False)
 
     def test_inference_mixed_single_candidate_T(self):
         self.q = {'WillWait': True}
