@@ -106,3 +106,12 @@ class VariableTest(TestCase):
         self.assertEqual(A, Variable.from_json(A.to_json()))
         self.assertEqual(B, Variable.from_json(B.to_json()))
         self.assertEqual(C, Variable.from_json(C.to_json()))
+
+    def test_string_representation(self):
+        A, B, C = VariableTest.TEST_DATA
+        self.assertEqual('C = True', C.str(True, fmt='logic'))
+        self.assertEqual('C = True', C.str(True, fmt='set'))
+        self.assertIn(C.str({True, False}, fmt='logic'),
+                      ['C = False v C = True', 'C = True v C = False'])
+        self.assertIn(C.str({True, False}, fmt='set'),
+                      ['C ∈ {False, True}', 'C ∈ {True, False}'])
