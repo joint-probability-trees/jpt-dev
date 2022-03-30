@@ -233,7 +233,7 @@ class SymbolicVariable(Variable):
             if len(assignment) == 1:
                 return self.str(first(assignment), fmt=fmt)
             elif fmt == 'set':
-                valstr = ', '.join([self.str(a, fmt=fmt) for a in assignment])
+                valstr = ', '.join([str(self.domain.labels[a]) for a in assignment])
                 return f'{self.name} {SYMBOL.IN} {{{valstr}}}'
             elif fmt == 'logic':
                 return ' v '.join([self.str(a, fmt=fmt) for a in assignment])

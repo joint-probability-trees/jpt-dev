@@ -1,6 +1,7 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 from collections import OrderedDict, deque
+from itertools import tee
 
 from sklearn.preprocessing import StandardScaler
 
@@ -1042,10 +1043,9 @@ class Multinomial(Distribution):
         return self._p(self.values[label] for label in labels)
 
     def _p(self, values):
-        if not all(isinstance(v, numbers.Integral) for v in values):
+        i1, i2 = tee(values, 2)
+        if not all(isinstance(v, numbers.Integral) for v in i1):
             raise TypeError('All arguments must be integers.')
-        if not values:
-            raise ValueError('values must not be empty.')
         return sum(self._params[v] for v in values)
 
     def sample(self, n):

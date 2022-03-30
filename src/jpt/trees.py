@@ -552,7 +552,7 @@ class JPTBase:
             r.weights = [w / p_e for w in r.weights]
         return r
 
-    def posterior(self, variables, evidence, fail_on_unsatisfiability=True) -> Result:
+    def posterior(self, variables, evidence, fail_on_unsatisfiability=True) -> PosteriorResult:
         '''
 
         :param variables:        the query variables of the posterior to be computed
@@ -563,6 +563,9 @@ class JPTBase:
         :type fail_on_unsatisfiability:  bool
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
+        # Replace the variable symbols by their object instances:
+        evidence = self._prepropress_query(evidence, False) if evidence else {}
+        # evidence = {self.varnames[var] if type(var) is str else var: val for var, val in evidence.items()}
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
@@ -685,7 +688,7 @@ class JPTBase:
             r.path.update({var: dist.mpe()})
         return r
 
-    def _prepropress_query(self, query) -> VariableMap:
+    def _prepropress_query(self, query, transform_values=True) -> VariableMap:
         '''
         Transform a query entered by a user into an internal representation
         that can be further processed.
@@ -699,7 +702,7 @@ class JPTBase:
             if var.numeric:
                 if type(arg) is list:
                     arg = list2interval(arg)
-                if isinstance(arg, numbers.Number):
+                if isinstance(arg, numbers.Number) and transform_values:
                     val = var.domain.values[arg]
                     prior = self.priors[var.name]
                     quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
@@ -712,14 +715,15 @@ class JPTBase:
                                                 prior.ppf.functions[min(len(prior.ppf) - 2,
                                                                         max(1,
                                                                         prior.ppf.idx_at(upper)))].eval(upper))
-                elif isinstance(arg, ContinuousSet):
+                elif isinstance(arg, ContinuousSet) and transform_values:
                     query_[var] = ContinuousSet(var.domain.values[arg.lower],
                                                 var.domain.values[arg.upper], arg.left, arg.right)
             if var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
-                if not type(arg) is set:
+                if type(arg) is not set:
                     arg = {arg}
-                query_[var] = {var.domain.values[v] for v in arg}
+                if transform_values:
+                    query_[var] = {var.domain.values[v] for v in arg}
 
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
