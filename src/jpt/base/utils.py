@@ -72,13 +72,16 @@ class Conditional:
         return self.p[tuple(evidence)].sample_one()
 
 
-def mapstr(seq, format=None):
+def mapstr(seq, fmt=None, limit=None):
     '''Convert the sequence ``seq`` into a list of strings by applying ``str`` to each of its elements.'''
-    return [format(e) for e in seq] if callable(format) else [ifnone(format, '%s') % (e,) for e in seq]
+    result = [fmt(e) for e in seq] if callable(fmt) else [ifnone(fmt, '%s') % (e,) for e in seq]
+    if not limit or limit > len(seq):
+        return result
+    return result[:max(limit // 2, 1)] + ['...'] + result[len(result) - limit // 2:]
 
 
-def prod(iterable):
-    return reduce(lambda x, y: x * y, iterable)
+def prod(it):
+    return reduce(lambda x, y: x * y, it)
 
 
 def tojson(obj):
@@ -279,3 +282,4 @@ def save_plot(fig,  directory, fname, fmt='pdf'):
         logging.debug(
             f"Saving distributions plot to {os.path.join(directory, f'{fname}.png')}")
         plt.savefig(os.path.join(directory, f'{fname}.png'))
+
