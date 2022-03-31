@@ -9,6 +9,8 @@ from collections import OrderedDict
 import numpy as np
 from dnutils import first, ifnone, out
 
+from jpt.base.utils import mapstr
+
 try:
     from jpt.base.intervals import INC, EXC, ContinuousSet
     from jpt.base.constants import SYMBOL
@@ -229,11 +231,12 @@ class SymbolicVariable(Variable):
 
     def str(self, assignment, **kwargs):
         fmt = kwargs.get('fmt', 'set')
+        limit = kwargs.get('limit', 10)
         if type(assignment) is set:
             if len(assignment) == 1:
                 return self.str(first(assignment), fmt=fmt)
             elif fmt == 'set':
-                valstr = ', '.join([str(self.domain.labels[a]) for a in assignment])
+                valstr = ', '.join(mapstr([self.domain.labels[a] for a in assignment], limit=limit))
                 return f'{self.name} {SYMBOL.IN} {{{valstr}}}'
             elif fmt == 'logic':
                 return ' v '.join([self.str(a, fmt=fmt) for a in assignment])
