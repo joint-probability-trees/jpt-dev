@@ -332,7 +332,9 @@ class Result:
         result = self.format_result()
         result += '\n'
         for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '%.3f%%: %s\n' % (weight, format_path({var: val for var, val in leaf.path.items() if var not in self.evidence}))
+            result += '%.3f%%: %s\n' % (weight,
+                                        format_path({var: val for var, val in leaf.path.items()
+                                                     if var not in self.evidence}))
         return result
 
 
@@ -367,7 +369,7 @@ class ExpectationResult(Result):
                                             SYMBOL.ARROW_BAR_LEFT,
                                             self.result,
                                             SYMBOL.ARROW_BAR_RIGHT,
-                                            self.upper) if self.query.numeric else self.query.str(self.result)
+                                            self.upper) if self.query.numeric else self.result
         return '%s = %s' % (left, right)
 
 
@@ -641,6 +643,7 @@ class JPTBase:
         for var, dist in posteriors.distributions.items():
             result = ExpectationResult(var, posteriors._evidence, conf_level)
             result._res = dist._expectation()
+            result.candidates.extend(posteriors.candidates)
             if var.numeric:
                 exp_quantile = dist.cdf.eval(result._res)
                 result._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
