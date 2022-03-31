@@ -50,7 +50,6 @@ class ImpurityTest(TestCase):
     def test_symbolic(self):
         JPT.logger.setLevel(logging.DEBUG)
         jpt = JPT(variables=ImpurityTest.variables, targets=[ImpurityTest.wa])
-        print(jpt.variable_dependencies)
         data = jpt._preprocess_data(ImpurityTest.data)
         trees._data = data
         impurity = Impurity(jpt)
