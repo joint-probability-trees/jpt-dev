@@ -943,8 +943,10 @@ class JPT(JPTBase):
         '''
         Transform the input data into an internal representation.
         '''
-        if sum(d is not None for d in (data, rows, columns)) != 1:
+        if sum(d is not None for d in (data, rows, columns)) > 1:
             raise ValueError('Only either of the three is allowed.')
+        elif sum(d is not None for d in (data, rows, columns)) < 1:
+            raise ValueError('No data pased.')
 
         JPT.logger.info('Preprocessing data...')
 
