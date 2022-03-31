@@ -194,8 +194,8 @@ def list2interval(l):
     Converts a list representation of an interval to an instance of type
     '''
     lower, upper = l
-    return ContinuousSet(np.NINF if lower in (np.NINF, -float('inf'), None) else np.float64(lower),
-                         np.PINF if upper in (np.PINF, float('inf'), None) else np.float64(upper))
+    return ContinuousSet(np.NINF if lower in (np.NINF, -float('inf'), None, ...) else np.float64(lower),
+                         np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper))
 
 
 def normalized(dist, identity_on_zeros=False, allow_neg=False):
