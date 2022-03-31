@@ -1046,7 +1046,7 @@ class Multinomial(Distribution):
         i1, i2 = tee(values, 2)
         if not all(isinstance(v, numbers.Integral) for v in i1):
             raise TypeError('All arguments must be integers.')
-        return sum(self._params[v] for v in values)
+        return sum(self._params[v] for v in i2)
 
     def sample(self, n):
         '''Returns ``n`` sample `values` according to their respective probability'''
