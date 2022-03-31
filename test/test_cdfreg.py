@@ -670,17 +670,24 @@ class TestCaseExpectation(unittest.TestCase):
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
         cls.jpt.learn(columns=cls.data.values.T)
-        # cls.jpt.plot(title='Restaurant-Mixed', filename='Restaurant-Mixed', directory=tempfile.gettempdir(), view=False)
+        cls.jpt.plot(title='Restaurant-Mixed',
+                     filename='Restaurant-Mixed',
+                     directory=tempfile.gettempdir(),
+                     view=True)
 
     def test_expectation_mixed_single_candidate_T(self):
         self.q = ['WillWait', 'Friday']
-        self.e = {'WaitEstimate': [10, 30], 'Food': 'Thai'}
+        self.e = {'WaitEstimate': [10, 30],
+                  'Food': 'Thai'}
         self.expectation = self.jpt.expectation(self.q, self.e)
         self.assertEqual([True, False], [e.result for e in self.expectation.values()])
 
     def test_expectation_mixed_unsatisfiable(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
+        self.q = ['WillWait']
+        self.e = {'WaitEstimate': [10, 30],
+                  'Bar': True,
+                  'Food': 'French'}
+        print(self.jpt.expectation(self.q, self.e)['WillWait'].explain())
         self.assertRaises(Unsatisfiability, self.jpt.expectation, self.q, self.e)
 
     # def tearDown(self):
