@@ -1034,6 +1034,10 @@ class Multinomial(Distribution):
         return sorted([(p, l) for p, l in zip(self._params, self.labels.values())],
                       key=itemgetter(0), reverse=True)
 
+    def items(self):
+        '''Return a list of (probability, label) pairs representing this distribution.'''
+        return [(p, l) for p, l in zip(self._params, self.labels.values())]
+
     def copy(self):
         return type(self)(params=self._params)
 
