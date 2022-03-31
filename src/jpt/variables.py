@@ -239,10 +239,8 @@ class SymbolicVariable(Variable):
                 return ' v '.join([self.str(a, fmt=fmt) for a in assignment])
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
-        elif type(assignment) is str:
-            return '%s = %s' % (self.name, assignment)
         else:
-            raise TypeError('Illegal argument type: %s [%s]' % (type(assignment), str(assignment)))
+            return '%s = %s' % (self.name, str(assignment))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
