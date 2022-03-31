@@ -687,7 +687,7 @@ class JPTBase:
             r.path.update({var: dist.mpe()})
         return r
 
-    def _prepropress_query(self, query, transform_values=True) -> VariableMap:
+    def _prepropress_query(self, query, transform_values=True, remove_none=True) -> VariableMap:
         '''
         Transform a query entered by a user into an internal representation
         that can be further processed.
@@ -697,6 +697,8 @@ class JPTBase:
         # Transform single numeric values in to intervals given by the haze
         # parameter of the respective variable:
         for key, arg in query.items():
+            if arg is None and remove_none:
+                continue
             var = key if isinstance(key, Variable) else self.varnames[key]
             if var.numeric:
                 if type(arg) is list:
