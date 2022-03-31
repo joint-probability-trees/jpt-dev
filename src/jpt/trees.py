@@ -405,11 +405,11 @@ class JPTBase:
     def __init__(self, variables, targets=None):
         self._variables = tuple(variables)
         self._targets = targets
-        self.varnames:OrderedDict[str, Variable] = OrderedDict(
+        self.varnames: OrderedDict[str, Variable] = OrderedDict(
                         (var.name, var) for var in self._variables)
-        self.leaves:Dict[int, Leaf] = {}
-        self.innernodes:Dict[int, DecisionNode] = {}
-        self.allnodes:Dict[int,Node] = ChainMap(self.innernodes, self.leaves)
+        self.leaves: Dict[int, Leaf] = {}
+        self.innernodes: Dict[int, DecisionNode] = {}
+        self.allnodes: Dict[int,Node] = ChainMap(self.innernodes, self.leaves)
         self.priors = {}
 
     @property
@@ -516,7 +516,6 @@ class JPTBase:
         p_e = 0.
 
         for leaf in self.apply(evidence_):
-            # out(leaf.format_path(), 'applies', ' ^ '.join([var.str_by_idx(val) for var, val in evidence_.items()]))
             p_m = 1
             for var in set(evidence_.keys()):
                 evidence_val = evidence_[var]
@@ -565,9 +564,6 @@ class JPTBase:
         :type fail_on_unsatisfiability:  bool
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
-        # Replace the variable symbols by their object instances:
-        evidence = self._prepropress_query(evidence, False) if evidence else {}
-        # evidence = {self.varnames[var] if type(var) is str else var: val for var, val in evidence.items()}
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
@@ -605,7 +601,7 @@ class JPTBase:
             weights = normalized(weights)
         except ValueError:
             if fail_on_unsatisfiability:
-                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence))
+                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
             return None
 
         # initialize all query variables with None, in case dists
@@ -721,12 +717,13 @@ class JPTBase:
                 elif isinstance(arg, ContinuousSet) and transform_values:
                     query_[var] = ContinuousSet(var.domain.values[arg.lower],
                                                 var.domain.values[arg.upper], arg.left, arg.right)
+                else:
+                    query_[var] = arg
             if var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
                 if type(arg) is not set:
                     arg = {arg}
-                if transform_values:
-                    query_[var] = {var.domain.values[v] for v in arg}
+                query_[var] = {var.domain.values[v] if transform_values else v for v in arg}
 
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_

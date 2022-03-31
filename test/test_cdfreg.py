@@ -608,7 +608,6 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
         self.q = [self.variables[9]]
         self.e = {self.variables[8]: 'Burger', self.variables[0]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        print(self.posterior.distributions[self.q[-1]].cdf.pfmt())
 
         # Mesh the input space for evaluations of the real function, the prediction and its MSE
         xr = self.data[(self.data['Food'] == 'Burger') & (self.data['Alternatives'] == False)]['WaitEstimate']
@@ -670,10 +669,11 @@ class TestCaseExpectation(unittest.TestCase):
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
         cls.jpt.learn(columns=cls.data.values.T)
-        cls.jpt.plot(title='Restaurant-Mixed',
-                     filename='Restaurant-Mixed',
-                     directory=tempfile.gettempdir(),
-                     view=True)
+        # cls.jpt.plot(#plotvars=['WaitEstimate'],
+        #              title='Restaurant-Mixed',
+        #              filename='Restaurant-Mixed',
+        #              directory=tempfile.gettempdir(),
+        #              view=False)
 
     def test_expectation_mixed_single_candidate_T(self):
         self.q = ['WillWait', 'Friday']
@@ -684,10 +684,9 @@ class TestCaseExpectation(unittest.TestCase):
 
     def test_expectation_mixed_unsatisfiable(self):
         self.q = ['WillWait']
-        self.e = {'WaitEstimate': [10, 30],
+        self.e = {'WaitEstimate': [70, 80],
                   'Bar': True,
                   'Food': 'French'}
-        print(self.jpt.expectation(self.q, self.e)['WillWait'].explain())
         self.assertRaises(Unsatisfiability, self.jpt.expectation, self.q, self.e)
 
     # def tearDown(self):
