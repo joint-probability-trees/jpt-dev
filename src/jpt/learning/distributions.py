@@ -939,6 +939,9 @@ class OrderedDictProxy:
         self.values = self._dict.values
         self.keys = self._dict.keys
 
+    def get(self, key, default):
+        return self._dict.get(key, default)
+
     def __repr__(self):
         return '<OrderedDictProxy #%d values=[%s]>' % (len(self), ';'.join(mapstr(self.keys())))
 
