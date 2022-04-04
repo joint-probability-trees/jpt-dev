@@ -1006,6 +1006,8 @@ class JPT(JPTBase):
             # Check and prepare the data
             global _data
             _data = self._preprocess_data(data=data, rows=rows, columns=columns)
+            if _data.shape[0] < 1:
+                raise ValueError('No data for learning.')
 
             self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
             self.indices[0] = 0
