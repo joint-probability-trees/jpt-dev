@@ -1119,6 +1119,16 @@ class JPT(JPTBase):
         :type minimum_probability: float
         Returns: An np.array with shape (x, ) containing the probabilities.
         '''
+
+        # create minimal distances for each numeric variable such a senseful metric can be computed
+        min_distances:Dict[Variable, float] = dict()
+        for idx, variable in enumerate(self.variables):
+            if variable.numeric:
+                samples = np.unique(queries[:,idx])
+                distances = np.diff(samples)
+                min_distances[variable] = min(distances) if len(distances)>0 else 2.
+
+
         probabilities = np.ones(len(queries))
 
         for leaf in self.leaves.values():
@@ -1144,7 +1154,7 @@ class JPT(JPTBase):
 
                 elif isinstance(variable, NumericVariable):
                     probs = np.asarray(distribution.pdf.multi_eval(queries[:,idx].copy(order='C')))
-                    probs[(probs==float("inf")).nonzero()] = 1.
+                    probs[(probs==float("inf")).nonzero()] = 2/min_distances[variable]
                     probs = np.minimum(probs, np.ones(len(probs))) * true_query_indices
                 
                 probs[np.argwhere(true_query_indices == 0)] = 1
