@@ -1,7 +1,9 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
+from ctypes import resize
 import html
 import json
+import queue
 from threading import Lock
 
 import math
@@ -14,6 +16,7 @@ from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 from itertools import zip_longest
 from typing import Dict, List, Tuple
+import copy
 
 import numpy as np
 import pandas as pd
@@ -98,7 +101,7 @@ class Node:
         :type parent:           jpt.learning.trees.Node
         '''
         self.idx = idx
-        self.parent = parent
+        self.parent:Node = parent
         self.samples = 0.
         self._path = []
 
@@ -108,6 +111,25 @@ class Node:
         for var, vals in self._path:
             res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
         return res
+
+    def consistent_with(self, evidence:VariableMap):
+        '''
+        Check if the node is consistend with the variable assignments in evidence.
+        
+        :param evidence: A VariableMap that maps to singular values (numeric or symbolic)
+        :type evidence: VariableMap
+        '''
+        for variable, value in evidence.items():
+            variable:Variable
+            if variable in self.path.keys():
+                restriction = self.path[variable]
+                if variable.numeric:
+                    if not restriction.lower < value <= restriction.upper:
+                        return False
+                elif variable.symbolic:
+                    if value  not in restriction:
+                        return False
+        return True
 
     def format_path(self):
         return format_path(self.path)
@@ -205,6 +227,10 @@ class DecisionNode(Node):
     def str_node(self) -> str:
         return self.variable.name
 
+    def recursive_children(self):
+        return self.children + [item for sublist in 
+            [child.recursive_children() for child in self.children] for item in sublist]
+
     def __str__(self) -> str:
         return (f'<DecisionNode #{self.idx} '
                 f'{self.variable.name} = [%s]' % '; '.join(self.str_edge(i) for i in range(len(self.splits))) +
@@ -242,6 +268,9 @@ class Leaf(Node):
     @property
     def value(self):
         return self.distributions
+
+    def recursive_children(self):
+        return []
 
     def __str__(self) -> str:
         return (f'Leaf<ID: {self.idx}; '
@@ -456,7 +485,7 @@ class JPTBase:
                 'priors': {varname: p.to_json() for varname, p in self.priors.items()}}
 
     @staticmethod
-    def from_json(data) -> str:
+    def from_json(data):
         jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
         jpt._targets = tuple(jpt.varnames[varname] for varname in data['targets'])
         for d in data['innernodes']:
@@ -1387,6 +1416,95 @@ class JPT(JPTBase):
         with stopwatch('/sklearn/decisiontree'):
             tree.fit(data, data if targets is None else targets)
         return tree
+
+    def conditional_jpt(self, evidence:VariableMap, keep_evidence:bool=False)\
+        -> JPTBase:
+        '''
+        Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
+        The new JPT contains all variables that are not in the evidence and is a 
+        full joint probability distribution over those variables.
+
+        :param evidence: A variable Map mapping the observed variables to there observed,
+            single values (not intervals)
+        :type evidence: VariableMap
+        :param keep_evidence_variables: Rather to keep the evidence variables in the new
+            JPT or not. If kept, their PDFs are replaced with Durac impulses.
+        :type keep_evidence_variables: bool
+        '''
+
+        # the new jpt that acts as conditional joint probability distribution
+        conditional_jpt:JPTBase = JPT.from_json(self.to_json())
+        
+        univisited_nodes = queue.Queue()
+        univisited_nodes.put_nowait(conditional_jpt.allnodes[self.root.idx])
+        
+        while not univisited_nodes.empty():
+
+            # get the next node to inspect
+            current_node:Node = univisited_nodes.get_nowait()
+
+            # if it is a leaf skip this iteration
+            if isinstance(current_node, Leaf):
+                continue
+            
+            # syntax highlighting
+            current_node:DecisionNode
+
+            # remember the indices of the nodes that need to get removed
+            invalid = []
+
+            # check if the children of the node need to be traversed
+            for idx, child in enumerate(current_node.children):
+
+                # traverse consistent children
+                if child.consistent_with(evidence):
+                    univisited_nodes.put_nowait(child)
+
+                # mark invalid children for removal
+                else:
+                    invalid = [idx] + invalid
+
+            # remove invalid children from the tree and the children list
+            for idx in invalid:
+                # get all the indices of the subtree members
+                removable_indices = [node.idx for node in 
+                    current_node.children[idx].recursive_children()] + \
+                    [current_node.children[idx].idx]
+
+                # for all dead nodes 
+                for jdx in removable_indices:
+                    # if it is a leaf remove it from the leaves
+                    if isinstance(self.allnodes[jdx], Leaf):
+                        del conditional_jpt.leaves[jdx]
+                    # if it is an innernode remove it from the innernodes
+                    else:
+                        del conditional_jpt.innernodes[jdx]
+
+                # remove it as child
+                del current_node.children[idx]
+        
+        
+        # clean up not needed distributions
+        for leaf in conditional_jpt.leaves.values():
+            for variable in evidence.keys():
+                # TODO: replace with durac impulse if wanted
+                if keep_evidence:
+                    pass
+                else:
+                    del leaf.distributions[variable]
+
+        # clean up not needed path restrictions
+        for node in conditional_jpt.allnodes.values():
+            for variable in evidence.keys():
+                if variable in node.path.keys():
+                    del node.path[variable]
+
+        # discard unused variables
+        if not keep_evidence:
+            conditional_jpt._variables = [variable for variable in conditional_jpt.variables 
+                if variable not in evidence.keys()]
+
+        return conditional_jpt
 
     def save(self, file) -> None:
         '''
