@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 
 from jpt.learning.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable
+from jpt.variables import NumericVariable, SymbolicVariable, VariableMap
 import tqdm
 
 def main():
@@ -35,6 +35,8 @@ def main():
     tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
 
     tree.learn(data=df)
+
+    cjpt = tree.conditional_jpt(VariableMap({variables[0]:5, variables[29]:2.}.items()))
     
     #calculate log likelihood
     queries = np.append(np.expand_dims(mnist.target, -1), mnist.data, axis=1)
