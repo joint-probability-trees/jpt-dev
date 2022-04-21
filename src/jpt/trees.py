@@ -1483,9 +1483,12 @@ class JPT(JPTBase):
                 # remove it as child
                 del current_node.children[idx]
         
+        # calculate remaining probability mass
+        probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
         
-        # clean up not needed distributions
+        # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
+            leaf.prior /= probability_mass
             for variable in evidence.keys():
                 # TODO: replace with durac impulse if wanted
                 if keep_evidence:
