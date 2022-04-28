@@ -42,6 +42,7 @@ try:
     from .variables import Variable, SymbolicVariable, NumericVariable
 except ImportError:
     import pyximport
+
     pyximport.install()
 finally:
     from .base.quantiles import QuantileDistribution
@@ -52,9 +53,7 @@ finally:
     from .learning.distributions import Multinomial, Numeric, Identity
     from .variables import Variable
 
-
 style.use(plotstyle)
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Global data store to exploit copy-on-write in multiprocessing
@@ -85,6 +84,7 @@ def _prior(args):
 DISCRIMINATIVE = 'discriminative'
 GENERATIVE = 'generative'
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -93,7 +93,7 @@ class Node:
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx:int, parent=None) -> None:
+    def __init__(self, idx: int, parent=None) -> None:
         '''
         :param idx:             the identifier of a node
         :type idx:              int
@@ -101,7 +101,7 @@ class Node:
         :type parent:           jpt.learning.trees.Node
         '''
         self.idx = idx
-        self.parent:Node = parent
+        self.parent: Node = parent
         self.samples = 0.
         self._path = []
 
@@ -112,7 +112,7 @@ class Node:
             res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
         return res
 
-    def consistent_with(self, evidence:VariableMap):
+    def consistent_with(self, evidence: VariableMap):
         '''
         Check if the node is consistend with the variable assignments in evidence.
         
@@ -120,14 +120,14 @@ class Node:
         :type evidence: VariableMap
         '''
         for variable, value in evidence.items():
-            variable:Variable
+            variable: Variable
             if variable in self.path.keys():
                 restriction = self.path[variable]
                 if variable.numeric:
                     if not restriction.lower < value <= restriction.upper:
                         return False
                 elif variable.symbolic:
-                    if value  not in restriction:
+                    if value not in restriction:
                         return False
         return True
 
@@ -149,7 +149,7 @@ class DecisionNode(Node):
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx:int, variable:Variable, parent:Node=None):
+    def __init__(self, idx: int, variable: Variable, parent: Node = None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
@@ -159,7 +159,7 @@ class DecisionNode(Node):
         self._splits = None
         self.variable = variable
         super().__init__(idx, parent=parent)
-        self.children:None or List[Node] = None  # [None] * len(self.splits)
+        self.children: None or List[Node] = None  # [None] * len(self.splits)
 
     def __eq__(self, o) -> bool:
         return (type(self) is type(o) and
@@ -228,8 +228,8 @@ class DecisionNode(Node):
         return self.variable.name
 
     def recursive_children(self):
-        return self.children + [item for sublist in 
-            [child.recursive_children() for child in self.children] for item in sublist]
+        return self.children + [item for sublist in
+                                [child.recursive_children() for child in self.children] for item in sublist]
 
     def __str__(self) -> str:
         return (f'<DecisionNode #{self.idx} '
@@ -248,7 +248,8 @@ class Leaf(Node):
     '''
     Represents a leaf node of the the :class:`jpt.learning.trees.Tree`.
     '''
-    def __init__(self, idx:int, parent:Node or None=None, prior=None):
+
+    def __init__(self, idx: int, parent: Node or None = None, prior=None):
         super().__init__(idx, parent=parent)
         self.distributions = VariableMap()
         self.prior = prior
@@ -429,17 +430,114 @@ class PosteriorResult(Result):
         return self.distributions[item]
 
 
-class JPTBase:
+class JPT:
+    '''
+    Joint Probability Trees.
+    '''
 
-    def __init__(self, variables, targets=None):
+    logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
+
+    def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
+                 max_leaves=None, max_depth=None, variable_dependencies=None) -> None:
+        '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
+        induced by its training samples in the nodes so we can later make statements
+        about the confidence of the prediction.
+        has children :class:`~jpt.learning.trees.Node`.
+
+        :param variables:           the variable declarations of the data being processed by this tree
+        :type variables:            [jpt.variables.Variable]
+        :param min_samples_leaf:    the minimum number of samples required to generate a leaf node
+        :type min_samples_leaf:     int or float
+        :param variable_dependencies: A dict that maps every variable to a list of variables that are 
+                                        directly dependent to that variable.
+        :type variable_dependencies: None or Dict from variable to list of variables 
+        '''
+
         self._variables = tuple(variables)
         self._targets = targets
         self.varnames: OrderedDict[str, Variable] = OrderedDict(
-                        (var.name, var) for var in self._variables)
+            (var.name, var) for var in self._variables)
         self.leaves: Dict[int, Leaf] = {}
         self.innernodes: Dict[int, DecisionNode] = {}
-        self.allnodes: Dict[int,Node] = ChainMap(self.innernodes, self.leaves)
+        self.allnodes: ChainMap[int, Node] = ChainMap(self.innernodes, self.leaves)
         self.priors = {}
+
+        self._min_samples_leaf = min_samples_leaf
+        self.min_impurity_improvement = min_impurity_improvement
+        self._numsamples = 0
+        self.root = None
+        self.c45queue = deque()
+        self.max_leaves = max_leaves
+        self.max_depth = max_depth or float('inf')
+        self._node_counter = 0
+        self.indices = None
+        self.impurity = None
+
+        # initialize the dependencies as fully dependent on each other.
+        # the interface isn't modified therefore the jpt should work as before if not
+        # specified different
+        if variable_dependencies is None:
+            self.variable_dependencies: VariableMap[Variable, List[Variable]] = \
+                VariableMap(zip(self.variables, [self.variables] * len(self.variables)))
+        else:
+            self.variable_dependencies: VariableMap[Variable, List[Variable]] = variable_dependencies
+
+        # also initialize the dependency structure as indices since it will be usefull in the c45 algorithm
+        self.dependency_matrix = np.full((len(self.variables), len(self.variables)),
+                                         -1, dtype=np.int64)
+
+        # dependencies to numeric variables for every variable
+        self.numeric_dependency_matrix = np.full((len(self.variables), len(self.variables)),
+                                                 -1,
+                                                 dtype=np.int64)
+
+        # dependencies to symbolic variables for every variable
+        self.symbolic_dependency_matrix = np.full((len(self.variables), len(self.variables)),
+                                                  -1,
+                                                  dtype=np.int64)
+
+        # convert variable dependency structure to index dependency structure for easy interpretation in cython
+        for key, value in self.variable_dependencies.items():
+
+            # get the index version of the dependent variables and store them
+            key_ = self.variables.index(key)
+            value_ = [self.variables.index(var) for var in value]
+            self.dependency_matrix[key_, 0:len(value_)] = value_
+
+            # create lists to store the index dependencies for only numeric/symbolic variables
+            numeric_dependencies = []
+            symbolic_dependencies = []
+
+            for dependent_variable in value:
+                # skip dependent variables if one is not allowed to purify them
+                if self.targets and dependent_variable not in self.targets:
+                    continue
+
+                # get index of numeric dependent variable
+                if isinstance(dependent_variable, NumericVariable):
+                    if self.targets:
+                        numeric_dependencies.append(
+                            self.numeric_targets.index(dependent_variable)
+                        )
+                    else:
+                        numeric_dependencies.append(
+                            self.numeric_variables.index(dependent_variable)
+                        )
+
+                # get indices of symbolic dependent variable
+                elif isinstance(dependent_variable, SymbolicVariable):
+                    if self.targets:
+                        symbolic_dependencies.append(
+                            self.symbolic_targets.index(dependent_variable)
+                        )
+                    else:
+                        symbolic_dependencies.append(
+                            self.symbolic_variables.index(dependent_variable)
+                        )
+
+            # save the index dependencies to the matrix later used to calculate impurities
+            self.numeric_dependency_matrix[key_, 0:len(numeric_dependencies)] = numeric_dependencies
+            self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
 
     @property
     def variables(self) -> List[Variable]:
@@ -477,17 +575,29 @@ class JPTBase:
     def symbolic_features(self) -> List[Variable]:
         return [var for var in self.features if isinstance(var, SymbolicVariable)]
 
-    def to_json(self) -> str:
+    def to_json(self) -> Dict:
         return {'variables': [v.to_json() for v in self.variables],
-                'targets': [v.name for v in self.variables],
+                'targets': [v.to_json() for v in self.targets] if self.targets else self.targets,
+                'min_samples_leaf': self.min_samples_leaf,
+                'min_impurity_improvement': self.min_impurity_improvement,
+                'max_leaves': self.max_leaves,
+                'max_depth': self.max_depth,
+                'variable_dependencies': self.variable_dependencies.to_json(),
                 'leaves': [l.to_json() for l in self.leaves.values()],
                 'innernodes': [n.to_json() for n in self.innernodes.values()],
                 'priors': {varname: p.to_json() for varname, p in self.priors.items()}}
 
     @staticmethod
     def from_json(data):
-        jpt = JPTBase(variables=[Variable.from_json(d) for d in data['variables']])
-        jpt._targets = tuple(jpt.varnames[varname] for varname in data['targets'])
+        jpt = JPT(variables=[Variable.from_json(d) for d in data['variables']],
+                  targets=[Variable.from_json(d) for d in data['targets']] if data["targets"] else data["targets"],
+                  min_samples_leaf=data['min_samples_leaf'],
+                  min_impurity_improvement=data['min_impurity_improvement'],
+                  max_leaves=data['max_leaves'],
+                  max_depth=data['max_depth'],
+                  variable_dependencies=VariableMap.from_json([Variable.from_json(d) for d in data['variables']],
+                                                              data['variable_dependencies'])
+                  )
         for d in data['innernodes']:
             DecisionNode.from_json(jpt, d)
         for d in data['leaves']:
@@ -497,11 +607,17 @@ class JPTBase:
         return jpt
 
     def __eq__(self, o) -> bool:
-        return (isinstance(o, JPTBase) and
-                self.variables == o.variables and
+        return (isinstance(o, JPT) and
                 self.innernodes == o.innernodes and
                 self.leaves == o.leaves and
-                self.priors == o.priors)
+                self.priors == o.priors and
+                (self.dependency_matrix == o.dependency_matrix).all() and
+                self.min_samples_leaf == o.min_samples_leaf and
+                self.min_impurity_improvement == o.min_impurity_improvement and
+                self.targets == o.targets and
+                self.variables == o.variables and
+                self.max_depth == o.max_depth and
+                self.max_leaves == o.max_leaves)
 
     def infer(self, query, evidence=None, fail_on_unsatisfiability=True) -> Result:
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
@@ -744,7 +860,7 @@ class JPTBase:
                                                                             prior.ppf.idx_at(lower)))].eval(lower),
                                                 prior.ppf.functions[min(len(prior.ppf) - 2,
                                                                         max(1,
-                                                                        prior.ppf.idx_at(upper)))].eval(upper))
+                                                                            prior.ppf.idx_at(upper)))].eval(upper))
                 elif isinstance(arg, ContinuousSet) and transform_values:
                     query_[var] = ContinuousSet(var.domain.values[arg.lower],
                                                 var.domain.values[arg.upper], arg.left, arg.right)
@@ -771,107 +887,6 @@ class JPTBase:
         # - lie in the interval of the numeric value in the path
         # -> return leaf that matches query
         yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
-
-
-class JPT(JPTBase):
-    '''
-    Joint Probability Trees.
-    '''
-
-    logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
-
-    def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
-                 max_leaves=None, max_depth=None, variable_dependencies=None) -> None:
-        '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
-        induced by its training samples in the nodes so we can later make statements
-        about the confidence of the prediction.
-        has children :class:`~jpt.learning.trees.Node`.
-
-        :param variables:           the variable declarations of the data being processed by this tree
-        :type variables:            [jpt.variables.Variable]
-        :param min_samples_leaf:    the minimum number of samples required to generate a leaf node
-        :type min_samples_leaf:     int
-        :param variable_dependencies: A dict that maps every variable to a list of variables that are 
-                                        directly dependent to that variable.
-        :type variable_dependencies: None or Dict from variable to list of variables 
-        '''
-        super().__init__(variables, targets=targets)
-        self._min_samples_leaf = min_samples_leaf
-        self.min_impurity_improvement = min_impurity_improvement
-        self._numsamples = 0
-        self.root = None
-        self.c45queue = deque()
-        self.max_leaves = max_leaves
-        self.max_depth = max_depth or float('inf')
-        self._node_counter = 0
-        self.indices = None
-        self.impurity = None
-
-        # initialize the dependencies as fully dependent on each other.
-        # the interface isn't modified therefore the jpt should work as before if not
-        # specified different
-        if variable_dependencies is None:
-            self.variable_dependencies: Dict[Variable, List[Variable]] = \
-                dict(zip(self.variables, [self.variables]*len(self.variables)))
-        else:
-            self.variable_dependencies: Dict[Variable, List[Variable]] = variable_dependencies
-
-        # also initialize the dependency structure as indices since it will be usefull in the c45 algorithm
-        self.dependency_matrix = np.full((len(self.variables), len(self.variables)),
-                                         -1, dtype=np.int64)
-
-        # dependencies to numeric varaibles for every variable
-        self.numeric_dependency_matrix = np.full((len(self.variables), len(self.variables)),
-                                                 -1,
-                                                 dtype=np.int64)
-
-        # dependencies to symbolic variables for every variable
-        self.symbolic_dependency_matrix = np.full((len(self.variables), len(self.variables)),
-                                                  -1,
-                                                  dtype=np.int64)
-
-        # convert variable dependency structure to index dependency structure for easy interpretation in cython
-        for key, value in self.variable_dependencies.items():
-            
-            # get the index version of the dependent variables and store them
-            key_ = self.variables.index(key)
-            value_ = [self.variables.index(var) for var in value]
-            self.dependency_matrix[key_, 0:len(value_)] = value_
-            
-            # create lists to store the index dependencies for only numeric/symbolic variables
-            numeric_dependencies = []
-            symbolic_dependencies = []
-
-            for dependent_variable in value:
-                #skip dependent variables if one is not allowed to purify them
-                if self.targets and dependent_variable not in self.targets:
-                    continue
-                
-                # get index of numeric dependent variable
-                if isinstance(dependent_variable, NumericVariable):
-                    if self.targets:
-                        numeric_dependencies.append(
-                            self.numeric_targets.index(dependent_variable)
-                            )
-                    else:
-                        numeric_dependencies.append(
-                            self.numeric_variables.index(dependent_variable)
-                            )
-
-                # get indices of symbolic dependent variable
-                elif isinstance(dependent_variable, SymbolicVariable):
-                    if self.targets:
-                        symbolic_dependencies.append(
-                            self.symbolic_targets.index(dependent_variable)
-                            )
-                    else:
-                        symbolic_dependencies.append(
-                            self.symbolic_variables.index(dependent_variable)
-                            )
-
-            # save the index dependencies to the matrix later used to calculate impurities
-            self.numeric_dependency_matrix[key_, 0:len(numeric_dependencies)] = numeric_dependencies
-            self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
 
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
@@ -1054,7 +1069,8 @@ class JPT(JPTBase):
             JPT.logger.info('Learning prior distributions...')
             self.priors = {}
             pool = mp.Pool()
-            for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(self.variables)])):# {var: var.dist(data=data[:, i]) }
+            for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(
+                    self.variables)])):  # {var: var.dist(data=data[:, i]) }
                 self.priors[self.variables[i].name] = self.variables[i].domain.from_json(prior)
             JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
             # self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
@@ -1077,7 +1093,8 @@ class JPT(JPTBase):
                                 'Feature variables (%d): %s' % (len(self.targets),
                                                                 ', '.join(mapstr(self.targets)),
                                                                 len(self.variables) - len(self.targets),
-                                                                ', '.join(mapstr(set(self.variables) - set(self.targets)))))
+                                                                ', '.join(
+                                                                    mapstr(set(self.variables) - set(self.targets)))))
             # build up tree
             self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
             while self.c45queue:
@@ -1105,7 +1122,10 @@ class JPT(JPTBase):
         if type(self._min_samples_leaf) is int:
             return self._min_samples_leaf
         if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
-            return int(self._min_samples_leaf * len(_data))
+            if _data is None:
+                return self._min_samples_leaf
+            else:
+                return int(self._min_samples_leaf * len(_data))
         return int(self._min_samples_leaf)
 
     @staticmethod
@@ -1136,7 +1156,7 @@ class JPT(JPTBase):
         else:
             return iv
 
-    def likelihood(self, queries:np.ndarray, minimum_probability=pow(10, -10)) -> np.ndarray:
+    def likelihood(self, queries: np.ndarray, minimum_probability=pow(10, -10)) -> np.ndarray:
         '''Get the probabilities of a list of worlds. The worlds must be fully assigned with 
         single numbers (no intervals). 
         
@@ -1148,47 +1168,45 @@ class JPT(JPTBase):
         :type minimum_probability: float
         Returns: An np.array with shape (x, ) containing the probabilities.
         '''
-
         # create minimal distances for each numeric variable such a senseful metric can be computed
-        min_distances:Dict[Variable, float] = dict()
+        min_distances: Dict[Variable, float] = dict()
         for idx, variable in enumerate(self.variables):
             if variable.numeric:
-                samples = np.unique(queries[:,idx])
+                samples = np.unique(queries[:, idx])
                 distances = np.diff(samples)
-                min_distances[variable] = min(distances) if len(distances)>0 else 2.
-
+                min_distances[variable] = min(distances) if len(distances) > 0 else 2.
 
         probabilities = np.ones(len(queries))
 
         for leaf in self.leaves.values():
-            leaf:Leaf = leaf #for syntax highlighting
+            leaf: Leaf = leaf  # for syntax highlighting
 
-            true_query_indices = np.ones(len(queries)) #indices for queries that are in this leaf
-            
+            true_query_indices = np.ones(len(queries))  # indices for queries that are in this leaf
+
             for variable, restriction in leaf.path.items():
                 idx = self.variables.index(variable)
                 column = queries[:, idx]
-                if isinstance(variable, NumericVariable): 
+                if isinstance(variable, NumericVariable):
                     true_indices = np.where((column > restriction.lower) & (column <= restriction.upper), 1, 0)
                 elif isinstance(variable, SymbolicVariable):
-                    true_indices = np.where(column==list(restriction)[0], 1, 0)
-                
+                    true_indices = np.where(column == list(restriction)[0], 1, 0)
+
                 true_query_indices *= true_indices
 
             for variable, distribution in leaf.distributions.items():
                 idx = self.variables.index(variable)
 
                 if isinstance(variable, SymbolicVariable):
-                    probs = distribution._params[queries[:,idx].astype(int)] * true_query_indices
+                    probs = distribution._params[queries[:, idx].astype(int)] * true_query_indices
 
                 elif isinstance(variable, NumericVariable):
-                    probs = np.asarray(distribution.pdf.multi_eval(queries[:,idx].copy(order='C')))
-                    probs[(probs==float("inf")).nonzero()] = 2/min_distances[variable]
+                    probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C')))
+                    probs[(probs == float("inf")).nonzero()] = 2 / min_distances[variable]
                     probs = np.minimum(probs, np.ones(len(probs))) * true_query_indices
-                
+
                 probs[np.argwhere(true_query_indices == 0)] = 1
-                probabilities *= probs 
-        
+                probabilities *= probs
+
         return np.maximum(probabilities, minimum_probability)
 
     def reverse(self, query, confidence=.5) -> List[Tuple[Dict, List[Node]]]:
@@ -1206,7 +1224,8 @@ class JPT(JPTBase):
             return []
 
         # Transform into internal values/intervals (symbolic values to their indices) and update to contain all possible variables
-        query = {var: list2interval(val) if type(val) in (list, tuple) and var.numeric else val if type(val) in (list, tuple) else [val] for var, val in query.items()}
+        query = {var: list2interval(val) if type(val) in (list, tuple) and var.numeric else val if type(val) in (
+        list, tuple) else [val] for var, val in query.items()}
         query_ = {var: set(var.domain.value[v] for v in val) for var, val in query.items()}
         for i, var in enumerate(self.variables):
             if var in query_: continue
@@ -1230,7 +1249,8 @@ class JPT(JPTBase):
             confs[l] = confs_
 
         # the candidates are the one leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
-        candidates = sorted([leaf for leaf, confs in confs.items() if all(c >= confidence for c in confs.values())], key=lambda l: sum(confs[l].values()), reverse=True)
+        candidates = sorted([leaf for leaf, confs in confs.items() if all(c >= confidence for c in confs.values())],
+                            key=lambda l: sum(confs[l].values()), reverse=True)
 
         # for the chosen candidate determine the path to the root
         paths = []
@@ -1295,7 +1315,7 @@ class JPT(JPTBase):
                                                **params)
                     img += (f'''{"<TR>" if i % rc == 0 else ""}
                                         <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
-                                {"</TR>" if i % rc == rc-1 or i == len(plotvars) - 1 else ""}
+                                {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
                                 ''')
 
                     # clear current figure to allow for other plots
@@ -1417,8 +1437,7 @@ class JPT(JPTBase):
             tree.fit(data, data if targets is None else targets)
         return tree
 
-    def conditional_jpt(self, evidence:VariableMap, keep_evidence:bool=False)\
-        -> JPTBase:
+    def conditional_jpt(self, evidence: VariableMap, keep_evidence: bool = False):
         '''
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
         The new JPT contains all variables that are not in the evidence and is a 
@@ -1433,22 +1452,22 @@ class JPT(JPTBase):
         '''
 
         # the new jpt that acts as conditional joint probability distribution
-        conditional_jpt:JPTBase = JPT.from_json(self.to_json())
-        
+        conditional_jpt: JPT = JPT.from_json(self.to_json())
+
         univisited_nodes = queue.Queue()
         univisited_nodes.put_nowait(conditional_jpt.allnodes[self.root.idx])
-        
+
         while not univisited_nodes.empty():
 
             # get the next node to inspect
-            current_node:Node = univisited_nodes.get_nowait()
+            current_node: Node = univisited_nodes.get_nowait()
 
             # if it is a leaf skip this iteration
             if isinstance(current_node, Leaf):
                 continue
-            
+
             # syntax highlighting
-            current_node:DecisionNode
+            current_node: DecisionNode
 
             # remember the indices of the nodes that need to get removed
             invalid = []
@@ -1467,9 +1486,9 @@ class JPT(JPTBase):
             # remove invalid children from the tree and the children list
             for idx in invalid:
                 # get all the indices of the subtree members
-                removable_indices = [node.idx for node in 
-                    current_node.children[idx].recursive_children()] + \
-                    [current_node.children[idx].idx]
+                removable_indices = [node.idx for node in
+                                     current_node.children[idx].recursive_children()] + \
+                                    [current_node.children[idx].idx]
 
                 # for all dead nodes 
                 for jdx in removable_indices:
@@ -1482,10 +1501,10 @@ class JPT(JPTBase):
 
                 # remove it as child
                 del current_node.children[idx]
-        
+
         # calculate remaining probability mass
         probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
-        
+
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
             leaf.prior /= probability_mass
@@ -1504,8 +1523,8 @@ class JPT(JPTBase):
 
         # discard unused variables
         if not keep_evidence:
-            conditional_jpt._variables = [variable for variable in conditional_jpt.variables 
-                if variable not in evidence.keys()]
+            conditional_jpt._variables = [variable for variable in conditional_jpt.variables
+                                          if variable not in evidence.keys()]
 
         return conditional_jpt
 
@@ -1531,14 +1550,4 @@ class JPT(JPTBase):
                 t = json.load(f)
         else:
             t = json.load(file)
-        return JPTBase.from_json(t)
-
-
-class DistributedJPT(JPTBase):
-
-    def __init__(self, path, **kwargs):
-        super().__init__(**kwargs)
-        self.path = path
-
-    def apply(self, query):
-        pass
+        return JPT.from_json(t)
