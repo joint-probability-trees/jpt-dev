@@ -1,3 +1,4 @@
+import json
 import pickle
 from unittest import TestCase
 
@@ -24,16 +25,15 @@ class JPTTest(TestCase):
                   max_depth=10,
                   variable_dependencies=variable_dependencies)
 
-        jpt_ = JPT.from_json(jpt.to_json())
+        jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
         self.assertEqual(jpt, jpt_)
 
     def test_serialization(self):
         '''(de)serialization of JPTs with training'''
-
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
 
-        jpt_ = JPT.from_json(jpt.to_json())
+        jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
         self.assertEqual(jpt, jpt_)
 
