@@ -2,14 +2,15 @@ PKG_NAME=jpt
 PKG_VERSION=$(shell cat version)
 PYTHON_PATH=/usr/bin/python3.8
 PYTHON_VERSION=$(shell ${PYTHON_PATH} -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))")
-ENV_NAME=${PKG_NAME}-${PKG_VERSION}-py-${PYTHON_VERSION}
+ENV_NAME=.venv/${PKG_NAME}-${PKG_VERSION}-py-${PYTHON_VERSION}
 BASEDIR=$(shell pwd)
 
 versioncheck: virtualenv
 	test ${PKG_VERSION} = `. ${ENV_NAME}/bin/activate && export PYTHONPATH=${BASEDIR}/src && python -c "import jpt; print(jpt.__version__)"`
+	@echo Version check passed: ${PKG_VERSION}
 
 rmvirtualenv:
-	@(rm -rf ${ENV_NAME})
+	@(rm -rf .venv)
 
 virtualenv:
 	@(virtualenv ${ENV_NAME})
