@@ -1,6 +1,5 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-from ctypes import resize
 import html
 import json
 import queue
@@ -15,43 +14,39 @@ import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 from itertools import zip_longest
-from typing import Dict, List, Tuple
-import copy
+from typing import Dict, List, Tuple, Any, Union
 
 import numpy as np
 import pandas as pd
-from dnutils.stats import stopwatch
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, ifnone, mapstr, out, err, fst
+from dnutils import first, ifnone, mapstr, err, fst
+from dnutils.stats import stopwatch
+
 from sklearn.tree import DecisionTreeRegressor
 
-from .base.utils import list2interval, format_path, normalized, Unsatisfiability
+from .base.utils import Unsatisfiability
 
-from .variables import Variable, VariableMap
+from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
+from .learning.distributions import Distribution
+
+from .base.utils import list2interval, format_path, normalized
+from .learning.distributions import Multinomial, Numeric
+from .base.constants import plotstyle, orange, green, SYMBOL
 
 try:
-    from .base.quantiles import QuantileDistribution
-    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
-    from .base.constants import plotstyle, orange, green, SYMBOL
-    from .base.utils import list2interval, format_path, normalized
-    from .learning.impurity import Impurity
-    from .learning.distributions import Multinomial, Numeric, Identity, Distribution
-    from .variables import Variable, SymbolicVariable, NumericVariable
+    from .base.quantiles import __module__
+    from .base.intervals import __module__
+    from .learning.impurity import __module__
 except ImportError:
     import pyximport
-
     pyximport.install()
 finally:
     from .base.quantiles import QuantileDistribution
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
-    from .base.constants import plotstyle, orange, green, SYMBOL
-    from .base.utils import list2interval, format_path, normalized
     from .learning.impurity import Impurity
-    from .learning.distributions import Multinomial, Numeric, Identity
-    from .variables import Variable
 
 style.use(plotstyle)
 
@@ -93,7 +88,7 @@ class Node:
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx: int, parent=None) -> None:
+    def __init__(self, idx: int, parent: Union[None, 'DecisionNode'] = None) -> None:
         '''
         :param idx:             the identifier of a node
         :type idx:              int
@@ -101,7 +96,7 @@ class Node:
         :type parent:           jpt.learning.trees.Node
         '''
         self.idx = idx
-        self.parent: Node = parent
+        self.parent: DecisionNode = parent
         self.samples = 0.
         self._path = []
 
@@ -112,7 +107,7 @@ class Node:
             res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
         return res
 
-    def consistent_with(self, evidence: VariableMap):
+    def consistent_with(self, evidence: VariableMap) -> bool:
         '''
         Check if the node is consistend with the variable assignments in evidence.
         
@@ -171,7 +166,7 @@ class DecisionNode(Node):
                 self.variable == o.variable and
                 self.samples == o.samples)
 
-    def to_json(self) -> str:
+    def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
                 'parent': self.parent.idx if self.parent is not None else None,
                 'splits': [s.to_json() if isinstance(s, ContinuousSet) else s for s in self.splits],
@@ -182,7 +177,7 @@ class DecisionNode(Node):
                 'child_idx': self.parent.children.index(self) if self.parent is not None else None}
 
     @staticmethod
-    def from_json(jpt, data):
+    def from_json(jpt, data) -> 'DecisionNode':
         node = DecisionNode(idx=data['idx'], variable=jpt.varnames[data['variable']])
         node.splits = [Interval.from_json(s) if node.variable.numeric else s for s in data['splits']]
         node.children = [None] * len(node.splits)
@@ -204,7 +199,7 @@ class DecisionNode(Node):
         self._splits = splits
         self.children = [None] * len(self._splits)
 
-    def set_child(self, idx, node) -> None:
+    def set_child(self, idx: int, node: Node) -> None:
         self.children[idx] = node
         node._path = list(self._path)
         node._path.append((self.variable, self.splits[idx]))
@@ -246,7 +241,7 @@ class DecisionNode(Node):
 
 class Leaf(Node):
     '''
-    Represents a leaf node of the the :class:`jpt.learning.trees.Tree`.
+    Represents a leaf node of the :class:`jpt.learning.trees.Tree`.
     '''
 
     def __init__(self, idx: int, parent: Node or None = None, prior=None):
@@ -280,7 +275,7 @@ class Leaf(Node):
     def __repr__(self) -> str:
         return f'LeafNode<{self.idx}> object at {hex(id(self))}'
 
-    def to_json(self) -> str:
+    def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
                 'distributions': self.distributions.to_json(),
                 'prior': self.prior,
@@ -455,8 +450,7 @@ class JPT:
 
         self._variables = tuple(variables)
         self._targets = targets
-        self.varnames: OrderedDict[str, Variable] = OrderedDict(
-            (var.name, var) for var in self._variables)
+        self.varnames: OrderedDict[str, Variable] = OrderedDict((var.name, var) for var in self._variables)
         self.leaves: Dict[int, Leaf] = {}
         self.innernodes: Dict[int, DecisionNode] = {}
         self.allnodes: ChainMap[int, Node] = ChainMap(self.innernodes, self.leaves)
@@ -478,7 +472,7 @@ class JPT:
         # specified different
         if variable_dependencies is None:
             self.variable_dependencies: VariableMap[Variable, List[Variable]] = \
-                VariableMap(zip(self.variables, [self.variables] * len(self.variables)))
+                VariableMap(zip(self.variables, [list(self.variables)] * len(self.variables)))
         else:
             self.variable_dependencies: VariableMap[Variable, List[Variable]] = variable_dependencies
 
@@ -540,7 +534,7 @@ class JPT:
             self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
 
     @property
-    def variables(self) -> List[Variable]:
+    def variables(self) -> Tuple[Variable]:
         return self._variables
 
     @property
@@ -577,26 +571,28 @@ class JPT:
 
     def to_json(self) -> Dict:
         return {'variables': [v.to_json() for v in self.variables],
-                'targets': [v.to_json() for v in self.targets] if self.targets else self.targets,
+                'targets': [v.name for v in self.targets] if self.targets else self.targets,
                 'min_samples_leaf': self.min_samples_leaf,
                 'min_impurity_improvement': self.min_impurity_improvement,
                 'max_leaves': self.max_leaves,
                 'max_depth': self.max_depth,
-                'variable_dependencies': self.variable_dependencies.to_json(),
+                'variable_dependencies': {var.name: [v.name for v in deps]
+                                          for var, deps in self.variable_dependencies.items()},
                 'leaves': [l.to_json() for l in self.leaves.values()],
                 'innernodes': [n.to_json() for n in self.innernodes.values()],
                 'priors': {varname: p.to_json() for varname, p in self.priors.items()}}
 
     @staticmethod
-    def from_json(data):
-        jpt = JPT(variables=[Variable.from_json(d) for d in data['variables']],
-                  targets=[Variable.from_json(d) for d in data['targets']] if data["targets"] else data["targets"],
+    def from_json(data: Dict[str, Any]):
+        variables = OrderedDict([(d['name'], Variable.from_json(d)) for d in data['variables']])
+        jpt = JPT(variables=list(variables.values()),
+                  targets=[variables[v] for v in data['targets']] if data.get('targets') else None,
                   min_samples_leaf=data['min_samples_leaf'],
                   min_impurity_improvement=data['min_impurity_improvement'],
                   max_leaves=data['max_leaves'],
                   max_depth=data['max_depth'],
-                  variable_dependencies=VariableMap.from_json([Variable.from_json(d) for d in data['variables']],
-                                                              data['variable_dependencies'])
+                  variable_dependencies={variables[var]: [variables[v] for v in deps]
+                                         for var, deps in data['variable_dependencies'].items()}
                   )
         for d in data['innernodes']:
             DecisionNode.from_json(jpt, d)
@@ -1445,10 +1441,11 @@ class JPT:
 
         :param evidence: A variable Map mapping the observed variables to there observed,
             single values (not intervals)
-        :type evidence: VariableMap
-        :param keep_evidence_variables: Rather to keep the evidence variables in the new
+        :type evidence: ``VariableMap``
+
+        :param keep_evidence: Rather to keep the evidence variables in the new
             JPT or not. If kept, their PDFs are replaced with Durac impulses.
-        :type keep_evidence_variables: bool
+        :type keep_evidence: bool
         '''
 
         # the new jpt that acts as conditional joint probability distribution
