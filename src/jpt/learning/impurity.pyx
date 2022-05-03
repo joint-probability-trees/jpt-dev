@@ -6,6 +6,8 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 
+__module__ = 'impurity.pyx'
+
 import numpy as np
 cimport numpy as np
 import tabulate

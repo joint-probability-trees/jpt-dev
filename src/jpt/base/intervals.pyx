@@ -14,6 +14,8 @@ cimport numpy as np
 cimport cython
 from dnutils import ifnone
 
+__module__ = 'intervals.pyx'
+
 cdef class NumberSet:
 
     def __getstate__(self):
