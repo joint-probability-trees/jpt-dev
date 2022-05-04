@@ -8,6 +8,7 @@ RELEASE_NAME=${PKG_NAME}-${PKG_VERSION}
 
 versioncheck: virtualenv
 	test ${PKG_VERSION} = `. ${ENV_NAME}/bin/activate && export PYTHONPATH=${BASEDIR}/src && python -c "import jpt; print(jpt.__version__)"`
+	@echo Version check passed: ${PKG_VERSION}
 
 rmvirtualenv:
 	@(rm -rf .venv)
