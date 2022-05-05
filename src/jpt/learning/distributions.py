@@ -536,6 +536,12 @@ class Distribution:
             raise TypeError('Unknown distribution class: %s' % data['class'])
         return clazz.from_json(data)
 
+    def __getstate__(self):
+        return self.to_json()
+
+    def __setstate__(self, state):
+        self.__dict__ = Distribution.from_json(state).__dict__
+
     @staticmethod
     def type_from_json(data):
         typ = _DISTRIBUTION_TYPES.get(data['type'])

@@ -120,6 +120,12 @@ class Variable:
         else:
             raise TypeError('Unknown distribution type: %s' % data['type'])
 
+    def __getstate__(self):
+        return self.to_json()
+
+    def __setstate__(self, state):
+        self.__dict__ = Variable.from_json(state).__dict__
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Numeric variables

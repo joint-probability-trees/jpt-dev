@@ -602,6 +602,12 @@ class JPT:
                       for varname, dist in data['priors'].items()}
         return jpt
 
+    def __getstate__(self):
+        return self.to_json()
+
+    def __setstate__(self, state):
+        self.__dict__ = JPT.from_json(state).__dict__
+
     def __eq__(self, o) -> bool:
         return (isinstance(o, JPT) and
                 self.innernodes == o.innernodes and

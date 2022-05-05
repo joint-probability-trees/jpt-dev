@@ -37,3 +37,10 @@ class JPTTest(TestCase):
         jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
         self.assertEqual(jpt, jpt_)
 
+    def test_pickle(self):
+        '''(de)serialization of JPTs using pickle'''
+        var = NumericVariable('X')
+        jpt = JPT([var], min_samples_leaf=.1)
+        jpt.learn(self.data.reshape(-1, 1))
+        jpt_ = pickle.loads(pickle.dumps(jpt))
+        self.assertEqual(jpt, jpt_)
