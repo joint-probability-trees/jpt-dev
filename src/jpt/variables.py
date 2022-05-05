@@ -9,7 +9,7 @@ from collections import OrderedDict
 import numpy as np
 from dnutils import first, ifnone, out
 
-from jpt.base.utils import mapstr
+from jpt.base.utils import mapstr, to_json
 
 try:
     from jpt.base.intervals import INC, EXC, ContinuousSet
@@ -119,6 +119,12 @@ class Variable:
             return SymbolicVariable.from_json(data)
         else:
             raise TypeError('Unknown distribution type: %s' % data['type'])
+
+    def __getstate__(self):
+        return self.to_json()
+
+    def __setstate__(self, state):
+        self.__dict__ = Variable.from_json(state).__dict__
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -367,7 +373,7 @@ class VariableMap:
         yield from ((self._variables[name], value) for name, value in self._map.items())
 
     def to_json(self):
-        return {var.name: value.to_json() if hasattr(value, 'to_json') else value for var, value in self.items()}
+        return {var.name: to_json(value) for var, value in self.items()}
 
     @staticmethod
     def from_json(variables, d, typ=None, args=()):

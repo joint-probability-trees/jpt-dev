@@ -1,4 +1,5 @@
 import logging
+import numbers
 import os
 from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
 from csv import Dialect
@@ -84,14 +85,23 @@ def prod(it):
     return reduce(lambda x, y: x * y, it)
 
 
-def tojson(obj):
-    """Recursively generate a JSON representation of the object ``obj``."""
-    if hasattr(obj, 'tojson'):
-        return obj.tojson()
-    if type(obj) in (list, tuple):
-        return [tojson(e) for e in obj]
+def to_json(obj):
+    '''
+    Recursively generate a JSON representation of the object ``obj``.
+
+    Non-natively supported data types must provide a ``to_json()`` method that
+    returns a representation that is in turn jsonifiable.
+    '''
+    if hasattr(obj, 'to_json'):
+        return obj.to_json()
+    if isinstance(obj, list):
+        return [to_json(e) for e in obj]
     elif isinstance(obj, dict):
-        return {str(k): tojson(v) for k, v in obj.items()}
+        return {str(k): to_json(v) for k, v in obj.items()}
+    elif type(obj) is str or isinstance(obj, numbers.Number):
+        return obj
+    else:
+        raise TypeError('Object of type %s is not jsonifiable.' % type(obj).__name__)
     return obj
 
 
