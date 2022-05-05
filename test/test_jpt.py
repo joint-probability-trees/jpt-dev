@@ -3,7 +3,7 @@ from unittest import TestCase
 
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
-
+import numpy as np
 
 class JPTTest(TestCase):
 
@@ -37,3 +37,8 @@ class JPTTest(TestCase):
         jpt_ = JPT.from_json(jpt.to_json())
         self.assertEqual(jpt, jpt_)
 
+    def test_likelihood(self):
+        var = NumericVariable('X')
+        jpt = JPT([var], min_samples_leaf=.1)
+        jpt.learn(self.data.reshape(-1, 1))
+        probs = jpt.likelihood(self.data.reshape(-1, 1))

@@ -27,12 +27,12 @@ class JointProbabilityTreesMPE(unittest.TestCase):
 
         f = os.path.join('../' 'examples', 'data', 'alarm.pkl')
         with open(f, 'rb') as fi:
-            data = np.array(pickle.load(fi))
+            self.data = np.array(pickle.load(fi))
 
         self.jpt = JPT(variables=[self.E, self.B, self.A, self.M, self.J],
                        min_impurity_improvement=0)
 
-        self.jpt.learn(rows=data)
+        self.jpt.learn(rows=self.data)
 
     def test_infer_alarm_given_mary(self):
         q = {self.A: True}
@@ -46,6 +46,9 @@ class JointProbabilityTreesMPE(unittest.TestCase):
         res = self.jpt.infer(q, e)
         self.assertAlmostEqual(0.210199, res.result, places=5)
 
+    def test_likelihood_discrete(self):
+        probs = self.jpt.likelihood(self.data)
+        assert sum(np.log(probs)) > -np.inf
 
 if __name__ == '__main__':
     unittest.main()
