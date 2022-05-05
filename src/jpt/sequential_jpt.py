@@ -84,7 +84,7 @@ class SequentialJPT:
                     len(self.variables)))
         begin = 0
         for timeseries in tqdm.tqdm(data, desc="Windowing timeseries"):
-            end = begin + len(timeseries) +1 -self.timesteps
+            end = begin + len(timeseries) + 1 - self.timesteps
             windowed = numpy.lib.stride_tricks.sliding_window_view(timeseries, 
                                                         window_shape=(2,), 
                                                         axis=0)
@@ -96,11 +96,11 @@ class SequentialJPT:
 
     def integrate(self):
         probability_mass = 0.
-        leaf_masses = []
+
         for n, leaf_n in self.template_tree.leaves.items():
             for m, leaf_m in self.template_tree.leaves.items():
-                leaf_mass = leaf_n.prior * leaf_m.prior
-                integral = 0.
+                intersecting_mass = 0.
+
                 # for all template variables get their groundings
                 for template_variable, grounded_variables in self.template_variable_map.items():
 
@@ -108,12 +108,54 @@ class SequentialJPT:
                                                       leaf_n.distributions[grounded_variables[1]].pdf.functions):
                         for interval_m, function_m in zip(leaf_m.distributions[grounded_variables[0]].pdf.intervals,
                                                           leaf_m.distributions[grounded_variables[0]].pdf.functions):
-                            if function_m.value > 0 and function_n.value > 0:
-                                leaf_mass *= (interval_n.upper - interval_n.lower) \
-                                    * (interval_m.upper - interval_m.lower) \
-                                    * (function_n.value * function_m.value)
-                leaf_masses.append(leaf_mass)
 
-            probability_mass += leaf_mass
+                            if function_m.value == 0 or function_n.value == 0:
+                                continue
+
+                            intersection = interval_n.intersection(interval_m)
+                            if intersection.isempty() == 0 \
+                                    and intersection.lower != -np.inf \
+                                    and intersection.upper != np.inf:
+                                intersecting_mass += ((intersection.upper - intersection.lower) * function_m.value) * \
+                                                    ((intersection.upper - intersection.lower) * function_n.value) * \
+                                                     leaf_n.prior * leaf_m.prior
+
+                    probability_mass += intersecting_mass
 
         return probability_mass
+
+
+    def likelihood(self, queries: List, minimum_probability=pow(10, -10)) -> np.ndarray:
+        '''Get the probabilities of a list of worlds. The worlds must be fully assigned with
+                single numbers (no intervals).
+
+                :param queries: A list containing the sequences. The shape is (num_sequences, num_timesteps, len(variables)).
+                :type queries: list
+                :param minimum_probability: If the probability of a sample is 0 (which is possible
+                    due to numeric approximations) the probability will be replaced with
+                    'minimum_probability'.
+                :type minimum_probability: float
+                Returns: An np.array with shape (num_sequences, ) containing the probabilities.
+        '''
+
+        result = np.zeros(len(queries))
+
+        for idx, sequence in enumerate(tqdm.tqdm(queries, desc="Processing Time Series")):
+            windowed = numpy.lib.stride_tricks.sliding_window_view(sequence, window_shape=(2,), axis=0)
+            probs = self.template_tree.likelihood(windowed[:, 0, :])
+            result[idx] = np.prod(probs)
+        return result
+
+
+    def infer(self, queries, evidences):
+        '''
+        Return the probability of a sequence taking values specified in queries given ranges specified in evidences
+        '''
+        if len(queries) != len(evidences):
+            raise Exception("Queries and Evidences need to be sequences of same length.")
+
+        for timestep in range(len(queries)):
+            current_tree_query= queries[timestep]
+            current_tree_evidence= evidences[timestep]
+            joint_query_map = dict()
+            joint_evidence_map = dict()

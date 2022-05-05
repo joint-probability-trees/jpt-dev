@@ -2,6 +2,8 @@ import unittest
 import numpy as np
 import jpt.variables
 from jpt.sequential_jpt import SequentialJPT
+import itertools
+
 
 class UniformSeries:
 
@@ -23,18 +25,26 @@ class SequenceTest(unittest.TestCase):
         self.variables = [jpt.variables.NumericVariable("X", precision=0.1)]
 
     def test_learning(self):
-        tree = SequentialJPT(self.variables, min_samples_leaf=3000)
+        tree = SequentialJPT(self.variables, min_samples_leaf=1500)
         tree.learn([self.data, self.data])
-
 
     def test_integral(self):
         tree = SequentialJPT(self.variables, min_samples_leaf=1500)
         tree.learn([self.data])
         tree.plot(plotvars=tree.variables)
-        print(sum([leaf.prior*leaf.prior for leaf in tree.template_tree.leaves.values()]))
         self.assertAlmostEqual(tree.probability_mass_, 0.5)
 
+    def test_likelihood(self):
+        tree = SequentialJPT(self.variables, min_samples_leaf=500)
+        tree.learn([self.data])
 
+        x=np.linspace(-1.1, 1.1, 50)
+        t = np.asarray(list(itertools.product(x, x, x)))
+        t = np.expand_dims(t, 2)
+        probs = tree.likelihood(t)
+        probs /= sum(probs)
+        print(tree.probability_mass_)
+        print(probs[(probs > 0.2/16).nonzero()])
 
 if __name__ == '__main__':
     unittest.main()
