@@ -4,6 +4,7 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
+__module__ = 'quantiles.pyx'
 import itertools
 import numbers
 from collections import deque
