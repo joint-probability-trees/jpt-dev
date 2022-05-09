@@ -11,7 +11,6 @@ from jpt.learning.distributions import Bool
 class JointProbabilityTreesMPE(unittest.TestCase):
 
     data = None
-
     jpt = None
 
     @classmethod
@@ -25,12 +24,13 @@ class JointProbabilityTreesMPE(unittest.TestCase):
         with open(os.path.join('..', 'examples', 'data', 'alarm.pkl'), 'rb') as f:
             cls.data = np.array(pickle.load(f))
 
-        cls.jpt = JPT(variables=[cls.E, cls.B, cls.A, cls.M, cls.J], min_impurity_improvement=0).learn(rows=data)
+        cls.jpt = JPT(variables=[cls.E, cls.B, cls.A, cls.M, cls.J],
+                      min_impurity_improvement=0).learn(rows=cls.data)
         cls.jpt.learn(rows=cls.data)
 
     def test_infer_alarm_given_mary(self):
         q = {'Alarm': True}
-        e = {'Mary': True}
+        e = {'MaryCalls': True}
         res = JointProbabilityTreesMPE.jpt.infer(q, e)
         self.assertAlmostEqual(0.950593, res.result, places=5)
 
