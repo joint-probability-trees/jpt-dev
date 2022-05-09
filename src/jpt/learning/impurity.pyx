@@ -374,9 +374,10 @@ cdef class Impurity:
                 self.best_split_pos = split_pos
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
 
-        if self.best_var in self.symbolic_features:
+        if self.max_impurity_improvement and self.best_var in self.symbolic_features:
             self.move_best_values_to_front(self.best_var,
-                                           self.data[self.indices[start + self.best_split_pos], self.best_var],
+                                           self.data[self.indices[start + self.best_split_pos],
+                                                     self.best_var],
                                            &self.best_split_pos)
 
         return self.max_impurity_improvement
@@ -415,7 +416,6 @@ cdef class Impurity:
         sort(&f[0], &index_buffer[0], n_samples)
         # --------------------------------------------------------------------------------------------------------------
         cdef int numeric = not symbolic
-
         cdef int is_constant = self.col_is_constant(start, end, var_idx)
         if is_constant == 1:
             return 0
