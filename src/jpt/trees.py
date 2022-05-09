@@ -1171,58 +1171,64 @@ class JPT:
         else:
             return iv
 
-    def likelihood(self, queries: np.ndarray, minimum_probability=pow(10, -10)) -> np.ndarray:
-        '''Get the probabilities of a list of worlds. The worlds must be fully assigned with 
-        single numbers (no intervals). 
-        
+    def likelihood(self, queries: np.ndarray, durac_scaling=2., min_distances=None) -> np.ndarray:
+        """Get the probabilities of a list of worlds. The worlds must be fully assigned with
+        single numbers (no intervals).
+
         :param queries: An array containing the worlds. The shape is (x, len(variables)).
         :type queries: np.array
-        :param minimum_probability: If the probability of a sample is 0 (which is possible
-            due to numeric approximations) the probability will be replaced with 
-            'minimum_probability'.
-        :type minimum_probability: float
+        :param durac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
+            if a durac impulse is used to model the variable.
+        :type durac_scaling: float
+        :param min_distances: A dict mapping the variables to the minimal distances between the observations.
+            This can be useful to use the same likelihood parameters for different test sets for example in cross
+            validation processes.
+        :type min_distances: Dict[Variable, float]
         Returns: An np.array with shape (x, ) containing the probabilities.
-        '''
-        # create minimal distances for each numeric variable such a senseful metric can be computed
-        min_distances: Dict[Variable, float] = dict()
-        for idx, variable in enumerate(self.variables):
-            if variable.numeric:
-                samples = np.unique(queries[:, idx])
-                distances = np.diff(samples)
-                min_distances[variable] = min(distances) if len(distances) > 0 else 2.
+        """
+        # create minimal distances for each numeric variable such a senseful metric can be computed if not provided
+        if min_distances is None:
+            min_distances: Dict[Variable, float] = dict()
+            for idx, variable in enumerate(self.variables):
+                if variable.numeric:
+                    samples = np.unique(queries[:, idx])
+                    distances = np.diff(samples)
+                    min_distances[variable] = min(distances) if len(distances) > 0 else durac_scaling
 
-        probabilities = np.ones(len(queries))
+        #initialize probabilities
+        probabilities = np.zeros(len(queries))
 
+        #for all leaves
         for leaf in self.leaves.values():
-            leaf: Leaf = leaf  # for syntax highlighting
-
-            true_query_indices = np.ones(len(queries))  # indices for queries that are in this leaf
+            #calculate the samples that are in this leaf
+            true_query_indices = np.ones(len(queries))
 
             for variable, restriction in leaf.path.items():
                 idx = self.variables.index(variable)
                 column = queries[:, idx]
-                if isinstance(variable, NumericVariable):
-                    true_indices = np.where((column > restriction.lower) & (column <= restriction.upper), 1, 0)
-                elif isinstance(variable, SymbolicVariable):
-                    true_indices = np.where(column == list(restriction)[0], 1, 0)
 
+                if isinstance(variable, NumericVariable):
+                    true_indices = ((restriction.lower < column) & (column <= restriction.upper))
+                elif isinstance(variable, SymbolicVariable):
+                    true_indices = np.isin(column, np.asarray(list(restriction)))
                 true_query_indices *= true_indices
 
+            in_leaf_probabilities = np.ones(len(queries))
             for variable, distribution in leaf.distributions.items():
                 idx = self.variables.index(variable)
 
                 if isinstance(variable, SymbolicVariable):
-                    probs = distribution._params[queries[:, idx].astype(int)] * true_query_indices
+                    probs = distribution._params[queries[:, idx].astype(int)]
 
                 elif isinstance(variable, NumericVariable):
                     probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C')))
-                    probs[(probs == float("inf")).nonzero()] = 2 / min_distances[variable]
-                    probs = np.minimum(probs, np.ones(len(probs))) * true_query_indices
+                    probs[(probs == float("inf")).nonzero()] = durac_scaling / min_distances[variable]
 
-                probs[np.argwhere(true_query_indices == 0)] = 1
-                probabilities *= probs
+                in_leaf_probabilities *= probs
 
-        return np.maximum(probabilities, minimum_probability)
+            probabilities += (in_leaf_probabilities * leaf.prior * true_query_indices)
+
+        return probabilities
 
     def reverse(self, query, confidence=.5) -> List[Tuple[Dict, List[Node]]]:
         '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
