@@ -3,6 +3,7 @@
 import html
 import json
 import queue
+from operator import attrgetter
 from threading import Lock
 
 import math
@@ -40,7 +41,7 @@ try:
     from .base.quantiles import __module__
     from .base.intervals import __module__
     from .learning.impurity import __module__
-except ImportError:
+except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
@@ -144,7 +145,7 @@ class DecisionNode(Node):
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     '''
 
-    def __init__(self, idx: int, variable: Variable, parent: Node = None):
+    def __init__(self, idx: int, variable: Variable, parent: 'DecisionNode' = None):
         '''
         :param idx:             the identifier of a node
         :type idx:              int
@@ -168,7 +169,7 @@ class DecisionNode(Node):
 
     def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
-                'parent': self.parent.idx if self.parent is not None else None,
+                'parent': ifnone(self.parent, None, attrgetter('idx')),
                 'splits': [s.to_json() if isinstance(s, ContinuousSet) else s for s in self.splits],
                 'variable': self.variable.name,
                 '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
@@ -177,11 +178,11 @@ class DecisionNode(Node):
                 'child_idx': self.parent.children.index(self) if self.parent is not None else None}
 
     @staticmethod
-    def from_json(jpt, data) -> 'DecisionNode':
+    def from_json(jpt: 'JPT', data: Dict[str, Any]) -> 'DecisionNode':
         node = DecisionNode(idx=data['idx'], variable=jpt.varnames[data['variable']])
         node.splits = [Interval.from_json(s) if node.variable.numeric else s for s in data['splits']]
         node.children = [None] * len(node.splits)
-        node.parent = jpt.innernodes.get(data['parent'])
+        node.parent = ifnone(data['parent'], None, jpt.innernodes.get)
         node.samples = data['samples']
         if node.parent is not None:
             node.parent.set_child(data['child_idx'], node)
@@ -269,22 +270,22 @@ class Leaf(Node):
         return []
 
     def __str__(self) -> str:
-        return (f'Leaf<ID: {self.idx}; '
-                f'parent: {f"DecisionNode<ID: {self.parent.idx}>" if self.parent else None}>')
+        return (f'<Leaf # {self.idx}; '
+                f'parent: <%s # %s>>' % (type(self.parent).__qualname__, ifnone(self.parent, None, attrgetter('idx'))))
 
     def __repr__(self) -> str:
-        return f'LeafNode<{self.idx}> object at {hex(id(self))}'
+        return f'Leaf<{self.idx}> object at {hex(id(self))}'
 
     def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
                 'distributions': self.distributions.to_json(),
                 'prior': self.prior,
                 'samples': self.samples,
-                'parent': self.parent.idx if self.parent is not None else None,
+                'parent': ifnone(self.parent, None, attrgetter('idx')),
                 'child_idx': self.parent.children.index(self)}
 
     @staticmethod
-    def from_json(tree, data):
+    def from_json(tree: 'JPT', data: Dict[str, Any]) -> 'Leaf':
         leaf = Leaf(idx=data['idx'], prior=data['prior'], parent=tree.innernodes.get(data['parent']))
         leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'], Distribution)
         leaf._path = []
@@ -533,6 +534,13 @@ class JPT:
             self.numeric_dependency_matrix[key_, 0:len(numeric_dependencies)] = numeric_dependencies
             self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
 
+    def _reset(self) -> None:
+        self.innernodes.clear()
+        self.leaves.clear()
+        self.priors.clear()
+        self.root = None
+        self.c45queue.clear()
+
     @property
     def variables(self) -> Tuple[Variable]:
         return self._variables
@@ -580,7 +588,9 @@ class JPT:
                                           for var, deps in self.variable_dependencies.items()},
                 'leaves': [l.to_json() for l in self.leaves.values()],
                 'innernodes': [n.to_json() for n in self.innernodes.values()],
-                'priors': {varname: p.to_json() for varname, p in self.priors.items()}}
+                'priors': {varname: p.to_json() for varname, p in self.priors.items()},
+                'root': ifnone(self.root, None, attrgetter('idx'))
+                }
 
     @staticmethod
     def from_json(data: Dict[str, Any]):
@@ -600,6 +610,7 @@ class JPT:
             Leaf.from_json(jpt, d)
         jpt.priors = {varname: jpt.varnames[varname].domain.from_json(dist)
                       for varname, dist in data['priors'].items()}
+        jpt.root = jpt.allnodes[data.get('root')] if data.get('root') is not None else None
         return jpt
 
     def __getstate__(self):
@@ -899,7 +910,7 @@ class JPT:
         :param data:        the indices for the training samples used to calculate the gain.
         :param start:       the starting index in the data.
         :param end:         the stopping index in the data.
-        :param parent:      the parent node of the current iteration, initially the root node.
+        :param parent:      the parent node of the current iteration, initially ``None``.
         :param child_idx:   the index of the child in the current iteration.
         :param depth:       the depth of the tree in the current recursion level.
         '''
@@ -908,19 +919,19 @@ class JPT:
         n_samples = end - start
         split_var_idx = split_pos = -1
         split_var = None
-
         impurity = self.impurity
+
         max_gain = impurity.compute_best_split(start, end)
+        JPT.logger.debug('Data range: %d-%d,' % (start, end),
+                         'split var:', split_var,
+                         ', split_pos:', split_pos,
+                         ', gain:', max_gain)
 
         if max_gain:
             split_pos = impurity.best_split_pos
             split_var_idx = impurity.best_var
             split_var = self.variables[split_var_idx]
 
-        JPT.logger.debug('Data range: %d-%d,' % (start, end),
-                         'split var:', split_var,
-                         ', split_pos:', split_pos,
-                         ', gain:', max_gain)
         if max_gain <= min_impurity_improvement or depth >= self.max_depth:  # -----------------------------------------
             leaf = node = Leaf(idx=len(self.allnodes), parent=parent)
 
@@ -967,25 +978,30 @@ class JPT:
         if parent is not None:
             parent.set_child(child_idx, node)
 
+        if self.root is None:
+            self.root = node
+
     def __str__(self) -> str:
         return (f'{self.__class__.__name__}\n'
-                f'{self._p(self.root, 0)}\n'
+                f'{self.pfmt()}\n'
                 f'JPT stats: #innernodes = {len(self.innernodes)}, '
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}\n'
-                f'{self._p(self.root, 0)}\n'
+                f'{self.pfmt()}\n'
                 f'JPT stats: #innernodes = {len(self.innernodes)}, '
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
-    def _p(self, parent, indent) -> str:
-        if parent is None:
-            return "{}None\n".format(" " * indent)
+    def pfmt(self) -> str:
+        '''Return a pretty-format string representation of this JPT.'''
+        return self._pfmt(self.root, 0)
+
+    def _pfmt(self, node, indent) -> str:
         return "{}{}\n{}".format(" " * indent,
-                                 str(parent),
-                                 ''.join([self._p(r, indent + 5) for r in ([] if isinstance(parent, Leaf)
-                                                                           else parent.children)]))
+                                 str(node),
+                                 ''.join([self._pfmt(c, indent + 4) for c in node.children])
+                                 if isinstance(node, DecisionNode) else '')
 
     def _preprocess_data(self, data=None, rows=None, columns=None) -> np.ndarray:
         '''
@@ -1037,7 +1053,7 @@ class JPT:
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
-    def learn(self, data=None, rows=None, columns=None) -> None:
+    def learn(self, data=None, rows=None, columns=None) -> 'JPT':
         '''Fits the ``data`` into a regression tree.
 
         :param data:    The training examples (assumed in row-shape)
@@ -1064,6 +1080,10 @@ class JPT:
             self.impurity.min_samples_leaf = max(1, self.min_samples_leaf)
 
             JPT.logger.info('Data transformation... %d x %d' % _data.shape)
+
+            # ----------------------------------------------------------------------------------------------------------
+            # Initialize the internal data structures
+            self._reset()
 
             # ----------------------------------------------------------------------------------------------------------
             # Determine the prior distributions
@@ -1102,22 +1122,15 @@ class JPT:
             while self.c45queue:
                 self.c45(*self.c45queue.popleft())
 
-            if self.innernodes:
-                self.root = self.innernodes[0]
-
-            elif self.leaves:
-                self.root = self.leaves[0]
-
-            else:
-                JPT.logger.error('NO INNER NODES!', self.innernodes, self.leaves)
-                self.root = None
-
             # ----------------------------------------------------------------------------------------------------------
             # Print the statistics
 
             JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
             # if logger.level >= 20:
             JPT.logger.debug(self)
+            return self
+
+    fit = learn
 
     @property
     def min_samples_leaf(self):
