@@ -1209,7 +1209,6 @@ class JPT:
 
                 elif isinstance(variable, NumericVariable):
                     probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C')))
-                    print(*zip(true_query_indices, probs), sep="\n")
                     probs[(probs == float("inf")).nonzero()] = durac_scaling / min_distances[variable]
 
                 in_leaf_probabilities *= probs
