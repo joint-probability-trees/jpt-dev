@@ -47,4 +47,4 @@ tests: virtualenv
 	python -m unittest discover -s ${BASEDIR}/test -t ${BASEDIR}/test)
 
 clean: rmvirtualenv
-	rm -rf dist build src/*.egg-info *.log
+	rm -rf dist build src/*.egg-info *.log ~/.pyxbld/
