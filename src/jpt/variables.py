@@ -5,6 +5,7 @@ import hashlib
 import math
 import numbers
 from collections import OrderedDict
+from typing import List, Tuple, Any, Union, Dict, Iterator
 
 import numpy as np
 from dnutils import first, ifnone, out
@@ -88,7 +89,7 @@ class Variable:
     def __eq__(self, other):
         return (type(self) == type(other) and
                 self.name == other.name and
-                self.domain.equiv(other.domain) and
+                # self.domain.equiv(other.domain) and
                 self.min_impurity_improvement == other.min_impurity_improvement)
 
     def __hash__(self):
@@ -310,7 +311,7 @@ class VariableMap:
     supports accessing the image set both by the variable object instance itself _and_ its name.
     '''
 
-    def __init__(self, data=None):
+    def __init__(self, data: List[Tuple] = None):
         '''
         ``data`` may be an iterable of (variable, value) pairs.
         '''
@@ -321,25 +322,29 @@ class VariableMap:
             for var, value in data:
                 self[var] = value
 
-    def __getitem__(self, key):
+    @property
+    def map(self) -> OrderedDict:
+        return self._map
+
+    def __getitem__(self, key: Union[str, Variable]) -> Any:
         if isinstance(key, Variable):
             return self.__getitem__(key.name)
         return self._map.__getitem__(key)
 
-    def __setitem__(self, variable, value):
+    def __setitem__(self, variable: Union[str, Variable], value: Any) -> None:
         if not isinstance(variable, Variable):
             raise ValueError('Illegal argument value: expected Variable, got %s.' % type(variable).__name__)
         self._map[variable.name] = value
         self._variables[variable.name] = variable
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: Union[str, Variable]) -> None:
         if isinstance(key, Variable):
             self.__delitem__(key.name)
             return
         del self._map[key]
         del self._variables[key]
 
-    def __contains__(self, item):
+    def __contains__(self, item: Union[str, Variable]) -> bool:
         if isinstance(item, Variable):
             return self.__contains__(item.name)
         return item in self._map
@@ -358,25 +363,30 @@ class VariableMap:
                 list(self._map.items()) == list(o._map.items()) and
                 list(self._variables.items()) == list(o._variables.items()))
 
-    def get(self, key, default=None):
+    def get(self, key: Union[str, Variable], default=None) -> Any:
         if key not in self:
             return default
         return self[key]
 
-    def keys(self):
+    def keys(self) -> Iterator[str]:
         yield from (self._variables[name] for name in self._map.keys())
 
-    def values(self):
+    def values(self) -> Iterator[Any]:
         yield from self._map.values()
 
-    def items(self):
+    def items(self) -> Iterator[Tuple]:
         yield from ((self._variables[name], value) for name, value in self._map.items())
 
-    def to_json(self):
+    def to_json(self) -> Dict[str, Any]:
         return {var.name: to_json(value) for var, value in self.items()}
 
+    def update(self, varmap: 'VariableMap') -> 'VariableMap':
+        self._map.update(varmap._map)
+        self._variables.update(varmap._variables)
+        return self
+
     @staticmethod
-    def from_json(variables, d, typ=None, args=()):
+    def from_json(variables: List[Variable], d: Dict[str, Any], typ=None, args=()) -> 'VariableMap':
         vmap = VariableMap()
         varbyname = {var.name: var for var in variables}
         for vname, value in d.items():
