@@ -169,10 +169,8 @@ cdef class Impurity:
     cdef SIZE_t[:, ::1] numeric_dependency_matrix
     cdef SIZE_t[:, ::1] symbolic_dependency_matrix
 
-
     def __init__(self, tree):
         self.min_samples_leaf = tree.min_samples_leaf
-
         self.data = self.feat = self.index_buffer = self.indices = None
         self.start = self.end = -1
 
@@ -245,11 +243,7 @@ cdef class Impurity:
         self.numeric_dependency_matrix = tree.numeric_dependency_matrix
         self.symbolic_dependency_matrix = tree.symbolic_dependency_matrix
 
-    #@property
-    #def best_split_pos(self):
-    #    return pydeque([e for e in self._best_split_pos])
-
-    cdef inline int check_max_variances(self, DTYPE_t[::1] variances):  # nogil:
+    cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
         cdef int i
         for i in range(self.n_num_vars):
             if variances[i] > self.max_variances[i]:
@@ -289,14 +283,18 @@ cdef class Impurity:
             result[i] -= 1
             result[i] /= 1. / (<DTYPE_t> self.symbols[i]) - 1.
 
-    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil:
+    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil except -1:
         cdef DTYPE_t v_ = nan, v
         cdef SIZE_t i
+        if end - start <= 1:
+            return True
         for i in range(start, end):
             v = self.data[self.indices[i], col]
+            if v != v:
+                return -1
             if v_ == v: continue
             if v_ != v:
-                if v_ != v_: v_ = v  # NB: x != x is True iff x is NaN
+                if v_ != v_: v_ = v  # NB: x != x is True iff x is NaN or inf
                 else: return False
         return True
 
@@ -318,7 +316,6 @@ cdef class Impurity:
         cdef np.float64_t gini_total = 0
 
         self.max_impurity_improvement = 0
-
         if self.has_numeric_vars():
             self.variances_total[:] = 0
             sq_sum_at(self.data,
@@ -398,14 +395,13 @@ cdef class Impurity:
         sort(&self.feat[0], &self.indices[self.start], n_samples)
 
     cdef DTYPE_t evaluate_variable(Impurity self,
-                               int var_idx,
-                               int symbolic,
-                               int symbolic_idx,
-                               DTYPE_t[::1] variances_total,
-                               DTYPE_t gini_total,
-                               SIZE_t[::1] index_buffer,
-                               SIZE_t* best_split_pos) nogil:
-
+                                   int var_idx,
+                                   int symbolic,
+                                   int symbolic_idx,
+                                   DTYPE_t[::1] variances_total,
+                                   DTYPE_t gini_total,
+                                   SIZE_t[::1] index_buffer,
+                                   SIZE_t* best_split_pos) nogil except -1:
         cdef DTYPE_t[:, ::1] data = self.data
         cdef DTYPE_t[::1] f = self.feat
         cdef DTYPE_t max_impurity_improvement = 0
@@ -418,11 +414,13 @@ cdef class Impurity:
             f[j] = data[index_buffer[j], var_idx]
         sort(&f[0], &index_buffer[0], n_samples)
         # --------------------------------------------------------------------------------------------------------------
-
         cdef int numeric = not symbolic
 
-        if self.col_is_constant(start, end, var_idx):
+        cdef int is_constant = self.col_is_constant(start, end, var_idx)
+        if is_constant == 1:
             return 0
+        elif is_constant == -1:
+            return -1
 
         # Prepare the stats
         if self.has_numeric_vars():
