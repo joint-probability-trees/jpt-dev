@@ -1,5 +1,6 @@
 import json
 import pickle
+from pprint import pprint
 from unittest import TestCase
 
 from jpt.trees import JPT
@@ -34,6 +35,9 @@ class JPTTest(TestCase):
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
 
+        # pprint(jpt.to_json())
+
+        self.assertIsNone(jpt.root.parent)
         jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
         self.assertEqual(jpt, jpt_)
 
