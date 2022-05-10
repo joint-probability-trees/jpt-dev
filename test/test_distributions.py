@@ -1,15 +1,16 @@
+import json
 import pickle
 from unittest import TestCase
 
 import numpy as np
 
-
 try:
-    from jpt.base.quantiles import PiecewiseFunction, LinearFunction, QuantileDistribution
-    from jpt.base.intervals import ContinuousSet, EXC, INC
+    from jpt.base.quantiles import __module__
+    from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
+finally:
     from jpt.base.quantiles import PiecewiseFunction, LinearFunction, QuantileDistribution
     from jpt.base.intervals import ContinuousSet, EXC, INC
 
@@ -94,8 +95,8 @@ class MultinomialTest(TestCase):
         DistABC = self.DistABC
         Dist123 = self.Dist123
 
-        DistABC_ = DistABC.type_from_json(DistABC.type_to_json())
-        Dist123_ = Dist123.type_from_json(Dist123.type_to_json())
+        DistABC_ = Distribution.type_from_json(DistABC.type_to_json())
+        Dist123_ = Distribution.type_from_json(Dist123.type_to_json())
 
         self.assertTrue(DistABC_.equiv(DistABC))
         self.assertTrue(Dist123_.equiv(Dist123))
@@ -104,7 +105,8 @@ class MultinomialTest(TestCase):
         '''(De-)Serialziation of Multinomial distributions'''
         DistABC = self.DistABC
         d1 = DistABC(params=[1 / 2, 1 / 4, 1 / 4])
-        d2 = DistABC.from_json(d1.to_json())
+        Distribution.type_from_json(DistABC.type_to_json())
+        d2 = Distribution.from_json(json.loads(json.dumps(d1.to_json())))
         self.assertEqual(d1, d2)
 
     def test_distribution_manipulation(self):
