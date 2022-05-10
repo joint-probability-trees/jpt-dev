@@ -125,16 +125,12 @@ class SequentialJPT:
         return probability_mass
 
 
-    def likelihood(self, queries: List, minimum_probability=pow(10, -10)) -> np.ndarray:
+    def likelihood(self, queries: List) -> np.ndarray:
         '''Get the probabilities of a list of worlds. The worlds must be fully assigned with
                 single numbers (no intervals).
 
                 :param queries: A list containing the sequences. The shape is (num_sequences, num_timesteps, len(variables)).
                 :type queries: list
-                :param minimum_probability: If the probability of a sample is 0 (which is possible
-                    due to numeric approximations) the probability will be replaced with
-                    'minimum_probability'.
-                :type minimum_probability: float
                 Returns: An np.array with shape (num_sequences, ) containing the probabilities.
         '''
 
@@ -144,18 +140,64 @@ class SequentialJPT:
             windowed = numpy.lib.stride_tricks.sliding_window_view(sequence, window_shape=(2,), axis=0)
             probs = self.template_tree.likelihood(windowed[:, 0, :])
             result[idx] = np.prod(probs)
-        return result
+        return result/self.probability_mass_
 
 
-    def infer(self, queries, evidences):
+    def infer(self, queries:List[jpt.variables.VariableMap], evidences:List[jpt.variables.VariableMap]):
         '''
         Return the probability of a sequence taking values specified in queries given ranges specified in evidences
         '''
         if len(queries) != len(evidences):
             raise Exception("Queries and Evidences need to be sequences of same length.")
 
-        for timestep in range(len(queries)):
-            current_tree_query= queries[timestep]
-            current_tree_evidence= evidences[timestep]
-            joint_query_map = dict()
-            joint_evidence_map = dict()
+        for timestep in range(len(queries)-2):
+            complete_query_phi_0 = dict()
+            complete_evidence_phi_0 = dict()
+            complete_query_phi_1 = dict()
+            complete_evidence_phi_1 = dict()
+
+            for template_variable, ground_variables in self.template_variable_map.items():
+
+                # get the currently relevant queries for phi_0 and phi_1
+                if template_variable in queries[timestep]:
+                    complete_query_phi_0[ground_variables[0]] = queries[timestep][template_variable]
+                if template_variable in queries[timestep+1]:
+                    complete_query_phi_0[ground_variables[1]] = queries[timestep+1][template_variable]
+                    complete_query_phi_1[ground_variables[0]] = queries[timestep+1][template_variable]
+                if template_variable in queries[timestep+2]:
+                    complete_query_phi_1[ground_variables[1]] = queries[timestep+2][template_variable]
+
+                # get the currently relevant evidences for phi_0 and phi_1
+                if template_variable in evidences[timestep]:
+                    complete_evidence_phi_0[ground_variables[0]] = evidences[timestep][template_variable]
+                if template_variable in evidences[timestep + 1]:
+                    complete_evidence_phi_0[ground_variables[1]] = evidences[timestep + 1][template_variable]
+                    complete_evidence_phi_1[ground_variables[0]] = evidences[timestep + 1][template_variable]
+                if template_variable in evidences[timestep + 2]:
+                    complete_evidence_phi_1[ground_variables[1]] = evidences[timestep + 2][template_variable]
+
+            # apply evidences
+            phi_0 = self.template_tree.conditional_jpt(complete_evidence_phi_0)
+            phi_1 = self.template_tree.conditional_jpt(complete_evidence_phi_1)
+
+            # preprocess queries
+            complete_query_phi_0 = self.template_tree._prepropress_query(complete_query_phi_0)
+            complete_query_phi_1 = self.template_tree._prepropress_query(complete_query_phi_1)
+            probability = 0.
+
+            # for all leaf combinations
+            for leaf_0 in phi_0.leaves.values():
+                for leaf_1 in phi_1.leaves.values():
+
+                    # skip non-fitting leaf combinations
+                    if not (leaf_0.applies(complete_query_phi_0) and leaf_1.applies(complete_query_phi_1)):
+                        continue
+
+                    in_leaf_mass = leaf_0.prior * leaf_1.prior
+                    for template_variable, ground_variables in self.template_variable_map.items():
+                        if template_variable.numeric:
+                            in_leaf_mass *= leaf_0.distributions[ground_variables[0]].cdf.eval(0.)
+                            exit()
+                        elif template_variable.symbolic:
+                            in_leaf_mass *= leaf_0.distributions[ground_variables[0]]
+                    probability += in_leaf_mass
