@@ -1,3 +1,5 @@
+import json
+import pickle
 from types import GeneratorType
 from unittest import TestCase
 
@@ -89,7 +91,7 @@ class VariableMapTest(TestCase):
         varmap[A] = 'foo'
         varmap[B] = 'bar'
         varmap[C] = 'baz'
-        self.assertEqual(varmap, VariableMap.from_json([A, B, C], varmap.to_json()))
+        self.assertEqual(varmap, VariableMap.from_json([A, B, C], json.loads(json.dumps(varmap.to_json()))))
 
 
 class VariableTest(TestCase):
@@ -102,10 +104,16 @@ class VariableTest(TestCase):
     def test_serialization(self):
         '''Test (de)serialization of Variable classes'''
         A, B, C = VariableTest.TEST_DATA
+        self.assertEqual(A, Variable.from_json(json.loads(json.dumps(A.to_json()))))
+        self.assertEqual(B, Variable.from_json(json.loads(json.dumps(B.to_json()))))
+        self.assertEqual(C, Variable.from_json(json.loads(json.dumps(C.to_json()))))
 
-        self.assertEqual(A, Variable.from_json(A.to_json()))
-        self.assertEqual(B, Variable.from_json(B.to_json()))
-        self.assertEqual(C, Variable.from_json(C.to_json()))
+    def test_pickle(self):
+        '''Test (de)serialization of Variable classes'''
+        A, B, C = VariableTest.TEST_DATA
+        self.assertEqual(A, pickle.loads(pickle.dumps(A)))
+        self.assertEqual(B, pickle.loads(pickle.dumps(B)))
+        self.assertEqual(C, pickle.loads(pickle.dumps(C)))
 
     def test_string_representation(self):
         A, B, C = VariableTest.TEST_DATA

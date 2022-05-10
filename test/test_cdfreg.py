@@ -256,7 +256,6 @@ class TestCaseQuantileCrop(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        print('Setting up test class', cls.__name__)
         d = {
             ']-inf,0.[': 0.,
             '[0.,.3[': LinearFunction.from_points((0., 0.), (.3, .25)),
@@ -273,8 +272,8 @@ class TestCaseQuantileCrop(unittest.TestCase):
         cdf = PiecewiseFunction.from_dict(d)
         cls.qdist = QuantileDistribution.from_cdf(cdf)
 
-    def setUp(self):
-        print('Setting up test method', self._testMethodName)
+    # def setUp(self):
+    #     print('Setting up test method', self._testMethodName)
 
     def test_serialization(self):
         self.assertEqual(self.qdist, QuantileDistribution.from_json(self.qdist.to_json()))
@@ -398,8 +397,6 @@ class TestCasePosteriorNumeric(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        print('Setting up test class', cls.__name__)
-
         SAMPLES = 200
         gauss1 = Gaussian([-.25, -.25], [[.2, -.07], [-.07, .1]])
         gauss2 = Gaussian([.5, 1], [[.2, .07], [.07, .05]])
@@ -486,8 +483,6 @@ class TestCasePosteriorSymbolic(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        print('Setting up test class', cls.__name__)
-
         f_csv = '../examples/data/restaurant.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
@@ -535,13 +530,6 @@ class TestCasePosteriorSymbolic(unittest.TestCase):
         self.e = {self.variables[9]: '10--30', self.variables[1]: True, self.variables[8]: 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
-    def tearDown(self):
-        print('Tearing down test method',
-              self._testMethodName,
-              'with calculated posterior',
-              f'Posterior P('
-              f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-
 
 class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
 
@@ -551,7 +539,6 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        print('Setting up test class', cls.__name__)
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=False, precision=.01, haze=.01)
@@ -650,8 +637,6 @@ class TestCaseExpectation(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        print('Setting up test class', cls.__name__)
-
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
@@ -689,14 +674,6 @@ class TestCaseExpectation(unittest.TestCase):
                   'Food': 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.expectation, self.q, self.e)
 
-    # def tearDown(self):
-    #     print('Tearing down test method',
-    #           self._testMethodName,
-    #           'with expectation for',
-    #           f'P({",".join([qv.name for qv in self.q])}|'
-    #           f'{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'
-    #           f' = [{",".join([f"{q.name}: {e.result if e is not None else None}" for q, e in zip(self.q, self.expectation if hasattr(self, "expectation") else [None]*len(self.q))])}]')
-
 
 class TestCaseInference(unittest.TestCase):
 
@@ -706,8 +683,6 @@ class TestCaseInference(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        print('Setting up test class', cls.__name__)
-
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)

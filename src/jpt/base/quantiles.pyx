@@ -4,6 +4,7 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
+__module__ = 'quantiles.pyx'
 import itertools
 import numbers
 from collections import deque
@@ -240,7 +241,7 @@ cdef class ConstantFunction(Function):
         self.value = value
 
     def __hash__(self):
-        return hash((ConstantFunction, self.value))
+        return hash((LinearFunction, 0, self.value))
 
     def __call__(self, x=None):
         return self.eval(x)

@@ -531,10 +531,16 @@ class Distribution:
 
     @staticmethod
     def from_json(data):
-        clazz = _DISTRIBUTIONS.get(data['class'])
+        clazz = DISTRIBUTIONS.get(data['class'])
         if clazz is None:
             raise TypeError('Unknown distribution class: %s' % data['class'])
         return clazz.from_json(data)
+
+    def __getstate__(self):
+        return self.to_json()
+
+    def __setstate__(self, state):
+        self.__dict__ = Distribution.from_json(state).__dict__
 
     @staticmethod
     def type_from_json(data):
@@ -542,11 +548,11 @@ class Distribution:
         if typ is None:
             raise TypeError('Unknown distribution type: %s' % data['type'])
         clazz = typ.type_from_json(data)
-        if clazz.__name__ in _DISTRIBUTIONS:
-            if not clazz.equiv(_DISTRIBUTIONS[clazz.__name__]):
+        if clazz.__name__ in DISTRIBUTIONS:
+            if not clazz.equiv(DISTRIBUTIONS[clazz.__name__]):
                 raise TypeError('Distribution class named "%s" is ambiguous.' % clazz.__name__)
         else:
-            _DISTRIBUTIONS[clazz.__name__] = clazz
+            DISTRIBUTIONS[clazz.__name__] = clazz
         return clazz
 
 
@@ -667,7 +673,7 @@ class Numeric(Distribution):
 
     def __init__(self, quantile=None):
         super().__init__()
-        self._quantile = quantile
+        self._quantile: QuantileDistribution = quantile
         self.to_json = self.inst_to_json
 
     def __str__(self):
@@ -679,7 +685,7 @@ class Numeric(Distribution):
     def __eq__(self, o):
         if not issubclass(type(o), Numeric):
             return False
-        return type(o).equiv(type(self))  and self._quantile == o._quantile
+        return type(o).equiv(type(self)) and self._quantile == o._quantile
 
     def __hash__(self):
         return hash((type(self), self.values, self.labels, self._quantile))
@@ -1018,7 +1024,7 @@ class Multinomial(Distribution):
         self._params[self.values[label]] = p
 
     def __eq__(self, other):
-        return type(self) is type(other) and (self.probabilities == other.probabilities).all()
+        return type(self).equiv(type(other)) and (self.probabilities == other.probabilities).all()
 
     def __hash__(self):
         return hash((Multinomial, self.values.values(), self.labels.values(), self._params))
@@ -1152,11 +1158,11 @@ class Multinomial(Distribution):
     @classmethod
     def type_to_json(cls):
         return {'type': 'symbolic',
-                'class': cls.__name__,
+                'class': cls.__qualname__,
                 'labels': list(cls.labels.values())}
 
     def inst_to_json(self):
-        return {'class': type(self).__name__,
+        return {'class': type(self).__qualname__,
                 'params': list(self._params)}
 
     to_json = type_to_json
@@ -1295,3 +1301,10 @@ _DISTRIBUTIONS = {
     'Multinomial': Multinomial
 }
 
+
+DISTRIBUTIONS = dict(_DISTRIBUTIONS)
+
+
+def reset():
+    global DISTRIBUTIONS
+    DISTRIBUTIONS = dict(_DISTRIBUTIONS)
