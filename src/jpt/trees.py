@@ -1476,6 +1476,9 @@ class JPT:
         # the new jpt that acts as conditional joint probability distribution
         conditional_jpt: JPT = JPT.from_json(self.to_json())
 
+        if len(evidence) == 0:
+            return conditional_jpt
+
         univisited_nodes = queue.Queue()
         univisited_nodes.put_nowait(conditional_jpt.allnodes[self.root.idx])
 

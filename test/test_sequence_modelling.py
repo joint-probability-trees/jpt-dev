@@ -37,14 +37,17 @@ class SequenceTest(unittest.TestCase):
     def test_likelihood(self):
         tree = SequentialJPT(self.variables, min_samples_leaf=500)
         tree.learn([self.data])
+        samples = np.expand_dims(np.array([[1., -1., 1.], [-1., 1., -1.]]), 2)
+        l = tree.likelihood(samples)
+        self.assertAlmostEqual(l[0], l[1])
 
-        x=np.linspace(-1.1, 1.1, 50)
-        t = np.asarray(list(itertools.product(x, x, x)))
-        t = np.expand_dims(t, 2)
-        probs = tree.likelihood(t)
-        probs /= sum(probs)
-        print(tree.probability_mass_)
-        print(probs[(probs > 0.2/16).nonzero()])
+    def test_infer(self):
+        tree = SequentialJPT(self.variables, min_samples_leaf=1500)
+        tree.learn([self.data])
+
+        q_0 = {self.variables[0]: [0.95, 1.05]}
+        q_1 = {self.variables[0]: [-1.05, -0.95]}
+        tree.infer(queries=[q_0,q_1,q_0], evidences=[dict(), dict(), dict()])
 
 if __name__ == '__main__':
     unittest.main()
