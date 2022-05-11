@@ -42,12 +42,14 @@ class SequenceTest(unittest.TestCase):
         self.assertAlmostEqual(l[0], l[1])
 
     def test_infer(self):
-        tree = SequentialJPT(self.variables, min_samples_leaf=1500)
+        tree = SequentialJPT(self.variables, min_samples_leaf=500)
         tree.learn([self.data])
 
         q_0 = {self.variables[0]: [0.95, 1.05]}
         q_1 = {self.variables[0]: [-1.05, -0.95]}
-        tree.infer(queries=[q_0,q_1,q_0], evidences=[dict(), dict(), dict()])
+
+        p = tree.infer(queries=[q_0,q_1,q_0], evidences=[dict(), dict(), dict()])
+        self.assertAlmostEqual(p, 0.5, places=2)
 
 if __name__ == '__main__':
     unittest.main()
