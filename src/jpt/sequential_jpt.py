@@ -3,11 +3,16 @@ from typing import Dict, List
 
 import jpt.variables
 import jpt.trees
+import jpt.base.quantiles
+import jpt.base.intervals
 
 import numpy as np
 import numpy.lib.stride_tricks
 
 import tqdm
+
+import variables
+
 
 class SequentialJPT:
     
@@ -99,29 +104,16 @@ class SequentialJPT:
 
         for n, leaf_n in self.template_tree.leaves.items():
             for m, leaf_m in self.template_tree.leaves.items():
-                intersecting_mass = 0.
+                intersecting_mass = leaf_m.prior * leaf_n.prior
 
                 # for all template variables get their groundings
                 for template_variable, grounded_variables in self.template_variable_map.items():
 
-                    for interval_n, function_n in zip(leaf_n.distributions[grounded_variables[1]].pdf.intervals,
-                                                      leaf_n.distributions[grounded_variables[1]].pdf.functions):
-                        for interval_m, function_m in zip(leaf_m.distributions[grounded_variables[0]].pdf.intervals,
-                                                          leaf_m.distributions[grounded_variables[0]].pdf.functions):
+                    intersecting_mass *= integrate_pdfs(leaf_n.distributions[grounded_variables[1]].pdf,
+                                   leaf_m.distributions[grounded_variables[0]].pdf,
+                                   jpt.base.intervals.ContinuousSet(-float("inf"), float("inf")))
 
-                            if function_m.value == 0 or function_n.value == 0:
-                                continue
-
-                            intersection = interval_n.intersection(interval_m)
-                            if intersection.isempty() == 0 \
-                                    and intersection.lower != -np.inf \
-                                    and intersection.upper != np.inf:
-                                intersecting_mass += ((intersection.upper - intersection.lower) * function_m.value) * \
-                                                    ((intersection.upper - intersection.lower) * function_n.value) * \
-                                                     leaf_n.prior * leaf_m.prior
-
-                    probability_mass += intersecting_mass
-
+                probability_mass += intersecting_mass
         return probability_mass
 
 
@@ -143,7 +135,7 @@ class SequentialJPT:
         return result/self.probability_mass_
 
 
-    def infer(self, queries:List[jpt.variables.VariableMap], evidences:List[jpt.variables.VariableMap]):
+    def infer(self, queries:List[jpt.variables.VariableMap], evidences:List[jpt.variables.VariableMap]) -> float:
         '''
         Return the probability of a sequence taking values specified in queries given ranges specified in evidences
         '''
@@ -183,21 +175,88 @@ class SequentialJPT:
             # preprocess queries
             complete_query_phi_0 = self.template_tree._prepropress_query(complete_query_phi_0)
             complete_query_phi_1 = self.template_tree._prepropress_query(complete_query_phi_1)
+
+            # initialize result
             probability = 0.
 
             # for all leaf combinations
             for leaf_0 in phi_0.leaves.values():
                 for leaf_1 in phi_1.leaves.values():
+                    probability += self.prob_leaf_combination(leaf_0, leaf_1, complete_query_phi_0, complete_query_phi_1)
+        print(probability, pow(self.probability_mass_, len(queries)-2))
+        # return 1/Z * model(x)
+        return probability / pow(self.probability_mass_, len(queries)-2)
 
-                    # skip non-fitting leaf combinations
-                    if not (leaf_0.applies(complete_query_phi_0) and leaf_1.applies(complete_query_phi_1)):
-                        continue
+    def prob_leaf_combination(self, leaf_0: jpt.trees.Leaf, leaf_1: jpt.trees.Leaf, query_0: jpt.variables.VariableMap,
+                              query_1: jpt.variables.VariableMap) -> float:
+        """Calculate the probability mass of a query in a product of 2 leaves.
+        It is assumed that they are in a sequence context where leaf_0 is the leaf in the predecessing factor and leaf_1
+        is the leaf in the successing factor.
 
-                    in_leaf_mass = leaf_0.prior * leaf_1.prior
-                    for template_variable, ground_variables in self.template_variable_map.items():
-                        if template_variable.numeric:
-                            in_leaf_mass *= leaf_0.distributions[ground_variables[0]].cdf.eval(0.)
-                            exit()
-                        elif template_variable.symbolic:
-                            in_leaf_mass *= leaf_0.distributions[ground_variables[0]]
-                    probability += in_leaf_mass
+        @param: leaf_0, the predecessor leaf
+        @param: leaf_1, the successor leaf
+        @param: query, the query for the variables
+        @rtype: float
+        """
+
+        if not(leaf_0.applies(query_0) and leaf_1.applies(query_1)):
+            return 0.
+
+        probability = leaf_0.prior * leaf_1.prior
+
+        for template_variable, ground_variables in self.template_variable_map.items():
+
+            # handle "complex" continuous case
+            if template_variable.numeric:
+
+                # integral over x_dt0
+                if ground_variables[0] in query_0.keys():
+                    interval_q0 = query_0[ground_variables[0]]
+                    probability *= leaf_0.distributions[ground_variables[0]].cdf.eval(interval_q0.upper)\
+                                   - leaf_0.distributions[ground_variables[0]].cdf.eval(interval_q0.lower)
+
+                # integral over f_0(x_dt1) * f1(x_xdt1)
+                if ground_variables[0] in query_1.keys() and ground_variables[1] in query_0.keys():
+                    probability *= integrate_pdfs(leaf_0.distributions[ground_variables[1]].pdf,
+                                                  leaf_1.distributions[ground_variables[0]].pdf,
+                                                  query_0[ground_variables[1]])
+
+                # integral over x_dt2
+                if ground_variables[1] in query_1.keys():
+                    interval_q1 = query_1[ground_variables[1]]
+                    probability *= leaf_1.distributions[ground_variables[1]].cdf.eval(interval_q1.upper)\
+                                   - leaf_1.distributions[ground_variables[1]].cdf.eval(interval_q1.lower)
+
+            # handle "easy" symbolic case
+            elif template_variable.symbolic:
+                for ground_variable in ground_variables:
+                    if ground_variable in query_0.keys():
+                        probability *= leaf_0.distributions[ground_variable].pdf.eval(query_0[ground_variable])
+                    if ground_variable in query_1.keys():
+                        probability *= leaf_1.distributions[ground_variable].pdf.eval(query_1[ground_variable])
+
+        return probability
+
+
+def integrate_pdfs(pdf1: jpt.base.quantiles.PiecewiseFunction, pdf2: jpt.base.quantiles.PiecewiseFunction,
+                   interval: jpt.base.intervals.ContinuousSet) -> float:
+    """Calculate the volume that is covered by the integral of pdf1 * pdf2 in the range of the interval."""
+
+    mass = 0.
+    for interval_1, function_1 in zip(pdf1.intervals, pdf1.functions):
+        for interval_2, function_2 in zip(pdf2.intervals, pdf2.functions):
+            # syntax highlighting
+            interval_1: jpt.base.intervals.ContinuousSet
+            interval_2: jpt.base.intervals.ContinuousSet
+
+            # form overall intersection
+            intersection = interval_1.intersection(interval_2).intersection(interval)
+
+            # skip non-intersecting areas
+            if intersection.isempty() or function_1.value == 0 or function_2.value == 0:
+                continue
+
+            mass += pow((intersection.upper - intersection.lower), 2) * function_1.value * function_2.value
+
+    return mass
+
