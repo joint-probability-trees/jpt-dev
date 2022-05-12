@@ -17,7 +17,7 @@ finally:
 
 from jpt.base.utils import Unsatisfiability
 from jpt.learning.distributions import SymbolicType, OrderedDictProxy, Multinomial, NumericType, Gaussian, Numeric, \
-    Distribution
+    Distribution, DataScaler
 
 
 class MultinomialTest(TestCase):
@@ -153,10 +153,11 @@ class NumericTest(TestCase):
 
     GAUSSIAN = None
 
-    def setUp(self) -> None:
+    @classmethod
+    def setUp(cls) -> None:
         with open('resources/gaussian_100.dat', 'rb') as f:
-            NumericTest.GAUSSIAN = pickle.load(f)
-        self.DistGauss = NumericType('Uniform', values=NumericTest.GAUSSIAN)
+            cls.GAUSSIAN = pickle.load(f)
+        cls.DistGauss = NumericType('Uniform', values=NumericTest.GAUSSIAN)
 
     def test_hash(self):
         hash(self.DistGauss)
@@ -174,11 +175,10 @@ class NumericTest(TestCase):
         self.assertAlmostEqual(gauss.var[0], 1, 1)
 
         self.assertAlmostEqual(DistGauss.values.mean, .5, 1)
-        self.assertAlmostEqual(DistGauss.values.variance, .6, 1)
+        self.assertAlmostEqual(DistGauss.values.scale, .6, 1)
 
     def test_domain_serialization(self):
         DistGauss = self.DistGauss
-
         self.assertTrue(DistGauss.equiv(DistGauss.type_from_json(DistGauss.type_to_json())))
 
     def test_fit(self):
@@ -234,4 +234,27 @@ class NumericTest(TestCase):
         d1 = DistGauss().fit(data1, col=0)
         self.assertRaises(TypeError, d1.kl_divergence, ...)
 
+
+class DataScalerTest(TestCase):
+
+    DATA = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        DataScalerTest.DATA = Gaussian(5, 10).sample(10000)
+
+    def test_transformation(self):
+        scaler = DataScaler()
+        scaler.fit(DataScalerTest.DATA)
+        # self.assertAlmostEqual(5, scaler.mean, places=0)
+        # self.assertAlmostEqual(10, scaler.variance, places=2)
+
+        # Test single transformation
+        for x in DataScalerTest.DATA:
+            self.assertAlmostEqual(x, scaler.inverse_transform(scaler.transform(x)), 5)
+
+        # Test bulk transformation
+        data_ = scaler.transform(DataScalerTest.DATA)
+        for x_, x in zip(data_, DataScalerTest.DATA):
+            self.assertAlmostEqual(x, scaler.inverse_transform(x_), 5)
 
