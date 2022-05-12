@@ -15,7 +15,7 @@ rmvirtualenv:
 
 virtualenv:
 	@(virtualenv ${ENV_NAME})
-	@(. ${ENV_NAME}/bin/activate && pip install -r requirements-dev.txt)
+	@(. ${ENV_NAME}/bin/activate && pip install -r requirements.txt -r requirements-dev.txt)
 
 sdist: virtualenv versioncheck
 	@(echo "Build ${PKG_NAME} sdist package...")
