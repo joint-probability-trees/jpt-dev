@@ -131,10 +131,8 @@ class SequentialJPT:
 
                     # integrate symbolic variables on shared dimensions
                     elif template_variable.symbolic:
-                        intersecting_mass *= integrate_discrete_pdfs(leaf_n.distributions[grounded_variables[1]].pdf,
-                                                                     leaf_m.distributions[grounded_variables[0]].pdf,
-                                                                     jpt.base.intervals.ContinuousSet(-float("inf"),
-                                                                                                      float("inf")))
+                        intersecting_mass *= sum(self.shared_dimensions_integral[(n, m)][template_variable].values)
+
                 # sum the mass of all partitions
                 probability_mass += intersecting_mass
 
@@ -148,12 +146,26 @@ class SequentialJPT:
         for n, leaf_n in self.template_tree.leaves.items():
             for m, leaf_m in self.template_tree.leaves.items():
 
+                # create distributions for every variable as dict
                 distributions = dict()
+
+                # for every variable
                 for template_variable, ground_variables in self.template_variable_map.items():
-                    dist = integrate_continuous_distributions(leaf_n.distributions[ground_variables[1]],
-                                                              leaf_m.distributions[ground_variables[0]])
+
+                    # calculate the integral of numeric continuous variables
+                    if template_variable.numeric:
+                        dist = integrate_continuous_distributions(leaf_n.distributions[ground_variables[1]],
+                                                                  leaf_m.distributions[ground_variables[0]])
+
+                    # calculate the integral of symbolic variables
+                    elif template_variable.symbolic:
+                        dist = integrate_discrete_distribution(leaf_n.distributions[ground_variables[1]],
+                                                               leaf_m.distributions[ground_variables[0]])
+
+                    # save the cdf
                     distributions[template_variable] = dist
 
+                # convert dict to variable map and save it
                 self.shared_dimensions_integral[(n, m)] = jpt.variables.VariableMap(distributions.items())
 
     def likelihood(self, queries: List) -> np.ndarray:
@@ -310,16 +322,27 @@ def integrate_continuous_pdfs(pdf1: jpt.base.quantiles.PiecewiseFunction, pdf2: 
 
 
 def integrate_continuous_distributions(distribution1: jpt.learning.distributions.Numeric,
-                                       distribution2: jpt.learning.distributions.Numeric,) \
+                                       distribution2: jpt.learning.distributions.Numeric,
+                                       normalize=False) \
         -> jpt.learning.distributions.Numeric:
     """
     Calculate the cdf that is obtained by integrating pdf1(x) * pdf2(x) and normalize it s. t. the joint
-    cdf converges to 1.
+    cdf converges to 1 if wanted.
+
+    :param distribution1: The first distribution
+    :type distribution1: jpt.learning.distributions.Numeric
+    :param distribution2: The second distribution
+    :type distribution2: jpt.learning.distributions.Numeric
+    :param normalize: Rather to normalize the distribution or not
+    :type normalize: bool
     """
 
     # calculate the overall probability mass obtained by multiplying these functions
-    probability_mass = integrate_continuous_pdfs(distribution1.pdf, distribution2.pdf,
-                                                 jpt.base.intervals.ContinuousSet(-float("inf"), float("inf")))
+    if normalize:
+        probability_mass = integrate_continuous_pdfs(distribution1.pdf, distribution2.pdf,
+                                                     jpt.base.intervals.ContinuousSet(-float("inf"), float("inf")))
+    else:
+        probability_mass = 1.
 
     result = jpt.base.quantiles.PiecewiseFunction()
 
@@ -366,14 +389,39 @@ def integrate_continuous_distributions(distribution1: jpt.learning.distributions
     return result
 
 
-def integrate_discrete_pdfs(pdf1, pdf2, values):
+def integrate_discrete_distribution(distribution1: jpt.learning.distributions.Multinomial,
+                                    distribution2: jpt.learning.distributions.Multinomial,
+                                    normalize=False) -> jpt.learning.distributions.Multinomial:
     """
-    Calculate the volume that is covered by the integral of pdf1 * pdf2 in the range of the interval.
-    Those pdfs are distributions of the same discrete random variable.
+    Calculate the cdf that is obtained by integrating pdf1(x) * pdf2(x) and normalize it s. t. the joint
+    cdf converges to 1 if wanted.
 
-    :param pdf1: The first probability density function
-    :param pdf2: The second probability density function
-    :param values: The possible values of the random variable
+    :param distribution1: The first distribution
+    :type distribution1: jpt.learning.distributions.Multinomial
+    :param distribution2: The second distribution
+    :type distribution2: jpt.learning.distributions.Multinomial
+    :param normalize: Rather to normalize the distribution or not
+    :type normalize: bool
     """
-    print(type(pdf1))
-    exit()
+
+    # copy labels since they share the same dimension
+    labels = distribution1.labels
+
+    # initialize values
+    values = np.zeros(len(labels))
+
+    # calculate values as product of both probabilities
+    for idx, value in distribution1.values:
+        values[idx] = value * distribution2.values[idx]
+
+    # normalize if wanted
+    if normalize:
+        values /= sum(values)
+
+    # create resulting distribution
+    result = jpt.learning.distributions.Multinomial()
+    result.labels = labels
+    result.values = values
+
+    return result
+

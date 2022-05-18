@@ -7,7 +7,8 @@ from matplotlib import pyplot as plt
 from jpt.learning.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable, VariableMap
-import tqdm
+from datetime import datetime
+import os
 
 def main():
     from sklearn.datasets import load_digits
@@ -35,9 +36,11 @@ def main():
     tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
 
     tree.learn(data=df)
+    #tree.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
 
     cjpt = tree.conditional_jpt(VariableMap({variables[0]:5, variables[29]:2.}.items()))
-    
+    cjpt.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
+    exit()
     #calculate log likelihood
     queries = np.append(np.expand_dims(mnist.target, -1), mnist.data, axis=1)
     likelihood = tree.likelihood(queries)
@@ -61,7 +64,7 @@ def main():
     plt.tight_layout()
     plt.show()
     
-    tree.plot()
+    tree.plot(plotvars=tree.variables)
 
 
 if __name__ == '__main__':
