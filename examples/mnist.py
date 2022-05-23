@@ -39,8 +39,8 @@ def main():
     #tree.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
 
     cjpt = tree.conditional_jpt(VariableMap({variables[0]:5, variables[29]:2.}.items()))
-    cjpt.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
-    exit()
+    #cjpt.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
+
     #calculate log likelihood
     queries = np.append(np.expand_dims(mnist.target, -1), mnist.data, axis=1)
     likelihood = tree.likelihood(queries)

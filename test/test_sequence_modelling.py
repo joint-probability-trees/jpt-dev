@@ -2,6 +2,7 @@ import unittest
 import numpy as np
 import jpt.variables
 from jpt.sequential_jpt import SequentialJPT
+from jpt.learning.distributions import SymbolicType
 
 class UniformSeries:
 
@@ -56,6 +57,31 @@ class SequenceTest(unittest.TestCase):
 
         self.assertAlmostEqual(p, 0.5, places=2)
 
+
+class DiscreteSequenceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.g = UniformSeries()
+        self.data = np.around(np.expand_dims(self.g.sample(np.arange(np.pi / 2, 10000, np.pi)), -1)).astype(str)
+        x = SymbolicType('DigitType', [-1, 1])
+        self.variables = [jpt.variables.SymbolicVariable("X", domain=x)]
+
+    def test_learning(self):
+        tree = SequentialJPT(self.variables, min_samples_leaf=1500)
+        tree.learn([self.data, self.data])
+
+    def test_integral(self):
+        tree = SequentialJPT(self.variables, min_samples_leaf=1500)
+        tree.learn([self.data])
+        self.assertAlmostEqual(tree.probability_mass_, 0.5)
+
+    def test_infer(self):
+        tree = SequentialJPT(self.variables, min_samples_leaf=1500)
+        tree.learn([self.data])
+        q_0 = {self.variables[0]: 1}
+        q_1 = {self.variables[0]: -1}
+
+        p = tree.infer(queries=[q_1, q_0, q_1, q_0], evidences=[dict(), dict(), dict()])
+        self.assertAlmostEqual(p, 0.5)
 
 if __name__ == '__main__':
     unittest.main()
