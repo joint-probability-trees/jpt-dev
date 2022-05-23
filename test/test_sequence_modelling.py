@@ -30,7 +30,7 @@ class SequenceTest(unittest.TestCase):
     def test_integral(self):
         tree = SequentialJPT(self.variables, min_samples_leaf=1500)
         tree.learn([self.data])
-        tree.plot(plotvars=tree.variables)
+        # tree.plot(plotvars=tree.variables)
         self.assertAlmostEqual(tree.probability_mass_, 0.5)
 
     def test_likelihood(self):
@@ -43,7 +43,7 @@ class SequenceTest(unittest.TestCase):
     def test_infer(self):
         tree = SequentialJPT(self.variables, min_samples_leaf=1500)
         tree.learn([self.data])
-        tree.plot(plotvars=tree.variables, directory="/tmp/mcjpt")
+        # tree.plot(plotvars=tree.variables, directory="/tmp/mcjpt")
         q_0 = {self.variables[0]: [0.95, 1.05]}
         q_1 = {self.variables[0]: [-1.05, -0.95]}
 
@@ -80,7 +80,7 @@ class DiscreteSequenceTest(unittest.TestCase):
         q_0 = {self.variables[0]: 1}
         q_1 = {self.variables[0]: -1}
 
-        p = tree.infer(queries=[q_1, q_0, q_1, q_0], evidences=[dict(), dict(), dict()])
+        p = tree.infer(queries=[q_1, q_0, q_1, ], evidences=[dict(), dict(), dict()])
         self.assertAlmostEqual(p, 0.5)
 
 if __name__ == '__main__':
