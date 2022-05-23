@@ -3,10 +3,11 @@ from unittest import TestCase
 import numpy as np
 
 try:
-    from jpt.base.cutils import test_sort
+    from jpt.base.cutils import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
+finally:
     from jpt.base.cutils import test_sort
 
 

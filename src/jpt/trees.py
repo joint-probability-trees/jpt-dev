@@ -24,9 +24,6 @@ from matplotlib import style, pyplot as plt
 
 import dnutils
 from dnutils import first, ifnone, mapstr, err, fst
-from dnutils.stats import stopwatch
-
-from sklearn.tree import DecisionTreeRegressor
 
 from .base.utils import Unsatisfiability
 
@@ -57,9 +54,6 @@ style.use(plotstyle)
 import multiprocessing as mp
 
 _data = None
-_data_queue = mp.Queue()
-_node_queue = mp.Queue()
-_pool = None
 _lock = Lock()
 
 
@@ -1445,18 +1439,6 @@ class JPT:
         '''
         from scipy.stats import mvn
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], mu, sigma))
-
-    def sklearn_tree(self, data=None, targets=None) -> DecisionTreeRegressor:
-        if data is None:
-            data = self.data
-        assert data is not None, 'Gimme data!'
-
-        tree = DecisionTreeRegressor(min_samples_leaf=self.min_samples_leaf,
-                                     min_impurity_decrease=self.min_impurity_improvement,
-                                     random_state=0)
-        with stopwatch('/sklearn/decisiontree'):
-            tree.fit(data, data if targets is None else targets)
-        return tree
 
     def conditional_jpt(self, evidence: VariableMap, keep_evidence: bool = False):
         '''

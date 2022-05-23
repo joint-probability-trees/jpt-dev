@@ -3,12 +3,8 @@ import pickle
 from types import GeneratorType
 from unittest import TestCase
 
-try:
-    from jpt.learning.distributions import Bool, Numeric
-    from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
+from jpt.learning.distributions import Bool, Numeric
+from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable
 
 
 class VariableMapTest(TestCase):

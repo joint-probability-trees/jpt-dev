@@ -1,13 +1,9 @@
 dnutils
 graphviz
-cython
 scipy
 sklearn
 numpy
 matplotlib
-scikit-learn
 pandas
 dateparser
-dill
 arff
-ddt

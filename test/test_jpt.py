@@ -1,11 +1,10 @@
 import json
 import pickle
-from pprint import pprint
 from unittest import TestCase
 
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
-import numpy as np
+
 
 class JPTTest(TestCase):
 
