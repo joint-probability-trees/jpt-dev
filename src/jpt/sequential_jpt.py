@@ -131,7 +131,7 @@ class SequentialJPT:
 
                     # integrate symbolic variables on shared dimensions
                     elif template_variable.symbolic:
-                        intersecting_mass *= sum(self.shared_dimensions_integral[(n, m)][template_variable].values)
+                        intersecting_mass *= sum(self.shared_dimensions_integral[(n, m)][template_variable]._params)
 
                 # sum the mass of all partitions
                 probability_mass += intersecting_mass
@@ -283,9 +283,9 @@ class SequentialJPT:
             elif template_variable.symbolic:
                 for ground_variable in ground_variables:
                     if ground_variable in query_0.keys():
-                        probability *= leaf_0.distributions[ground_variable].pdf.eval(query_0[ground_variable])
+                        probability *= leaf_0.distributions[ground_variable]._p(query_0[ground_variable])
                     if ground_variable in query_1.keys():
-                        probability *= leaf_1.distributions[ground_variable].pdf.eval(query_1[ground_variable])
+                        probability *= leaf_1.distributions[ground_variable]._p(query_1[ground_variable])
 
         return probability
 
@@ -408,20 +408,18 @@ def integrate_discrete_distribution(distribution1: jpt.learning.distributions.Mu
     labels = distribution1.labels
 
     # initialize values
-    values = np.zeros(len(labels))
+    _params = np.zeros(len(labels))
 
     # calculate values as product of both probabilities
-    for idx, value in distribution1.values:
-        values[idx] = value * distribution2.values[idx]
+    for idx, value in enumerate(distribution1._params):
+        _params[idx] = value * distribution2._params[idx]
 
     # normalize if wanted
     if normalize:
-        values /= sum(values)
+        _params /= sum(_params)
 
     # create resulting distribution
-    result = jpt.learning.distributions.Multinomial()
-    result.labels = labels
-    result.values = values
-
+    result = type(distribution1)()
+    result._params = _params
     return result
 
