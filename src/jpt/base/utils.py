@@ -18,10 +18,11 @@ from numpy import iterable
 from dnutils import ifnone, stop
 
 try:
-    from jpt.base.intervals import ContinuousSet
+    from jpt.base.intervals import __module__
 except ImportError:
     import pyximport
     pyximport.install()
+finally:
     from jpt.base.intervals import ContinuousSet
 
 
