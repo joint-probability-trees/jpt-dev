@@ -19,7 +19,7 @@ from dnutils import ifnone, stop
 
 try:
     from jpt.base.intervals import __module__
-except ImportError:
+except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
