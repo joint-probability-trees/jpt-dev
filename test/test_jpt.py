@@ -9,9 +9,6 @@ from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
 
 
-import memory_profiler
-
-
 class JPTTest(TestCase):
 
     def setUp(self) -> None:
@@ -63,17 +60,6 @@ class JPTTest(TestCase):
             jpt.learn(self.data.reshape(-1, 1))
             trees.append(jpt)
         return trees
-
-    @memory_profiler.profile
-    def test_pickle_memory(self):
-        trees = self.learn()
-        dump = pickle.dumps(trees)
-        del trees
-        gc.collect()
-        pickle.loads(dump)
-        del dump
-        gc.collect()
-        print('done')
 
     def test_likelihood(self):
         var = NumericVariable('X')

@@ -1,7 +1,6 @@
 dnutils
 graphviz
 scipy
-sklearn
 numpy
 matplotlib
 pandas

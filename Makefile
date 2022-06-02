@@ -37,7 +37,7 @@ release: clean sdist bdist wheel
 	@git add releases/${RELEASE_NAME}/
 	@git commit releases/${RELEASE_NAME}/ -m 'Added: release ${RELEASE_NAME}.'
 
-all: virtualenv versioncheck tests sdist bdist wheel
+all: clean virtualenv versioncheck tests sdist bdist wheel
 
 tests: virtualenv
 	@(echo "Running all tests...")
