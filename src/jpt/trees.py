@@ -164,7 +164,7 @@ class DecisionNode(Node):
     def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
                 'parent': ifnone(self.parent, None, attrgetter('idx')),
-                'splits': [s.to_json() if isinstance(s, ContinuousSet) else s for s in self.splits],
+                'splits': [s.to_json() if isinstance(s, ContinuousSet) else list(s) for s in self.splits],
                 'variable': self.variable.name,
                 '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
                 'children': [node.idx for node in self.children],
@@ -174,7 +174,7 @@ class DecisionNode(Node):
     @staticmethod
     def from_json(jpt: 'JPT', data: Dict[str, Any]) -> 'DecisionNode':
         node = DecisionNode(idx=data['idx'], variable=jpt.varnames[data['variable']])
-        node.splits = [Interval.from_json(s) if node.variable.numeric else s for s in data['splits']]
+        node.splits = [Interval.from_json(s) if node.variable.numeric else set(s) for s in data['splits']]
         node.children = [None] * len(node.splits)
         node.parent = ifnone(data['parent'], None, jpt.innernodes.get)
         node.samples = data['samples']
@@ -276,14 +276,15 @@ class Leaf(Node):
                 'prior': self.prior,
                 'samples': self.samples,
                 'parent': ifnone(self.parent, None, attrgetter('idx')),
-                'child_idx': self.parent.children.index(self)}
+                'child_idx': self.parent.children.index(self) if self.parent is not None else -1}
 
     @staticmethod
     def from_json(tree: 'JPT', data: Dict[str, Any]) -> 'Leaf':
         leaf = Leaf(idx=data['idx'], prior=data['prior'], parent=tree.innernodes.get(data['parent']))
         leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'], Distribution)
         leaf._path = []
-        leaf.parent.set_child(data['child_idx'], leaf)
+        if leaf.parent is not None:
+            leaf.parent.set_child(data['child_idx'], leaf)
         leaf.prior = data['prior']
         leaf.samples = data['samples']
         tree.leaves[leaf.idx] = leaf
