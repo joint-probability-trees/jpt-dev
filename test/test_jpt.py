@@ -1,9 +1,15 @@
+import gc
 import json
 import pickle
 from unittest import TestCase
 
+from dnutils import out
+
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
+
+
+import memory_profiler
 
 
 class JPTTest(TestCase):
@@ -47,6 +53,27 @@ class JPTTest(TestCase):
         jpt.learn(self.data.reshape(-1, 1))
         jpt_ = pickle.loads(pickle.dumps(jpt))
         self.assertEqual(jpt, jpt_)
+
+    def learn(self):
+        trees = []
+        for _ in range(1000):
+            out(_)
+            var = NumericVariable('X')
+            jpt = JPT([var], min_samples_leaf=.1)
+            jpt.learn(self.data.reshape(-1, 1))
+            trees.append(jpt)
+        return trees
+
+    @memory_profiler.profile
+    def test_pickle_memory(self):
+        trees = self.learn()
+        dump = pickle.dumps(trees)
+        del trees
+        gc.collect()
+        pickle.loads(dump)
+        del dump
+        gc.collect()
+        print('done')
 
     def test_likelihood(self):
         var = NumericVariable('X')
