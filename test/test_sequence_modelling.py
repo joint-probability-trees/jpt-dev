@@ -1,6 +1,6 @@
 import unittest
 
-raise unittest.SkipTest('Skip the sequential JPT tests until the errors in this module have been fixed.')
+#raise unittest.SkipTest('Skip the sequential JPT tests until the errors in this module have been fixed.')
 
 import numpy as np
 import jpt.variables
