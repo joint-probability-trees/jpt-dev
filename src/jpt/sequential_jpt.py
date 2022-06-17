@@ -1,5 +1,6 @@
 from copy import deepcopy
 from typing import Dict, List
+import tqdm
 
 import jpt.variables
 import jpt.trees
@@ -9,10 +10,6 @@ import jpt.learning.distributions
 
 import numpy as np
 import numpy.lib.stride_tricks
-
-import tqdm
-
-import variables
 
 
 class SequentialJPT:
