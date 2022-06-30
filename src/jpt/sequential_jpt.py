@@ -99,7 +99,6 @@ class SequentialJPT:
         self.fill_shared_dimensions()
         self.probability_mass_ = self.integrate()
 
-
     def integrate(self) -> float:
         """
         Calculate the overall probability mass that is obtained by expanding the template to one more timestep
