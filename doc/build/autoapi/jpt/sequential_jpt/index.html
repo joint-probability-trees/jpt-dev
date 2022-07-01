@@ -1,0 +1,298 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+    <title>jpt.sequential_jpt &#8212; Joint Probability Trees 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/bootstrap-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom_styles.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx_paramlinks.css" />
+    <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+    <script src="../../../_static/jquery.js"></script>
+    <script src="../../../_static/underscore.js"></script>
+    <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+<meta charset='utf-8'>
+<meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1'>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script type="text/javascript" src="../../../_static/js/jquery-1.12.4.min.js"></script>
+<script type="text/javascript" src="../../../_static/js/jquery-fix.js"></script>
+<script type="text/javascript" src="../../../_static/bootstrap-3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="../../../_static/bootstrap-sphinx.js"></script>
+
+  </head><body>
+  
+  <script src="../../../_static/js/modernizr.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.geom.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.layout.min.js"></script>
+
+    
+    
+
+  <div id="navbar" class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <!-- .btn-navbar is used as the toggle for collapsed navbar content -->
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../../index.html"><span><img src="../../../_static/logo_orig.png"></span>
+          Joint Probability Trees</a>
+        <span class="navbar-text navbar-version pull-left"><b>1.0</b></span>
+      </div>
+
+        <div class="collapse navbar-collapse nav-collapse">
+          <ul class="nav navbar-nav">
+            
+            
+              <li class="dropdown globaltoc-container">
+  <a role="button"
+     id="dLabelGlobalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="../../../index.html">Site <b class="caret"></b></a>
+  <ul class="dropdown-menu globaltoc"
+      role="menu"
+      aria-labelledby="dLabelGlobalToc"><ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../setup.html">Getting Started</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api.html">API Reference</a></li>
+</ul>
+</ul>
+</li>
+              
+                <li class="dropdown">
+  <a role="button"
+     id="dLabelLocalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="#">Page <b class="caret"></b></a>
+  <ul class="dropdown-menu localtoc"
+      role="menu"
+      aria-labelledby="dLabelLocalToc"><ul>
+<li><a class="reference internal" href="#"><code class="xref py py-mod docutils literal notranslate"><span class="pre">jpt.sequential_jpt</span></code></a><ul>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#jpt.sequential_jpt.SequentialJPT">SequentialJPT</a><ul>
+<li><a class="reference internal" href="#jpt.sequential_jpt.SequentialJPT.learn">learn</a></li>
+<li><a class="reference internal" href="#jpt.sequential_jpt.SequentialJPT.integrate">integrate</a></li>
+<li><a class="reference internal" href="#jpt.sequential_jpt.SequentialJPT.fill_shared_dimensions">fill_shared_dimensions</a></li>
+<li><a class="reference internal" href="#jpt.sequential_jpt.SequentialJPT.likelihood">likelihood</a></li>
+<li><a class="reference internal" href="#jpt.sequential_jpt.SequentialJPT.infer">infer</a></li>
+<li><a class="reference internal" href="#jpt.sequential_jpt.SequentialJPT.prob_leaf_combination">prob_leaf_combination</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.sequential_jpt.integrate_continuous_pdfs">integrate_continuous_pdfs</a></li>
+<li><a class="reference internal" href="#jpt.sequential_jpt.integrate_continuous_distributions">integrate_continuous_distributions</a></li>
+<li><a class="reference internal" href="#jpt.sequential_jpt.integrate_discrete_distribution">integrate_discrete_distribution</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</ul>
+</li>
+              
+            
+            
+              
+                
+              
+            
+            
+            
+            
+              <li class="hidden-sm">
+<div id="sourcelink">
+  <a href="../../../_sources/autoapi/jpt/sequential_jpt/index.rst.txt"
+     rel="nofollow">Source</a>
+</div></li>
+            
+          </ul>
+
+          
+            
+<form class="navbar-form navbar-right" action="../../../search.html" method="get">
+ <div class="form-group">
+  <input type="text" name="q" class="form-control" placeholder="Search" />
+ </div>
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+          
+        </div>
+    </div>
+  </div>
+
+<div class="container">
+  <div class="row">
+    <div class="body col-md-12 content" role="main">
+      
+  <section id="module-jpt.sequential_jpt">
+<span id="jpt-sequential-jpt"></span><h1><a class="reference internal" href="#module-jpt.sequential_jpt" title="jpt.sequential_jpt"><code class="xref py py-mod docutils literal notranslate"><span class="pre">jpt.sequential_jpt</span></code></a><a class="headerlink" href="#module-jpt.sequential_jpt" title="Permalink to this heading">¶</a></h1>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Permalink to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.SequentialJPT">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.sequential_jpt.</span></span><span class="sig-name descname"><span class="pre">SequentialJPT</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">template_variables</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../variables/index.html#jpt.variables.Variable" title="jpt.variables.Variable"><span class="pre">jpt.variables.Variable</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timesteps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.sequential_jpt.SequentialJPT" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create a JPT template that can be expanded across multiple time dimensions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>template_variables</strong> – The template variables of the sequence model. (The variables that are within each</p>
+</dd>
+</dl>
+<p>timestep)
+:type template_variables: [jpt.variables.Variable]
+:param timesteps: The amount of timesteps that are jointly modelled together.
+:type timesteps: int</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.SequentialJPT.learn">
+<span class="sig-name descname"><span class="pre">learn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.sequential_jpt.SequentialJPT.learn" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fit the joint distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data</strong> (<em>np.ndarray</em>) – The training sequences. This needs to be a list of 2d ndarrays
+where each element in the list describes an observed time series. These
+time series was observed contiguously. The inner ndarray describes the
+length of the time series in the first dimension and the observed values
+for the variables (in order of self.template_variables) in the second
+dimension.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.SequentialJPT.integrate">
+<span class="sig-name descname"><span class="pre">integrate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#jpt.sequential_jpt.SequentialJPT.integrate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate the overall probability mass that is obtained by expanding the template to one more timestep
+than it is modelled in the template tree.
+For example if timesteps = 2, then the mass for timesteps = 3 is calculated.
+For the probability mass Z it holds that 0 &lt; Z &lt;= 1.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.SequentialJPT.fill_shared_dimensions">
+<span class="sig-name descname"><span class="pre">fill_shared_dimensions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.sequential_jpt.SequentialJPT.fill_shared_dimensions" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate distributions for all shared dimensions. Shared dimensions are dimensions that occur in more
+than one factor.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.SequentialJPT.likelihood">
+<span class="sig-name descname"><span class="pre">likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">numpy.ndarray</span></span></span><a class="headerlink" href="#jpt.sequential_jpt.SequentialJPT.likelihood" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="simple">
+<dt>Get the probabilities of a list of worlds. The worlds must be fully assigned with</dt><dd><p>single numbers (no intervals).</p>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>queries</strong> (<em>list</em>) – A list containing the sequences. The shape is (num_sequences, num_timesteps, len(variables)).</p>
+</dd>
+</dl>
+<p>Returns: An np.array with shape (num_sequences, ) containing the probabilities.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.SequentialJPT.infer">
+<span class="sig-name descname"><span class="pre">infer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidences</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#jpt.sequential_jpt.SequentialJPT.infer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the probability of a sequence taking values specified in queries given ranges specified in evidences</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.SequentialJPT.prob_leaf_combination">
+<span class="sig-name descname"><span class="pre">prob_leaf_combination</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">leaf_0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../trees/index.html#jpt.trees.Leaf" title="jpt.trees.Leaf"><span class="pre">jpt.trees.Leaf</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">leaf_1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../trees/index.html#jpt.trees.Leaf" title="jpt.trees.Leaf"><span class="pre">jpt.trees.Leaf</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#jpt.sequential_jpt.SequentialJPT.prob_leaf_combination" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate the probability mass of a query in a product of 2 leaves.
+It is assumed that they are in a sequence context where leaf_0 is the leaf in the predecessing factor and leaf_1
+is the leaf in the succeeding factor.</p>
+<p>&#64;param: leaf_0, the predecessor leaf
+&#64;param: leaf_1, the successor leaf
+&#64;param: query, the query for the variables
+&#64;rtype: float</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.integrate_continuous_pdfs">
+<span class="sig-prename descclassname"><span class="pre">jpt.sequential_jpt.</span></span><span class="sig-name descname"><span class="pre">integrate_continuous_pdfs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pdf1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">jpt.base.quantiles.PiecewiseFunction</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">jpt.base.quantiles.PiecewiseFunction</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interval</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">jpt.base.intervals.ContinuousSet</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#jpt.sequential_jpt.integrate_continuous_pdfs" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate the volume that is covered by the integral of pdf1 * pdf2 in the range of the interval.
+Those pdfs are distributions of the same continuous random variable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pdf1</strong> – The first probability density function</p></li>
+<li><p><strong>pdf2</strong> – The second probability density function</p></li>
+<li><p><strong>interval</strong> – The integral boundaries</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.integrate_continuous_distributions">
+<span class="sig-prename descclassname"><span class="pre">jpt.sequential_jpt.</span></span><span class="sig-name descname"><span class="pre">integrate_continuous_distributions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">distribution1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Numeric" title="jpt.learning.distributions.Numeric"><span class="pre">jpt.learning.distributions.Numeric</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">distribution2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Numeric" title="jpt.learning.distributions.Numeric"><span class="pre">jpt.learning.distributions.Numeric</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Numeric" title="jpt.learning.distributions.Numeric"><span class="pre">jpt.learning.distributions.Numeric</span></a></span></span><a class="headerlink" href="#jpt.sequential_jpt.integrate_continuous_distributions" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate the cdf that is obtained by integrating pdf1(x) * pdf2(x) and normalize it s. t. the joint
+cdf converges to 1 if wanted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>distribution1</strong> (<a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Numeric" title="jpt.learning.distributions.Numeric"><em>jpt.learning.distributions.Numeric</em></a>) – The first distribution</p></li>
+<li><p><strong>distribution2</strong> (<a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Numeric" title="jpt.learning.distributions.Numeric"><em>jpt.learning.distributions.Numeric</em></a>) – The second distribution</p></li>
+<li><p><strong>normalize</strong> (<em>bool</em>) – Rather to normalize the distribution or not</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jpt.sequential_jpt.integrate_discrete_distribution">
+<span class="sig-prename descclassname"><span class="pre">jpt.sequential_jpt.</span></span><span class="sig-name descname"><span class="pre">integrate_discrete_distribution</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">distribution1</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Multinomial" title="jpt.learning.distributions.Multinomial"><span class="pre">jpt.learning.distributions.Multinomial</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">distribution2</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Multinomial" title="jpt.learning.distributions.Multinomial"><span class="pre">jpt.learning.distributions.Multinomial</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">normalize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Multinomial" title="jpt.learning.distributions.Multinomial"><span class="pre">jpt.learning.distributions.Multinomial</span></a></span></span><a class="headerlink" href="#jpt.sequential_jpt.integrate_discrete_distribution" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculate the cdf that is obtained by integrating pdf1(x) * pdf2(x) and normalize it s. t. the joint
+cdf converges to 1 if wanted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>distribution1</strong> (<a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Multinomial" title="jpt.learning.distributions.Multinomial"><em>jpt.learning.distributions.Multinomial</em></a>) – The first distribution</p></li>
+<li><p><strong>distribution2</strong> (<a class="reference internal" href="../learning/distributions/index.html#jpt.learning.distributions.Multinomial" title="jpt.learning.distributions.Multinomial"><em>jpt.learning.distributions.Multinomial</em></a>) – The second distribution</p></li>
+<li><p><strong>normalize</strong> (<em>bool</em>) – Rather to normalize the distribution or not</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+
+    </div>
+      
+  </div>
+</div>
+  
+<footer class="footer">
+  <div class="container">
+    <p class="pull-right">
+      <a href="#">Back to top</a>
+      
+    </p>
+    <p>
+        &copy; Copyright 2021, Mareike Picklum, Daniel Nyga.<br/>
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 5.0.2.<br/>
+    </p>
+  </div>
+</footer>
+
+  </body>
+</html>

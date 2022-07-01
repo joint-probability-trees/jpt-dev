@@ -1,0 +1,549 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+    <title>jpt.trees &#8212; Joint Probability Trees 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/bootstrap-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom_styles.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx_paramlinks.css" />
+    <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+    <script src="../../../_static/jquery.js"></script>
+    <script src="../../../_static/underscore.js"></script>
+    <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../../_static/doctools.js"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="jpt.variables" href="../variables/index.html" />
+    <link rel="prev" title="jpt.learning.distributions" href="../learning/distributions/index.html" />
+<meta charset='utf-8'>
+<meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1'>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script type="text/javascript" src="../../../_static/js/jquery-1.12.4.min.js"></script>
+<script type="text/javascript" src="../../../_static/js/jquery-fix.js"></script>
+<script type="text/javascript" src="../../../_static/bootstrap-3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="../../../_static/bootstrap-sphinx.js"></script>
+
+  </head><body>
+  
+  <script src="../../../_static/js/modernizr.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.geom.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.layout.min.js"></script>
+
+    
+    
+
+  <div id="navbar" class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <!-- .btn-navbar is used as the toggle for collapsed navbar content -->
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../../index.html"><span><img src="../../../_static/logo_orig.png"></span>
+          Joint Probability Trees</a>
+        <span class="navbar-text navbar-version pull-left"><b>1.0</b></span>
+      </div>
+
+        <div class="collapse navbar-collapse nav-collapse">
+          <ul class="nav navbar-nav">
+            
+            
+              <li class="dropdown globaltoc-container">
+  <a role="button"
+     id="dLabelGlobalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="../../../index.html">Site <b class="caret"></b></a>
+  <ul class="dropdown-menu globaltoc"
+      role="menu"
+      aria-labelledby="dLabelGlobalToc"><ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../setup.html">Getting Started</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../../api.html">API Reference</a></li>
+</ul>
+</ul>
+</li>
+              
+                <li class="dropdown">
+  <a role="button"
+     id="dLabelLocalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="#">Page <b class="caret"></b></a>
+  <ul class="dropdown-menu localtoc"
+      role="menu"
+      aria-labelledby="dLabelLocalToc"><ul>
+<li><a class="reference internal" href="#"><code class="xref py py-mod docutils literal notranslate"><span class="pre">jpt.trees</span></code></a><ul>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#jpt.trees.Node">Node</a><ul>
+<li><a class="reference internal" href="#jpt.trees.Node.consistent_with">consistent_with</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.trees.DecisionNode">DecisionNode</a><ul>
+<li><a class="reference internal" href="#jpt.trees.DecisionNode.consistent_with">consistent_with</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.trees.Leaf">Leaf</a><ul>
+<li><a class="reference internal" href="#jpt.trees.Leaf.applies">applies</a></li>
+<li><a class="reference internal" href="#jpt.trees.Leaf.consistent_with">consistent_with</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.trees.JPT">JPT</a><ul>
+<li><a class="reference internal" href="#jpt.trees.JPT.infer">infer</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.posterior">posterior</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.expectation">expectation</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.mpe">mpe</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT._prepropress_query">_prepropress_query</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.c45">c45</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.pfmt">pfmt</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT._preprocess_data">_preprocess_data</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.learn">learn</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.likelihood">likelihood</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.reverse">reverse</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.plot">plot</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.pickle">pickle</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.load">load</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.calcnorm">calcnorm</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.conditional_jpt">conditional_jpt</a></li>
+<li><a class="reference internal" href="#jpt.trees.JPT.save">save</a></li>
+<li><a class="reference internal" href="#id0">load</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</ul>
+</li>
+              
+            
+            
+              
+                
+  <li>
+    <a href="../learning/distributions/index.html" title="Previous Chapter: jpt.learning.distributions"><span class="glyphicon glyphicon-chevron-left visible-sm"></span><span class="hidden-sm hidden-tablet">&laquo; jpt.learning....</span>
+    </a>
+  </li>
+  <li>
+    <a href="../variables/index.html" title="Next Chapter: jpt.variables"><span class="glyphicon glyphicon-chevron-right visible-sm"></span><span class="hidden-sm hidden-tablet">jpt.variables &raquo;</span>
+    </a>
+  </li>
+              
+            
+            
+            
+            
+              <li class="hidden-sm">
+<div id="sourcelink">
+  <a href="../../../_sources/autoapi/jpt/trees/index.rst.txt"
+     rel="nofollow">Source</a>
+</div></li>
+            
+          </ul>
+
+          
+            
+<form class="navbar-form navbar-right" action="../../../search.html" method="get">
+ <div class="form-group">
+  <input type="text" name="q" class="form-control" placeholder="Search" />
+ </div>
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+          
+        </div>
+    </div>
+  </div>
+
+<div class="container">
+  <div class="row">
+    <div class="body col-md-12 content" role="main">
+      
+  <section id="module-jpt.trees">
+<span id="jpt-trees"></span><h1><a class="reference internal" href="#module-jpt.trees" title="jpt.trees"><code class="xref py py-mod docutils literal notranslate"><span class="pre">jpt.trees</span></code></a><a class="headerlink" href="#module-jpt.trees" title="Permalink to this heading">¶</a></h1>
+<p>© Copyright 2021, Mareike Picklum, Daniel Nyga.</p>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Permalink to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.trees.Node">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.trees.</span></span><span class="sig-name descname"><span class="pre">Node</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Union</span><span class="p"><span class="pre">[</span></span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#jpt.trees.DecisionNode" title="jpt.trees.DecisionNode"><span class="pre">DecisionNode</span></a><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.trees.Node" title="Permalink to this definition">¶</a></dt>
+<dd><p>Wrapper for the nodes of the <code class="xref py py-class docutils literal notranslate"><span class="pre">jpt.learning.trees.Tree</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>idx</strong> (<em>int</em>) – the identifier of a node</p></li>
+<li><p><strong>parent</strong> (<em>jpt.learning.trees.Node</em>) – the parent node</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.Node.consistent_with">
+<span class="sig-name descname"><span class="pre">consistent_with</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#jpt.trees.Node.consistent_with" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if the node is consistend with the variable assignments in evidence.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>evidence</strong> (<a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><em>VariableMap</em></a>) – A VariableMap that maps to singular values (numeric or symbolic)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.trees.DecisionNode">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.trees.</span></span><span class="sig-name descname"><span class="pre">DecisionNode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../variables/index.html#jpt.variables.Variable" title="jpt.variables.Variable"><span class="pre">jpt.variables.Variable</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">parent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#jpt.trees.DecisionNode" title="jpt.trees.DecisionNode"><span class="pre">DecisionNode</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.trees.DecisionNode" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../_images/inheritance-dd5bbae796f31ab8b61a031caaf58860fff85c45.png" alt="Inheritance diagram of jpt.trees.DecisionNode" usemap="#inheritanceed2c334999" class="inheritance graphviz" /></div>
+<map id="inheritanceed2c334999" name="inheritanceed2c334999">
+<area shape="rect" id="node1" href="#jpt.trees.DecisionNode" target="_top" title="Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`." alt="" coords="125,5,237,31"/>
+<area shape="rect" id="node2" href="#jpt.trees.Node" target="_top" title="Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`." alt="" coords="5,5,77,31"/>
+</map><p>Represents an inner (decision) node of the the <code class="xref py py-class docutils literal notranslate"><span class="pre">jpt.learning.trees.Tree</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>idx</strong> (<em>int</em>) – the identifier of a node</p></li>
+<li><p><strong>variable</strong> (<a class="reference internal" href="../variables/index.html#jpt.variables.Variable" title="jpt.variables.Variable"><em>jpt.variables.Variable</em></a>) – the split feature name</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.DecisionNode.consistent_with">
+<span class="sig-name descname"><span class="pre">consistent_with</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#jpt.trees.DecisionNode.consistent_with" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if the node is consistend with the variable assignments in evidence.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>evidence</strong> (<a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><em>VariableMap</em></a>) – A VariableMap that maps to singular values (numeric or symbolic)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.trees.Leaf">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.trees.</span></span><span class="sig-name descname"><span class="pre">Leaf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">idx</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Node</span> <span class="pre">or</span> <span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prior</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.trees.Leaf" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../_images/inheritance-93d22de6b9234bda7e1d5d2479d2b3e9aa2a7dad.png" alt="Inheritance diagram of jpt.trees.Leaf" usemap="#inheritance313069b889" class="inheritance graphviz" /></div>
+<map id="inheritance313069b889" name="inheritance313069b889">
+<area shape="rect" id="node1" href="#jpt.trees.Leaf" target="_top" title="Represents a leaf node of the :class:`jpt.learning.trees.Tree`." alt="" coords="125,5,197,31"/>
+<area shape="rect" id="node2" href="#jpt.trees.Node" target="_top" title="Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`." alt="" coords="5,5,77,31"/>
+</map><p>Represents a leaf node of the <code class="xref py py-class docutils literal notranslate"><span class="pre">jpt.learning.trees.Tree</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>idx</strong> (<em>int</em>) – the identifier of a node</p></li>
+<li><p><strong>parent</strong> (<em>jpt.learning.trees.Node</em>) – the parent node</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.Leaf.applies">
+<span class="sig-name descname"><span class="pre">applies</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#jpt.trees.Leaf.applies" title="Permalink to this definition">¶</a></dt>
+<dd><p>Checks whether this leaf is consistent with the given <code class="docutils literal notranslate"><span class="pre">query</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.Leaf.consistent_with">
+<span class="sig-name descname"><span class="pre">consistent_with</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="headerlink" href="#jpt.trees.Leaf.consistent_with" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check if the node is consistend with the variable assignments in evidence.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>evidence</strong> (<a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><em>VariableMap</em></a>) – A VariableMap that maps to singular values (numeric or symbolic)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.trees.JPT">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.trees.</span></span><span class="sig-name descname"><span class="pre">JPT</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">variables</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">targets</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_samples_leaf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.01</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_impurity_improvement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_leaves</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_depth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable_dependencies</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.trees.JPT" title="Permalink to this definition">¶</a></dt>
+<dd><p>Joint Probability Trees.</p>
+<p>Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
+induced by its training samples in the nodes so we can later make statements
+about the confidence of the prediction.
+has children <code class="xref py py-class docutils literal notranslate"><span class="pre">Node</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>variables</strong> (<em>[</em><a class="reference internal" href="../variables/index.html#jpt.variables.Variable" title="jpt.variables.Variable"><em>jpt.variables.Variable</em></a><em>]</em>) – the variable declarations of the data being processed by this tree</p></li>
+<li><p><strong>min_samples_leaf</strong> (<em>int</em><em> or </em><em>float</em>) – the minimum number of samples required to generate a leaf node</p></li>
+<li><p><strong>variable_dependencies</strong> (<em>None</em><em> or </em><em>Dict from variable to list of variables</em>) – A dict that maps every variable to a list of variables that are
+directly dependent to that variable.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.infer">
+<span class="sig-name descname"><span class="pre">infer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fail_on_unsatisfiability</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Result</span></span></span><a class="headerlink" href="#jpt.trees.JPT.infer" title="Permalink to this definition">¶</a></dt>
+<dd><p>For each candidate leaf <code class="docutils literal notranslate"><span class="pre">l</span></code> calculate the number of samples in which <cite>query</cite> is true:</p>
+<div class="math notranslate nohighlight" id="equation-query">
+<span class="eqno">(1)<a class="headerlink" href="#equation-query" title="Permalink to this equation">¶</a></span>\[P(query|evidence) = \frac{p_q}{p_e}\]</div>
+<div class="math notranslate nohighlight" id="equation-pq">
+<span class="eqno">(2)<a class="headerlink" href="#equation-pq" title="Permalink to this equation">¶</a></span>\[p_q = \frac{c}{N}\]</div>
+<div class="math notranslate nohighlight" id="equation-c">
+<span class="eqno">(3)<a class="headerlink" href="#equation-c" title="Permalink to this equation">¶</a></span>\[c = \frac{\prod{F}}{x^{n-1}}\]</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">Q</span></code> is the set of variables in <cite>query</cite>, <span class="math notranslate nohighlight">\(P_{l}\)</span> is the set of variables that occur in <code class="docutils literal notranslate"><span class="pre">l</span></code>,
+<span class="math notranslate nohighlight">\(F = \{v | v \in Q \wedge~v \notin P_{l}\}\)</span> is the set of variables in the <cite>query</cite> that do not occur in <code class="docutils literal notranslate"><span class="pre">l</span></code>’s path,
+<span class="math notranslate nohighlight">\(x = |S_{l}|\)</span> is the number of samples in <code class="docutils literal notranslate"><span class="pre">l</span></code>, <span class="math notranslate nohighlight">\(n = |F|\)</span> is the number of free variables and
+<code class="docutils literal notranslate"><span class="pre">N</span></code> is the number of samples represented by the entire tree.
+reference to <a class="reference internal" href="#equation-query">(1)</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query</strong> (<em>dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}</em>) – the event to query for, i.e. the query part of the conditional P(query|evidence) or the prior P(query)</p></li>
+<li><p><strong>evidence</strong> (<em>dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}</em>) – the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.posterior">
+<span class="sig-name descname"><span class="pre">posterior</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variables</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fail_on_unsatisfiability</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">PosteriorResult</span></span></span><a class="headerlink" href="#jpt.trees.JPT.posterior" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>variables</strong> (<em>list of jpt.variables.Variable</em>) – the query variables of the posterior to be computed</p></li>
+<li><p><strong>evidence</strong> – the evidence given for the posterior to be computed</p></li>
+<li><p><strong>fail_on_unsatisfiability</strong> (<em>bool</em>) – wether or not an <code class="docutils literal notranslate"><span class="pre">Unsatisfiability</span></code> error is raised if the
+likelihood of the evidence is 0.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>jpt.trees.InferenceResult containing distributions, candidates and weights</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.expectation">
+<span class="sig-name descname"><span class="pre">expectation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variables</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence_level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fail_on_unsatisfiability</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ExpectationResult</span></span></span><a class="headerlink" href="#jpt.trees.JPT.expectation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the expected value of all <code class="docutils literal notranslate"><span class="pre">variables</span></code>. If no <code class="docutils literal notranslate"><span class="pre">variables</span></code> are passed,
+it defaults to all variables not passed as <code class="docutils literal notranslate"><span class="pre">evidence</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.mpe">
+<span class="sig-name descname"><span class="pre">mpe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fail_on_unsatisfiability</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">MPEResult</span></span></span><a class="headerlink" href="#jpt.trees.JPT.mpe" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the (conditional) MPE state of the model.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT._prepropress_query">
+<span class="sig-name descname"><span class="pre">_prepropress_query</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_none</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a></span></span><a class="headerlink" href="#jpt.trees.JPT._prepropress_query" title="Permalink to this definition">¶</a></dt>
+<dd><p>Transform a query entered by a user into an internal representation
+that can be further processed.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.c45">
+<span class="sig-name descname"><span class="pre">c45</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parent</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">child_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#jpt.trees.JPT.c45" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
+<code class="docutils literal notranslate"><span class="pre">indices</span></code>. The created node is put as a child with index <code class="docutils literal notranslate"><span class="pre">child_idx</span></code> to the children of
+node <code class="docutils literal notranslate"><span class="pre">parent</span></code>, if any.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> – the indices for the training samples used to calculate the gain.</p></li>
+<li><p><strong>start</strong> – the starting index in the data.</p></li>
+<li><p><strong>end</strong> – the stopping index in the data.</p></li>
+<li><p><strong>parent</strong> – the parent node of the current iteration, initially <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>child_idx</strong> – the index of the child in the current iteration.</p></li>
+<li><p><strong>depth</strong> – the depth of the tree in the current recursion level.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.pfmt">
+<span class="sig-name descname"><span class="pre">pfmt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#jpt.trees.JPT.pfmt" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a pretty-format string representation of this JPT.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT._preprocess_data">
+<span class="sig-name descname"><span class="pre">_preprocess_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">columns</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">numpy.ndarray</span></span></span><a class="headerlink" href="#jpt.trees.JPT._preprocess_data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Transform the input data into an internal representation.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.learn">
+<span class="sig-name descname"><span class="pre">learn</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">columns</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#jpt.trees.JPT" title="jpt.trees.JPT"><span class="pre">JPT</span></a></span></span><a class="headerlink" href="#jpt.trees.JPT.learn" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fits the <code class="docutils literal notranslate"><span class="pre">data</span></code> into a regression tree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> ([[str or float or bool]]; (according to <cite>self.variables</cite>)) – The training examples (assumed in row-shape)</p></li>
+<li><p><strong>rows</strong> ([[str or float or bool]]; (according to <cite>self.variables</cite>)) – The training examples (assumed in row-shape)</p></li>
+<li><p><strong>columns</strong> ([[str or float or bool]]; (according to <cite>self.variables</cite>)) – The training examples (assumed in row-shape)</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.likelihood">
+<span class="sig-name descname"><span class="pre">likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">queries</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">durac_scaling</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_distances</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">numpy.ndarray</span></span></span><a class="headerlink" href="#jpt.trees.JPT.likelihood" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the probabilities of a list of worlds. The worlds must be fully assigned with
+single numbers (no intervals).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>queries</strong> (<em>np.array</em>) – An array containing the worlds. The shape is (x, len(variables)).</p></li>
+<li><p><strong>durac_scaling</strong> (<em>float</em>) – the minimal distance between the samples within a dimension are multiplied by this factor
+if a durac impulse is used to model the variable.</p></li>
+<li><p><strong>min_distances</strong> (<em>Dict</em><em>[</em><a class="reference internal" href="../variables/index.html#jpt.variables.Variable" title="jpt.variables.Variable"><em>Variable</em></a><em>, </em><em>float</em><em>]</em>) – A dict mapping the variables to the minimal distances between the observations.
+This can be useful to use the same likelihood parameters for different test sets for example in cross
+validation processes.</p></li>
+</ul>
+</dd>
+</dl>
+<p>Returns: An np.array with shape (x, ) containing the probabilities.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.reverse">
+<span class="sig-name descname"><span class="pre">reverse</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Dict</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#jpt.trees.Node" title="jpt.trees.Node"><span class="pre">Node</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#jpt.trees.JPT.reverse" title="Permalink to this definition">¶</a></dt>
+<dd><p>Determines the leaf nodes that match query best and returns their respective paths to the root node.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>query</strong> (<em>dict</em>) – a mapping from featurenames to either numeric value intervals or an iterable of categorical values</p></li>
+<li><p><strong>confidence</strong> (<em>float</em>) – the confidence level for this MPE inference</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>a mapping from probabilities to lists of matcalo.core.algorithms.JPT.Node (path to root)</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plotvars</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">view</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_symb_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.trees.JPT.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generates an SVG representation of the generated regression tree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>title</strong> – (str) title of the plot</p></li>
+<li><p><strong>filename</strong> (<em>str</em>) – the name of the JPT (will also be used as filename; extension will be added automatically)</p></li>
+<li><p><strong>directory</strong> (<em>str</em>) – the location to save the SVG file to</p></li>
+<li><p><strong>plotvars</strong> (<em>&lt;jpt.variables.Variable&gt;</em>) – the variables to be plotted in the graph</p></li>
+<li><p><strong>view</strong> (<em>bool</em>) – whether the generated SVG file will be opened automatically</p></li>
+<li><p><strong>max_symb_values</strong> – limit the maximum number of symbolic values to this number</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.pickle">
+<span class="sig-name descname"><span class="pre">pickle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fpath</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#jpt.trees.JPT.pickle" title="Permalink to this definition">¶</a></dt>
+<dd><p>Pickles the fitted regression tree to a file at the given location <code class="docutils literal notranslate"><span class="pre">fpath</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fpath</strong> (<em>str</em>) – the location for the pickled file</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.load">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fpath</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.trees.JPT.load" title="Permalink to this definition">¶</a></dt>
+<dd><p>Loads the pickled regression tree from the file at the given location <code class="docutils literal notranslate"><span class="pre">fpath</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fpath</strong> (<em>str</em>) – the location of the pickled file</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.calcnorm">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">calcnorm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sigma</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mu</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.trees.JPT.calcnorm" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the CDF for a multivariate normal distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sigma</strong> (<em>float</em>) – the standard deviation</p></li>
+<li><p><strong>mu</strong> (<em>float</em>) – the expected value</p></li>
+<li><p><strong>intervals</strong> (<em>list of matcalo.utils.utils.Interval</em>) – the boundaries of the integral</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.conditional_jpt">
+<span class="sig-name descname"><span class="pre">conditional_jpt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="../variables/index.html#jpt.variables.VariableMap" title="jpt.variables.VariableMap"><span class="pre">jpt.variables.VariableMap</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_evidence</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.trees.JPT.conditional_jpt" title="Permalink to this definition">¶</a></dt>
+<dd><p>Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
+The new JPT contains all variables that are not in the evidence and is a
+full joint probability distribution over those variables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>evidence</strong> (<code class="docutils literal notranslate"><span class="pre">VariableMap</span></code>) – A variable Map mapping the observed variables to there observed,
+single values (not intervals)</p></li>
+<li><p><strong>keep_evidence</strong> (<em>bool</em>) – Rather to keep the evidence variables in the new
+JPT or not. If kept, their PDFs are replaced with Durac impulses.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.trees.JPT.save">
+<span class="sig-name descname"><span class="pre">save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">file</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">None</span></span></span><a class="headerlink" href="#jpt.trees.JPT.save" title="Permalink to this definition">¶</a></dt>
+<dd><p>Write this JPT persistently to disk.</p>
+<p><code class="docutils literal notranslate"><span class="pre">file</span></code> can be either a string or file-like object.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="id0">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#id0" title="Permalink to this definition">¶</a></dt>
+<dd><p>Load a JPT from disk.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+    </div>
+      
+  </div>
+</div>
+  
+<footer class="footer">
+  <div class="container">
+    <p class="pull-right">
+      <a href="#">Back to top</a>
+      
+    </p>
+    <p>
+        &copy; Copyright 2021, Mareike Picklum, Daniel Nyga.<br/>
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 5.0.2.<br/>
+    </p>
+  </div>
+</footer>
+
+  </body>
+</html>

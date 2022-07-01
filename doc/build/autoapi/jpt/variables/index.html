@@ -1,0 +1,307 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+    <title>jpt.variables &#8212; Joint Probability Trees 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/bootstrap-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom_styles.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx_paramlinks.css" />
+    <script data-url_root="../../../" id="documentation_options" src="../../../_static/documentation_options.js"></script>
+    <script src="../../../_static/jquery.js"></script>
+    <script src="../../../_static/underscore.js"></script>
+    <script src="../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../../_static/doctools.js"></script>
+    <link rel="shortcut icon" href="../../../_static/favicon.ico"/>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+    <link rel="next" title="jpt.version" href="../version/index.html" />
+    <link rel="prev" title="jpt.trees" href="../trees/index.html" />
+<meta charset='utf-8'>
+<meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1'>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script type="text/javascript" src="../../../_static/js/jquery-1.12.4.min.js"></script>
+<script type="text/javascript" src="../../../_static/js/jquery-fix.js"></script>
+<script type="text/javascript" src="../../../_static/bootstrap-3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="../../../_static/bootstrap-sphinx.js"></script>
+
+  </head><body>
+  
+  <script src="../../../_static/js/modernizr.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.geom.min.js"></script>
+  <script type="text/javascript" src="../../../_static/js/d3.layout.min.js"></script>
+
+    
+    
+
+  <div id="navbar" class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <!-- .btn-navbar is used as the toggle for collapsed navbar content -->
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../../index.html"><span><img src="../../../_static/logo_orig.png"></span>
+          Joint Probability Trees</a>
+        <span class="navbar-text navbar-version pull-left"><b>1.0</b></span>
+      </div>
+
+        <div class="collapse navbar-collapse nav-collapse">
+          <ul class="nav navbar-nav">
+            
+            
+              <li class="dropdown globaltoc-container">
+  <a role="button"
+     id="dLabelGlobalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="../../../index.html">Site <b class="caret"></b></a>
+  <ul class="dropdown-menu globaltoc"
+      role="menu"
+      aria-labelledby="dLabelGlobalToc"><ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../setup.html">Getting Started</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../../api.html">API Reference</a></li>
+</ul>
+</ul>
+</li>
+              
+                <li class="dropdown">
+  <a role="button"
+     id="dLabelLocalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="#">Page <b class="caret"></b></a>
+  <ul class="dropdown-menu localtoc"
+      role="menu"
+      aria-labelledby="dLabelLocalToc"><ul>
+<li><a class="reference internal" href="#"><code class="xref py py-mod docutils literal notranslate"><span class="pre">jpt.variables</span></code></a><ul>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#jpt.variables.Variable">Variable</a><ul>
+<li><a class="reference internal" href="#jpt.variables.Variable.dist">dist</a></li>
+<li><a class="reference internal" href="#jpt.variables.Variable._dist">_dist</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.variables.NumericVariable">NumericVariable</a><ul>
+<li><a class="reference internal" href="#jpt.variables.NumericVariable.dist">dist</a></li>
+<li><a class="reference internal" href="#jpt.variables.NumericVariable._dist">_dist</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.variables.SymbolicVariable">SymbolicVariable</a><ul>
+<li><a class="reference internal" href="#jpt.variables.SymbolicVariable.dist">dist</a></li>
+<li><a class="reference internal" href="#jpt.variables.SymbolicVariable._dist">_dist</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.variables.infer_from_dataframe">infer_from_dataframe</a></li>
+<li><a class="reference internal" href="#jpt.variables.VariableMap">VariableMap</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</ul>
+</li>
+              
+            
+            
+              
+                
+  <li>
+    <a href="../trees/index.html" title="Previous Chapter: jpt.trees"><span class="glyphicon glyphicon-chevron-left visible-sm"></span><span class="hidden-sm hidden-tablet">&laquo; jpt.trees</span>
+    </a>
+  </li>
+  <li>
+    <a href="../version/index.html" title="Next Chapter: jpt.version"><span class="glyphicon glyphicon-chevron-right visible-sm"></span><span class="hidden-sm hidden-tablet">jpt.version &raquo;</span>
+    </a>
+  </li>
+              
+            
+            
+            
+            
+              <li class="hidden-sm">
+<div id="sourcelink">
+  <a href="../../../_sources/autoapi/jpt/variables/index.rst.txt"
+     rel="nofollow">Source</a>
+</div></li>
+            
+          </ul>
+
+          
+            
+<form class="navbar-form navbar-right" action="../../../search.html" method="get">
+ <div class="form-group">
+  <input type="text" name="q" class="form-control" placeholder="Search" />
+ </div>
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+          
+        </div>
+    </div>
+  </div>
+
+<div class="container">
+  <div class="row">
+    <div class="body col-md-12 content" role="main">
+      
+  <section id="module-jpt.variables">
+<span id="jpt-variables"></span><h1><a class="reference internal" href="#module-jpt.variables" title="jpt.variables"><code class="xref py py-mod docutils literal notranslate"><span class="pre">jpt.variables</span></code></a><a class="headerlink" href="#module-jpt.variables" title="Permalink to this heading">¶</a></h1>
+<p>© Copyright 2021, Mareike Picklum, Daniel Nyga.</p>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Permalink to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.variables.Variable">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.variables.</span></span><span class="sig-name descname"><span class="pre">Variable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_impurity_improvement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.Variable" title="Permalink to this definition">¶</a></dt>
+<dd><p>Abstract class for a variable name along with its distribution class type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – name of the variable</p></li>
+<li><p><strong>domain</strong> (<em>class type of jpt.learning.distributions.Distribution</em>) – the class type (not an instance!) of the represented Distribution</p></li>
+<li><p><strong>min_impurity_improvement</strong> (<em>float</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.variables.Variable.dist">
+<span class="sig-name descname"><span class="pre">dist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">col</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.Variable.dist" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create and return a new instance of the distribution type attached to this variable.</p>
+<p>Either the distribution <code class="docutils literal notranslate"><span class="pre">params</span></code> can be passed or the <code class="docutils literal notranslate"><span class="pre">data</span></code> the distribution parameters
+are to be determined from.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.variables.Variable._dist">
+<span class="sig-name descname"><span class="pre">_dist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.Variable._dist" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create and return a new instance of the distribution associated with this type of variable.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.variables.NumericVariable">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.variables.</span></span><span class="sig-name descname"><span class="pre">NumericVariable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">Numeric</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_impurity_improvement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">haze</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_std</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">precision</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.NumericVariable" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../_images/inheritance-6ff8785af7e0a3d4d568733bf2db729c9af62828.png" alt="Inheritance diagram of jpt.variables.NumericVariable" usemap="#inheritance68af4c61ef" class="inheritance graphviz" /></div>
+<map id="inheritance68af4c61ef" name="inheritance68af4c61ef">
+<area shape="rect" id="node1" href="#jpt.variables.NumericVariable" target="_top" title="Represents a continuous variable." alt="" coords="128,5,259,31"/>
+<area shape="rect" id="node2" href="#jpt.variables.Variable" target="_top" title="Abstract class for a variable name along with its distribution class type." alt="" coords="5,5,80,31"/>
+</map><p>Represents a continuous variable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – name of the variable</p></li>
+<li><p><strong>domain</strong> (<em>class type of jpt.learning.distributions.Distribution</em>) – the class type (not an instance!) of the represented Distribution</p></li>
+<li><p><strong>min_impurity_improvement</strong> (<em>float</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.variables.NumericVariable.dist">
+<span class="sig-name descname"><span class="pre">dist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">col</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.NumericVariable.dist" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create and return a new instance of the distribution type attached to this variable.</p>
+<p>Either the distribution <code class="docutils literal notranslate"><span class="pre">params</span></code> can be passed or the <code class="docutils literal notranslate"><span class="pre">data</span></code> the distribution parameters
+are to be determined from.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.variables.NumericVariable._dist">
+<span class="sig-name descname"><span class="pre">_dist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.NumericVariable._dist" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create and return a new instance of the distribution associated with this type of variable.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.variables.SymbolicVariable">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.variables.</span></span><span class="sig-name descname"><span class="pre">SymbolicVariable</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">domain</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_impurity_improvement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.SymbolicVariable" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../_images/inheritance-b5064c3c9546f24a28c5c9276dafe2d5115253ef.png" alt="Inheritance diagram of jpt.variables.SymbolicVariable" usemap="#inheritanceac805a2bca" class="inheritance graphviz" /></div>
+<map id="inheritanceac805a2bca" name="inheritanceac805a2bca">
+<area shape="rect" id="node1" href="#jpt.variables.SymbolicVariable" target="_top" title="Represents a symbolic variable." alt="" coords="128,5,263,31"/>
+<area shape="rect" id="node2" href="#jpt.variables.Variable" target="_top" title="Abstract class for a variable name along with its distribution class type." alt="" coords="5,5,80,31"/>
+</map><p>Represents a symbolic variable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – name of the variable</p></li>
+<li><p><strong>domain</strong> (<em>class type of jpt.learning.distributions.Distribution</em>) – the class type (not an instance!) of the represented Distribution</p></li>
+<li><p><strong>min_impurity_improvement</strong> (<em>float</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.variables.SymbolicVariable.dist">
+<span class="sig-name descname"><span class="pre">dist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">col</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.SymbolicVariable.dist" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create and return a new instance of the distribution type attached to this variable.</p>
+<p>Either the distribution <code class="docutils literal notranslate"><span class="pre">params</span></code> can be passed or the <code class="docutils literal notranslate"><span class="pre">data</span></code> the distribution parameters
+are to be determined from.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.variables.SymbolicVariable._dist">
+<span class="sig-name descname"><span class="pre">_dist</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.SymbolicVariable._dist" title="Permalink to this definition">¶</a></dt>
+<dd><p>Create and return a new instance of the distribution associated with this type of variable.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="jpt.variables.infer_from_dataframe">
+<span class="sig-prename descclassname"><span class="pre">jpt.variables.</span></span><span class="sig-name descname"><span class="pre">infer_from_dataframe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_numeric_types</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_impurity_improvement</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">haze</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_std</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">precision</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.infer_from_dataframe" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates the <code class="docutils literal notranslate"><span class="pre">Variable</span></code> instances from column types in a Pandas or Spark data frame.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<code class="docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code>) – the data frame object to generate the variables from.</p></li>
+<li><p><strong>scale_numeric_types</strong> (<em>bool</em>) – Whether of not to use scaled types for the numeric variables.</p></li>
+<li><p><strong>min_impurity_improvement</strong> (<code class="docutils literal notranslate"><span class="pre">float</span></code>) – the minimum imrovement that a split must induce to be acceptable.</p></li>
+<li><p><strong>haze</strong> (<code class="docutils literal notranslate"><span class="pre">float</span></code>) – </p></li>
+<li><p><strong>max_std</strong> (<code class="docutils literal notranslate"><span class="pre">float</span></code>) – </p></li>
+<li><p><strong>precision</strong> (<code class="docutils literal notranslate"><span class="pre">float</span></code> in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.variables.VariableMap">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.variables.</span></span><span class="sig-name descname"><span class="pre">VariableMap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">Tuple</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.variables.VariableMap" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convenience class for mapping a <code class="docutils literal notranslate"><span class="pre">Variable</span></code> object to anything else. This special map, however,
+supports accessing the image set both by the variable object instance itself _and_ its name.</p>
+<p><code class="docutils literal notranslate"><span class="pre">data</span></code> may be an iterable of (variable, value) pairs.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+    </div>
+      
+  </div>
+</div>
+  
+<footer class="footer">
+  <div class="container">
+    <p class="pull-right">
+      <a href="#">Back to top</a>
+      
+    </p>
+    <p>
+        &copy; Copyright 2021, Mareike Picklum, Daniel Nyga.<br/>
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 5.0.2.<br/>
+    </p>
+  </div>
+</footer>
+
+  </body>
+</html>

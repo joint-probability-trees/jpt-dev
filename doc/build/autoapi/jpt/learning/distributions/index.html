@@ -1,0 +1,864 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+    <title>jpt.learning.distributions &#8212; Joint Probability Trees 1.0.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/bootstrap-sphinx.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/css/custom_styles.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx_paramlinks.css" />
+    <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+    <script src="../../../../_static/jquery.js"></script>
+    <script src="../../../../_static/underscore.js"></script>
+    <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+    <script src="../../../../_static/doctools.js"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="shortcut icon" href="../../../../_static/favicon.ico"/>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" />
+    <link rel="next" title="jpt.trees" href="../../trees/index.html" />
+    <link rel="prev" title="jpt.learning" href="../index.html" />
+<meta charset='utf-8'>
+<meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1'>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script type="text/javascript" src="../../../../_static/js/jquery-1.12.4.min.js"></script>
+<script type="text/javascript" src="../../../../_static/js/jquery-fix.js"></script>
+<script type="text/javascript" src="../../../../_static/bootstrap-3.4.1/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="../../../../_static/bootstrap-sphinx.js"></script>
+
+  </head><body>
+  
+  <script src="../../../../_static/js/modernizr.min.js"></script>
+  <script type="text/javascript" src="../../../../_static/js/d3.min.js"></script>
+  <script type="text/javascript" src="../../../../_static/js/d3.geom.min.js"></script>
+  <script type="text/javascript" src="../../../../_static/js/d3.layout.min.js"></script>
+
+    
+    
+
+  <div id="navbar" class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <!-- .btn-navbar is used as the toggle for collapsed navbar content -->
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".nav-collapse">
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="../../../../index.html"><span><img src="../../../../_static/logo_orig.png"></span>
+          Joint Probability Trees</a>
+        <span class="navbar-text navbar-version pull-left"><b>1.0</b></span>
+      </div>
+
+        <div class="collapse navbar-collapse nav-collapse">
+          <ul class="nav navbar-nav">
+            
+            
+              <li class="dropdown globaltoc-container">
+  <a role="button"
+     id="dLabelGlobalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="../../../../index.html">Site <b class="caret"></b></a>
+  <ul class="dropdown-menu globaltoc"
+      role="menu"
+      aria-labelledby="dLabelGlobalToc"><ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../setup.html">Getting Started</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+</ul>
+</li>
+              
+                <li class="dropdown">
+  <a role="button"
+     id="dLabelLocalToc"
+     data-toggle="dropdown"
+     data-target="#"
+     href="#">Page <b class="caret"></b></a>
+  <ul class="dropdown-menu localtoc"
+      role="menu"
+      aria-labelledby="dLabelLocalToc"><ul>
+<li><a class="reference internal" href="#"><code class="xref py py-mod docutils literal notranslate"><span class="pre">jpt.learning.distributions</span></code></a><ul>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian">Gaussian</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian.deviation">deviation</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian.sample">sample</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian.linreg">linreg</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian.update_all">update_all</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian.estimate">estimate</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian.update">update</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian.retract">retract</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Gaussian.kldiv">kldiv</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian">MultiVariateGaussian</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.cdf">cdf</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.mvg">mvg</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.dim">dim</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.cov_">cov_</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.mean_">mean_</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.conditional">conditional</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.plot">plot</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.deviation">deviation</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.sample">sample</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.linreg">linreg</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.update_all">update_all</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.estimate">estimate</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.update">update</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.retract">retract</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.MultiVariateGaussian.kldiv">kldiv</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Distribution">Distribution</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.Distribution.plot">plot</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.learning.distributions.DataScaler">DataScaler</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Identity">Identity</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Numeric">Numeric</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.Numeric.plot">plot</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.learning.distributions.ScaledNumeric">ScaledNumeric</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.ScaledNumeric.plot">plot</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict">HashableOrderedDict</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.clear">clear</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.copy">copy</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.get">get</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.items">items</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.keys">keys</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.pop">pop</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.popitem">popitem</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.setdefault">setdefault</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.update">update</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.HashableOrderedDict.values">values</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.learning.distributions.OrderedDictProxy">OrderedDictProxy</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial">Multinomial</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial.items">items</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial.sample">sample</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial.sample_one">sample_one</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial.sample_labels">sample_labels</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial.sample_one_label">sample_one_label</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial._expectation">_expectation</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial.crop">crop</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Multinomial.plot">plot</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool">Bool</a><ul>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool.items">items</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool.sample">sample</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool.sample_one">sample_one</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool.sample_labels">sample_labels</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool.sample_one_label">sample_one_label</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool._expectation">_expectation</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool.crop">crop</a></li>
+<li><a class="reference internal" href="#jpt.learning.distributions.Bool.plot">plot</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</ul>
+</li>
+              
+            
+            
+              
+                
+  <li>
+    <a href="../index.html" title="Previous Chapter: jpt.learning"><span class="glyphicon glyphicon-chevron-left visible-sm"></span><span class="hidden-sm hidden-tablet">&laquo; jpt.learning</span>
+    </a>
+  </li>
+  <li>
+    <a href="../../trees/index.html" title="Next Chapter: jpt.trees"><span class="glyphicon glyphicon-chevron-right visible-sm"></span><span class="hidden-sm hidden-tablet">jpt.trees &raquo;</span>
+    </a>
+  </li>
+              
+            
+            
+            
+            
+              <li class="hidden-sm">
+<div id="sourcelink">
+  <a href="../../../../_sources/autoapi/jpt/learning/distributions/index.rst.txt"
+     rel="nofollow">Source</a>
+</div></li>
+            
+          </ul>
+
+          
+            
+<form class="navbar-form navbar-right" action="../../../../search.html" method="get">
+ <div class="form-group">
+  <input type="text" name="q" class="form-control" placeholder="Search" />
+ </div>
+  <input type="hidden" name="check_keywords" value="yes" />
+  <input type="hidden" name="area" value="default" />
+</form>
+          
+        </div>
+    </div>
+  </div>
+
+<div class="container">
+  <div class="row">
+    <div class="body col-md-12 content" role="main">
+      
+  <section id="module-jpt.learning.distributions">
+<span id="jpt-learning-distributions"></span><h1><a class="reference internal" href="#module-jpt.learning.distributions" title="jpt.learning.distributions"><code class="xref py py-mod docutils literal notranslate"><span class="pre">jpt.learning.distributions</span></code></a><a class="headerlink" href="#module-jpt.learning.distributions" title="Permalink to this heading">¶</a></h1>
+<p>© Copyright 2021, Mareike Picklum, Daniel Nyga.</p>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Permalink to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">Gaussian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cov</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../../_images/inheritance-e46f53350903b7d9cdaa8fd776f39f98f05f3be2.png" alt="Inheritance diagram of jpt.learning.distributions.Gaussian" usemap="#inheritance864a00a36b" class="inheritance graphviz" /></div>
+<map id="inheritance864a00a36b" name="inheritance864a00a36b">
+<area shape="rect" id="node1" href="#jpt.learning.distributions.Gaussian" target="_top" title="Extension of :class:`dnutils.stats.Gaussian`" alt="" coords="5,29,88,55"/>
+</map><p>Extension of <code class="xref py py-class docutils literal notranslate"><span class="pre">dnutils.stats.Gaussian</span></code></p>
+<p>Creates a new Gaussian distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mean</strong> (<em>float if multivariate else</em><em> [</em><em>float</em><em>] </em><em>if multivariate</em>) – the mean of the Gaussian</p></li>
+<li><p><strong>cov</strong> (<em>float if multivariate else</em><em> [</em><em>[</em><em>float</em><em>]</em><em>] </em><em>if multivariate</em>) – the covariance of the Gaussian</p></li>
+<li><p><strong>data</strong> (<em>[</em><em>[</em><em>float</em><em>]</em><em>]</em>) – if <code class="docutils literal notranslate"><span class="pre">mean</span></code> and <code class="docutils literal notranslate"><span class="pre">cov</span></code> are not provided, <code class="docutils literal notranslate"><span class="pre">data</span></code> may be a data set (matrix) from which the
+parameters of the distribution are estimated.</p></li>
+<li><p><strong>weights</strong> (<em>[</em><em>float</em><em>]</em>) – <strong>[optional]</strong> weights for the data points. The weight do not need to be normalized.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian.deviation">
+<span class="sig-name descname"><span class="pre">deviation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian.deviation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the deviation of <code class="docutils literal notranslate"><span class="pre">x</span></code> in multiples of the standard deviation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>x</strong> – </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian.sample">
+<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian.sample" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return <cite>n</cite> samples from the distribution subject to the parameters.
+.. warning:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>This method requires the ``numpy`` package installed.
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian.linreg">
+<span class="sig-name descname"><span class="pre">linreg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian.linreg" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute a 4-tuple <code class="docutils literal notranslate"><span class="pre">&lt;m,</span> <span class="pre">b,</span> <span class="pre">rss,</span> <span class="pre">noise&gt;</span></code> of a linear regression represented by this Gaussian.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">m</span></code> - the slope of the line
+<code class="docutils literal notranslate"><span class="pre">b</span></code> - the intercept of the line
+<code class="docutils literal notranslate"><span class="pre">rss</span></code> - the residual sum-of-squares error
+<code class="docutils literal notranslate"><span class="pre">noise</span></code> - the square of the sample correlation coefficient <code class="docutils literal notranslate"><span class="pre">r^2</span></code></p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>References:</dt><dd><ul class="simple">
+<li><p><a class="reference external" href="https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#In_least_squares_regression_analysis">https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#In_least_squares_regression_analysis</a></p></li>
+<li><p><a class="reference external" href="https://milnepublishing.geneseo.edu/natural-resources-biometrics/chapter/chapter-7-correlation-and-simple-linear-regression/">https://milnepublishing.geneseo.edu/natural-resources-biometrics/chapter/chapter-7-correlation-and-simple-linear-regression/</a></p></li>
+<li><p><a class="reference external" href="https://en.wikipedia.org/wiki/Residual_sum_of_squares">https://en.wikipedia.org/wiki/Residual_sum_of_squares</a></p></li>
+<li><p><a class="reference external" href="https://en.wikipedia.org/wiki/Explained_sum_of_squares">https://en.wikipedia.org/wiki/Explained_sum_of_squares</a></p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian.update_all">
+<span class="sig-name descname"><span class="pre">update_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian.update_all" title="Permalink to this definition">¶</a></dt>
+<dd><p>Update the distribution with new data points given in <code class="docutils literal notranslate"><span class="pre">data</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian.estimate">
+<span class="sig-name descname"><span class="pre">estimate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian.estimate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate the distribution parameters with subject to the given data points.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian.update">
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian.update" title="Permalink to this definition">¶</a></dt>
+<dd><p>update the Gaussian distribution with a new data point <code class="docutils literal notranslate"><span class="pre">x</span></code> and weight <code class="docutils literal notranslate"><span class="pre">w</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian.retract">
+<span class="sig-name descname"><span class="pre">retract</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian.retract" title="Permalink to this definition">¶</a></dt>
+<dd><p>Retract the a data point <cite>x</cite> with eight <cite>w</cite> from the Gaussian distribution.</p>
+<p>In case the data points are being kept in the distribution, it must actually exist and have the right
+weight associated. Otherwise, a ValueError will be raised.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Gaussian.kldiv">
+<span class="sig-name descname"><span class="pre">kldiv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">g2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Gaussian.kldiv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the KL-divergence of two multivariate Gaussian distributions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>g1</strong> – instance of <code class="docutils literal notranslate"><span class="pre">dnutils.Gaussian</span></code></p></li>
+<li><p><strong>g2</strong> – instance of <code class="docutils literal notranslate"><span class="pre">dnutils.Gaussian</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">MultiVariateGaussian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cov</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">6000000</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../../_images/inheritance-15d2da6b9ab8ade95486c9dcbded9dfbba2f7735.png" alt="Inheritance diagram of jpt.learning.distributions.MultiVariateGaussian" usemap="#inheritance894b8fbf00" class="inheritance graphviz" /></div>
+<map id="inheritance894b8fbf00" name="inheritance894b8fbf00">
+<area shape="rect" id="node1" href="#jpt.learning.distributions.Gaussian" target="_top" title="Extension of :class:`dnutils.stats.Gaussian`" alt="" coords="5,29,88,55"/>
+<area shape="rect" id="node2" href="#jpt.learning.distributions.MultiVariateGaussian" target="_top" title="MultiVariateGaussian" alt="" coords="136,29,297,55"/>
+</map><p>Extension of <code class="xref py py-class docutils literal notranslate"><span class="pre">dnutils.stats.Gaussian</span></code></p>
+<p>A Multivariate Gaussian distribution that can be incrementally updated with new samples</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.cdf">
+<span class="sig-name descname"><span class="pre">cdf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.cdf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the CDF for a multivariate normal distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>intervals</strong> (<em>list of matcalo.utils.utils.Interval</em>) – the boundaries of the integral</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.mvg">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">mvg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.mvg" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the multivariate Gaussian distribution.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.dim">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">dim</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.dim" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the dimension of the distribution.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.cov_">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">cov_</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.cov_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the covariance matrix for prettyprinting (precision .2).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.mean_">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">mean_</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.mean_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the mean vector for prettyprinting (precision .2).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.conditional">
+<span class="sig-name descname"><span class="pre">conditional</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">evidence</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.conditional" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a distribution conditioning on the variables in <code class="docutils literal notranslate"><span class="pre">evidence</span></code> following the calculations described
+in <a class="reference external" href="https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions">Conditional distributions</a>,
+i.e., after determining the partitions of <span class="math notranslate nohighlight">\(\mu\)</span>, i.e. <span class="math notranslate nohighlight">\(\mu_{1}\)</span> and <span class="math notranslate nohighlight">\(\mu_{2}\)</span> as well as
+the partitions of <span class="math notranslate nohighlight">\(\Sigma\)</span>, i.e. <span class="math notranslate nohighlight">\(\Sigma_{11}, \Sigma_{12}, \Sigma_{21} \text{ and } \Sigma_{22}\)</span>, we
+calculate the multivariate normal <span class="math notranslate nohighlight">\(N(\overline\mu,\overline\Sigma)\)</span> using</p>
+<div class="math notranslate nohighlight" id="equation-mu">
+<span class="eqno">(1)<a class="headerlink" href="#equation-mu" title="Permalink to this equation">¶</a></span>\[\overline\mu = \mu_{1} + \Sigma_{12}\Sigma_{22}^{-1}(a-\mu_{2})\]</div>
+<div class="math notranslate nohighlight" id="equation-sigma">
+<span class="eqno">(2)<a class="headerlink" href="#equation-sigma" title="Permalink to this equation">¶</a></span>\[\overline\Sigma = \Sigma_{11} + \Sigma_{12}\Sigma_{22}^{-1}\Sigma_{21}\]</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>evidence</strong> (<em>dict</em>) – the variables the returned distribution conditions on (mapping indices to values or Intervals of values)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.plot" title="Permalink to this definition">¶</a></dt>
+<dd><div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">sys</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">dim</span><span class="o">==</span><span class="mi">1</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.deviation">
+<span class="sig-name descname"><span class="pre">deviation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.deviation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the deviation of <code class="docutils literal notranslate"><span class="pre">x</span></code> in multiples of the standard deviation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>x</strong> – </p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.sample">
+<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.sample" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return <cite>n</cite> samples from the distribution subject to the parameters.
+.. warning:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span>This method requires the ``numpy`` package installed.
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.linreg">
+<span class="sig-name descname"><span class="pre">linreg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.linreg" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute a 4-tuple <code class="docutils literal notranslate"><span class="pre">&lt;m,</span> <span class="pre">b,</span> <span class="pre">rss,</span> <span class="pre">noise&gt;</span></code> of a linear regression represented by this Gaussian.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">m</span></code> - the slope of the line
+<code class="docutils literal notranslate"><span class="pre">b</span></code> - the intercept of the line
+<code class="docutils literal notranslate"><span class="pre">rss</span></code> - the residual sum-of-squares error
+<code class="docutils literal notranslate"><span class="pre">noise</span></code> - the square of the sample correlation coefficient <code class="docutils literal notranslate"><span class="pre">r^2</span></code></p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>References:</dt><dd><ul class="simple">
+<li><p><a class="reference external" href="https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#In_least_squares_regression_analysis">https://en.wikipedia.org/wiki/Pearson_correlation_coefficient#In_least_squares_regression_analysis</a></p></li>
+<li><p><a class="reference external" href="https://milnepublishing.geneseo.edu/natural-resources-biometrics/chapter/chapter-7-correlation-and-simple-linear-regression/">https://milnepublishing.geneseo.edu/natural-resources-biometrics/chapter/chapter-7-correlation-and-simple-linear-regression/</a></p></li>
+<li><p><a class="reference external" href="https://en.wikipedia.org/wiki/Residual_sum_of_squares">https://en.wikipedia.org/wiki/Residual_sum_of_squares</a></p></li>
+<li><p><a class="reference external" href="https://en.wikipedia.org/wiki/Explained_sum_of_squares">https://en.wikipedia.org/wiki/Explained_sum_of_squares</a></p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.update_all">
+<span class="sig-name descname"><span class="pre">update_all</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.update_all" title="Permalink to this definition">¶</a></dt>
+<dd><p>Update the distribution with new data points given in <code class="docutils literal notranslate"><span class="pre">data</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.estimate">
+<span class="sig-name descname"><span class="pre">estimate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.estimate" title="Permalink to this definition">¶</a></dt>
+<dd><p>Estimate the distribution parameters with subject to the given data points.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.update">
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.update" title="Permalink to this definition">¶</a></dt>
+<dd><p>update the Gaussian distribution with a new data point <code class="docutils literal notranslate"><span class="pre">x</span></code> and weight <code class="docutils literal notranslate"><span class="pre">w</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.retract">
+<span class="sig-name descname"><span class="pre">retract</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.retract" title="Permalink to this definition">¶</a></dt>
+<dd><p>Retract the a data point <cite>x</cite> with eight <cite>w</cite> from the Gaussian distribution.</p>
+<p>In case the data points are being kept in the distribution, it must actually exist and have the right
+weight associated. Otherwise, a ValueError will be raised.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.MultiVariateGaussian.kldiv">
+<span class="sig-name descname"><span class="pre">kldiv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">g2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.MultiVariateGaussian.kldiv" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the KL-divergence of two multivariate Gaussian distributions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>g1</strong> – instance of <code class="docutils literal notranslate"><span class="pre">dnutils.Gaussian</span></code></p></li>
+<li><p><strong>g2</strong> – instance of <code class="docutils literal notranslate"><span class="pre">dnutils.Gaussian</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Distribution">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">Distribution</span></span><a class="headerlink" href="#jpt.learning.distributions.Distribution" title="Permalink to this definition">¶</a></dt>
+<dd><p>Abstract supertype of all domains and distributions</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Distribution.plot">
+<em class="property"><span class="pre">abstract</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">view</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Distribution.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generates a plot of the distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>title</strong> (<em>str</em>) – the name of the variable this distribution represents</p></li>
+<li><p><strong>fname</strong> (<em>str</em>) – the name of the file</p></li>
+<li><p><strong>directory</strong> (<em>str</em>) – the directory to store the generated plot files</p></li>
+<li><p><strong>pdf</strong> (<em>bool</em>) – whether to store files as PDF. If false, a png is generated by default</p></li>
+<li><p><strong>view</strong> (<em>bool</em>) – whether to display generated plots, default False (only stores files)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.DataScaler">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">DataScaler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.DataScaler" title="Permalink to this definition">¶</a></dt>
+<dd><p>A numeric data transformation that represents data points in form of a translation
+by their mean and a scaling by their variance. After the transformation, the transformed
+input data have zero mean and unit variance.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Identity">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">Identity</span></span><a class="headerlink" href="#jpt.learning.distributions.Identity" title="Permalink to this definition">¶</a></dt>
+<dd><p>Simple identity mapping that mimics the __getitem__ protocol of dicts.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Numeric">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">Numeric</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quantile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Numeric" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../../_images/inheritance-aca32aab543ff0e1ae7ea970d6d37583bb11d3fc.png" alt="Inheritance diagram of jpt.learning.distributions.Numeric" usemap="#inheritanceff9a1f44ca" class="inheritance graphviz" /></div>
+<map id="inheritanceff9a1f44ca" name="inheritanceff9a1f44ca">
+<area shape="rect" id="node1" href="#jpt.learning.distributions.Distribution" target="_top" title="Abstract supertype of all domains and distributions" alt="" coords="5,5,104,31"/>
+<area shape="rect" id="node2" href="#jpt.learning.distributions.Numeric" target="_top" title="Wrapper class for numeric domains and distributions." alt="" coords="152,5,229,31"/>
+</map><p>Wrapper class for numeric domains and distributions.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Numeric.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xlabel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'value'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">view</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Numeric.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generates a plot of the piecewise linear function representing
+the variable’s cumulative distribution function</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>title</strong> (<em>str</em>) – the name of the variable this distribution represents</p></li>
+<li><p><strong>fname</strong> (<em>str</em>) – the name of the file to be stored</p></li>
+<li><p><strong>xlabel</strong> (<em>str</em>) – the label of the x-axis</p></li>
+<li><p><strong>directory</strong> (<em>str</em>) – the directory to store the generated plot files</p></li>
+<li><p><strong>pdf</strong> (<em>bool</em>) – whether to store files as PDF. If false, a png is generated by default</p></li>
+<li><p><strong>view</strong> (<em>bool</em>) – whether to display generated plots, default False (only stores files)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.ScaledNumeric">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">ScaledNumeric</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quantile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.ScaledNumeric" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../../_images/inheritance-b9c0bf755547de30e7118dca08d1bbb9f2221d91.png" alt="Inheritance diagram of jpt.learning.distributions.ScaledNumeric" usemap="#inheritancec5a8c55062" class="inheritance graphviz" /></div>
+<map id="inheritancec5a8c55062" name="inheritancec5a8c55062">
+<area shape="rect" id="node1" href="#jpt.learning.distributions.Distribution" target="_top" title="Abstract supertype of all domains and distributions" alt="" coords="5,5,104,31"/>
+<area shape="rect" id="node2" href="#jpt.learning.distributions.Numeric" target="_top" title="Wrapper class for numeric domains and distributions." alt="" coords="152,5,229,31"/>
+<area shape="rect" id="node3" href="#jpt.learning.distributions.ScaledNumeric" target="_top" title="Scaled numeric distribution represented by mean and variance." alt="" coords="277,5,397,31"/>
+</map><p>Scaled numeric distribution represented by mean and variance.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.ScaledNumeric.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xlabel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'value'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">view</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.ScaledNumeric.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generates a plot of the piecewise linear function representing
+the variable’s cumulative distribution function</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>title</strong> (<em>str</em>) – the name of the variable this distribution represents</p></li>
+<li><p><strong>fname</strong> (<em>str</em>) – the name of the file to be stored</p></li>
+<li><p><strong>xlabel</strong> (<em>str</em>) – the label of the x-axis</p></li>
+<li><p><strong>directory</strong> (<em>str</em>) – the directory to store the generated plot files</p></li>
+<li><p><strong>pdf</strong> (<em>bool</em>) – whether to store files as PDF. If false, a png is generated by default</p></li>
+<li><p><strong>view</strong> (<em>bool</em>) – whether to display generated plots, default False (only stores files)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">HashableOrderedDict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../../_images/inheritance-a9229350acd995628430267305f01c217136e84c.png" alt="Inheritance diagram of jpt.learning.distributions.HashableOrderedDict" usemap="#inheritance9a8c9d2e7d" class="inheritance graphviz" /></div>
+<map id="inheritance9a8c9d2e7d" name="inheritance9a8c9d2e7d">
+<area shape="rect" id="node1" href="#jpt.learning.distributions.HashableOrderedDict" target="_top" title="Ordered dict that can be hashed." alt="" coords="153,5,315,31"/>
+</map><p>Ordered dict that can be hashed.</p>
+<p>Initialize self.  See help(type(self)) for accurate signature.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.clear">
+<span class="sig-name descname"><span class="pre">clear</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.clear" title="Permalink to this definition">¶</a></dt>
+<dd><p>D.clear() -&gt; None.  Remove all items from D.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.copy">
+<span class="sig-name descname"><span class="pre">copy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.copy" title="Permalink to this definition">¶</a></dt>
+<dd><p>D.copy() -&gt; a shallow copy of D</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.get">
+<span class="sig-name descname"><span class="pre">get</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.get" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return the value for key if key is in the dictionary, else default.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.items">
+<span class="sig-name descname"><span class="pre">items</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.items" title="Permalink to this definition">¶</a></dt>
+<dd><p>D.items() -&gt; a set-like object providing a view on D’s items</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.keys">
+<span class="sig-name descname"><span class="pre">keys</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.keys" title="Permalink to this definition">¶</a></dt>
+<dd><p>D.keys() -&gt; a set-like object providing a view on D’s keys</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.pop">
+<span class="sig-name descname"><span class="pre">pop</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.pop" title="Permalink to this definition">¶</a></dt>
+<dd><p>D.pop(k[,d]) -&gt; v, remove specified key and return the corresponding value.
+If key is not found, d is returned if given, otherwise KeyError is raised</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.popitem">
+<span class="sig-name descname"><span class="pre">popitem</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.popitem" title="Permalink to this definition">¶</a></dt>
+<dd><p>Remove and return a (key, value) pair as a 2-tuple.</p>
+<p>Pairs are returned in LIFO (last-in, first-out) order.
+Raises KeyError if the dict is empty.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.setdefault">
+<span class="sig-name descname"><span class="pre">setdefault</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.setdefault" title="Permalink to this definition">¶</a></dt>
+<dd><p>Insert key with a value of default if key is not in the dictionary.</p>
+<p>Return the value for key if key is in the dictionary, else default.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.update">
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.update" title="Permalink to this definition">¶</a></dt>
+<dd><p>D.update([E, ]**F) -&gt; None.  Update D from dict/iterable E and F.
+If E is present and has a .keys() method, then does:  for k in E: D[k] = E[k]
+If E is present and lacks a .keys() method, then does:  for k, v in E: D[k] = v
+In either case, this is followed by: for k in F:  D[k] = F[k]</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.HashableOrderedDict.values">
+<span class="sig-name descname"><span class="pre">values</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.HashableOrderedDict.values" title="Permalink to this definition">¶</a></dt>
+<dd><p>D.values() -&gt; an object providing a view on D’s values</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.OrderedDictProxy">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">OrderedDictProxy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.OrderedDictProxy" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is a proxy class that mimics the interface of a regular dict
+without inheriting from dict.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">Multinomial</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../../_images/inheritance-6a16542c81cbbffa6a52aadb9a6ea6fac2e3f057.png" alt="Inheritance diagram of jpt.learning.distributions.Multinomial" usemap="#inheritance24e5c97554" class="inheritance graphviz" /></div>
+<map id="inheritance24e5c97554" name="inheritance24e5c97554">
+<area shape="rect" id="node1" href="#jpt.learning.distributions.Distribution" target="_top" title="Abstract supertype of all domains and distributions" alt="" coords="5,5,104,31"/>
+<area shape="rect" id="node2" href="#jpt.learning.distributions.Multinomial" target="_top" title="Abstract supertype of all symbolic domains and distributions." alt="" coords="152,5,252,31"/>
+</map><p>Abstract supertype of all symbolic domains and distributions.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial.items">
+<span class="sig-name descname"><span class="pre">items</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial.items" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a list of (probability, label) pairs representing this distribution.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial.sample">
+<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial.sample" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns <code class="docutils literal notranslate"><span class="pre">n</span></code> sample <cite>values</cite> according to their respective probability</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial.sample_one">
+<span class="sig-name descname"><span class="pre">sample_one</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial.sample_one" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns one sample <cite>value</cite> according to its probability</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial.sample_labels">
+<span class="sig-name descname"><span class="pre">sample_labels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial.sample_labels" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns <code class="docutils literal notranslate"><span class="pre">n</span></code> sample <cite>labels</cite> according to their respective probability</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial.sample_one_label">
+<span class="sig-name descname"><span class="pre">sample_one_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial.sample_one_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns one sample <cite>label</cite> according to its probability</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial._expectation">
+<span class="sig-name descname"><span class="pre">_expectation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial._expectation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the value with the highest probability for this variable</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial.crop">
+<span class="sig-name descname"><span class="pre">crop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">excl_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial.crop" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the posterior of the multinomial distribution.</p>
+<p><code class="docutils literal notranslate"><span class="pre">values</span></code> and <code class="docutils literal notranslate"><span class="pre">exclude</span></code> are indices of the values (labels) that are admitted and/or excluded.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Multinomial.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">view</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">horizontal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Multinomial.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generates a <code class="docutils literal notranslate"><span class="pre">horizontal</span></code> (if set) otherwise <cite>vertical</cite> bar plot representing the variable’s distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>title</strong> (<em>str</em>) – the name of the variable this distribution represents</p></li>
+<li><p><strong>fname</strong> (<em>str</em>) – the name of the file to be stored</p></li>
+<li><p><strong>directory</strong> (<em>str</em>) – the directory to store the generated plot files</p></li>
+<li><p><strong>pdf</strong> (<em>bool</em>) – whether to store files as PDF. If false, a png is generated by default</p></li>
+<li><p><strong>view</strong> (<em>bool</em>) – whether to display generated plots, default False (only stores files)</p></li>
+<li><p><strong>horizontal</strong> (<em>bool</em>) – whether to plot the bars horizontally, default is False, i.e. vertical bars</p></li>
+<li><p><strong>max_values</strong> (<em>int</em>) – maximum number of values to plot</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">jpt.learning.distributions.</span></span><span class="sig-name descname"><span class="pre">Bool</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool" title="Permalink to this definition">¶</a></dt>
+<dd><div class="graphviz"><img src="../../../../_images/inheritance-a16afc3373eec9b44889bd1f8323a89f77c26345.png" alt="Inheritance diagram of jpt.learning.distributions.Bool" usemap="#inheritancefd4c2aea02" class="inheritance graphviz" /></div>
+<map id="inheritancefd4c2aea02" name="inheritancefd4c2aea02">
+<area shape="rect" id="node1" href="#jpt.learning.distributions.Bool" target="_top" title="Wrapper class for Boolean domains and distributions." alt="" coords="300,5,372,31"/>
+<area shape="rect" id="node2" href="#jpt.learning.distributions.Multinomial" target="_top" title="Abstract supertype of all symbolic domains and distributions." alt="" coords="152,5,252,31"/>
+<area shape="rect" id="node3" href="#jpt.learning.distributions.Distribution" target="_top" title="Abstract supertype of all domains and distributions" alt="" coords="5,5,104,31"/>
+</map><p>Wrapper class for Boolean domains and distributions.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool.items">
+<span class="sig-name descname"><span class="pre">items</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool.items" title="Permalink to this definition">¶</a></dt>
+<dd><p>Return a list of (probability, label) pairs representing this distribution.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool.sample">
+<span class="sig-name descname"><span class="pre">sample</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool.sample" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns <code class="docutils literal notranslate"><span class="pre">n</span></code> sample <cite>values</cite> according to their respective probability</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool.sample_one">
+<span class="sig-name descname"><span class="pre">sample_one</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool.sample_one" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns one sample <cite>value</cite> according to its probability</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool.sample_labels">
+<span class="sig-name descname"><span class="pre">sample_labels</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool.sample_labels" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns <code class="docutils literal notranslate"><span class="pre">n</span></code> sample <cite>labels</cite> according to their respective probability</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool.sample_one_label">
+<span class="sig-name descname"><span class="pre">sample_one_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool.sample_one_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns one sample <cite>label</cite> according to its probability</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool._expectation">
+<span class="sig-name descname"><span class="pre">_expectation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool._expectation" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the value with the highest probability for this variable</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool.crop">
+<span class="sig-name descname"><span class="pre">crop</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">incl_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">excl_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool.crop" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute the posterior of the multinomial distribution.</p>
+<p><code class="docutils literal notranslate"><span class="pre">values</span></code> and <code class="docutils literal notranslate"><span class="pre">exclude</span></code> are indices of the values (labels) that are admitted and/or excluded.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="jpt.learning.distributions.Bool.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fname</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pdf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">view</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">horizontal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#jpt.learning.distributions.Bool.plot" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generates a <code class="docutils literal notranslate"><span class="pre">horizontal</span></code> (if set) otherwise <cite>vertical</cite> bar plot representing the variable’s distribution.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>title</strong> (<em>str</em>) – the name of the variable this distribution represents</p></li>
+<li><p><strong>fname</strong> (<em>str</em>) – the name of the file to be stored</p></li>
+<li><p><strong>directory</strong> (<em>str</em>) – the directory to store the generated plot files</p></li>
+<li><p><strong>pdf</strong> (<em>bool</em>) – whether to store files as PDF. If false, a png is generated by default</p></li>
+<li><p><strong>view</strong> (<em>bool</em>) – whether to display generated plots, default False (only stores files)</p></li>
+<li><p><strong>horizontal</strong> (<em>bool</em>) – whether to plot the bars horizontally, default is False, i.e. vertical bars</p></li>
+<li><p><strong>max_values</strong> (<em>int</em>) – maximum number of values to plot</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+    </div>
+      
+  </div>
+</div>
+  
+<footer class="footer">
+  <div class="container">
+    <p class="pull-right">
+      <a href="#">Back to top</a>
+      
+    </p>
+    <p>
+        &copy; Copyright 2021, Mareike Picklum, Daniel Nyga.<br/>
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 5.0.2.<br/>
+    </p>
+  </div>
+</footer>
+
+  </body>
+</html>

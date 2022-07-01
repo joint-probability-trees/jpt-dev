@@ -738,6 +738,12 @@ class Numeric(Distribution):
         self._quantile.fit(data, rows=rows, col=col)
         return self
 
+    def create_dirac_impulse(self, value):
+        """Create a dirac impulse at the given value aus quantile distribution."""
+        self._quantile = QuantileDistribution()
+        self._quantile.fit(np.asarray([[value]]), rows=np.asarray([0]), col=0)
+        return self
+
     def _p(self, value):
         if isinstance(value, numbers.Number) and np.isinf(self.pdf.eval(value)):
             return 0

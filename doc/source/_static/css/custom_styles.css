@@ -1,0 +1,187 @@
+p {
+    line-height: 24px;
+    margin: 10px;
+    font-size: 16px;
+    margin-bottom: 24px;
+    text-align: justify;
+}
+
+body {
+  font-family: "NobileRegular","proxima-nova","Helvetica Neue",Arial,sans-serif;
+  font-weight: normal;
+  color: #404040;
+  min-height: 100%;
+  overflow-x: hidden;
+  background: #F6F8F9;
+}
+
+footer {
+/* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#f6f8f9+0,e5ebee+50,d7dee3+51,f5f7f9+100;White+Gloss */
+background: rgb(246,248,249); /* Old browsers */
+background: -moz-linear-gradient(-45deg, rgba(246,248,249,1) 0%, rgba(229,235,238,1) 50%, rgba(215,222,227,1) 51%, rgba(245,247,249,1) 100%); /* FF3.6-15 */
+background: -webkit-linear-gradient(-45deg, rgba(246,248,249,1) 0%,rgba(229,235,238,1) 50%,rgba(215,222,227,1) 51%,rgba(245,247,249,1) 100%); /* Chrome10-25,Safari5.1-6 */
+background: linear-gradient(135deg, rgba(246,248,249,1) 0%,rgba(229,235,238,1) 50%,rgba(215,222,227,1) 51%,rgba(245,247,249,1) 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#f6f8f9', endColorstr='#f5f7f9',GradientType=1 ); /* IE6-9 fallback on horizontal gradient */
+}
+
+.navbar-default {
+    background-color: #D7DEE3;
+    background-image: none;
+    /*background: rgb(0,0,0);*/
+    /*background-image: url('../img/dark-metal-texture_rot.png')*/
+}
+
+.navbar-default .navbar-text {
+    color: dimgrey;
+}
+
+.navbar-default .navbar-nav > li > a {
+    color: dimgrey;
+}
+
+.navbar-default .navbar-brand {
+    color: dimgrey;
+}
+
+.navbar-brand {
+    padding: 0px;
+}
+
+.navbar-default img {
+    background-color: transparent;
+}
+
+@font-face {
+    font-family: 'TitilliumRegular';
+    src: url('../fonts/TitilliumText22L003.otf') format("opentype");
+    font-weight: normal;
+    font-style: normal;
+
+}
+@font-face {
+    font-family: 'NobileRegular';
+    src: url('../fonts/nobile.ttf') format("truetype");
+    font-weight: normal;
+    font-style: normal;
+
+}
+@font-face {
+  font-family:"Inconsolata";font-style:normal;font-weight:400;src:local("Inconsolata"),url(../fonts/Inconsolata.ttf) format("truetype");
+}
+
+@font-face {
+  font-family:"Inconsolata";font-style:normal;font-weight:700;src:local("Inconsolata Bold"),local("Inconsolata-Bold"),url(../fonts/Inconsolata-Bold.ttf) format("truetype");
+}
+
+@font-face {
+  font-family:"Lato";font-style:normal;font-weight:400;src:local("Lato Regular"),local("Lato-Regular"),url(../fonts/Lato-Regular.ttf) format("truetype");
+}
+
+@font-face {
+  font-family:"Lato";font-style:normal;font-weight:700;src:local("Lato Bold"),local("Lato-Bold"),url(../fonts/Lato-Bold.ttf) format("truetype");
+}
+
+@font-face {
+  font-family:"Roboto Slab";font-style:normal;font-weight:400;src:local("Roboto Slab Regular"),local("RobotoSlab-Regular"),url(../fonts/RobotoSlab-Regular.ttf) format("truetype");
+}
+
+@font-face {
+  font-family:"Roboto Slab";font-style:normal;font-weight:700;src:local("Roboto Slab Bold"),local("RobotoSlab-Bold"),url(../fonts/RobotoSlab-Bold.ttf) format("truetype");
+}
+
+h1.teaser-headline {
+    font-size: 350%;
+    color: white;
+    text-shadow: 2px 2px 2px black;
+}
+
+div.teaser-background {
+/* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#f6f8f9+0,e5ebee+50,d7dee3+51,f5f7f9+100;White+Gloss */
+background: rgb(246,248,249); /* Old browsers */
+background: -moz-linear-gradient(-45deg, rgba(246,248,249,1) 0%, rgba(229,235,238,1) 50%, rgba(215,222,227,1) 51%, rgba(245,247,249,1) 100%); /* FF3.6-15 */
+background: -webkit-linear-gradient(-45deg, rgba(246,248,249,1) 0%,rgba(229,235,238,1) 50%,rgba(215,222,227,1) 51%,rgba(245,247,249,1) 100%); /* Chrome10-25,Safari5.1-6 */
+background: linear-gradient(135deg, rgba(246,248,249,1) 0%,rgba(229,235,238,1) 50%,rgba(215,222,227,1) 51%,rgba(245,247,249,1) 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#f6f8f9', endColorstr='#f5f7f9',GradientType=1 ); /* IE6-9 fallback on horizontal gradient */
+}
+
+div.teasercontent {
+    margin: 10px;
+    overflow:hidden;
+    width:100%;
+}
+
+div.titletext {
+    margin: 10px;
+    float:left;
+    width:45%
+}
+
+div.pcviz {
+    overflow:hidden;
+    width: auto;
+    background-size: auto 100%;
+    background-repeat: no-repeat;
+    background-position: center;
+    margin:20px auto;
+    background-image: url(img/pc.png);
+}
+
+.btn {
+  margin: 10px;
+}
+
+.btn-info {
+  background-color: #2980B9 !important;
+}
+
+.btn-info:hover {
+  background-color: #2e8ece !important;
+}
+
+.btn-neutral {
+
+  background-color: #D7DEE3 !important;
+  color: dimgrey !important;
+}
+
+.btn-neutral:hover {
+  background-color: #e5ebeb !important;
+  color: dimgrey;
+}
+
+.btn-neutral:visited {
+  color: dimgrey !important;
+}
+
+@media screen and (max-width: 768px) {
+  div.pcviz {
+    width: 0;
+    height: 0;
+  }
+}
+
+.blinking-cursor {
+  font-weight: 100;
+  font-size: 30px;
+  color: #2E3D48;
+  -webkit-animation: 1s blink step-end infinite;
+  -moz-animation: 1s blink step-end infinite;
+  -ms-animation: 1s blink step-end infinite;
+  -o-animation: 1s blink step-end infinite;
+  animation: 1s blink step-end infinite;
+}
+
+blockquote {
+  border-left-color: #D7DEE3;
+}
+
+.alert-info {
+  color: #4E4E4E;
+  border-color: #D7DEE3;
+/* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#d7dee3+0,f5f7f9+100 */
+background: rgb(215,222,227); /* Old browsers */
+background: -moz-linear-gradient(-45deg, rgba(215,222,227,1) 0%, rgba(245,247,249,1) 100%); /* FF3.6-15 */
+background: -webkit-linear-gradient(-45deg, rgba(215,222,227,1) 0%,rgba(245,247,249,1) 100%); /* Chrome10-25,Safari5.1-6 */
+background: linear-gradient(135deg, rgba(215,222,227,1) 0%,rgba(245,247,249,1) 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#d7dee3', endColorstr='#f5f7f9',GradientType=1 ); /* IE6-9 fallback on horizontal gradient */
+}

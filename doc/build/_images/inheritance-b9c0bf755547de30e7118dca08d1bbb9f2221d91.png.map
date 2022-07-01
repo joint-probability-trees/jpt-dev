@@ -1,0 +1,5 @@
+<map id="inheritancec5a8c55062" name="inheritancec5a8c55062">
+<area shape="rect" id="node1" href="#jpt.learning.distributions.Distribution" target="_top" title="Abstract supertype of all domains and distributions" alt="" coords="5,5,104,31"/>
+<area shape="rect" id="node2" href="#jpt.learning.distributions.Numeric" target="_top" title="Wrapper class for numeric domains and distributions." alt="" coords="152,5,229,31"/>
+<area shape="rect" id="node3" href="#jpt.learning.distributions.ScaledNumeric" target="_top" title="Scaled numeric distribution represented by mean and variance." alt="" coords="277,5,397,31"/>
+</map>

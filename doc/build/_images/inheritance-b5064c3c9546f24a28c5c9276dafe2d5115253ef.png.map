@@ -1,0 +1,4 @@
+<map id="inheritanceac805a2bca" name="inheritanceac805a2bca">
+<area shape="rect" id="node1" href="#jpt.variables.SymbolicVariable" target="_top" title="Represents a symbolic variable." alt="" coords="128,5,263,31"/>
+<area shape="rect" id="node2" href="#jpt.variables.Variable" target="_top" title="Abstract class for a variable name along with its distribution class type." alt="" coords="5,5,80,31"/>
+</map>

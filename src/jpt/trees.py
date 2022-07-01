@@ -1458,6 +1458,9 @@ class JPT:
             tree.fit(data, data if targets is None else targets)
         return tree
 
+    def copy(self):
+        return JPT.from_json(self.to_json())
+
     def conditional_jpt(self, evidence: VariableMap, keep_evidence: bool = False):
         '''
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
@@ -1533,10 +1536,9 @@ class JPT:
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
             leaf.prior /= probability_mass
-            for variable in evidence.keys():
-                # TODO: replace with durac impulse if wanted
+            for variable, value in evidence.items():
                 if keep_evidence:
-                    pass
+                    leaf.distributions[variable] = leaf.distributions[variable].create_dirac_impulse(value)
                 else:
                     del leaf.distributions[variable]
 
@@ -1552,6 +1554,31 @@ class JPT:
                                           if variable not in evidence.keys()]
 
         return conditional_jpt
+
+    def conditional_jpt_keep_leaves(self, evidence: VariableMap):
+        conditional_jpt: JPT = self.copy()
+
+        if len(evidence) == 0:
+            return conditional_jpt
+
+        # remove mass from inconsistent leaves
+        for leaf in conditional_jpt.leaves.values():
+            leaf: Leaf
+            for variable, value in evidence.items():
+                if variable.numeric:
+                    leaf.distributions[variable] = leaf.distributions[variable].create_dirac_impulse(value)
+            if not leaf.consistent_with(evidence):
+                leaf.prior = 0.
+
+        # calculate remaining probability mass
+        probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
+
+        # redistribute probability mass
+        for leaf in conditional_jpt.leaves.values():
+            leaf.prior /= probability_mass
+
+        return conditional_jpt
+
 
     def save(self, file) -> None:
         '''

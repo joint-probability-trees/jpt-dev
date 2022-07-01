@@ -54,3 +54,11 @@ class JPTTest(TestCase):
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
         probs = jpt.likelihood(self.data.reshape(-1, 1))
+
+    def test_conditional_jpt(self):
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+        jpt = JPT(variables=[x, y],
+                  min_samples_leaf=.05,)
+        jpt.learn(self.data.reshape(-1, 2))
+        ct = jpt.conditional_jpt(VariableMap(zip([x], [0.5])), keep_evidence=True)

@@ -1,0 +1,4 @@
+<map id="inheritance68af4c61ef" name="inheritance68af4c61ef">
+<area shape="rect" id="node1" href="#jpt.variables.NumericVariable" target="_top" title="Represents a continuous variable." alt="" coords="128,5,259,31"/>
+<area shape="rect" id="node2" href="#jpt.variables.Variable" target="_top" title="Abstract class for a variable name along with its distribution class type." alt="" coords="5,5,80,31"/>
+</map>
