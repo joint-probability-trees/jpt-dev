@@ -1,6 +1,7 @@
 import unittest
 import numpy as np
 import jpt.variables
+import variables
 from jpt.sequential_jpt import SequentialJPT
 from jpt.learning.distributions import SymbolicType
 
@@ -47,7 +48,7 @@ class SequenceTest(unittest.TestCase):
         q_0 = {self.variables[0]: [0.95, 1.05]}
         q_1 = {self.variables[0]: [-1.05, -0.95]}
 
-        p = tree.infer(queries=[q_0,q_1,q_0, q_1], evidences=[dict(), dict(), dict(),dict()])
+        p = tree.infer(queries=[q_0, q_1, q_0, q_1], evidences=[dict(), dict(), dict(),dict()])
 
         #for leaf_combo, distributions in tree.shared_dimensions_integral.items():
          #   for variable, distribution in distributions.items():
@@ -56,6 +57,15 @@ class SequenceTest(unittest.TestCase):
             #    plt.show()
 
         self.assertAlmostEqual(p, 0.5, places=2)
+
+    def test_apriori_expectation(self):
+        tree = SequentialJPT(self.variables, min_samples_leaf=1500)
+        tree.learn([self.data])
+        result = tree.expectation([[self.variables[0]], [self.variables[0]], [self.variables[0]]],
+                         [jpt.variables.VariableMap(), jpt.variables.VariableMap(), jpt.variables.VariableMap()])
+        self.assertAlmostEqual(list(result[0].values())[0],0, delta=pow(10,-2))
+        self.assertAlmostEqual(list(result[1].values())[0], 0, delta=pow(10, -2))
+        self.assertAlmostEqual(list(result[2].values())[0], 0, delta=pow(10, -2))
 
 
 class DiscreteSequenceTest(unittest.TestCase):

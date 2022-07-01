@@ -1,0 +1,6 @@
+sphinx
+sphinxcontrib-bibtex<2.0.0
+sphinx_bootstrap_theme
+sphinx-paramlinks
+sphinx-numfig
+sphinx-autoapi
