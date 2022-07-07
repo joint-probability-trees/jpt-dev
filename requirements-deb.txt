@@ -1,0 +1,5 @@
+glibc-source
+libatlas-base-dev
+gfortran
+libxslt1-dev
+libxml2-dev
