@@ -384,3 +384,5 @@ epub_copyright = u'2021, Mareike Picklum, Daniel Nyga'
 # Allow duplicate toc entries.
 #epub_tocdup = True
 intersphinx_mapping = {'http://docs.python.org/': None}
+
+bibtex_bibfiles = ['refs.bib']
