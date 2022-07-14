@@ -9,7 +9,6 @@ import jpt.learning.distributions
 
 import numpy as np
 import numpy.lib.stride_tricks
-
 import tqdm
 
 import variables
@@ -386,6 +385,35 @@ class SequentialJPT:
             if function.value > 0:
                 expectation += function.value/2 * (pow(interval.upper, 2) - pow(interval.lower,2))
         return expectation * leaf_0.prior * leaf_1.prior
+
+    def factor_sequence(self, evidence: List[jpt.variables.VariableMap]) -> List[jpt.trees.JPT]:
+        """ Calculate a list of JPTs that resemble the Markov Chain as a normalized product. """
+        result = [self.template_tree] * len(evidence)
+
+        for timestep in range(len(evidence)-1):
+
+            if len(evidence[timestep]) == 0:
+                continue
+
+            # update the trees that handle this variable directly
+            evidence_phi_0 = jpt.variables.VariableMap()
+            evidence_phi_1 = jpt.variables.VariableMap()
+
+            for variable, value in evidence[timestep].items():
+                evidence_phi_0[self.template_variables[variable][1]] = value
+                evidence_phi_1[self.template_variables[variable][0]] = value
+
+            result[timestep] = result[timestep].conditional_jpt_keep_leaves(evidence_phi_0)
+            result[timestep+1] = result[timestep+1].conditional_jpt_keep_leaves(evidence_phi_1)
+
+            # perform backward update
+
+
+        return result
+
+
+
+
 
 
 

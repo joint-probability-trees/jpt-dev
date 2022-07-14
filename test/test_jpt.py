@@ -6,6 +6,7 @@ from unittest import TestCase
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
 import numpy as np
+from jpt.base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
 
 class JPTTest(TestCase):
 
@@ -55,10 +56,31 @@ class JPTTest(TestCase):
         jpt.learn(self.data.reshape(-1, 1))
         probs = jpt.likelihood(self.data.reshape(-1, 1))
 
-    def test_conditional_jpt(self):
+    def test_conditional_jpt_hard_evidence(self):
         x = NumericVariable('X')
         y = NumericVariable('Y')
         jpt = JPT(variables=[x, y],
                   min_samples_leaf=.05,)
         jpt.learn(self.data.reshape(-1, 2))
         ct = jpt.conditional_jpt(VariableMap(zip([x], [0.5])), keep_evidence=True)
+
+    def test_conditional_jpt_soft_evidence(self):
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+        jpt = JPT(variables=[x, y],
+                  min_samples_leaf=.05, )
+        evidence = VariableMap()
+        evidence[y] = ContinuousSet(0.2, 0.5)
+        jpt.learn(self.data.reshape(-1, 2))
+
+        ct = jpt.conditional_jpt(evidence, keep_evidence=True)
+        ct.plot()
+
+    def test_marginal(self):
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+        jpt = JPT(variables=[x, y],
+                  min_samples_leaf=.05, )
+        jpt.learn(self.data.reshape(-1, 2))
+        marginal = jpt.marginal_tree([x])
+        print(marginal)

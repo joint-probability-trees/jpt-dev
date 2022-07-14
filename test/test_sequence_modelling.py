@@ -4,6 +4,7 @@ import jpt.variables
 import variables
 from jpt.sequential_jpt import SequentialJPT
 from jpt.learning.distributions import SymbolicType
+from jpt.base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
 
 class UniformSeries:
 
@@ -44,7 +45,7 @@ class SequenceTest(unittest.TestCase):
     def test_infer(self):
         tree = SequentialJPT(self.variables, min_samples_leaf=1500)
         tree.learn([self.data])
-        tree.plot(plotvars=tree.variables, directory="/tmp/mcjpt")
+        #tree.plot(plotvars=tree.variables, directory="/tmp/mcjpt")
         q_0 = {self.variables[0]: [0.95, 1.05]}
         q_1 = {self.variables[0]: [-1.05, -0.95]}
 
@@ -57,6 +58,24 @@ class SequenceTest(unittest.TestCase):
             #    plt.show()
 
         self.assertAlmostEqual(p, 0.5, places=2)
+
+    def test_conditional_infer(self):
+        tree = SequentialJPT(self.variables, min_samples_leaf=1500)
+        tree.learn([self.data])
+        #tree.plot(plotvars=tree.variables, directory="/tmp/mcjpt")
+        q_0 = {self.variables[0]: ContinuousSet(0.95, 1.05)}
+        q_1 = {self.variables[0]: ContinuousSet(-1.05, -0.95)}
+
+        p = tree.infer(queries=[q_0, q_1, q_0, q_1], evidences=[q_0, dict(), dict(),dict()])
+
+        #for leaf_combo, distributions in tree.shared_dimensions_integral.items():
+         #   for variable, distribution in distributions.items():
+          #      print(leaf_combo, distribution.cdf.intervals, distribution.cdf.functions)
+           #     distribution.plot(title=str(leaf_combo))
+            #    plt.show()
+
+        self.assertAlmostEqual(p, 0.5, places=2)
+
 
     def test_apriori_expectation(self):
         tree = SequentialJPT(self.variables, min_samples_leaf=1500)
@@ -88,9 +107,9 @@ class DiscreteSequenceTest(unittest.TestCase):
         tree = SequentialJPT(self.variables, min_samples_leaf=1500)
         tree.learn([self.data])
         q_0 = {self.variables[0]: 1}
-        q_1 = {self.variables[0]: -1}
+        q_1 = {self.variables[0]: {-1, 1}}
 
-        p = tree.infer(queries=[q_1, q_0, q_1, q_0], evidences=[dict(), dict(), dict()])
+        p = tree.infer(queries=[q_1, q_0, q_1], evidences=[q_1, dict(), dict()])
         self.assertAlmostEqual(p, 0.5)
 
 if __name__ == '__main__':

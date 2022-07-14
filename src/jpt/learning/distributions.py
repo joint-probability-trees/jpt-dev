@@ -738,6 +738,25 @@ class Numeric(Distribution):
         self._quantile.fit(data, rows=rows, col=col)
         return self
 
+    def apply_restriction(self, restriction: ContinuousSet or float or int):
+        if not isinstance(restriction, ContinuousSet):
+            return self.create_dirac_impulse(restriction)
+
+        remaining_intervals = []
+        remaining_functions = []
+
+        for interval, function in zip(self._quantile.cdf.intervals, self._quantile.cdf.functions):
+            intersection = interval.intersection(restriction)
+            if not intersection.isempty():
+                remaining_intervals.append(intersection)
+                lower_value = self._quantile.cdf.eval(intersection.lower)
+                upper_value = self._quantile.cdf.eval(intersection.upper)
+                m = (upper_value - lower_value) / (intersection.upper - intersection.lower)
+                b = lower_value - m*intersection.lower
+                remaining_functions.append(LinearFunction(m, b))
+
+        exit()
+
     def create_dirac_impulse(self, value):
         """Create a dirac impulse at the given value aus quantile distribution."""
         self._quantile = QuantileDistribution()
@@ -1137,6 +1156,23 @@ class Multinomial(Distribution):
         col = ifnone(col, 0)
         for row in ifnone(rows, range(len(data))):
             self._params[int(data[row, col])] += 1 / n_samples
+        return self
+
+    def apply_restriction(self, restriction: set or int or str):
+        if not isinstance(restriction, ContinuousSet):
+            return self.create_dirac_impulse(restriction)
+
+        for idx, value in enumerate(self.values):
+            if value not in restriction:
+                self._params[idx] = 0
+
+        self._params = self._params / sum(self._params)
+        return self
+
+
+    def create_dirac_impulse(self, value):
+        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
+        self._params[self.values[value]] = 1
         return self
 
     def update(self, dist, weight):

@@ -16,6 +16,7 @@ from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 from itertools import zip_longest
 from typing import Dict, List, Tuple, Any, Union
+from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,7 @@ from dnutils.stats import stopwatch
 
 from sklearn.tree import DecisionTreeRegressor
 
+import jpt.variables
 from .base.utils import Unsatisfiability
 
 from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
@@ -113,18 +115,50 @@ class Node:
         Check if the node is consistend with the variable assignments in evidence.
         
         :param evidence: A VariableMap that maps to singular values (numeric or symbolic)
+            or ranges (continuous set, set)
         :type evidence: VariableMap
         '''
+
+        # for every variable and its assignment
         for variable, value in evidence.items():
             variable: Variable
+
+            # if the variable is in the path of this node
             if variable in self.path.keys():
+
+                # get the restriction of the path
                 restriction = self.path[variable]
+
+                # if it is a numeric
                 if variable.numeric:
-                    if not restriction.lower < value <= restriction.upper:
-                        return False
+
+                    # and a range is given
+                    if isinstance(value, ContinuousSet):
+                        if value.intersection(restriction).isempty():
+                            return False
+
+                    # if it is a singular value
+                    else:
+                        # check if the path allows this value
+                        if not restriction.lower < value <= restriction.upper:
+                            return False
+
+                # if the variable is symbolic
                 elif variable.symbolic:
-                    if value not in restriction:
-                        return False
+
+                    # if it is a set of possible values
+                    if isinstance(restriction, set):
+
+                        # check if the sets intersect
+                        if len(restriction & value) == 0:
+                            return False
+
+                    # if it is a singular observation
+                    else:
+
+                        # check if the path allows this value
+                        if value not in restriction:
+                            return False
         return True
 
     def format_path(self):
@@ -1461,7 +1495,7 @@ class JPT:
     def copy(self):
         return JPT.from_json(self.to_json())
 
-    def conditional_jpt(self, evidence: VariableMap, keep_evidence: bool = False):
+    def conditional_jpt(self, evidence: VariableMap, keep_evidence: bool = True):
         '''
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
         The new JPT contains all variables that are not in the evidence and is a 
@@ -1538,7 +1572,7 @@ class JPT:
             leaf.prior /= probability_mass
             for variable, value in evidence.items():
                 if keep_evidence:
-                    leaf.distributions[variable] = leaf.distributions[variable].create_dirac_impulse(value)
+                    leaf.distributions[variable] = leaf.distributions[variable].apply_restriction(value)
                 else:
                     del leaf.distributions[variable]
 
@@ -1565,8 +1599,8 @@ class JPT:
         for leaf in conditional_jpt.leaves.values():
             leaf: Leaf
             for variable, value in evidence.items():
-                if variable.numeric:
-                    leaf.distributions[variable] = leaf.distributions[variable].create_dirac_impulse(value)
+                print(value)
+                leaf.distributions[variable] = leaf.distributions[variable].create_dirac_impulse(value)
             if not leaf.consistent_with(evidence):
                 leaf.prior = 0.
 
@@ -1578,7 +1612,6 @@ class JPT:
             leaf.prior /= probability_mass
 
         return conditional_jpt
-
 
     def save(self, file) -> None:
         '''
@@ -1603,3 +1636,37 @@ class JPT:
         else:
             t = json.load(file)
         return JPT.from_json(t)
+
+    def marginal_tree(self, variables: List[jpt.variables.Variable]) -> List[Leaf]:
+        """ Construct a JPT that represents the marginal distribution over the given variables.
+
+        :param variables: The variables in the marginal distribution
+        :type variables: List of jpt.variables.Variable
+
+        returns a list of new leaves
+        """
+        marginal_jpt = self.copy()
+        eliminated_variables = [v for v in self.variables if v not in variables]
+
+        # cleanup the leaf distributions
+        for idx, leaf in marginal_jpt.leaves.items():
+            for variable in eliminated_variables:
+                del leaf.distributions[variable]
+
+        # remove unused nodes from the tree
+        unvisited_nodes: queue.Queue[DecisionNode] = queue.Queue()
+        unvisited_nodes.put(self.root)
+        while not unvisited_nodes.empty():
+            current_node = unvisited_nodes.get_nowait()
+
+            if current_node.variable in eliminated_variables:
+                #TODO remove the mode and connect the children to the parent
+                pass
+
+            # continue exploration for non leaf nodes
+            for child in current_node.children:
+                if not isinstance(child, Leaf):
+                    unvisited_nodes.put_nowait(child)
+
+        #TODO restructure tree such that every node partitions the space
+
