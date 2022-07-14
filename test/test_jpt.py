@@ -7,6 +7,7 @@ from dnutils import out
 
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
+from jpt.base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
 
 
 class JPTTest(TestCase):
@@ -66,3 +67,28 @@ class JPTTest(TestCase):
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
         probs = jpt.likelihood(self.data.reshape(-1, 1))
+
+    def test_conditional_jpt_hard_evidence(self):
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+        jpt = JPT(variables=[x, y],
+                  min_samples_leaf=.05,)
+        jpt.learn(self.data.reshape(-1, 2))
+        evidence = VariableMap()
+        evidence[x] = 0.5
+        ct = jpt.conditional_jpt(evidence, keep_evidence=True)
+        self.assertEqual(len(ct.leaves), 2)
+
+    def test_conditional_jpt_soft_evidence(self):
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+        jpt = JPT(variables=[x, y],
+                  min_samples_leaf=.05, )
+        evidence = VariableMap()
+        evidence[y] = ContinuousSet(0.2, 0.5)
+        jpt.learn(self.data.reshape(-1, 2))
+
+        ct = jpt.conditional_jpt(evidence, keep_evidence=True)
+        r = jpt.expectation([x], evidence)
+        r_ = ct.expectation([x], VariableMap())
+        self.assertAlmostEqual(r[x].result, r_[x].result, delta=0.01)

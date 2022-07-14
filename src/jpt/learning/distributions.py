@@ -35,7 +35,7 @@ except ModuleNotFoundError:
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet
-    from ..base.quantiles import QuantileDistribution, LinearFunction
+    from ..base.quantiles import QuantileDistribution, LinearFunction, ConstantFunction
 
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
@@ -750,6 +750,41 @@ class Numeric(Distribution):
         self._quantile.fit(data, rows=rows, col=col)
         return self
 
+    def apply_restriction(self, restriction: ContinuousSet or float or int, normalize=True):
+        """Apply a restriction to this distribution. The restricted distrubtion will only assign mass
+        to the given range and will preserve the relativity of the pdf.
+
+        :param restriction: The range to limit this distribution
+        :type restriction: float or int or ContinuousSet
+        """
+        if not isinstance(restriction, ContinuousSet):
+            return self.create_dirac_impulse(restriction)
+        return self.crop(restriction)
+
+        """
+        remaining_intervals = []
+        remaining_functions = []
+
+        for interval, function in zip(self._quantile.pdf.intervals, self._quantile.pdf.functions):
+            intersection = interval.intersection(restriction)
+
+            if intersection == interval:
+                remaining_intervals.append(interval)
+                remaining_functions.append(function)
+            elif not intersection.isempty():
+                remaining_intervals.append(intersection)
+                remaining_functions.append(function)
+            else:
+                remaining_intervals.append(interval)
+                remaining_functions.append(ConstantFunction(0))
+        """
+
+    def create_dirac_impulse(self, value):
+        """Create a dirac impulse at the given value aus quantile distribution."""
+        self._quantile = QuantileDistribution()
+        self._quantile.fit(np.asarray([[value]]), rows=np.asarray([0]), col=0)
+        return self
+
     def _p(self, value):
         if isinstance(value, numbers.Number) and np.isinf(self.pdf.eval(value)):
             return 0
@@ -1061,6 +1096,23 @@ class Multinomial(Distribution):
 
     def copy(self):
         return type(self)(params=self._params)
+
+    def apply_restriction(self, restriction: set or int or str, normalize=True):
+        if not isinstance(restriction, ContinuousSet):
+            return self.create_dirac_impulse(restriction)
+
+        for idx, value in enumerate(self.values):
+            if value not in restriction:
+                self._params[idx] = 0
+
+        if normalize:
+            self._params = self._params / sum(self._params)
+        return self
+
+    def create_dirac_impulse(self, value):
+        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
+        self._params[self.values[value]] = 1
+        return self
 
     def p(self, labels):
         if not iterable(labels):
