@@ -1,12 +1,14 @@
+import gc
 import json
 import pickle
-from pprint import pprint
 from unittest import TestCase
+
+from dnutils import out
 
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
-import numpy as np
 from jpt.base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+
 
 class JPTTest(TestCase):
 
@@ -50,6 +52,16 @@ class JPTTest(TestCase):
         jpt_ = pickle.loads(pickle.dumps(jpt))
         self.assertEqual(jpt, jpt_)
 
+    def learn(self):
+        trees = []
+        for _ in range(1000):
+            out(_)
+            var = NumericVariable('X')
+            jpt = JPT([var], min_samples_leaf=.1)
+            jpt.learn(self.data.reshape(-1, 1))
+            trees.append(jpt)
+        return trees
+
     def test_likelihood(self):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
@@ -62,7 +74,10 @@ class JPTTest(TestCase):
         jpt = JPT(variables=[x, y],
                   min_samples_leaf=.05,)
         jpt.learn(self.data.reshape(-1, 2))
-        ct = jpt.conditional_jpt(VariableMap(zip([x], [0.5])), keep_evidence=True)
+        evidence = VariableMap()
+        evidence[x] = 0.5
+        ct = jpt.conditional_jpt(evidence, keep_evidence=True)
+        self.assertEqual(len(ct.leaves), 2)
 
     def test_conditional_jpt_soft_evidence(self):
         x = NumericVariable('X')
@@ -74,13 +89,6 @@ class JPTTest(TestCase):
         jpt.learn(self.data.reshape(-1, 2))
 
         ct = jpt.conditional_jpt(evidence, keep_evidence=True)
-        ct.plot()
-
-    def test_marginal(self):
-        x = NumericVariable('X')
-        y = NumericVariable('Y')
-        jpt = JPT(variables=[x, y],
-                  min_samples_leaf=.05, )
-        jpt.learn(self.data.reshape(-1, 2))
-        marginal = jpt.marginal_tree([x])
-        print(marginal)
+        r = jpt.expectation([x], evidence)
+        r_ = ct.expectation([x], VariableMap())
+        self.assertAlmostEqual(r[x].result, r_[x].result, delta=0.01)

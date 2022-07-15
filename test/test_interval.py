@@ -3,10 +3,11 @@ import numpy as np
 import unittest
 
 try:
-    from jpt.base.intervals import ContinuousSet, INC, EXC, EMPTY
+    from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
+finally:
     from jpt.base.intervals import ContinuousSet, INC, EXC, EMPTY
 
 

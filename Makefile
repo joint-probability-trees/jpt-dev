@@ -15,7 +15,7 @@ rmvirtualenv:
 
 virtualenv:
 	@(virtualenv ${ENV_NAME})
-	@(. ${ENV_NAME}/bin/activate && pip install -r requirements.txt)
+	@(. ${ENV_NAME}/bin/activate && pip install -r requirements.txt -r requirements-dev.txt)
 
 sdist: virtualenv versioncheck
 	@(echo "Build ${PKG_NAME} sdist package...")
@@ -37,7 +37,7 @@ release: clean sdist bdist wheel
 	@git add releases/${RELEASE_NAME}/
 	@git commit releases/${RELEASE_NAME}/ -m 'Added: release ${RELEASE_NAME}.'
 
-all: virtualenv versioncheck tests sdist bdist wheel
+all: clean virtualenv versioncheck tests sdist bdist wheel
 
 tests: virtualenv
 	@(echo "Running all tests...")

@@ -1,5 +1,6 @@
 from copy import deepcopy
 from typing import Dict, List
+import tqdm
 
 import jpt.variables
 import jpt.trees
@@ -9,9 +10,6 @@ import jpt.learning.distributions
 
 import numpy as np
 import numpy.lib.stride_tricks
-import tqdm
-
-import variables
 
 
 class SequentialJPT:
@@ -185,94 +183,6 @@ class SequentialJPT:
             result[idx] = np.prod(probs)
         return result / self.probability_mass_
 
-    def expectation(self, queries: List[List[jpt.variables.Variable]], evidences: List[jpt.variables.VariableMap]) -> \
-            List[jpt.variables.VariableMap]:
-        """Calculate the expected values of every variable in every timestep in 'queries' given the observations
-            made in 'evidences'.
-
-        :param queries: The variables of interest in every timestep
-        :type queries: List of lists
-        :param evidences: The evidences observed for variables at every timestep
-        :type evidences: List of jpt.variables.VariableMap
-        """
-        if len(queries) != len(evidences):
-            raise Exception("Queries and Evidences need to be sequences of same length.")
-
-        result = [jpt.variables.VariableMap()] * len(queries)
-
-        for timestep in range(self.timesteps-1, len(queries)-(self.timesteps-1)):
-            queried_variables = queries[timestep]
-
-            # construct timestep evidences
-            evidence_phi_0 = jpt.trees.VariableMap()
-            evidence_phi_1 = jpt.trees.VariableMap()
-
-            for variable, value in evidences[timestep-1].items():
-                evidence_phi_0[self.template_variable_map[variable][0]] = value
-
-            for variable, value in evidences[timestep].items():
-                evidence_phi_0[self.template_variable_map[variable][1]] = value
-                evidence_phi_1[self.template_variable_map[variable][0]] = value
-
-            for variable, value in evidences[timestep+1].items():
-                evidence_phi_1[self.template_variable_map[variable][1]] = value
-
-            # construct conditional jpts
-            phi_0 = self.template_tree.conditional_jpt(evidence_phi_0)
-            phi_1 = self.template_tree.conditional_jpt(evidence_phi_1)
-
-            # initialize expectation for all queried variables
-            expectation = [0.] * len(queries[timestep])
-
-            # for every leaf combination
-            for leaf_n in phi_0.leaves.values():
-                for leaf_m in phi_1.leaves.values():
-                    # calculate expectation in leaf combination for every variable
-                    for idx, variable in enumerate(queries[timestep]):
-                        expectation[idx] += self.expectation_leaf_combination(leaf_n, leaf_m, variable)
-
-            # apply probability mass scaling
-            expectation = [pow(self.probability_mass_, -1) * e for e in expectation]
-
-            # save expectation vector to result
-            result[timestep] = jpt.variables.VariableMap(zip(queries[timestep], expectation))
-
-        # calculate expectation for the first timestep
-        # apply evidence of first and second timestep
-        evidence = jpt.variables.VariableMap()
-        for key, value in evidences[0].items():
-            evidence[self.template_variable_map[key][0]] = value
-        for key, value in evidences[1].items():
-            evidence[self.template_variable_map[key][1]] = value
-
-        # get grounded variables from template
-        variables = [self.template_variable_map[variable][0] for variable in queries[0]]
-
-        # calculate expectation
-        expectation = self.template_tree.conditional_jpt(evidence).expectation(variables, jpt.trees.VariableMap())
-
-        # transform expectation to variable map
-        result[0] = jpt.trees.VariableMap(zip(expectation.keys(), [e.result for e in expectation.values()]))
-
-        # calculate expectation for the last timestep
-        # apply evidence of first and second timestep
-        evidence = jpt.variables.VariableMap()
-        for key, value in evidences[-2].items():
-            evidence[self.template_variable_map[key][0]] = value
-        for key, value in evidences[-1].items():
-            evidence[self.template_variable_map[key][1]] = value
-
-        # get grounded variables from template
-        variables = [self.template_variable_map[variable][-1] for variable in queries[-1]]
-
-        # calculate expectation
-        expectation = self.template_tree.conditional_jpt(evidence).expectation(variables, jpt.trees.VariableMap())
-
-        # transform expectation to variable map
-        result[-1] = jpt.trees.VariableMap(zip(expectation.keys(), [e.result for e in expectation.values()]))
-
-        return result
-
     def infer(self, queries: List[jpt.variables.VariableMap], evidences: List[jpt.variables.VariableMap]) -> float:
         '''
         Return the probability of a sequence taking values specified in queries given ranges specified in evidences
@@ -375,46 +285,6 @@ class SequentialJPT:
                         probability *= leaf_1.distributions[ground_variable]._p(query_1[ground_variable])
 
         return probability
-
-    def expectation_leaf_combination(self, leaf_0: jpt.trees.Leaf, leaf_1: jpt.trees.Leaf,
-                                     template_variable: jpt.trees.Variable) -> float:
-
-        shared_integral = self.shared_dimensions_integral[(leaf_0.idx, leaf_1.idx)][template_variable]
-        expectation = 0.
-        for interval, function in zip(shared_integral.pdf.intervals, shared_integral.pdf.functions):
-            if function.value > 0:
-                expectation += function.value/2 * (pow(interval.upper, 2) - pow(interval.lower,2))
-        return expectation * leaf_0.prior * leaf_1.prior
-
-    def factor_sequence(self, evidence: List[jpt.variables.VariableMap]) -> List[jpt.trees.JPT]:
-        """ Calculate a list of JPTs that resemble the Markov Chain as a normalized product. """
-        result = [self.template_tree] * len(evidence)
-
-        for timestep in range(len(evidence)-1):
-
-            if len(evidence[timestep]) == 0:
-                continue
-
-            # update the trees that handle this variable directly
-            evidence_phi_0 = jpt.variables.VariableMap()
-            evidence_phi_1 = jpt.variables.VariableMap()
-
-            for variable, value in evidence[timestep].items():
-                evidence_phi_0[self.template_variables[variable][1]] = value
-                evidence_phi_1[self.template_variables[variable][0]] = value
-
-            result[timestep] = result[timestep].conditional_jpt_keep_leaves(evidence_phi_0)
-            result[timestep+1] = result[timestep+1].conditional_jpt_keep_leaves(evidence_phi_1)
-
-            # perform backward update
-
-
-        return result
-
-
-
-
-
 
 
 def integrate_continuous_pdfs(pdf1: jpt.base.quantiles.PiecewiseFunction, pdf2: jpt.base.quantiles.PiecewiseFunction,
