@@ -178,7 +178,7 @@ class NumericVariable(Variable):
     @property
     def _max_std(self):
         if issubclass(self.domain, ScaledNumeric):
-            return self._max_std_lbl / math.sqrt(self.domain.values.datascaler.variance)
+            return self._max_std_lbl / math.sqrt(self.domain.values.datascaler.scale)
         else:
             return self._max_std_lbl
 

@@ -12,18 +12,17 @@ import numpy as np
 
 from jpt.base.utils import Unsatisfiability
 
+from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
+from jpt.trees import JPT
+from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
+
 try:
-    from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
-    from jpt.trees import JPT
-    from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
-    from jpt.base.intervals import ContinuousSet, INC, EXC
-    from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
+    from jpt.base.intervals import __module__
+    from jpt.base.quantiles import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
-    from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
-    from jpt.trees import JPT
-    from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
+finally:
     from jpt.base.intervals import ContinuousSet, INC, EXC
     from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
 

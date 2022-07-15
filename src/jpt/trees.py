@@ -16,7 +16,6 @@ from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 from itertools import zip_longest
 from typing import Dict, List, Tuple, Any, Union
-from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
@@ -25,11 +24,7 @@ from matplotlib import style, pyplot as plt
 
 import dnutils
 from dnutils import first, ifnone, mapstr, err, fst
-from dnutils.stats import stopwatch
 
-from sklearn.tree import DecisionTreeRegressor
-
-import jpt.variables
 from .base.utils import Unsatisfiability
 
 from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
@@ -59,9 +54,6 @@ style.use(plotstyle)
 import multiprocessing as mp
 
 _data = None
-_data_queue = mp.Queue()
-_node_queue = mp.Queue()
-_pool = None
 _lock = Lock()
 
 
@@ -111,13 +103,13 @@ class Node:
         return res
 
     def consistent_with(self, evidence: VariableMap) -> bool:
-        '''
-        Check if the node is consistend with the variable assignments in evidence.
-        
+        """
+        Check if the node is consistent with the variable assignments in evidence.
+
         :param evidence: A VariableMap that maps to singular values (numeric or symbolic)
             or ranges (continuous set, set)
         :type evidence: VariableMap
-        '''
+        """
 
         # for every variable and its assignment
         for variable, value in evidence.items():
@@ -134,6 +126,7 @@ class Node:
 
                     # and a range is given
                     if isinstance(value, ContinuousSet):
+                        # if the ranges don't intersect return false
                         if value.intersection(restriction).isempty():
                             return False
 
@@ -159,6 +152,7 @@ class Node:
                         # check if the path allows this value
                         if value not in restriction:
                             return False
+
         return True
 
     def format_path(self):
@@ -204,7 +198,7 @@ class DecisionNode(Node):
     def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
                 'parent': ifnone(self.parent, None, attrgetter('idx')),
-                'splits': [s.to_json() if isinstance(s, ContinuousSet) else s for s in self.splits],
+                'splits': [s.to_json() if isinstance(s, ContinuousSet) else list(s) for s in self.splits],
                 'variable': self.variable.name,
                 '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
                 'children': [node.idx for node in self.children],
@@ -214,7 +208,7 @@ class DecisionNode(Node):
     @staticmethod
     def from_json(jpt: 'JPT', data: Dict[str, Any]) -> 'DecisionNode':
         node = DecisionNode(idx=data['idx'], variable=jpt.varnames[data['variable']])
-        node.splits = [Interval.from_json(s) if node.variable.numeric else s for s in data['splits']]
+        node.splits = [Interval.from_json(s) if node.variable.numeric else set(s) for s in data['splits']]
         node.children = [None] * len(node.splits)
         node.parent = ifnone(data['parent'], None, jpt.innernodes.get)
         node.samples = data['samples']
@@ -316,14 +310,15 @@ class Leaf(Node):
                 'prior': self.prior,
                 'samples': self.samples,
                 'parent': ifnone(self.parent, None, attrgetter('idx')),
-                'child_idx': self.parent.children.index(self)}
+                'child_idx': self.parent.children.index(self) if self.parent is not None else -1}
 
     @staticmethod
     def from_json(tree: 'JPT', data: Dict[str, Any]) -> 'Leaf':
         leaf = Leaf(idx=data['idx'], prior=data['prior'], parent=tree.innernodes.get(data['parent']))
         leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'], Distribution)
         leaf._path = []
-        leaf.parent.set_child(data['child_idx'], leaf)
+        if leaf.parent is not None:
+            leaf.parent.set_child(data['child_idx'], leaf)
         leaf.prior = data['prior']
         leaf.samples = data['samples']
         tree.leaves[leaf.idx] = leaf
@@ -337,8 +332,62 @@ class Leaf(Node):
                 self.distributions == o.distributions and
                 self.prior == o.prior)
 
+    def consistent_with(self, evidence: VariableMap) -> bool:
+        """
+        Check if the node is consistent with the variable assignments in evidence.
+
+        :param evidence: A VariableMap that maps to singular values (numeric or symbolic)
+            or ranges (continuous set, set)
+        :type evidence: VariableMap
+        """
+        return self.probability(evidence) > 0.
+
+    def probability(self, query: VariableMap) -> float:
+        """
+        Calculate the probability of a (partial) query. Exploits the independence assumption
+        :param query: A VariableMap that maps to singular values (numeric or symbolic)
+            or ranges (continuous set, set)
+        :type query: VariableMap
+        """
+        result = 1.
+
+        # for every variable and its assignment
+        for variable, value in query.items():
+            variable: Variable
+
+            # if it is a numeric
+            if variable.numeric:
+                # and a range is given
+                if isinstance(value, ContinuousSet):
+                    # multiply by probability which is possible due to independence
+                    result *= self.distributions[variable].cdf(value.upper) - \
+                            self.distributions[variable].cdf(value.lower)
+
+                # if it is a singular value
+                else:
+                    # TODO multiply by likelihood (and hope for non infinite values)
+                    likelihood = self.distributions[variable].pdf(value)
+                    if likelihood == float("inf"):
+                        result *= 1
+                    else:
+                        result *= likelihood
+                    # result *= self.distributions[variable].pdf(value)
+
+            # if the variable is symbolic
+            elif variable.symbolic:
+
+                # force the evidence to be a set
+                if not isinstance(value, set):
+                    value = set(value)
+
+                # return false if the evidence is impossible in this leaf
+                result *= self.distributions[variable].p(value)
+
+        return result
+
 
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 class Result:
 
@@ -1480,23 +1529,12 @@ class JPT:
         from scipy.stats import mvn
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], mu, sigma))
 
-    def sklearn_tree(self, data=None, targets=None) -> DecisionTreeRegressor:
-        if data is None:
-            data = self.data
-        assert data is not None, 'Gimme data!'
-
-        tree = DecisionTreeRegressor(min_samples_leaf=self.min_samples_leaf,
-                                     min_impurity_decrease=self.min_impurity_improvement,
-                                     random_state=0)
-        with stopwatch('/sklearn/decisiontree'):
-            tree.fit(data, data if targets is None else targets)
-        return tree
-
     def copy(self):
+        """Return a new copy of this jpt where all references are the original tree are cut."""
         return JPT.from_json(self.to_json())
 
     def conditional_jpt(self, evidence: VariableMap, keep_evidence: bool = True):
-        '''
+        """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
         The new JPT contains all variables that are not in the evidence and is a 
         full joint probability distribution over those variables.
@@ -1504,28 +1542,30 @@ class JPT:
         :param evidence: A variable Map mapping the observed variables to there observed,
             single values (not intervals)
         :type evidence: ``VariableMap``
-
         :param keep_evidence: Rather to keep the evidence variables in the new
             JPT or not. If kept, their PDFs are replaced with Durac impulses.
         :type keep_evidence: bool
-        '''
+        """
 
         # the new jpt that acts as conditional joint probability distribution
-        conditional_jpt: JPT = JPT.from_json(self.to_json())
+        conditional_jpt: JPT = self.copy()
 
         if len(evidence) == 0:
             return conditional_jpt
 
-        univisited_nodes = queue.Queue()
-        univisited_nodes.put_nowait(conditional_jpt.allnodes[self.root.idx])
+        unvisited_nodes = queue.Queue()
+        unvisited_nodes.put_nowait(conditional_jpt.allnodes[self.root.idx])
 
-        while not univisited_nodes.empty():
+        while not unvisited_nodes.empty():
 
             # get the next node to inspect
-            current_node: Node = univisited_nodes.get_nowait()
+            current_node: Node = unvisited_nodes.get_nowait()
 
             # if it is a leaf skip this iteration
             if isinstance(current_node, Leaf):
+                current_node: Leaf
+                probability = current_node.probability(evidence)
+                current_node.prior = probability
                 continue
 
             # syntax highlighting
@@ -1539,7 +1579,7 @@ class JPT:
 
                 # traverse consistent children
                 if child.consistent_with(evidence):
-                    univisited_nodes.put_nowait(child)
+                    unvisited_nodes.put_nowait(child)
 
                 # mark invalid children for removal
                 else:
@@ -1557,7 +1597,7 @@ class JPT:
                     # if it is a leaf remove it from the leaves
                     if isinstance(self.allnodes[jdx], Leaf):
                         del conditional_jpt.leaves[jdx]
-                    # if it is an innernode remove it from the innernodes
+                    # if it is an inner node remove it from the inner nodes
                     else:
                         del conditional_jpt.innernodes[jdx]
 
@@ -1571,6 +1611,7 @@ class JPT:
         for leaf in conditional_jpt.leaves.values():
             leaf.prior /= probability_mass
             for variable, value in evidence.items():
+                # adjust leaf distributions
                 if keep_evidence:
                     leaf.distributions[variable] = leaf.distributions[variable].apply_restriction(value)
                 else:
@@ -1586,30 +1627,6 @@ class JPT:
         if not keep_evidence:
             conditional_jpt._variables = [variable for variable in conditional_jpt.variables
                                           if variable not in evidence.keys()]
-
-        return conditional_jpt
-
-    def conditional_jpt_keep_leaves(self, evidence: VariableMap):
-        conditional_jpt: JPT = self.copy()
-
-        if len(evidence) == 0:
-            return conditional_jpt
-
-        # remove mass from inconsistent leaves
-        for leaf in conditional_jpt.leaves.values():
-            leaf: Leaf
-            for variable, value in evidence.items():
-                print(value)
-                leaf.distributions[variable] = leaf.distributions[variable].create_dirac_impulse(value)
-            if not leaf.consistent_with(evidence):
-                leaf.prior = 0.
-
-        # calculate remaining probability mass
-        probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
-
-        # redistribute probability mass
-        for leaf in conditional_jpt.leaves.values():
-            leaf.prior /= probability_mass
 
         return conditional_jpt
 
@@ -1636,37 +1653,3 @@ class JPT:
         else:
             t = json.load(file)
         return JPT.from_json(t)
-
-    def marginal_tree(self, variables: List[jpt.variables.Variable]) -> List[Leaf]:
-        """ Construct a JPT that represents the marginal distribution over the given variables.
-
-        :param variables: The variables in the marginal distribution
-        :type variables: List of jpt.variables.Variable
-
-        returns a list of new leaves
-        """
-        marginal_jpt = self.copy()
-        eliminated_variables = [v for v in self.variables if v not in variables]
-
-        # cleanup the leaf distributions
-        for idx, leaf in marginal_jpt.leaves.items():
-            for variable in eliminated_variables:
-                del leaf.distributions[variable]
-
-        # remove unused nodes from the tree
-        unvisited_nodes: queue.Queue[DecisionNode] = queue.Queue()
-        unvisited_nodes.put(self.root)
-        while not unvisited_nodes.empty():
-            current_node = unvisited_nodes.get_nowait()
-
-            if current_node.variable in eliminated_variables:
-                #TODO remove the mode and connect the children to the parent
-                pass
-
-            # continue exploration for non leaf nodes
-            for child in current_node.children:
-                if not isinstance(child, Leaf):
-                    unvisited_nodes.put_nowait(child)
-
-        #TODO restructure tree such that every node partitions the space
-

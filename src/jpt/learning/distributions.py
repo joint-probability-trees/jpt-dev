@@ -2,8 +2,7 @@
 '''
 from collections import OrderedDict, deque
 from itertools import tee
-
-from sklearn.preprocessing import StandardScaler
+from typing import Any, Dict
 
 from jpt.base.utils import classproperty, save_plot, Unsatisfiability, normalized
 
@@ -29,13 +28,14 @@ from jpt.base.constants import sepcomma
 from jpt.base.sampling import wsample, wchoice
 
 try:
-    from ..base.intervals import R, ContinuousSet
-    from ..base.quantiles import QuantileDistribution, LinearFunction
-except ImportError:
+    from ..base.intervals import __module__
+    from ..base.quantiles import __module__
+except ModuleNotFoundError:
     import pyximport
     pyximport.install()
-    from ..base.intervals import R
-    from ..base.quantiles import QuantileDistribution, LinearFunction
+finally:
+    from ..base.intervals import R, ContinuousSet
+    from ..base.quantiles import QuantileDistribution, LinearFunction, ConstantFunction
 
 
 logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
@@ -556,44 +556,56 @@ class Distribution:
         return clazz
 
 
-class DataScaler(StandardScaler):
+class DataScaler:
     '''
     A numeric data transformation that represents data points in form of a translation
     by their mean and a scaling by their variance. After the transformation, the transformed
     input data have zero mean and unit variance.
     '''
 
-    def __init__(self, data):
-        super().__init__()
+    def __init__(self, data=None):
+        self.mean = None
+        self.scale = None
         if data is not None:
             self.fit(data.reshape(-1, 1))
 
-    @property
-    def mean(self):
-        return self.mean_[0]
+    def fit(self, data):
+        self.mean = np.mean(data)
+        self.scale = np.std(data)
 
-    @property
-    def variance(self):
-        return self.scale_[0]
+    def inverse_transform(self, x, make_copy=True):
+        if type(x) is np.ndarray:
+            target = np.array(x) if make_copy else x
+            target *= self.scale
+            target += self.mean
+            return target
+        return x * self.scale + self.mean
 
-    def __getitem__(self, item):
-        if item in (np.NINF, np.PINF):
-            return item
-        return self.inverse_transform(np.array([item]))[0, 0]
+    def transform(self, x, make_copy=True):
+        if type(x) is np.ndarray:
+            target = np.array(x) if make_copy else x
+            target -= self.mean
+            target /= self.scale
+            return target
+        return (x - self.mean) / self.scale
+
+    def __getitem__(self, x):
+        if x in (np.NINF, np.PINF):
+            return x
+        return self.inverse_transform(x)
 
     def to_json(self):
-        return {'mean_': list(self.mean_),
-                'scale_': list(self.scale_)}
+        return {'mean_': [self.mean],
+                'scale_': [self.scale]}
 
     def __eq__(self, other):
-        return self.mean == other.mean and self.variance == other.variance
+        return self.mean == other.mean and self.scale == other.scale
 
     @staticmethod
-    def from_json(data):
-        scaler = DataScaler(None)
-        scaler.mean_ = np.array(data['mean_'])
-        scaler.scale_ = np.array(data['scale_'])
-        scaler.n_features_in_ = 1
+    def from_json(data: Dict[str, Any]):
+        scaler = DataScaler()
+        scaler.mean = data['mean_'][0]
+        scaler.scale = data['scale_'][0]
         return scaler
 
 
@@ -623,7 +635,7 @@ class DataScalerProxy:
         self.datascaler = datascaler
         self.inverse = inverse
         self.mean = self.datascaler.mean
-        self.variance = self.datascaler.variance
+        self.scale = self.datascaler.scale
 
     def __hash__(self):
         return hash((self.inverse, self.mean, self.variance))
@@ -646,10 +658,10 @@ class DataScalerProxy:
             return 0
         return (self.datascaler.transform
                 if not self.inverse
-                else self.datascaler.inverse_transform)(np.array(item).reshape(1, -1))[0, 0]
+                else self.datascaler.inverse_transform)(item)
 
     def transform(self, x):
-        return self.datascaler.transform(x.reshape(-1, 1)).ravel()
+        return self.datascaler.transform(x)
 
     @staticmethod
     def keys():
@@ -660,7 +672,7 @@ class DataScalerProxy:
         return R
 
     def __repr__(self):
-        return '<DataScalerProxy, mean=%f, var=%s>' % (self.datascaler.mean, self.datascaler.variance)
+        return '<DataScalerProxy, mean=%f, var=%s>' % (self.datascaler.mean, self.datascaler.scale)
 
 
 class Numeric(Distribution):
@@ -738,24 +750,34 @@ class Numeric(Distribution):
         self._quantile.fit(data, rows=rows, col=col)
         return self
 
-    def apply_restriction(self, restriction: ContinuousSet or float or int):
+    def apply_restriction(self, restriction: ContinuousSet or float or int, normalize=True):
+        """Apply a restriction to this distribution. The restricted distrubtion will only assign mass
+        to the given range and will preserve the relativity of the pdf.
+
+        :param restriction: The range to limit this distribution
+        :type restriction: float or int or ContinuousSet
+        """
         if not isinstance(restriction, ContinuousSet):
             return self.create_dirac_impulse(restriction)
+        return self.crop(restriction)
 
+        """
         remaining_intervals = []
         remaining_functions = []
 
-        for interval, function in zip(self._quantile.cdf.intervals, self._quantile.cdf.functions):
+        for interval, function in zip(self._quantile.pdf.intervals, self._quantile.pdf.functions):
             intersection = interval.intersection(restriction)
-            if not intersection.isempty():
-                remaining_intervals.append(intersection)
-                lower_value = self._quantile.cdf.eval(intersection.lower)
-                upper_value = self._quantile.cdf.eval(intersection.upper)
-                m = (upper_value - lower_value) / (intersection.upper - intersection.lower)
-                b = lower_value - m*intersection.lower
-                remaining_functions.append(LinearFunction(m, b))
 
-        exit()
+            if intersection == interval:
+                remaining_intervals.append(interval)
+                remaining_functions.append(function)
+            elif not intersection.isempty():
+                remaining_intervals.append(intersection)
+                remaining_functions.append(function)
+            else:
+                remaining_intervals.append(interval)
+                remaining_functions.append(ConstantFunction(0))
+        """
 
     def create_dirac_impulse(self, value):
         """Create a dirac impulse at the given value aus quantile distribution."""
@@ -1075,6 +1097,23 @@ class Multinomial(Distribution):
     def copy(self):
         return type(self)(params=self._params)
 
+    def apply_restriction(self, restriction: set or int or str, normalize=True):
+        if not isinstance(restriction, ContinuousSet):
+            return self.create_dirac_impulse(restriction)
+
+        for idx, value in enumerate(self.values):
+            if value not in restriction:
+                self._params[idx] = 0
+
+        if normalize:
+            self._params = self._params / sum(self._params)
+        return self
+
+    def create_dirac_impulse(self, value):
+        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
+        self._params[self.values[value]] = 1
+        return self
+
     def p(self, labels):
         if not iterable(labels):
             raise TypeError('Argument must be iterable (got %s).' % type(labels))
@@ -1156,23 +1195,6 @@ class Multinomial(Distribution):
         col = ifnone(col, 0)
         for row in ifnone(rows, range(len(data))):
             self._params[int(data[row, col])] += 1 / n_samples
-        return self
-
-    def apply_restriction(self, restriction: set or int or str):
-        if not isinstance(restriction, ContinuousSet):
-            return self.create_dirac_impulse(restriction)
-
-        for idx, value in enumerate(self.values):
-            if value not in restriction:
-                self._params[idx] = 0
-
-        self._params = self._params / sum(self._params)
-        return self
-
-
-    def create_dirac_impulse(self, value):
-        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
-        self._params[self.values[value]] = 1
         return self
 
     def update(self, dist, weight):
