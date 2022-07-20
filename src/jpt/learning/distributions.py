@@ -4,7 +4,7 @@ from collections import OrderedDict, deque
 from itertools import tee
 from typing import Any, Dict
 
-from jpt.base.utils import classproperty, save_plot, Unsatisfiability, normalized
+from jpt.base.utils import classproperty, save_plot, Unsatisfiability, normalized, mapstr
 
 import copy
 import math
@@ -14,7 +14,7 @@ import re
 from operator import itemgetter
 
 import dnutils
-from dnutils import first, out, ifnone, stop, ifnot, project, mapstr, pairwise
+from dnutils import first, out, ifnone, stop, ifnot, project, pairwise
 from dnutils.stats import Gaussian as Gaussian_, _matshape
 
 from scipy.stats import multivariate_normal, mvn, norm
@@ -1011,6 +1011,23 @@ class Multinomial(Distribution):
         if not issubclass(type(self), Multinomial) or type(self) is Multinomial:
             raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
         self.to_json = self.inst_to_json
+
+    @classmethod
+    def pfmt(cls, max_values=10, labels_or_values='labels') -> str:
+        '''
+        Returns a pretty-formatted string representation of this class.
+
+        By default, a set notation with value labels is used. By setting
+        ``labels_or_values`` to ``"values"``, the internal value representation
+        is used. If the domain comprises more than ``max_values`` values,
+        the middle part of the list of values is abbreviated by "...".
+        '''
+        if labels_or_values not in ('labels', 'values'):
+            raise ValueError('Illegal Value for "labels_or_values": Expected one out of '
+                             '{"labels", "values"}, got "%s"' % labels_or_values)
+        return '%s = {%s}' % (cls.__name__, ', '.join(mapstr(cls.values.values()
+                                                             if labels_or_values == 'values'
+                                                             else cls.labels.values(), limit=max_values)))
 
     @property
     def probabilities(self):
