@@ -877,9 +877,8 @@ class Numeric(Distribution):
                           [self.cdf.intervals[-1].lower + std / 2])
 
         bounds_ = np.array([self.labels[b] for b in bounds])
-
         ax.plot(bounds_,
-                self.cdf.multi_eval(bounds),
+                np.asarray(self.cdf.multi_eval(bounds)),
                 color='cornflowerblue',
                 linestyle='dashed',
                 label='Piecewise linear CDF from bounds',
@@ -887,7 +886,7 @@ class Numeric(Distribution):
                 markersize=12)
 
         ax.scatter(bounds_[1:-1],
-                   self.cdf.multi_eval(bounds[1:-1]),
+                   np.asarray(self.cdf.multi_eval(bounds[1:-1])),
                    color='orange',
                    marker='o',
                    label='Piecewise Function limits')
