@@ -57,6 +57,10 @@ class Variable:
     def domain(self):
         return self._domain
 
+    @domain.setter
+    def domain(self, d):
+        self._domain = d
+
     def dist(self, params=None, data=None, rows=None, col=None):
         '''
         Create and return a new instance of the distribution type attached to this variable.
