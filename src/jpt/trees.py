@@ -25,6 +25,7 @@ from matplotlib import style, pyplot as plt
 import dnutils
 from dnutils import first, ifnone, mapstr, err, fst
 
+import jpt.variables
 from .base.utils import Unsatisfiability
 
 from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
@@ -164,6 +165,8 @@ class Node:
     def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
 
+    def depth(self):
+        return len(self._path)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -350,7 +353,6 @@ class Leaf(Node):
         :type query: VariableMap
         """
         result = 1.
-
         # for every variable and its assignment
         for variable, value in query.items():
             variable: Variable
@@ -360,8 +362,7 @@ class Leaf(Node):
                 # and a range is given
                 if isinstance(value, ContinuousSet):
                     # multiply by probability which is possible due to independence
-                    result *= self.distributions[variable].cdf(value.upper) - \
-                            self.distributions[variable].cdf(value.lower)
+                    result *= self.distributions[variable]._p(value)
 
                 # if it is a singular value
                 else:
@@ -497,7 +498,7 @@ class PosteriorResult(Result):
     def __init__(self, query, evidence, dists=None, cand=None, w=None):
         super().__init__(query, evidence, res=None, cand=cand)
         self._w = ifnone(w, {})
-        self.distributions = dists
+        self.distributions: Dict[Variable, Distribution] = dists
 
     def format_result(self):
         return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
@@ -507,6 +508,32 @@ class PosteriorResult(Result):
 
     def __getitem__(self, item):
         return self.distributions[item]
+
+    def impurity(self, variables: None or List[Variable] = None):
+        """Calculate the impurity (sum over variances and ginis) of the result of this query for the given variables.
+        """
+        # use all variables if none are given
+        if variables is None:
+            variables = self.distributions.keys()
+
+        # initialize result
+        result = 0.
+
+        # for every requested variable
+        for variable in variables:
+
+            # get the distribution
+            distribution = self.distributions[variable]
+
+            # add variance if numeric
+            if variable.numeric:
+                result += distribution.variance()
+
+            # add gini impurity if symbolic
+            elif variable.symbolic:
+                result += distribution.gini_impurity()
+
+        return result
 
 
 class JPT:
@@ -795,8 +822,7 @@ class JPT:
         return r
 
     def posterior(self, variables, evidence, fail_on_unsatisfiability=True) -> PosteriorResult:
-        '''
-
+        """
         :param variables:        the query variables of the posterior to be computed
         :type variables:         list of jpt.variables.Variable
         :param evidence:    the evidence given for the posterior to be computed
@@ -804,7 +830,7 @@ class JPT:
                                          likelihood of the evidence is 0.
         :type fail_on_unsatisfiability:  bool
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
-        '''
+        """
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
@@ -844,6 +870,66 @@ class JPT:
             if fail_on_unsatisfiability:
                 raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
             return None
+
+        # initialize all query variables with None, in case dists
+        # is empty (i.e. no candidate leaves -> query unsatisfiable)
+        result.distributions = VariableMap()
+
+        for var, dists in distributions.items():
+            if var.numeric:
+                result.distributions[var] = Numeric.merge(dists, weights=weights)
+            elif var.symbolic:
+                result.distributions[var] = Multinomial.merge(dists, weights=weights)
+
+        return result
+
+    def independent_marginals(self, variables: List[Variable], evidence: VariableMap, fail_on_unsatisfiability=True) ->\
+            PosteriorResult:
+        """ Compute the marginal distribution of every varialbe in 'variables' assuming independence.
+        Unlike JPT.posterior, this method also can compute marginals on variables that are in the evidence.
+
+        :param variables:        the query variables of the posterior to be computed
+        :type variables:         list of jpt.variables.Variable
+        :param evidence:    the evidence given for the posterior to be computed
+        :param fail_on_unsatisfiability: wether or not an ``Unsatisfiability`` error is raised if the
+                                         likelihood of the evidence is 0.
+        :type fail_on_unsatisfiability:  bool
+        :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
+        """
+
+        evidence_ = ifnone(evidence, {}, self._prepropress_query)
+        result = PosteriorResult(variables, evidence_)
+        variables = [self.varnames[v] if type(v) is str else v for v in variables]
+
+        distributions = defaultdict(list)
+
+        weights = []
+
+        for leaf in self.leaves.values():
+            leaf_prob = leaf.probability(evidence_)
+            if leaf_prob <= 0.:
+                continue
+            weights.append(leaf_prob * leaf.prior)
+
+            for var in variables:
+                evidence_set = evidence_.get(var)
+                distribution = leaf.distributions[var].copy()
+                if evidence_set is not None:
+                    if var in leaf.path:
+                        evidence_set = evidence_set.intersection(leaf.path[var])
+                        distribution = distribution.crop(evidence_set)
+                distributions[var].append(distribution)
+
+            result.candidates.append(leaf)
+
+        weight_sum = sum(weights)
+        weights = [w/weight_sum for w in weights]
+
+        if weight_sum == 0:
+            if fail_on_unsatisfiability:
+                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
+            else:
+                return None
 
         # initialize all query variables with None, in case dists
         # is empty (i.e. no candidate leaves -> query unsatisfiable)
@@ -1653,3 +1739,112 @@ class JPT:
         else:
             t = json.load(file)
         return JPT.from_json(t)
+
+    def depth(self):
+        return max([leaf.depth() for leaf in self.leaves.values()])
+
+    def marginal_jpt(self, marginal_variables: List[jpt.variables.Variable]):
+        """ Create a marginal joint probability distribution over all 'marginal_variables'.
+        This is done by inducing a new tree that reduces variance on the marginals by calculating the variances giving
+        the original distribution. All possible splits are given by all splits in this tree since they are the only
+        meaningful dependencies.
+        @param marginal_variables:
+        @return:
+        """
+        # get the variables that will be removed
+        eliminated_variables = [variable for variable in self.variables if variable not in marginal_variables]
+
+        # construct a map for every remaining variable that contains all splits
+        all_splits = VariableMap([(v, set()) for v in marginal_variables])
+
+        # fill splits
+        for leaf in self.leaves.values():
+            for variable in marginal_variables:
+                restriction = leaf.path[variable]
+                if variable.numeric:
+                    for value in [restriction.lower, restriction.upper]:
+                        if value != float("inf") and value != -float("inf"):
+                            all_splits[variable].add(value)
+                elif variable.symbolic:
+                    all_splits.add(restriction)
+
+        # calculate variable dependencies on marginal tree
+        remaining_dependencies = VariableMap()
+        for variable in marginal_variables:
+            remaining_dependencies[variable] = [v for v in self.variable_dependencies[variable]
+                                                if v in marginal_variables]
+
+        # construct empty marginal tree
+        marginal_jpt = JPT(marginal_variables, min_samples_leaf=self.min_samples_leaf,
+                           min_impurity_improvement=self.min_impurity_improvement, max_leaves=self.max_leaves,
+                           max_depth=self.max_depth, variable_dependencies=remaining_dependencies)
+
+        # initialize root node for the marginal
+        root_node = DecisionNode(1, None)
+
+        # initialize impurities to know when to stop
+        impurities = dict()
+        impurities[1] = self.posterior(marginal_variables, VariableMap()).impurity()
+
+        # initialize queue with root
+        unexpanded_nodes = deque()
+        unexpanded_nodes.append(root_node)
+
+        # while there is still stuff to expand
+        while len(unexpanded_nodes) > 0:
+
+            # get the current node
+            current_node = unexpanded_nodes.pop()
+            self.expand_node(current_node, all_splits, marginal_jpt.variable_dependencies)
+
+        return marginal_jpt
+
+    def expand_node(self, node: Node, all_splits: VariableMap, variable_dependencies: VariableMap):
+
+        # create the path as variable map
+        path = node.path
+
+        marginal_variables = all_splits.keys()
+
+        # array to save the best split for each node in
+        best_splits = np.full((len(all_splits), 5), float("inf"))
+
+        for variable_idx, (variable, splits) in enumerate(all_splits.items()):
+
+            # list to store impurities
+            impurities = np.full((len(splits), 2), float("inf"))
+
+            # list to store number of samples in those splits
+            lengths = np.zeros((len(splits), 2))
+
+            # for every split
+            for split_idx, split in enumerate(splits):
+
+                if variable.numeric:
+                    # construct positive and negative variable
+                    positive_path = path.copy()
+                    negative_path = path.copy()
+                    if variable not in path:
+                        positive_path[variable] = ContinuousSet(-float("inf"), split)
+                        negative_path[variable] = ContinuousSet(split, float("inf"))
+                    else:
+                        positive_path[variable] = positive_path[variable].intersection(
+                            ContinuousSet(-float("inf"), split))
+                        negative_path[variable] = negative_path[variable].intersection(
+                            ContinuousSet(split, float("inf")))
+
+                elif variable.symbolic:
+                    # TODO create sets lol
+                    pass
+
+                # self.plot(plotvars=self.variables)
+                # get impurity of remaining data and its length
+                positive_result = self.independent_marginals(marginal_variables, positive_path, True)
+                negative_result = self.independent_marginals(marginal_variables, negative_path, True)
+
+                print(positive_result)
+                exit()
+                # store impurity and number of samples
+                impurities[split_idx] = (positive_impurity, negative_impurity)
+                #lengths[split_idx] = (positive_samples, negative_samples)
+

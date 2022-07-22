@@ -395,5 +395,39 @@ class VariableMap:
                                       else value)
         return vmap
 
+    def intersection(self, other):
+        if not isinstance(other, VariableMap):
+            raise Exception(f"Intersection of VariableMap and {type(other)} is not supported.")
+        other: VariableMap
+        for variable in self.keys():
+            if variable in other.keys():
+                self[variable] = self[variable].intersection(other[variable])
+
+        return self
+
+    def empty(self):
+        for v, r in self.items():
+            if v.numeric:
+                if r.isempty():
+                    return True
+            else:
+                if r == set():
+                    return True
+        return False
+
+    def copy(self):
+        return VariableMap(self.items())
+
+    @staticmethod
+    def universe_map(variables):
+        """Create a variable map containing the entire universe of 'variables' as values."""
+        result = VariableMap()
+        for variable in variables:
+            if variable.numeric:
+                result[variable] = ContinuousSet(-float("inf"), float("inf"))
+            elif variable.symbolic:
+                result[variable] = set(variable.domain)
+        return result
+
     def __repr__(self):
         return '<VariableMap {%s}>' % ','.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()])

@@ -761,24 +761,6 @@ class Numeric(Distribution):
             return self.create_dirac_impulse(restriction)
         return self.crop(restriction)
 
-        """
-        remaining_intervals = []
-        remaining_functions = []
-
-        for interval, function in zip(self._quantile.pdf.intervals, self._quantile.pdf.functions):
-            intersection = interval.intersection(restriction)
-
-            if intersection == interval:
-                remaining_intervals.append(interval)
-                remaining_functions.append(function)
-            elif not intersection.isempty():
-                remaining_intervals.append(intersection)
-                remaining_functions.append(function)
-            else:
-                remaining_intervals.append(interval)
-                remaining_functions.append(ConstantFunction(0))
-        """
-
     def create_dirac_impulse(self, value):
         """Create a dirac impulse at the given value aus quantile distribution."""
         self._quantile = QuantileDistribution()
@@ -874,6 +856,29 @@ class Numeric(Distribution):
     @classmethod
     def type_from_json(cls, data):
         return cls
+
+    def variance(self) -> float:
+        """
+        Calculate the variance of this distribution as the integral over x^2 * f(x) minus the squared expectation.
+        @return: The variance as float
+        """
+
+        variance = 0.
+        for interval, function in zip(self.pdf.intervals, self.pdf.functions):
+            interval: ContinuousSet
+            function: ConstantFunction
+            # skip impossible intervals
+            if function.value == 0.:
+                continue
+
+            # if this is a dirac impulse return variance of 0.
+            elif function.value == float("inf"):
+                return 0.
+
+            # add variance as \int_x x^2 * f(x) dx - \mu^2
+            variance += (pow(interval.upper, 2) - pow(interval.lower, 2)) * function.value
+
+        return variance - pow(self.expectation(), 2)
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''
@@ -1238,6 +1243,10 @@ class Multinomial(Distribution):
     @classmethod
     def from_json(cls, data):
         return cls(data['params'])
+
+    def gini_impurity(self) -> float:
+        """Calculate the gini impurity of this distribution."""
+        return 1 - sum(np.square(self._params))
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
