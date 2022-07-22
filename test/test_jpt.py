@@ -92,3 +92,16 @@ class JPTTest(TestCase):
         r = jpt.expectation([x], evidence)
         r_ = ct.expectation([x], VariableMap())
         self.assertAlmostEqual(r[x].result, r_[x].result, delta=0.01)
+
+    def test_marginal(self):
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+
+        evidence = VariableMap()
+        evidence[y] = ContinuousSet(0.2, 0.5)
+
+        jpt = JPT(variables=[x, y],
+                  min_samples_leaf=.05, )
+        jpt.learn(self.data.reshape(-1, 2))
+
+        jpt.marginal_jpt([x])
