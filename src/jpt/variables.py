@@ -5,36 +5,40 @@ import hashlib
 import math
 import numbers
 from collections import OrderedDict
-from typing import List, Tuple, Any, Union, Dict, Iterator
+from typing import List, Tuple, Any, Union, Dict, Iterator, Set
 
 import numpy as np
-from dnutils import first, ifnone, out
+from dnutils import first, ifnone, out, edict
 
-from jpt.base.utils import mapstr, to_json
+from jpt.base.utils import mapstr, to_json, list2interval, setstr
+from jpt.base.constants import SYMBOL
+
+from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType
 
 try:
-    from jpt.base.intervals import INC, EXC, ContinuousSet
-    from jpt.base.constants import SYMBOL
+    from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
-    from jpt.base.intervals import INC, EXC
-    from jpt.base.constants import SYMBOL
-
-
-from jpt.learning.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType
+finally:
+    from jpt.base.intervals import INC, EXC, ContinuousSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Generic variable classes
-
 
 class Variable:
     '''
     Abstract class for a variable name along with its distribution class type.
     '''
 
-    def __init__(self, name, domain, min_impurity_improvement=None):
+    MIN_IMPURITY_IMPROVEMENT = 'min_impurity_improvement'
+
+    SETTINGS = {
+        MIN_IMPURITY_IMPROVEMENT: 0
+    }
+
+    def __init__(self, name: str, domain: type = None, **settings):
         '''
         :param name:    name of the variable
         :type name:     str
@@ -45,12 +49,36 @@ class Variable:
         '''
         self._name = name
         self._domain = domain
-        self.min_impurity_improvement = min_impurity_improvement or 0.
         if not issubclass(type(self), Variable) or type(self) is Variable:
-            raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
+            raise TypeError(f'Instantiation of abstract class '
+                            f'{type(self).__name__} is not allowed!')
+        self.settings = type(self).SETTINGS.copy()
+        for attr in type(self).SETTINGS:
+            try:
+                super().__getattribute__(attr)
+            except AttributeError:
+                pass
+            else:
+                raise AttributeError('Attribute ambiguity: Object of type "%s" '
+                                     'already has an attribute with name "%s"' % (type(self).__name__,
+                                                                                  attr))
+        for attr, value in settings.items():
+            if attr not in self.settings:
+                raise AttributeError('Unknown settings "%s": '
+                                     'expected one of {%s}' % (attr, setstr(type(self).SETTINGS)))
+            self.settings[attr] = value
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattribute__(name)
+        except AttributeError:
+            if name in type(self).SETTINGS:
+                return self.settings[name]
+            else:
+                raise
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
 
     @property
@@ -61,28 +89,11 @@ class Variable:
     def domain(self, d):
         self._domain = d
 
-    def dist(self, params=None, data=None, rows=None, col=None):
+    def distribution(self) -> Distribution:
         '''
         Create and return a new instance of the distribution type attached to this variable.
-
-        Either the distribution ``params`` can be passed or the ``data`` the distribution parameters
-        are to be determined from.
         '''
-        if data is None:
-            return self._dist(params)
-        elif data is not None:
-            if col is None and len(data.shape) > 1:
-                raise ValueError('In multi-dimensional matrices (dim=%d), a col index must be passed.' % data.ndim)
-            dist = self.dist(params=params)
-            return dist.fit(data, rows, col if data.ndim > 1 else 0, **self.params)
-
-    @property
-    def params(self):
-        return {}
-
-    def _dist(self, params):
-        '''Create and return a new instance of the distribution associated with this type of variable.'''
-        return self._domain(params)
+        return self._domain(**{k: self.settings[k] for k in self._domain.SETTINGS})
 
     def __str__(self):
         return f'{self.name}[{self.domain.__name__}(%s)]' % {0: 'SYM', 1: 'NUM'}[self.numeric]
@@ -93,31 +104,32 @@ class Variable:
     def __eq__(self, other):
         return (type(self) == type(other) and
                 self.name == other.name and
-                # self.domain.equiv(other.domain) and
+                self.domain.equiv(other.domain) and
+                self.settings == other.settings and
                 self.min_impurity_improvement == other.min_impurity_improvement)
 
     def __hash__(self):
         return hash((hashlib.md5(self.name.encode()).hexdigest(), self.domain))
 
     @property
-    def symbolic(self):
+    def symbolic(self) -> bool:
         return issubclass(self.domain, Multinomial)
 
     @property
-    def numeric(self):
+    def numeric(self) -> bool:
         return issubclass(self.domain, Numeric)
 
-    def str(self, assignment, **kwargs):
+    def str(self, assignment, **kwargs) -> str:
         raise NotImplemented()
 
-    def to_json(self):
+    def to_json(self) -> Dict[str, Any]:
         return {'name': self.name,
                 'type': 'numeric' if self.numeric else 'symbolic',
                 'domain': self.domain.to_json(),
-                'min_impurity_improvement': self.min_impurity_improvement}
+                'settings': self.settings}
 
     @staticmethod
-    def from_json(data):
+    def from_json(data: Dict[str, Any]) -> Union['NumericVariable', 'SymbolicVariable']:
         if data['type'] == 'numeric':
             return NumericVariable.from_json(data)
         elif data['type'] == 'symbolic':
@@ -131,7 +143,6 @@ class Variable:
     def __setstate__(self, state):
         self.__dict__ = Variable.from_json(state).__dict__
 
-
 # ----------------------------------------------------------------------------------------------------------------------
 # Numeric variables
 
@@ -141,60 +152,74 @@ class NumericVariable(Variable):
     Represents a continuous variable.
     '''
 
-    def __init__(self, name, domain=Numeric, min_impurity_improvement=None, haze=None, max_std=None, precision=None):
-        super().__init__(name, domain, min_impurity_improvement=min_impurity_improvement)
-        self.haze = ifnone(haze, .05)
-        self._max_std_lbl = ifnone(max_std, 0.)
-        self.precision = ifnone(precision, .01)
+    BLUR = 'blur'
+    MAX_STDEV = 'max_std_lbl'
+    PRECISION = 'precision'
+
+    SETTINGS = edict(Variable.SETTINGS) + {
+        BLUR: 0,
+        MAX_STDEV: .0,
+        PRECISION: .01
+    }
+
+    def __init__(self,
+                 name: str,
+                 domain=Numeric,
+                 min_impurity_improvement: float = None,
+                 blur: float = None,
+                 max_std: float = None,
+                 precision: float = None):
+        settings = {Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement}
+        if blur is not None:
+            settings[NumericVariable.BLUR] = blur
+        if max_std is not None:
+            settings[NumericVariable.MAX_STDEV] = max_std
+        if precision is not None:
+            settings[NumericVariable.PRECISION] = precision
+        super().__init__(name, domain, **settings)
 
     def __eq__(self, o):
         return (super().__eq__(o) and
-                self.haze == o.haze and
-                self._max_std_lbl == o._max_std_lbl and
+                self.blur == o.blur and
+                self.max_std_lbl == o.max_std_lbl and
                 self.precision == o.precision)
 
     def __hash__(self):
         return hash((NumericVariable,
                      hashlib.md5(self.name.encode()).hexdigest(),
                      self.domain,
-                     self.haze,
+                     self.blur,
                      self.max_std,
                      self.precision))
 
-    @Variable.params.getter
-    def params(self):
-        return {'epsilon': self.precision}
-
-    def to_json(self):
-        result = super().to_json()
-        result['max_std'] = self._max_std_lbl
-        result['precision'] = self.precision
-        return result
-
     @staticmethod
-    def from_json(data):
+    def from_json(data: Dict[str, Any]) -> 'NumericVariable':
         domain = Distribution.type_from_json(data['domain'])
         return NumericVariable(name=data['name'],
                                domain=domain,
-                               max_std=data.get('max_std'),
-                               precision=data.get('precision'))
+                               min_impurity_improvement=data.get(Variable.MIN_IMPURITY_IMPROVEMENT),
+                               max_std=data.get(NumericVariable.MAX_STDEV),
+                               precision=data.get(NumericVariable.PRECISION),
+                               blur=data.get(NumericVariable.BLUR))
 
     @property
     def _max_std(self):
         if issubclass(self.domain, ScaledNumeric):
-            return self._max_std_lbl / math.sqrt(self.domain.values.datascaler.scale)
+            return self.max_std_lbl / math.sqrt(self.domain.values.datascaler.scale)
         else:
-            return self._max_std_lbl
+            return self.max_std_lbl
 
     @property
     def max_std(self):
-        return self._max_std_lbl
+        return self.max_std_lbl
 
-    def str(self, assignment, **kwargs):
+    def str(self, assignment: Union[List, Set, numbers.Number], **kwargs) -> str:
         fmt = kwargs.get('fmt', 'set')
         precision = kwargs.get('precision', 3)
         lower = '%%.%df %%s ' % precision
         upper = ' %%s %%.%df' % precision
+        if type(assignment) is list:
+            assignment = list2interval(assignment)
         if type(assignment) is set:
             if len(assignment) == 1:
                 valstr = str(first(assignment))
@@ -230,17 +255,17 @@ class SymbolicVariable(Variable):
     Represents a symbolic variable.
     '''
 
-    def __init__(self, name, domain, min_impurity_improvement=None):
+    def __init__(self, name, domain, min_impurity_improvement: float = None):
         super().__init__(name,
                          domain,
                          min_impurity_improvement=min_impurity_improvement)
 
     @staticmethod
-    def from_json(data):
+    def from_json(data) -> Dict[str, Any]:
         domain = Distribution.type_from_json(data['domain'])
         return SymbolicVariable(name=data['name'], domain=domain)
 
-    def str(self, assignment, **kwargs):
+    def str(self, assignment: Union[set, numbers.Number], **kwargs) -> str:
         fmt = kwargs.get('fmt', 'set')
         limit = kwargs.get('limit', 10)
         if type(assignment) is set:
@@ -260,8 +285,12 @@ class SymbolicVariable(Variable):
 # ----------------------------------------------------------------------------------------------------------------------
 # Convenience functions and classes
 
-def infer_from_dataframe(df, scale_numeric_types=True, min_impurity_improvement=None,
-                         haze=None, max_std=None, precision=None):
+def infer_from_dataframe(df,
+                         scale_numeric_types: bool = True,
+                         min_impurity_improvement: float = None,
+                         blur: float = None,
+                         max_std: float = None,
+                         precision: float = None):
     '''
     Creates the ``Variable`` instances from column types in a Pandas or Spark data frame.
 
@@ -274,8 +303,8 @@ def infer_from_dataframe(df, scale_numeric_types=True, min_impurity_improvement=
     :param min_impurity_improvement:   the minimum imrovement that a split must induce to be acceptable.
     :type min_impurity_improvement: ``float``
 
-    :param haze:
-    :type haze:         ``float``
+    :param blur:
+    :type blur:         ``float``
 
     :param max_std:
     :type max_std:      ``float``
@@ -300,7 +329,7 @@ def infer_from_dataframe(df, scale_numeric_types=True, min_impurity_improvement=
             var = NumericVariable(col,
                                   dom,
                                   min_impurity_improvement=min_impurity_improvement,
-                                  haze=haze,
+                                  blur=blur,
                                   max_std=max_std,
                                   precision=precision)
         else:
@@ -337,7 +366,8 @@ class VariableMap:
 
     def __setitem__(self, variable: Union[str, Variable], value: Any) -> None:
         if not isinstance(variable, Variable):
-            raise ValueError('Illegal argument value: expected Variable, got %s.' % type(variable).__name__)
+            raise ValueError('Illegal argument value: '
+                             'expected Variable, got %s.' % type(variable).__name__)
         self._map[variable.name] = value
         self._variables[variable.name] = variable
 
@@ -360,9 +390,9 @@ class VariableMap:
         return len(self._map)
 
     def __bool__(self):
-        return len(self)
+        return bool(len(self))
 
-    def __eq__(self, o):
+    def __eq__(self, o: 'VariableMap'):
         return (type(o) is VariableMap and
                 list(self._map.items()) == list(o._map.items()) and
                 list(self._variables.items()) == list(o._variables.items()))

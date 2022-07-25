@@ -2,7 +2,7 @@
 '''
 import random
 
-from dnutils import first
+from dnutils import first, out
 import numpy as np
 
 

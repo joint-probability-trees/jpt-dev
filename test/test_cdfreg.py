@@ -1,5 +1,4 @@
 import statistics
-import tempfile
 from unittest import TestCase
 
 import pandas as pd
@@ -12,19 +11,19 @@ import numpy as np
 
 from jpt.base.utils import Unsatisfiability
 
-from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
+from jpt.distributions import Numeric, Gaussian, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
 
 try:
     from jpt.base.intervals import __module__
-    from jpt.base.quantiles import __module__
+    from jpt.distributions.quantile.quantiles import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from jpt.base.intervals import ContinuousSet, INC, EXC
-    from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
+    from jpt.distributions.quantile.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
 
 
 class TestCaseMerge(unittest.TestCase):
@@ -391,7 +390,6 @@ class TestCasePosteriorNumeric(unittest.TestCase):
     def f(cls, x):
         """The function to predict."""
         # return x * np.sin(x)
-        import math
         return x
 
     @classmethod
@@ -484,7 +482,7 @@ class TestCasePosteriorSymbolic(unittest.TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, blur=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
@@ -540,7 +538,7 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=False, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=False, precision=.01, blur=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
@@ -638,7 +636,7 @@ class TestCaseExpectation(unittest.TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, blur=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
@@ -684,7 +682,10 @@ class TestCaseInference(unittest.TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data,
+                                             scale_numeric_types=True,
+                                             precision=.01,
+                                             blur=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL

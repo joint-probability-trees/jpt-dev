@@ -2,19 +2,28 @@ from copy import deepcopy
 from typing import Dict, List
 import tqdm
 
-import jpt.variables
-import jpt.trees
-import jpt.base.quantiles
-import jpt.base.intervals
-import jpt.learning.distributions
-
 import numpy as np
-import numpy.lib.stride_tricks
+from numpy.lib.stride_tricks import sliding_window_view
 
+from jpt.trees import JPT, Leaf
+from jpt.distributions import Numeric, Multinomial
+from jpt.variables import Variable, VariableMap
+
+try:
+    from jpt.base.intervals import __module__, ContinuousSet, R
+    from jpt.distributions.quantile.quantiles import __module__, ConstantFunction, QuantileDistribution, LinearFunction
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+finally:
+    from jpt.distributions.quantile.quantiles import PiecewiseFunction
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class SequentialJPT:
 
-    def __init__(self, template_variables: List[jpt.variables.Variable], timesteps: int = 2, **kwargs) -> None:
+    def __init__(self, template_variables: List[Variable], timesteps: int = 2, **kwargs) -> None:
         """
         Create a JPT template that can be expanded across multiple time dimensions.
 
@@ -29,11 +38,10 @@ class SequentialJPT:
         self.timesteps = timesteps
 
         # a dict mapping the template variable to its time expansions
-        self.template_variable_map: Dict[jpt.variables.Variable,
-                                         List[jpt.variables.Variable]] = dict()
+        self.template_variable_map: Dict[Variable, List[Variable]] = dict()
 
         # just a plain list of all "grounded" variables
-        self.variables: List[jpt.variables.Variable] = []
+        self.variables: List[Variable] = []
 
         # generate the time expanded variables from the template
         for template_variable in template_variables:
@@ -55,12 +63,12 @@ class SequentialJPT:
         for variable in self.variables:
             variable_dependencies[variable] = [v for v in self.variables if v != variable]
 
-        variable_dependencies = jpt.variables.VariableMap(variable_dependencies.items())
+        variable_dependencies = VariableMap(variable_dependencies.items())
 
         # generate the template tree to copy among timesteps
-        self.template_tree: jpt.trees.JPT = jpt.trees.JPT(self.variables,
-                                                          variable_dependencies=variable_dependencies,
-                                                          **kwargs)
+        self.template_tree: JPT = JPT(self.variables,
+                                      variable_dependencies=variable_dependencies,
+                                      **kwargs)
 
         # forward the plot method from the original jpts
         self.plot = self.template_tree.plot
@@ -89,9 +97,9 @@ class SequentialJPT:
         begin = 0
         for timeseries in tqdm.tqdm(data, desc="Windowing timeseries"):
             end = begin + len(timeseries) + 1 - self.timesteps
-            windowed = numpy.lib.stride_tricks.sliding_window_view(timeseries,
-                                                                   window_shape=(2,),
-                                                                   axis=0)
+            windowed = sliding_window_view(timeseries,
+                                           window_shape=(2,),
+                                           axis=0)
             samples[begin:end] = windowed.reshape(samples[begin:end].shape)
             begin = end
 
@@ -127,7 +135,7 @@ class SequentialJPT:
 
                     # integrate symbolic variables on shared dimensions
                     elif template_variable.symbolic:
-                        intersecting_mass *= sum(self.shared_dimensions_integral[(n, m)][template_variable]._params)
+                        intersecting_mass *= sum(self.shared_dimensions_integral[(n, m)][template_variable].probabilities)
 
                 # sum the mass of all partitions
                 probability_mass += intersecting_mass
@@ -162,7 +170,7 @@ class SequentialJPT:
                     distributions[template_variable] = dist
 
                 # convert dict to variable map and save it
-                self.shared_dimensions_integral[(n, m)] = jpt.variables.VariableMap(distributions.items())
+                self.shared_dimensions_integral[(n, m)] = VariableMap(distributions.items())
 
     def likelihood(self, queries: List) -> np.ndarray:
         """
@@ -177,12 +185,12 @@ class SequentialJPT:
         result = np.zeros(len(queries))
 
         for idx, sequence in enumerate(tqdm.tqdm(queries, desc="Processing Time Series")):
-            windowed = numpy.lib.stride_tricks.sliding_window_view(sequence, window_shape=(2,), axis=0)
+            windowed = sliding_window_view(sequence, window_shape=(2,), axis=0)
             probs = self.template_tree.likelihood(windowed[:, 0, :])
             result[idx] = np.prod(probs)
         return result / self.probability_mass_
 
-    def infer(self, queries: List[jpt.variables.VariableMap], evidences: List[jpt.variables.VariableMap]) -> float:
+    def infer(self, queries: List[VariableMap], evidences: List[VariableMap]) -> float:
         '''
         Return the probability of a sequence taking values specified in queries given ranges specified in evidences
         '''
@@ -235,8 +243,11 @@ class SequentialJPT:
         # scale the resulting potential by the overall probability mass
         return probability / self.probability_mass_
 
-    def prob_leaf_combination(self, leaf_0: jpt.trees.Leaf, leaf_1: jpt.trees.Leaf, query_0: jpt.variables.VariableMap,
-                              query_1: jpt.variables.VariableMap) -> float:
+    def prob_leaf_combination(self,
+                              leaf_0: Leaf,
+                              leaf_1: Leaf,
+                              query_0: VariableMap,
+                              query_1: VariableMap) -> float:
         """
         Calculate the probability mass of a query in a product of 2 leaves.
         It is assumed that they are in a sequence context where leaf_0 is the leaf in the predecessing factor and leaf_1
@@ -286,8 +297,9 @@ class SequentialJPT:
         return probability
 
 
-def integrate_continuous_pdfs(pdf1: jpt.base.quantiles.PiecewiseFunction, pdf2: jpt.base.quantiles.PiecewiseFunction,
-                              interval: jpt.base.intervals.ContinuousSet) -> float:
+def integrate_continuous_pdfs(pdf1: PiecewiseFunction,
+                              pdf2: PiecewiseFunction,
+                              interval: ContinuousSet) -> float:
     """
     Calculate the volume that is covered by the integral of pdf1 * pdf2 in the range of the interval.
     Those pdfs are distributions of the same continuous random variable.
@@ -317,10 +329,10 @@ def integrate_continuous_pdfs(pdf1: jpt.base.quantiles.PiecewiseFunction, pdf2: 
     return mass
 
 
-def integrate_continuous_distributions(distribution1: jpt.learning.distributions.Numeric,
-                                       distribution2: jpt.learning.distributions.Numeric,
+def integrate_continuous_distributions(distribution1: Numeric,
+                                       distribution2: Numeric,
                                        normalize=False) \
-        -> jpt.learning.distributions.Numeric:
+        -> Numeric:
     """
     Calculate the cdf that is obtained by integrating pdf1(x) * pdf2(x) and normalize it s. t. the joint
     cdf converges to 1 if wanted.
@@ -335,21 +347,22 @@ def integrate_continuous_distributions(distribution1: jpt.learning.distributions
 
     # calculate the overall probability mass obtained by multiplying these functions
     if normalize:
-        probability_mass = integrate_continuous_pdfs(distribution1.pdf, distribution2.pdf,
-                                                     jpt.base.intervals.ContinuousSet(-float("inf"), float("inf")))
+        probability_mass = integrate_continuous_pdfs(distribution1.pdf,
+                                                     distribution2.pdf,
+                                                     R)
     else:
         probability_mass = 1.
 
-    result = jpt.base.quantiles.PiecewiseFunction()
+    result = PiecewiseFunction()
 
     # if there is no probability mass in the product return a constant 0 function that can be plotted :)
     if probability_mass == 0:
-        result.intervals = [jpt.base.intervals.ContinuousSet(-float("inf"), -10.),
-                            jpt.base.intervals.ContinuousSet(-10., 10.),
-                            jpt.base.intervals.ContinuousSet(10., float("inf"))]
-        result.functions = [jpt.base.quantiles.ConstantFunction(0.)] * 3
-        result = jpt.base.quantiles.QuantileDistribution.from_cdf(result)
-        result = jpt.learning.distributions.Numeric(result)
+        result.intervals = [ContinuousSet(np.NINF, -10.),
+                            ContinuousSet(-10., 10.),
+                            ContinuousSet(10., np.PINF)]
+        result.functions = [ConstantFunction(0.)] * 3
+        result = QuantileDistribution.from_cdf(result)
+        result = Numeric().set(result)
         return result
 
     current_integral_value = 0
@@ -371,23 +384,22 @@ def integrate_continuous_distributions(distribution1: jpt.learning.distributions
             joint_intervals.append(intersection)
             intersection_value = function_1.value * function_2.value / probability_mass
 
-            constant = 0. if intersection.lower == -float("inf") else \
+            constant = 0. if intersection.lower == np.NINF else \
                 current_integral_value - (intersection_value * intersection.lower)
-            joint_functions.append(jpt.base.quantiles.LinearFunction(intersection_value, constant))
+            joint_functions.append(LinearFunction(intersection_value, constant))
 
             if intersection_value > 0:
                 current_integral_value += pow(intersection.upper - intersection.lower, 2) * intersection_value
 
     result.intervals = joint_intervals
     result.functions = joint_functions
-    result = jpt.base.quantiles.QuantileDistribution.from_cdf(result)
-    result = jpt.learning.distributions.Numeric(result)
-    return result
+    result = QuantileDistribution.from_cdf(result)
+    return Numeric().set(result)
 
 
-def integrate_discrete_distribution(distribution1: jpt.learning.distributions.Multinomial,
-                                    distribution2: jpt.learning.distributions.Multinomial,
-                                    normalize=False) -> jpt.learning.distributions.Multinomial:
+def integrate_discrete_distribution(distribution1: Multinomial,
+                                    distribution2: Multinomial,
+                                    normalize=False) -> Multinomial:
     """
     Calculate the cdf that is obtained by integrating pdf1(x) * pdf2(x) and normalize it s. t. the joint
     cdf converges to 1 if wanted.
@@ -404,18 +416,16 @@ def integrate_discrete_distribution(distribution1: jpt.learning.distributions.Mu
     labels = distribution1.labels
 
     # initialize values
-    _params = np.zeros(len(labels))
+    params = np.zeros(len(labels))
 
     # calculate values as product of both probabilities
-    for idx, value in enumerate(distribution1._params):
-        _params[idx] = value * distribution2._params[idx]
+    for idx, value in enumerate(distribution1.probabilities):
+        params[idx] = value * distribution2.probabilities[idx]
 
     # normalize if wanted
     if normalize:
-        _params /= sum(_params)
+        params /= sum(params)
 
     # create resulting distribution
-    result = type(distribution1)()
-    result._params = _params
-    return result
+    return type(distribution1)().set(params)
 

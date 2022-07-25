@@ -7,6 +7,7 @@
 __module__ = 'quantiles.pyx'
 import itertools
 import numbers
+from cmath import isnan
 from collections import deque
 from operator import itemgetter, attrgetter
 
@@ -14,8 +15,8 @@ from dnutils import ifnot, first, ifnone
 from scipy import stats
 from scipy.stats import norm
 
-from .intervals cimport ContinuousSet, RealSet
-from .intervals import R, EMPTY, EXC, INC
+from ...base.intervals cimport ContinuousSet, RealSet
+from ...base.intervals import R, EMPTY, EXC, INC
 
 import numpy as np
 cimport numpy as np
@@ -23,10 +24,10 @@ cimport cython
 
 import warnings
 
-from .utils import pairwise, Unsatisfiability
-from .cutils cimport SIZE_t, DTYPE_t, sort
+from jpt.base.utils import pairwise, Unsatisfiability
+from ...base.cutils cimport SIZE_t, DTYPE_t, sort
 
-from ..learning.cdfreg import CDFRegressor
+from .cdfreg import CDFRegressor
 
 warnings.filterwarnings("ignore")
 
@@ -557,14 +558,12 @@ cdef class QuantileDistribution:
     '''
 
     cdef public DTYPE_t epsilon
-    cdef public DTYPE_t penalty
     cdef public np.int32_t verbose
     cdef public np.int32_t min_samples_mars
     cdef PiecewiseFunction _cdf, _pdf, _ppf
 
-    def __init__(self, epsilon=.01, penalty=3., min_samples_mars=5, verbose=False):
+    def __init__(self, epsilon=.01, min_samples_mars=5, verbose=False):
         self.epsilon = epsilon
-        self.penalty = penalty
         self.verbose = verbose
         self.min_samples_mars = min_samples_mars
         self._cdf = None
@@ -574,7 +573,6 @@ cdef class QuantileDistribution:
     def __hash__(self):
         return hash((QuantileDistribution,
                      self.epsilon,
-                     self.penalty,
                      self.verbose,
                      self.min_samples_mars,
                      self._cdf))
@@ -583,12 +581,12 @@ cdef class QuantileDistribution:
         if not isinstance(o, QuantileDistribution):
             raise TypeError('Illegal type: %s' % type(o).__name__)
         return (self.epsilon == o.epsilon and
-                self.penalty == o.penalty and
                 self.min_samples_mars == o.min_samples_mars and
                 self.cdf == o.cdf)
 
     cpdef QuantileDistribution copy(QuantileDistribution self):
-        cdef QuantileDistribution result = QuantileDistribution(self.epsilon, self.penalty, min_samples_mars=self.min_samples_mars)
+        cdef QuantileDistribution result = QuantileDistribution(self.epsilon,
+                                                                min_samples_mars=self.min_samples_mars)
         result._cdf = self.cdf.copy()
         return result
 
@@ -605,16 +603,41 @@ cdef class QuantileDistribution:
                 '# intervals: %s != # functions: %s' % (len(self._cdf.intervals),
                                                         len(self._cdf.functions))
 
-    cpdef QuantileDistribution fit(self, DTYPE_t[:, ::1] data, SIZE_t[::1] rows, SIZE_t col):
+    cpdef QuantileDistribution fit(self,
+                                   DTYPE_t[:, ::1] data,
+                                   SIZE_t[::1] rows,
+                                   SIZE_t col,
+                                   DTYPE_t leftmost=np.nan,
+                                   DTYPE_t rightmost=np.nan):
+        '''
+        Fit the quantile distribution to the rows ``rows`` and column ``col`` of the
+        data array ``data``.
+        
+        ``leftmost`` and ``rightmost`` can be optional "imaginary" points on the leftmost or
+        rightmost side, respectively.
+        '''
         if rows is None:
             rows = np.arange(data.shape[0], dtype=np.int64)
 
-        cdef SIZE_t i, n_samples = rows.shape[0]
-        cdef DTYPE_t[:, ::1] data_buffer = np.ndarray(shape=(2, n_samples), dtype=np.float64, order='C')
-        for i in range(n_samples):
-            data_buffer[0, i] = data[rows[i], col]
+        # We have to copy the data into C-contiguous array first
+        cdef SIZE_t i, n_samples = rows.shape[0] + (0 if isnan(leftmost) else 1) + (0 if isnan(rightmost) else 1)
+        cdef DTYPE_t[:, ::1] data_buffer = np.ndarray(shape=(2, n_samples),
+                                                      dtype=np.float64,
+                                                      order='C')
+        # Write the data points themselves into the first (upper) row of the array...
+        if not isnan(leftmost):
+            data_buffer[0, 0] = leftmost
+        for i in range(n_samples - (not isnan(rightmost)) - (not isnan(leftmost))):
+            if not isnan(leftmost):
+                assert data[rows[i], col] > leftmost, 'leftmost: %s <= %s' % (data[rows[i], col], leftmost)
+            if not isnan(rightmost):
+                assert data[rows[i], col] < rightmost, 'rightmost: %s >= %s' % (data[rows[i], col], rightmost)
+            data_buffer[0, i + (not isnan(leftmost))] = data[rows[i], col]
+        if not isnan(rightmost):
+            data_buffer[0, n_samples - 1] = rightmost
         np.asarray(data_buffer[0, :]).sort()
 
+        # ... and the respective quantiles into the row below
         cdef SIZE_t count = 0,
         i = 0
         for i in range(n_samples):
@@ -624,9 +647,11 @@ cdef class QuantileDistribution:
                 data_buffer[0, count] = data_buffer[0, i]
                 data_buffer[1, count] = <DTYPE_t> i + 1
                 count += 1
+
         for i in range(count):
             data_buffer[1, i] -= 1
             data_buffer[1, i] /= <DTYPE_t> (n_samples - 1)
+
         data_buffer = np.ascontiguousarray(data_buffer[:, :count])
         cdef DTYPE_t[::1] x, y
         n_samples = count
@@ -727,7 +752,7 @@ cdef class QuantileDistribution:
         cdf.functions = functions_
         cdf.intervals = intervals_
 
-        result = QuantileDistribution(self.epsilon, self.penalty, min_samples_mars=self.min_samples_mars)
+        result = QuantileDistribution(self.epsilon, min_samples_mars=self.min_samples_mars)
         result._cdf = cdf
 
         result._assert_consistency()
@@ -752,8 +777,6 @@ cdef class QuantileDistribution:
                 pdf.intervals[-1].lower = np.nextafter(pdf.intervals[-1].lower,
                                                        pdf.intervals[-1].lower + 1)
                 pdf.functions.insert(1, ConstantFunction(np.PINF))
-            # if simplify:
-            #     pdf = pdf.simplify(samples, epsilon=ifnan(epsilon, self.epsilon), penalty=ifnan(penalty, self.penalty))
             self._pdf = pdf
         return self._pdf
 
@@ -924,14 +947,12 @@ cdef class QuantileDistribution:
 
     def to_json(self):
         return {'epsilon': self.epsilon,
-                'penalty': self.penalty,
                 'min_samples_mars': self.min_samples_mars,
                 'cdf': self._cdf.to_json()}
 
     @staticmethod
     def from_json(data):
         q = QuantileDistribution(epsilon=data['epsilon'],
-                                 penalty=data['penalty'],
                                  min_samples_mars=data['min_samples_mars'])
         q._cdf = PiecewiseFunction.from_json(data['cdf'])
         return q
@@ -1186,39 +1207,6 @@ cdef class PiecewiseFunction(Function):
         else:
             return samples_x[:i]
 
-    # cpdef PiecewiseFunction simplify(PiecewiseFunction self, np.int32_t n_samples=1, DTYPE_t epsilon=.001,
-    #                                  DTYPE_t penalty=3.):
-    #     cdef np.int32_t samples_total = len(self.intervals) * n_samples
-    #     cdef DTYPE_t[::1] samples_x = np.ndarray(shape=samples_total, dtype=np.float64)
-    #     samples_x[:] = 0
-    #     cdef object f
-    #     cdef np.int32_t i = 0
-    #     cdef DTYPE_t stepsize = 1
-    #     cdef DTYPE_t max_int = max([i_.upper - i_.lower for i_ in self.intervals if i_.lower != np.NINF and i_.upper != np.PINF])
-    #     cdef ContinuousSet interval
-    #     cdef np.int32_t nopen = 2
-    #     for interval, f in zip(self.intervals, self.functions):
-    #         if interval.lower != np.NINF and interval.upper != np.PINF:
-    #             samples = int(max(1, np.ceil(n_samples * (interval.upper - interval.lower) / max_int)))
-    #             interval.linspace(samples, default_step=1, result=samples_x[i:i + samples])
-    #             i += samples
-    #     if len(self.intervals) > 2:
-    #         if self.intervals[0].lower != np.NINF:
-    #             nopen -= 1
-    #         if self.intervals[-1].upper != np.PINF:
-    #             nopen -= 1
-    #         if nopen:
-    #             stepsize = np.mean(np.abs(np.diff(samples_x[:i])))
-    #     if self.intervals[0].lower == np.NINF:
-    #         self.intervals[0].linspace(n_samples, default_step=stepsize, result=samples_x[i:i + n_samples])
-    #         i += n_samples
-    #     if self.intervals[-1].upper == np.PINF:
-    #         self.intervals[-1].linspace(n_samples, default_step=stepsize, result=samples_x[i:i + n_samples])
-    #         i += n_samples
-    #     cdef DTYPE_t[::1] learn_data = samples_x[:i]
-    #     cdef DTYPE_t[::1] samples_y = self.multi_eval(learn_data)
-    #     return fit_piecewise(learn_data, samples_y, penalty=penalty, epsilon=epsilon)
-
     cpdef RealSet eq(PiecewiseFunction self, DTYPE_t y):
         result_set = RealSet()
         y_ = ConstantFunction(y)
@@ -1371,52 +1359,3 @@ cdef class PiecewiseFunction(Function):
                 raise TypeError('Unknown function type in PiecewiseFunction: "%s"' % type(function).__name__)
             plf.functions.append(function)
         return plf
-
-# cpdef object fit_piecewise(DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t epsilon=np.nan,
-#                            DTYPE_t penalty=np.nan, DTYPE_t[::1] weights=None,
-#                            np.int32_t verbose=False):
-#     cdef np.int32_t max_terms = 2 * x.shape[0]
-#     epsilon = ifnan(epsilon, .001)
-#     penalty = ifnan(penalty, 3)
-#     cdef object mars = Earth(thresh=epsilon, penalty=penalty)  # thresh=epsilon, penalty=penalty, minspan=1, endspan=1, max_terms=max_terms)  # , check_every=1, minspan=0, endspan=0,
-#     mars.fit(np.asarray(x), np.asarray(y)) #, sample_weight=weights)
-#     if verbose:
-#         print(mars.summary())
-#     cdef object f = PiecewiseFunction()
-#     cdef list hinges = [h for h in mars.basis_ if not h.is_pruned()]
-#     cdef DTYPE_t[::1] coeff = mars.coef_[0,:]
-#     # Sort the functions according to their knot positions
-#     cdef np.ndarray functions = np.vstack([[h.get_knot() if isinstance(h, HingeBasisFunctionBase) else np.nan for h in hinges], hinges, coeff])
-#     functions = functions[:, np.argsort(functions[0,:])]
-#     cdef LinearFunction linear = LinearFunction(0, 0)
-#     cdef DTYPE_t[:,::1] x_ = np.array([[0]], dtype=np.float64)
-#     cdef DTYPE_t k, w
-#     for k, f_, w in functions.T:
-#         if isinstance(f_, LinearBasisFunction):
-#             linear.m += w
-#         elif isinstance(f_, HingeBasisFunction):
-#             if f_.get_reverse() == 1:
-#                 linear.m -= w
-#                 linear.c += w * f_.get_knot()
-#         elif isinstance(f_, ConstantBasisFunction):
-#             linear.c += w
-#     cdef DTYPE_t m = linear.m
-#     cdef DTYPE_t c = linear.c
-#     f.intervals.append(R.copy())
-#     f.functions.append(linear)
-#     for k, f_, w in functions.T:
-#         if not type(f_) is HingeBasisFunction:
-#             continue
-#         p = m * f_.get_knot() + c
-#         m += w
-#         c = p - m * f_.get_knot()
-#         if f_.get_knot() == f.intervals[-1].lower and m > 0:
-#             f.functions[-1].m = m
-#             f.functions[-1].c = c
-#         elif f_.get_knot() in f.intervals[-1] and m > 0:
-#             f.intervals[-1].upper = f_.get_knot()
-#             f.intervals.append(ContinuousSet(f_.get_knot(), np.PINF, 1, 2))
-#             f.functions.append(LinearFunction(m, c))  # if m != 0 else ConstantFunction(c))
-#     return f
-#
-#

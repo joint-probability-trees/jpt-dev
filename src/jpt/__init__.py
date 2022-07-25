@@ -8,6 +8,4 @@ from .variables import (NumericVariable,
                         NumericType,
                         infer_from_dataframe)
 
-from .learning import distributions
-
 from .trees import JPT

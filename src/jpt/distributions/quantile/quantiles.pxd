@@ -1,12 +1,12 @@
 # cython: auto_cpdef=True, infer_types=True, language_level=3
 
-from .intervals cimport ContinuousSet, RealSet
+from ...base.intervals cimport ContinuousSet, RealSet
 
 import numpy as np
 cimport numpy as np
 cimport cython
 
-from ..base.cutils cimport DTYPE_t, SIZE_t
+from ...base.cutils cimport DTYPE_t, SIZE_t
 
 
 cdef class NotInvertibleError(Exception):

@@ -1,10 +1,6 @@
-import pprint
-
-import pyximport
 
 from jpt.base.utils import format_path
 
-pyximport.install()
 import itertools
 import os
 import pickle
@@ -15,19 +11,19 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-from dnutils import out, ifnone, first
-from jpt.base.quantiles import QuantileDistribution
-from jpt.learning.distributions import Numeric, Bool, SymbolicType, NumericType
-from jpt.trees import JPT, JPTBase
+from dnutils import out, ifnone
+from jpt.distributions.quantile.quantiles import QuantileDistribution
+from jpt.distributions import Numeric, Bool, SymbolicType, NumericType
+from jpt.trees import JPT
 from jpt.variables import SymbolicVariable, NumericVariable
-from jpt.base.intervals import ContinuousSet as Interval, ContinuousSet
+from jpt.base.intervals import ContinuousSet
 
 
-def plot_muesli():
+def plot_muesli(visualize=True):
     # Used to create the plots for the paper
 
     # df = pd.read_pickle('data/human_muesli.dat')
-    df = pd.read_csv('../examples/data/muesli.csv')
+    df = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
     # pd.set_option('display.max_rows', 500)
     # pd.set_option('display.max_columns', 500)
     # pd.set_option('display.width', 1000)
@@ -58,8 +54,8 @@ def plot_muesli():
 
     ObjectType = SymbolicType('ObjectType', df['Class'].unique())
 
-    x = NumericVariable('X', Numeric, haze=.01)
-    y = NumericVariable('Y', Numeric, haze=.01)
+    x = NumericVariable('X', Numeric, blur=.01)
+    y = NumericVariable('Y', Numeric, blur=.01)
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 
@@ -87,22 +83,23 @@ def plot_muesli():
         plt.hlines(hlines, max(xlower, df['X'].min()), min(xupper, df['X'].max()))
 
     ax.legend()
-    plt.show()
-
-    with PdfPages(os.path.join('data', f'muesli-{2 if succ else 1}.pdf'), metadata={'Creator': 'misc',
-                                                                                    'Author': 'Picklum & Nyga',
-                                                                                    'Title': f'Müsli Example{" Success" if succ else ""}'}) as pdf:
+    if visualize:
+        plt.show()
+    with PdfPages(os.path.join(os.path.split(__file__)[0], 'data', f'muesli-{2 if succ else 1}.pdf'),
+                  metadata={'Creator': 'misc',
+                            'Author': 'Picklum & Nyga',
+                            'Title': f'Müsli Example{" Success" if succ else ""}'}) as pdf:
         pdf.savefig(fig)
 
 
-def test_muesli():
+def test_muesli(visualize=True):
 
-    data = pd.read_csv('../examples/data/muesli.csv')
+    data = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
     d = np.array(sorted(data['X']), dtype=np.float64)
 
     quantiles = QuantileDistribution(epsilon=.01)
     quantiles.fit(d.reshape((-1, 1)), None, 0)
-    d = Numeric(quantile=quantiles)
+    d = Numeric().set(params=quantiles)
 
     interval = ContinuousSet(-2.05, -2.0)
     p = d.p(interval)
@@ -113,18 +110,18 @@ def test_muesli():
     d.plot(title=' ',
            fname='BreakfastPiecewise',
            xlabel='X',
-           view=True,
+           view=visualize,
            directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
 
 
-def muesli_tree():
+def muesli_tree(visualize=True):
     # generate Joint Probability Tree from muesli data (use .csv file because it contains the additional Success column)
-    data = pd.read_csv('../examples/data/muesli.csv')
+    data = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
     XType = NumericType('XType', data['X'].values)
 
-    x = NumericVariable('X', Numeric, haze=.01)
-    y = NumericVariable('Y', Numeric, haze=.01)
+    x = NumericVariable('X', Numeric, blur=.01)
+    y = NumericVariable('Y', Numeric, blur=.01)
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 
@@ -154,7 +151,8 @@ def muesli_tree():
     # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
     # r = jpt.reverse(q)
     # out('Query:', q, 'result:', pprint.pformat(r))
-    plot_conditional(jpt, x, y, evidence={o: 'BaerenMarkeFrischeAlpenmilch'})
+    if visualize:
+        plot_conditional(jpt, x, y, evidence={o: 'BaerenMarkeFrischeAlpenmilch'})
 
     for clazz in data['Class'].unique():
         out(jpt.infer(query={o.name: clazz}, evidence={x.name: [.95 - FUZZYNESS, .95 + FUZZYNESS],
@@ -170,7 +168,8 @@ def plot_conditional(jpt, qvarx, qvary, evidence=None, title=None):
 
     X, Y = np.meshgrid(x, y)
     Z = np.array([jpt.infer({qvarx: ContinuousSet(x - FUZZYNESS, x + FUZZYNESS),
-                             qvary: ContinuousSet(y - FUZZYNESS, y + FUZZYNESS)}, evidence=evidence).result for x, y, in zip(X.ravel(), Y.ravel())]).reshape(X.shape)
+                             qvary: ContinuousSet(y - FUZZYNESS, y + FUZZYNESS)},
+                            evidence=evidence).result for x, y, in zip(X.ravel(), Y.ravel())]).reshape(X.shape)
 
     # fig = plt.figure()
     ax = plt.axes(projection='3d')
@@ -202,10 +201,10 @@ def picklemuesli():
         pickle.dump(transformed, fi)
 
 
-def main(*args):
-    # plot_muesli()
-    # test_muesli()
-    muesli_tree()
+def main(visualize=True):
+    plot_muesli(visualize=visualize)
+    test_muesli(visualize=visualize)
+    muesli_tree(visualize=visualize)
     # picklemuesli()
 
 
