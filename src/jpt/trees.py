@@ -513,8 +513,9 @@ class PosteriorResult(Result):
         """Calculate the impurity (sum over variances and ginis) of the result of this query for the given variables.
         """
         # use all variables if none are given
+
         if variables is None:
-            variables = self.distributions.keys()
+            variables = list(self.distributions.keys())
 
         # initialize result
         result = 0.
@@ -864,6 +865,7 @@ class JPT:
             result.candidates.append(leaf)
 
         weights = [l * p for l, p in zip(likelihoods, priors)]
+        # result.result = sum(weights)
         try:
             weights = normalized(weights)
         except ValueError:
@@ -897,12 +899,19 @@ class JPT:
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         """
 
+        # preprocess evidence
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
-        result = PosteriorResult(variables, evidence_)
+
+        # construct result to save data in
+        result = PosteriorResult(VariableMap.universe_map(variables), evidence_)
+
+        # parse variables to variables if strings are given
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
 
+        # default map containing the distributions that need to be merged
         distributions = defaultdict(list)
 
+        # list of weights that will determine how important the distributions are
         weights = []
 
         for leaf in self.leaves.values():
@@ -923,6 +932,7 @@ class JPT:
             result.candidates.append(leaf)
 
         weight_sum = sum(weights)
+        result.result = weight_sum
         weights = [w/weight_sum for w in weights]
 
         if weight_sum == 0:
@@ -935,7 +945,9 @@ class JPT:
         # is empty (i.e. no candidate leaves -> query unsatisfiable)
         result.distributions = VariableMap()
 
+        # for every variable and distribution that got selected
         for var, dists in distributions.items():
+            # merge the distributions with weights according to their probability
             if var.numeric:
                 result.distributions[var] = Numeric.merge(dists, weights=weights)
             elif var.symbolic:
@@ -1741,7 +1753,12 @@ class JPT:
         return JPT.from_json(t)
 
     def depth(self):
+        """Calculate the maximal depth of a leaf in the current tree."""
         return max([leaf.depth() for leaf in self.leaves.values()])
+
+    def total_samples(self):
+        """Calculate the total number of samples represented by this tree."""
+        return sum(l.samples for l in self.leaves.values())
 
     def marginal_jpt(self, marginal_variables: List[jpt.variables.Variable]):
         """ Create a marginal joint probability distribution over all 'marginal_variables'.
@@ -1749,7 +1766,7 @@ class JPT:
         the original distribution. All possible splits are given by all splits in this tree since they are the only
         meaningful dependencies.
         @param marginal_variables:
-        @return:
+        @return: a new JPT
         """
         # get the variables that will be removed
         eliminated_variables = [variable for variable in self.variables if variable not in marginal_variables]
@@ -1768,6 +1785,9 @@ class JPT:
                 elif variable.symbolic:
                     all_splits.add(restriction)
 
+        for variable, splits in all_splits.items():
+            all_splits[variable] = list(splits)
+
         # calculate variable dependencies on marginal tree
         remaining_dependencies = VariableMap()
         for variable in marginal_variables:
@@ -1783,7 +1803,7 @@ class JPT:
         root_node = DecisionNode(1, None)
 
         # initialize impurities to know when to stop
-        impurities = dict()
+        impurities: Dict[int, float] = dict()
         impurities[1] = self.posterior(marginal_variables, VariableMap()).impurity()
 
         # initialize queue with root
@@ -1795,8 +1815,50 @@ class JPT:
 
             # get the current node
             current_node = unexpanded_nodes.pop()
-            self.expand_node(current_node, all_splits, marginal_jpt.variable_dependencies)
+            expansions_result = self.expand_node(current_node, all_splits, marginal_jpt.variable_dependencies)
 
+            # if the expansion does not yield a usable result
+            if expansions_result is None:
+                # add node to leaves
+                marginal_jpt.leaves[current_node.idx] = current_node
+
+                # terminate the recursion here
+                continue
+
+            # otherwise unpack the result
+            else:
+                left_node, right_node, left_impurity, right_impurity = expansions_result
+
+                # save impurities
+                impurities[left_node.idx] = left_impurity
+                impurities[right_node.idx] = right_impurity
+
+                # set children and nodes
+                current_node.children = [left_node, right_node]
+                marginal_jpt.innernodes[current_node.idx] = current_node
+
+            # check if the left node can be further expanded
+            if left_node.samples >= 2 * marginal_jpt.min_samples_leaf \
+                    and impurities[left_node.idx] > marginal_jpt.min_impurity_improvement:
+                # add node to the ones that need to be expanded
+                unexpanded_nodes.append(left_node)
+
+            # if it cannot lead to a meaningful split
+            else:
+                # add left node to leaves
+                marginal_jpt.leaves[left_node.idx] = left_node
+
+            # check if the right node can be further expanded
+            if right_node.samples >= 2 * marginal_jpt.min_samples_leaf \
+                    and impurities[right_node.idx] > marginal_jpt.min_impurity_improvement:
+                unexpanded_nodes.append(right_node)
+
+            # if it cannot lead to a meaningful split
+            else:
+                # add right node to leaves
+                marginal_jpt.leaves[right_node.idx] = right_node
+
+        self.create_leaves(marginal_jpt)
         return marginal_jpt
 
     def expand_node(self, node: Node, all_splits: VariableMap, variable_dependencies: VariableMap):
@@ -1804,7 +1866,7 @@ class JPT:
         # create the path as variable map
         path = node.path
 
-        marginal_variables = all_splits.keys()
+        marginal_variables = list(all_splits.keys())
 
         # array to save the best split for each node in
         best_splits = np.full((len(all_splits), 5), float("inf"))
@@ -1837,14 +1899,89 @@ class JPT:
                     # TODO create sets lol
                     pass
 
-                # self.plot(plotvars=self.variables)
-                # get impurity of remaining data and its length
+                # get independent marginals of remaining data and its length
                 positive_result = self.independent_marginals(marginal_variables, positive_path, True)
                 negative_result = self.independent_marginals(marginal_variables, negative_path, True)
 
-                print(positive_result)
-                exit()
                 # store impurity and number of samples
-                impurities[split_idx] = (positive_impurity, negative_impurity)
-                #lengths[split_idx] = (positive_samples, negative_samples)
+                impurities[split_idx] = (positive_result.impurity(variable_dependencies[variable]),
+                                         negative_result.impurity(variable_dependencies[variable]))
+                lengths[split_idx] = (positive_result.result * self.total_samples(),
+                                      negative_result.result * self.total_samples())
 
+            # get splits that would result in too few samples and set the corresponding impurities to infinity
+            invalid_splits, _ = np.where(lengths < self.min_samples_leaf * self.total_samples())
+            impurities[invalid_splits] = (float("inf"), float("inf"))
+
+            # get the best split index
+            best_split_idx = np.argmin(impurities)
+            best_split_idx = np.unravel_index(best_split_idx, impurities.shape)
+
+            # save the best split and its results on this variable to the array
+            best_splits[variable_idx] = (splits[best_split_idx[0]], impurities[best_split_idx[0], 0],
+                                         impurities[best_split_idx[0], 1],
+                                         lengths[best_split_idx[0], 0],
+                                         lengths[best_split_idx[0], 1])
+
+        # get best split parameters among all variables
+        best_split = np.argmin(best_splits[:, 1:3])
+        best_split_idx = np.array(np.unravel_index(best_split, best_splits[:, 1:3].shape))
+
+        # counter the shift that is obtained by unraveling in a view
+        best_split_idx[1] += 1
+        best_split_idx = tuple(best_split_idx)
+
+        # return None if this solution is not feasible
+        if best_splits[best_split_idx] == float("inf") \
+                or self.impurities[node.idx] - best_splits[best_split_idx] <= self.min_impurity_improvement:
+            return None
+
+        # construct left (positive) node
+        left_node = jpt.trees.DecisionNode(2 * node.idx, self.variables[best_split_idx[0]], node)
+        left_node.samples = best_splits[best_split_idx[0], 3]
+        left_node._path = node._path.copy()
+
+        # construct right (negative) node
+        right_node = jpt.trees.DecisionNode(2 * node.idx + 1, self.variables[best_split_idx[0]], node)
+        right_node.samples = best_splits[best_split_idx[0], 4]
+        right_node._path = node._path.copy()
+
+        # create the decision criterion and apply it ot the path
+        split_value = best_splits[best_split_idx[0], 0]
+
+        # create the splits for the parent node
+        if self.variables[best_split_idx[0]].numeric:
+            splits = [Interval(np.NINF, split_value, EXC, EXC),
+                      Interval(split_value, np.PINF, INC, EXC)]
+
+        elif self.variables[best_split_idx[0]].symbolic:
+            splits = [{int(split_value)},
+                      set(self.variables[best_split_idx[0]].domain.values.values()) - {int(split_value)}]
+
+        # update splits and splitting variable in parent node
+        node.variable = self.variables[best_split_idx[0]]
+        node.splits = splits
+
+        # extend path of both nodes with restrictions
+        left_node._path.append((self.variables[best_split_idx[0]], splits[0]))
+        right_node._path.append((self.variables[best_split_idx[0]], splits[1]))
+
+        # return left child, right child, left impurity, right impurity
+        return left_node, right_node, best_splits[best_split_idx[0], 1], best_splits[best_split_idx[0], 2]
+
+    def create_leaves(self, marginal_tree):
+        """Create the probability distributions and leaf nodes for the tree.
+
+        :param marginal_tree: The dataframe that is used to learn the distributions
+        :type marginal_tree: pyspark.sql.dataframe.DataFrame
+        """
+        # TODO documentation and reassembling of the tree
+        marginal_tree: JPT
+        # for every leaf node (that perhaps is a DecisionNode)
+        for leaf_idx, leaf in marginal_tree.leaves.items():
+
+            distributions = self.independent_marginals(marginal_tree.variables, leaf.path)
+            marginal_tree.leaves[leaf_idx].distributions = distributions.distributions
+            leaf.prior = self.total_samples() * distributions.result
+
+        return marginal_tree
