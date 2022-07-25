@@ -862,23 +862,28 @@ class Numeric(Distribution):
         Calculate the variance of this distribution as the integral over x^2 * f(x) minus the squared expectation.
         @return: The variance as float
         """
-
+        # initialize variance as 0.
         variance = 0.
-        for interval, function in zip(self.pdf.intervals, self.pdf.functions):
+        for interval, function in zip(self.cdf.intervals, self.cdf.functions):
             interval: ContinuousSet
-            function: ConstantFunction
+            function: LinearFunction
+
+            # calculate pdf value and w. r. t. jumps
+            pdf_value = function.eval(interval.upper) - function.eval(interval.lower)
+
             # skip impossible intervals
-            if function.value == 0.:
+            if pdf_value == 0.:
                 continue
 
             # if this is a dirac impulse return variance of 0.
-            elif function.value == float("inf"):
+            elif pdf_value == float("inf"):
                 return 0.
 
             # add variance as \int_x x^2 * f(x) dx - \mu^2
-            variance += (pow(interval.upper, 2) - pow(interval.lower, 2)) * function.value
+            variance += (pdf_value/3) * (pow(interval.upper, 3) - pow(interval.lower, 3)) - \
+                pow(pdf_value * (interval.upper + interval.lower) / 2, 2)
 
-        return variance - pow(self.expectation(), 2)
+        return variance
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''
