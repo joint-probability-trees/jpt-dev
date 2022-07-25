@@ -5,6 +5,8 @@ from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
 from csv import Dialect
 
 import math
+from typing import Callable, Iterable
+
 import numpy as np
 import arff
 import csv
@@ -15,7 +17,7 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from numpy import iterable
 
-from dnutils import ifnone, stop
+from dnutils import ifnone, stop, out
 
 try:
     from jpt.base.intervals import __module__
@@ -74,15 +76,42 @@ class Conditional:
         return self.p[tuple(evidence)].sample_one()
 
 
-def mapstr(seq, fmt=None, limit=None):
-    '''Convert the sequence ``seq`` into a list of strings by applying ``str`` to each of its elements.'''
-    result = [fmt(e) for e in seq] if callable(fmt) else [ifnone(fmt, '%s') % (e,) for e in seq]
+def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None):
+    '''
+    Convert the sequence ``seq`` into a list of strings by applying ``str`` to each of its elements.
+
+    If a ``limit`` is passed, the resulting list of strings will be truncated to ``limit`` elements at
+    most, and an additional three dots "..." in the middle.
+
+    ``fmt`` is an optional formating function that is applied to every sequence element,
+    defaulting to the ``str`` builtin function, if ``None``.
+    '''
+    fmt = ifnone(fmt, str)
+    result = [fmt(e) for e in seq]
     if not limit or limit > len(seq):
         return result
     return result[:max(limit // 2, 1)] + ['...'] + result[len(result) - limit // 2:]
 
 
-def prod(it):
+def setstr(seq: Iterable, fmt: Callable = None, limit: int = None, sep: str = ', '):
+    '''
+    Return a string representing the given sequence ``seq`` as a set.
+
+    If a ``limit`` is passed, the resulting list of strings will be truncated to ``limit`` elements at
+    most, and an additional three dots "..." in the middle.
+
+    ``fmt`` is an optional formating function that is applied to every sequence element,
+    defaulting to the ``str`` builtin function, if ``None``.
+
+    ``sep`` specifies the separator character to be used, defaulting to the comma.
+    '''
+    return sep.join(mapstr(seq, fmt=fmt, limit=limit))
+
+
+def prod(it: Iterable[numbers.Number]):
+    '''
+    Compute the product of all elements in ``it``.
+    '''
     return reduce(lambda x, y: x * y, it)
 
 

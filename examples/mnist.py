@@ -1,18 +1,23 @@
 import numpy as np
 from pandas import DataFrame
 
-from dnutils import mapstr, edict
+from dnutils import mapstr, edict, err
 from matplotlib import pyplot as plt
 
-from jpt.learning.distributions import Numeric, SymbolicType
+from jpt.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable, VariableMap
-from datetime import datetime
-import os
 
-def main():
-    from sklearn.datasets import load_digits
-    import sklearn.metrics
+
+def main(visualize=True):
+    try:
+        from sklearn.datasets import load_digits
+        import sklearn.metrics
+    except ModuleNotFoundError:
+        err('Module sklearn not found. In order to run this example, you have to install this package.')
+        return
+    plt.close()
+
     mnist = load_digits()
 
     # Create the names of the numeric variables
@@ -36,10 +41,9 @@ def main():
     tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
 
     tree.learn(data=df)
-    #tree.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
 
-    cjpt = tree.conditional_jpt(VariableMap({variables[0]:5, variables[29]:2.}.items()))
-    #cjpt.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
+    cjpt = tree.conditional_jpt(VariableMap({variables[0]: 5,
+                                             variables[29]: 2.}.items()))
 
     #calculate log likelihood
     queries = np.append(np.expand_dims(mnist.target, -1), mnist.data, axis=1)
@@ -61,10 +65,11 @@ def main():
         axes[idx].imshow(model, cmap='gray')
         axes[idx].set_title(leaf.distributions[tree.varnames['digit']].expectation())
 
-    plt.tight_layout()
-    plt.show()
+    if visualize:
+        plt.tight_layout()
+        plt.show()
     
-    tree.plot(plotvars=tree.variables)
+    tree.plot(plotvars=tree.variables, view=visualize)
 
 
 if __name__ == '__main__':

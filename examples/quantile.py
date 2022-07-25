@@ -1,26 +1,22 @@
 import pyximport
-import scipy.stats as stats
 
 pyximport.install()
 
 # from jpt.base.quantiles import QuantileDistribution
-from operator import itemgetter
 
-from dnutils import out
-
-from jpt.learning.cdfreg import CDFRegressor
+from jpt.distributions.quantile.cdfreg import CDFRegressor
 
 
 # from jpt.base.intervals import ContinuousSet, INC, EXC
 
 
-from jpt.base.quantiles import QuantileDistribution
+from jpt.distributions.quantile.quantiles import QuantileDistribution
 
 
 import numpy as np
 from matplotlib import pyplot as plt
 
-from jpt.learning.distributions import Gaussian
+from jpt.distributions import Gaussian
 
 
 def qdata(data):

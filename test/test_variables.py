@@ -3,7 +3,7 @@ import pickle
 from types import GeneratorType
 from unittest import TestCase
 
-from jpt.learning.distributions import Bool, Numeric
+from jpt.distributions import Bool, Numeric
 from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable
 
 

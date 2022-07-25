@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 from jpt import SymbolicVariable, JPT
-from jpt.learning.distributions import Bool
+from jpt.distributions import Bool
 
 
 class JointProbabilityTreesMPE(unittest.TestCase):

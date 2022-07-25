@@ -23,35 +23,35 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, ifnone, mapstr, err, fst
+from dnutils import first, ifnone, mapstr, err, fst, out
 
-from .base.utils import Unsatisfiability
+from .base.utils import Unsatisfiability, prod
 
 from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
-from .learning.distributions import Distribution
+from .distributions import Distribution
 
 from .base.utils import list2interval, format_path, normalized
-from .learning.distributions import Multinomial, Numeric
+from .distributions import Multinomial, Numeric
 from .base.constants import plotstyle, orange, green, SYMBOL
 
 try:
-    from .base.quantiles import __module__
     from .base.intervals import __module__
     from .learning.impurity import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from .base.quantiles import QuantileDistribution
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
     from .learning.impurity import Impurity
 
+import multiprocessing as mp
+
+
 style.use(plotstyle)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Global data store to exploit copy-on-write in multiprocessing
-
-import multiprocessing as mp
 
 _data = None
 _lock = Lock()
@@ -59,11 +59,11 @@ _lock = Lock()
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
 def _prior(args):
     var_idx, json_var = args
     try:
-        return Variable.from_json(json_var).dist(data=_data, col=var_idx).to_json()
+        return Variable.from_json(json_var).distribution().fit(data=_data,
+                                                               col=var_idx).to_json()
     except ValueError as e:
         raise ValueError('%s: %s' % (Variable.from_json(json_var), str(e)))
 
@@ -309,6 +309,7 @@ class Result:
         self._res = ifnone(res, [])
         self._cand = ifnone(cand, [])
         self._w = ifnone(w, [])
+        self.candidate_dists = defaultdict(list)
 
     def __str__(self):
         return self.format_result()
@@ -346,14 +347,20 @@ class Result:
 
     def format_result(self):
         return ('P(%s%s) = %.3f%%' % (format_path(self.query),
-                                      (' | %s' % format_path(self.evidence)) if self.evidence else '',
+                                      (' | %s' % format_path(self._evidence)) if self.evidence else '',
                                       self.result * 100))
 
     def explain(self):
         result = self.format_result()
         result += '\n'
-        for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '%.3f%%: %s\n' % (weight,
+        out(self.candidates)
+        out(self.weights)
+        for weight, leaf in sorted(zip(self.weights, self.candidates),
+                                   key=operator.itemgetter(0),
+                                   reverse=True):
+            if not weight:
+                continue
+            result += '%.3f%%: %s\n' % (weight * 100,
                                         format_path({var: val for var, val in leaf.path.items()
                                                      if var not in self.evidence}))
         return result
@@ -383,7 +390,7 @@ class ExpectationResult(Result):
         left = 'E(%s%s%s; %s = %.3f)' % (self.query.name,
                                          ' | ' if self.evidence else '',
                                          # ', '.join([var.str(val, fmt='logic') for var, val in self._evidence.items()]),
-                                         format_path(self.evidence),
+                                         format_path(self._evidence),
                                          SYMBOL.THETA,
                                          self.theta)
         right = '[%.3f %s %.3f %s %.3f]' % (self.lower,
@@ -392,6 +399,25 @@ class ExpectationResult(Result):
                                             SYMBOL.ARROW_BAR_RIGHT,
                                             self.upper) if self.query.numeric else self.result
         return '%s = %s' % (left, right)
+
+    def explain(self):
+        result = self.format_result()
+        result += '\n'
+        out(self.candidates)
+        out(self.weights)
+        for weight, leaf, dist in sorted(zip(self.weights, self.candidates, self.candidate_dists),
+                                   key=operator.itemgetter(0),
+                                   reverse=True):
+            if not weight:
+                continue
+            result += '%.3f%%: %s: %s - %s - %s\n' % (weight * 100,
+                                                      format_path({var: val for var, val in leaf.path.items()}),
+                                                      dist.quantile(.05),
+                                                      dist.expectation(),
+                                                      dist.quantile(.95))
+        print(self.distribution.ppf.pfmt())
+        self.distribution.plot(view=True)
+        return result
 
 
 class MPEResult(Result):
@@ -407,12 +433,11 @@ class MPEResult(Result):
 class PosteriorResult(Result):
 
     def __init__(self, query, evidence, dists=None, cand=None, w=None):
-        super().__init__(query, evidence, res=None, cand=cand)
-        self._w = ifnone(w, {})
+        super().__init__(query, evidence, res=None, cand=cand, w=w)
         self.distributions = dists
 
     def format_result(self):
-        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
+        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query]),
                                         ' | ' if self.evidence else '',
                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
                                         self.result * 100))
@@ -627,6 +652,14 @@ class JPT:
                 self.max_depth == o.max_depth and
                 self.max_leaves == o.max_leaves)
 
+    def pdf(self, values: VariableMap) -> float:
+        values_ = VariableMap([(var, ContinuousSet(val, val)) for var, val in values.items()])
+        pdf = 0
+        for leaf in self.apply(values_):
+            pdf += leaf.prior * (prod(leaf.distributions[var].pdf(value)
+                                      for var, value in values.items()) if values else 1)
+        return pdf
+
     def infer(self, query, evidence=None, fail_on_unsatisfiability=True) -> Result:
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
@@ -725,16 +758,29 @@ class JPT:
 
         likelihoods = []
         priors = []
-
+        pdf_cond = self.pdf(VariableMap([(var, val.fst())
+                                         for var, val in evidence_.items()
+                                         if isinstance(val, ContinuousSet) and val.size() == 1]))
+        if not pdf_cond:
+            if fail_on_unsatisfiability:
+                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
+            else:
+                return None
         for leaf in self.apply(evidence_):
             likelihood = 1
             # check if path of candidate leaf is consistent with evidence
             # (i.e. contains evicence variable with *correct* value or does not contain it at all)
             for var in set(evidence_.keys()):
                 evidence_set = evidence_[var]
+                if isinstance(evidence_set, ContinuousSet) and evidence_set.size() == 1:
+                    continue
                 if var in leaf.path:
                     evidence_set = evidence_set.intersection(leaf.path[var])
-                likelihood *= leaf.distributions[var]._p(evidence_set)
+                likelihood *= leaf.distributions[var]._p(evidence_set) #/ pdf_cond
+
+            if not likelihood:
+                continue
+
             likelihoods.append(likelihood)
             priors.append(leaf.prior)
 
@@ -748,6 +794,7 @@ class JPT:
                 distributions[var].append(distribution)
 
             result.candidates.append(leaf)
+            result.candidate_dists[var].append(distribution)
 
         weights = [l * p for l, p in zip(likelihoods, priors)]
         try:
@@ -756,6 +803,7 @@ class JPT:
             if fail_on_unsatisfiability:
                 raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
             return None
+        result.weights = weights
 
         # initialize all query variables with None, in case dists
         # is empty (i.e. no candidate leaves -> query unsatisfiable)
@@ -769,7 +817,8 @@ class JPT:
 
         return result
 
-    def expectation(self, variables=None,
+    def expectation(self,
+                    variables=None,
                     evidence=None,
                     confidence_level=None,
                     fail_on_unsatisfiability=True) -> ExpectationResult:
@@ -779,7 +828,10 @@ class JPT:
         '''
         variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
                            set(self.variables) - set(evidence))
-        posteriors = self.posterior(variables, evidence, fail_on_unsatisfiability=fail_on_unsatisfiability)
+
+        posteriors = self.posterior(variables,
+                                    evidence,
+                                    fail_on_unsatisfiability=fail_on_unsatisfiability)
         conf_level = ifnone(confidence_level, .95)
 
         if posteriors is None:
@@ -793,10 +845,13 @@ class JPT:
             result = ExpectationResult(var, posteriors._evidence, conf_level)
             result._res = dist._expectation()
             result.candidates.extend(posteriors.candidates)
+            result.weights = posteriors.weights
+            result.candidate_dists = posteriors.candidate_dists[var]
+            result.distribution = dist
             if var.numeric:
                 exp_quantile = dist.cdf.eval(result._res)
-                result._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
-                result._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
+                result._lower = dist.ppf.eval((1 - conf_level) / 2)  # max(0., (exp_quantile - conf_level / 2.)))
+                result._upper = dist.ppf.eval(1 - (1 - conf_level) / 2)  # min(1., (exp_quantile + conf_level / 2.)))
             final[var] = result
         return final
 
@@ -840,14 +895,15 @@ class JPT:
             r.path.update({var: dist.mpe()})
         return r
 
-    def _prepropress_query(self, query, transform_values=True, remove_none=True) -> VariableMap:
+    def _prepropress_query(self,
+                           query: Union[VariableMap, Dict[Variable, Any]],
+                           remove_none: bool = True) -> VariableMap:
         '''
         Transform a query entered by a user into an internal representation
         that can be further processed.
         '''
         # Transform lists into a numeric interval:
         query_ = VariableMap()
-        # Transform single numeric values in to intervals given by the haze
         # parameter of the respective variable:
         for key, arg in query.items():
             if arg is None and remove_none:
@@ -856,20 +912,24 @@ class JPT:
             if var.numeric:
                 if type(arg) is list:
                     arg = list2interval(arg)
-                if isinstance(arg, numbers.Number) and transform_values:
+                if isinstance(arg, numbers.Number):
                     val = var.domain.values[arg]
-                    prior = self.priors[var.name]
-                    quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
-                                                              prior.cdf.idx_at(val)))].eval(val)
-                    lower = quantile - var.haze / 2
-                    upper = quantile + var.haze / 2
-                    query_[var] = ContinuousSet(prior.ppf.functions[max(1,
-                                                                        min(len(prior.cdf) - 2,
-                                                                            prior.ppf.idx_at(lower)))].eval(lower),
-                                                prior.ppf.functions[min(len(prior.ppf) - 2,
-                                                                        max(1,
-                                                                            prior.ppf.idx_at(upper)))].eval(upper))
-                elif isinstance(arg, ContinuousSet) and transform_values:
+                    # Apply a "blur" to single value evidences, if any blur is set
+                    if var.blur:
+                        prior = self.priors[var.name]
+                        quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
+                                                                  prior.cdf.idx_at(val)))].eval(val)
+                        lower = quantile - var.blur / 2
+                        upper = quantile + var.blur / 2
+                        query_[var] = ContinuousSet(prior.ppf.functions[max(1,
+                                                                            min(len(prior.cdf) - 2,
+                                                                                prior.ppf.idx_at(lower)))].eval(lower),
+                                                    prior.ppf.functions[min(len(prior.ppf) - 2,
+                                                                            max(1,
+                                                                                prior.ppf.idx_at(upper)))].eval(upper))
+                    else:
+                        query_[var] = ContinuousSet(val, val)
+                elif isinstance(arg, ContinuousSet):
                     query_[var] = ContinuousSet(var.domain.values[arg.lower],
                                                 var.domain.values[arg.upper], arg.left, arg.right)
                 else:
@@ -878,7 +938,7 @@ class JPT:
                 # Transform into internal values (symbolic values to their indices):
                 if type(arg) is not set:
                     arg = {arg}
-                query_[var] = {var.domain.values[v] if transform_values else v for v in arg}
+                query_[var] = {var.domain.values[v] for v in arg}
 
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
@@ -934,9 +994,9 @@ class JPT:
                 parent.set_child(child_idx, leaf)
 
             for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.dist(data=data,
-                                               rows=self.indices[start:end], col=i)
-
+                leaf.distributions[v] = v.distribution().fit(data=data,
+                                                             rows=self.indices[start:end],
+                                                             col=i)
             leaf.prior = n_samples / data.shape[0]
             leaf.samples = n_samples
 
