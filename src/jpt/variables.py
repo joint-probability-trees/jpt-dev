@@ -368,7 +368,7 @@ class VariableMap:
             return default
         return self[key]
 
-    def keys(self) -> Iterator[str]:
+    def keys(self) -> Iterator[Variable]:
         yield from (self._variables[name] for name in self._map.keys())
 
     def values(self) -> Iterator[Any]:

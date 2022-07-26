@@ -15,7 +15,7 @@ def neemdata():
 
     # location of NEEM_SetTable_Breakfast.tar.xz
     ltargz = 'https://seafile.zfn.uni-bremen.de/f/fa5a760d89234cfc83ad/?dl=1'
-    df = pd.read_csv(ltargz, compression='xz', delimiter=';', sep=';', skip_blank_lines=True, header=0,
+    df = pd.read_csv(ltargz, compression='xz', delimiter=';', skip_blank_lines=True, header=0,
                      index_col=False,
                      names=['id', 'type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'parent', 'next', 'previous', 'object_acted_on', 'object_type', 'bodyPartsUsed', 'arm', 'grasp', 'effort'],
                      usecols=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm'],
@@ -55,9 +55,12 @@ def neemdata():
     out(f'Learning sebadata-Tree...')
     jpt.learn(columns=df.values.T)
     out(f'Done! Plotting...')
-    out(jpt)
-    # jpt.plot(filename='NEEMs', plotvars=vars, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
+    #out(jpt)
 
+    #jpt.plot(filename='NEEMs', plotvars=vars, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
+    mt = jpt.marginal_jpt([st, et])
+    mt.plot(filename='NEEMs', plotvars=mt.variables, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
+    print("Done Plotting")
 
 def main(*args):
     neemdata()

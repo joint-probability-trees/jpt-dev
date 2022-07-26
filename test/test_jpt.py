@@ -104,4 +104,6 @@ class JPTTest(TestCase):
                   min_samples_leaf=.05, )
         jpt.learn(self.data.reshape(-1, 2))
 
-        jpt.marginal_jpt([x]).plot()
+        mt = jpt.marginal_jpt([x])
+
+        self.assertEqual(len(mt.leaves), 1)
