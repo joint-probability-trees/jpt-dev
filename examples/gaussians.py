@@ -45,7 +45,6 @@ def generate_gaussian_samples(gaussians, n):
     # all_data = np.hstack([all_data, reduce(list.__add__, colors)])
 
     df = DataFrame({'X': all_data[:, 0], 'Y': all_data[:, 1], 'Color': reduce(list.__add__, colors)})
-    print(df.to_string())
     return df
 
 
