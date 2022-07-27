@@ -148,9 +148,9 @@ cdef class LinearFunction(Function):
 
     cpdef Function copy(self)
 
-    cpdef np.int32_t crosses(self, Function f) except +
+    cpdef np.int32_t intersects(self, Function f) except +
 
-    cpdef ContinuousSet xing_point(self, Function f) except +
+    cpdef ContinuousSet intersection(self, Function f) except +
 
     cpdef Function differentiate(self)
 
