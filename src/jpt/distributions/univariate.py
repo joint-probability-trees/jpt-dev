@@ -31,12 +31,14 @@ from .utils import Identity, OrderedDictProxy, DataScalerProxy, DataScaler
 try:
     from ..base.intervals import __module__
     from .quantile.quantiles import __module__
+    from ..base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet
-    from .quantile.quantiles import QuantileDistribution, LinearFunction
+    from ..base.functions import LinearFunction
+    from .quantile.quantiles import QuantileDistribution
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -785,7 +787,7 @@ class Multinomial(Distribution):
         return cls.__name__ == other.__name__ and cls.labels == other.labels and cls.values == other.values
 
     def __getitem__(self, value):
-        return self.p(value)
+        return self.p([value])
 
     def __setitem__(self, label, p):
         self._params[self.values[label]] = p
@@ -818,7 +820,7 @@ class Multinomial(Distribution):
         return type(self)(**self.settings).set(params=self._params)
 
     def p(self, labels):
-        if not iterable(labels):
+        if not isinstance(labels, (set, list, tuple, np.ndarray)):
             raise TypeError('Argument must be iterable (got %s).' % type(labels))
         return self._p(self.values[label] for label in labels)
 
