@@ -55,7 +55,10 @@ cdef class Undefined(Function):
         return 'undef.'
 
     def __repr__(self):
-        return '<Undefined>'
+        return '<Undefined 0x%X>' % id(self)
+
+    def __hash__(self):
+        return hash(Undefined)
 
     def __eq__(self, other):
         if isinstance(other, Undefined):
@@ -98,7 +101,7 @@ cdef class Hinge(KnotFunction):
                                       ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
 
     def __repr__(self):
-        return '<Hinge k=%.3f a=%d w=%.3f>' % (self.knot, self.alpha, self.weight)
+        return '<Hinge 0x%X: k=%.3f a=%d w=%.3f>' % (id(self), self.knot, self.alpha, self.weight)
 
     cpdef Function differentiate(self):
         return Jump(self.knot, self.alpha, -self.weight if self.alpha == 1 else self.weight)
@@ -127,7 +130,7 @@ cdef class Jump(KnotFunction):
                                            ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
 
     def __repr__(self):
-        return '<Jump k=%.3f a=%d w=%.3f>' % (self.knot, self.alpha, self.weight)
+        return '<Jump 0x%X: k=%.3f a=%d w=%.3f>' % (id(self), self.knot, self.alpha, self.weight)
 
     @staticmethod
     def from_point(p1, alpha):
@@ -158,7 +161,7 @@ cdef class Impulse(KnotFunction):
         return False
 
     def __repr__(self):
-        return '<Impulse k=%.3f w=%.3f>' % (self.knot, self.weight)
+        return '<Impulse )x%X: k=%.3f w=%.3f>' % (id(self), self.knot, self.weight)
 
     def __str__(self):
         return '%.3f if x=%.3f else 0' % (self.weight, self.knot)
@@ -181,7 +184,7 @@ cdef class ConstantFunction(Function):
         return '%s = const.' % self.value
 
     def __repr__(self):
-        return 'const=%s' % self.value
+        return '<ConstantFunction 0x%X: %s>' % (id(self), str(self.value))
 
     cpdef DTYPE_t eval(self, DTYPE_t x):
         return self.value
@@ -210,31 +213,33 @@ cdef class ConstantFunction(Function):
     def c(self):
         return self.value
 
-    cpdef np.int32_t crosses(self, Function f) except +:
+    cpdef np.int32_t intersects(self, Function f) except +:
         '''
         Determine if the function crosses another linear function ``f``.
         :param f: 
         :return: 
         '''
         if isinstance(f, LinearFunction):
-            return f.crosses(self)
+            return f.intersects(self)
         elif isinstance(f, ConstantFunction):
             return f.value == self.value
         else:
-            raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
+            raise TypeError('Argument must be of type LinearFunction '
+                            'or ConstantFunction, not %s' % type(f).__name__)
 
-    cpdef ContinuousSet xing_point(self, Function f) except +:
+    cpdef ContinuousSet intersection(self, Function f) except +:
         '''
         Determine if the function crosses another linear function ``f``.
         :param f: 
         :return: 
         '''
         if isinstance(f, LinearFunction):
-            return f.crosses_at(self)
+            return f.intersection(self)
         elif isinstance(f, ConstantFunction):
             return R.copy() if self.value == f.value else EMPTY.copy()
         else:
-            raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
+            raise TypeError('Argument must be of type LinearFunction '
+                            'or ConstantFunction, not %s' % type(f).__name__)
 
     def to_json(self):
         return {'type': 'constant', 'value': self.value}
@@ -264,7 +269,7 @@ cdef class LinearFunction(Function):
         return ('%s %s %s' % (l, op, c)).strip()
 
     def __repr__(self):
-        return '<%s>' % str(self)
+        return '<LinearFunction 0x%X: %s>' % (id(self), str(self))
 
     @staticmethod
     def parse(s):
@@ -359,6 +364,8 @@ cdef class LinearFunction(Function):
     def __mul__(self, o):
         if isinstance(o, numbers.Number):
             return LinearFunction(self.m * o, self.c * o)
+        elif isinstance(o, ConstantFunction):
+            return LinearFunction(self.m * o.value, self.c * o.value)
         elif isinstance(o, LinearFunction):
             return QuadraticFunction(self.m * o.m, self.m * o.c + o.m * self.c, self.c * o.c).simplify()
         else:
@@ -370,6 +377,8 @@ cdef class LinearFunction(Function):
             return LinearFunction(self.m + x.m, self.c + x.c)
         elif isinstance(x, (int, float)):
             return LinearFunction(self.m, self.c + x)
+        elif isinstance(x, ConstantFunction):
+            return LinearFunction(self.m, self.c + x.value)
         else:
             raise TypeError('Operator "+" undefined for types %s '
                             'and %s' % (type(x).__name__, type(self).__name__))
