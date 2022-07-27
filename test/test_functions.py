@@ -4,11 +4,13 @@ from ddt import ddt, data, unpack
 
 try:
     from jpt.base.functions import __module__
+    from jpt.base.intervals import __module__, EMPTY, R
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from jpt.base.functions import LinearFunction, QuadraticFunction, ConstantFunction, Undefined, Function
+    from jpt.base.intervals import ContinuousSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -29,6 +31,12 @@ class LinearFunctionTest(TestCase):
     @unpack
     def test_fit(self, p1, p2, truth):
         self.assertEqual(LinearFunction.from_points(p1, p2), truth)
+
+    @data((LinearFunction(1, 0), 1, 1),
+          (LinearFunction(1, 1), 1, 2))
+    @unpack
+    def test_eval(self, f, x, y):
+        self.assertEqual(y, f.eval(x))
 
     @data(((0, 0), (0, 0)), ((1, 1), (1, 1)))
     @unpack
@@ -53,11 +61,24 @@ class LinearFunctionTest(TestCase):
         self.assertEqual(f2, LinearFunction.from_json(f2.to_json()))
         self.assertEqual(f3, LinearFunction.from_json(f3.to_json()))
 
+    @data((LinearFunction(1, 0), LinearFunction(-1, 0), ContinuousSet(0, 0)),
+          (LinearFunction(1, 0), LinearFunction(1, 1), EMPTY),
+          (LinearFunction(-1, 1), LinearFunction(-1, 1), R))
+    @unpack
+    def test_intersection(self, f1, f2, v):
+        self.assertEqual(v, f1.intersection(f2))
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 @ddt
 class QuadraticFunctionTest(TestCase):
+
+    @data((QuadraticFunction(1, 1, 1), 1, 3),
+          (QuadraticFunction(1, 1, 1), 2, 7))
+    @unpack
+    def test_eval(self, f, x, y):
+        self.assertEqual(y, f.eval(x))
 
     @data(((0, 0), (1, 1), (2, 4), QuadraticFunction(1, 0, 0)))
     @unpack
@@ -92,4 +113,3 @@ class QuadraticFunctionTest(TestCase):
     @unpack
     def test_simplify(self, f1: QuadraticFunction, f2: Function):
         self.assertEqual(f1.simplify(), f2)
-

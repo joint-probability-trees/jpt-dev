@@ -308,7 +308,7 @@ cdef class LinearFunction(Function):
     cpdef Function copy(self):
         return LinearFunction(self.m, self.c)
 
-    cpdef np.int32_t crosses(self, Function f) except +:
+    cpdef np.int32_t intersects(self, Function f) except +:
         '''
         Determine if the function crosses another linear function ``f``.
         :param f: 
@@ -325,9 +325,10 @@ cdef class LinearFunction(Function):
             else:
                 return True
         else:
-            raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
+            raise TypeError('Argument must be of type '
+                            'LinearFunction or ConstantFunction, not %s' % type(f).__name__)
 
-    cpdef ContinuousSet xing_point(self, Function f) except +:
+    cpdef ContinuousSet intersection(self, Function f) except +:
         '''
         Determine if the function crosses another linear function ``f``.
         :param f: 
@@ -352,7 +353,17 @@ cdef class LinearFunction(Function):
             x = (self.c - f.value) / -self.m
             return ContinuousSet(x, x)
         else:
-            raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
+            raise TypeError('Argument must be of type LinearFunction '
+                            'or ConstantFunction, not %s' % type(f).__name__)
+
+    def __mul__(self, o):
+        if isinstance(o, numbers.Number):
+            return LinearFunction(self.m * o, self.c * o)
+        elif isinstance(o, LinearFunction):
+            return QuadraticFunction(self.m * o.m, self.m * o.c + o.m * self.c, self.c * o.c).simplify()
+        else:
+            raise TypeError('No operator "*" defined for objects of '
+                            'types %s and %s' % (type(self).__name__, type(o).__name__))
 
     def __add__(self, x):
         if isinstance(x, LinearFunction):
@@ -360,7 +371,8 @@ cdef class LinearFunction(Function):
         elif isinstance(x, (int, float)):
             return LinearFunction(self.m, self.c + x)
         else:
-            raise TypeError('Operator "+" undefined for types %s and %s' % (type(x).__name__, type(self).__name__))
+            raise TypeError('Operator "+" undefined for types %s '
+                            'and %s' % (type(x).__name__, type(self).__name__))
 
     def __sub__(self, x):
         return -x + self
@@ -371,6 +383,15 @@ cdef class LinearFunction(Function):
     def __rsub__(self, x):
         return self - x
 
+    def __rmul__(self, o):
+        return self * o
+
+    def __iadd__(self, other):
+        self.set(self + other)
+
+    def __imul__(self, other):
+        self.set(self * other)
+
     def __eq__(self, other):
         if isinstance(other, (ConstantFunction, LinearFunction)):
             return self.m == other.m and self.c == other.c
@@ -378,6 +399,14 @@ cdef class LinearFunction(Function):
             return False
         else:
             raise TypeError('Can only compare objects of type "Function", but got type "%s".' % type(other).__name__)
+
+    def set(self, f: LinearFunction) -> LinearFunction:
+        if not isinstance(f, LinearFunction):
+            raise TypeError('Unable to assign object parameters of '
+                            'type %s to object of type %s' % (type(self).__name__, type(f).__name__))
+        self.m = f.m
+        self.c = f.c
+        return self
 
     cpdef Function differentiate(self):
         return ConstantFunction(self.m)
@@ -393,7 +422,8 @@ cdef class LinearFunction(Function):
         cdef DTYPE_t x1 = p1[0], y1 = p1[1]
         cdef DTYPE_t x2 = p2[0], y2 = p2[1]
         if x1 == x2:
-            raise ValueError('Points must have different coordinates to fit a line: p1=%s, p2=%s' % (p1, p2))
+            raise ValueError('Points must have different coordinates '
+                             'to fit a line: p1=%s, p2=%s' % (p1, p2))
         if any(np.isnan(p) for p in itertools.chain(p1, p2)):
             raise ValueError('Arguments %s, %s are invalid.' % (p1, p2))
         if y2 == y1:
@@ -813,7 +843,7 @@ cdef class PiecewiseFunction(Function):
         y_ = ConstantFunction(y)
         prev_f = None
         for i, f in zip(self.intervals, self.functions):
-            x = f.xing_point(y_)
+            x = f.intersection(y_)
             if x and x in i:
                 result_set.intervals.append(i.intersection(x))
             elif prev_f and (prev_f(i.lower) < y < f(i.lower) or prev_f(i.lower) > y > f(i.lower)):
@@ -827,7 +857,7 @@ cdef class PiecewiseFunction(Function):
         prev_f = None
         current = None
         for i, f in zip(self.intervals, self.functions):
-            x = f.xing_point(y_)
+            x = f.intersection(y_)
             if x.size() == 1 and x.lower in i:
                 if f.m > 0:
                     if current is None:
@@ -854,7 +884,7 @@ cdef class PiecewiseFunction(Function):
         y_ = ConstantFunction(y)
         current = None
         for i, f in zip(self.intervals, self.functions):
-            x = f.xing_point(y_)
+            x = f.intersection(y_)
             if x.size() == 1 and x.lower in i:
                 if f.m < 0:
                     if current is None:
