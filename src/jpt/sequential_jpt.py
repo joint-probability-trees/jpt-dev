@@ -10,13 +10,16 @@ from jpt.distributions import Numeric, Multinomial
 from jpt.variables import Variable, VariableMap
 
 try:
-    from jpt.base.intervals import __module__, ContinuousSet, R
-    from jpt.distributions.quantile.quantiles import __module__, ConstantFunction, QuantileDistribution, LinearFunction
+    from jpt.base.intervals import __module__
+    from jpt.distributions.quantile.quantiles import __module__
+    from jpt.base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.distributions.quantile.quantiles import PiecewiseFunction
+    from jpt.base.functions import PiecewiseFunction, ConstantFunction, LinearFunction
+    from jpt.distributions.quantile.quantiles import QuantileDistribution
+    from jpt.base.intervals import ContinuousSet, R
 
 
 # ----------------------------------------------------------------------------------------------------------------------

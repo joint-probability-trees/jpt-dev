@@ -686,15 +686,11 @@ class JPT:
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         '''
-        querymap = VariableMap()
-        for key, value in query.items():
-            querymap[key if isinstance(key, Variable) else self.varnames[key]] = value
-        query_ = self._prepropress_query(querymap)
-        evidencemap = VariableMap()
-        if evidence:
-            for key, value in evidence.items():
-                evidencemap[key if isinstance(key, Variable) else self.varnames[key]] = value
-        evidence_ = ifnone(evidencemap, {}, self._prepropress_query)
+        # querymap = VariableMap()
+        # for key, value in query.items():
+        #     querymap[key if isinstance(key, Variable) else self.varnames[key]] = value
+        query_ = self._prepropress_query(query)
+        evidence_ = ifnone(evidence, {}, self._prepropress_query)
 
         r = Result(query_, evidence_)
 
