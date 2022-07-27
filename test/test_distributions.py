@@ -7,13 +7,15 @@ import numpy as np
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
 
 try:
+    from jpt.base.functions import __module__
     from jpt.distributions.quantile.quantiles import __module__
     from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.distributions.quantile.quantiles import PiecewiseFunction, LinearFunction, QuantileDistribution
+    from jpt.base.functions import PiecewiseFunction, LinearFunction
+    from jpt.distributions.quantile.quantiles import QuantileDistribution
     from jpt.base.intervals import ContinuousSet, EXC, INC
 
 

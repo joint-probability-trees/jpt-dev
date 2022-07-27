@@ -1,556 +1,47 @@
 # cython: auto_cpdef=True,
-# cython: infer_types=True,
+# cython: infer_types=False,
 # cython: language_level=3
 # cython: boundscheck=False
 # cython: nonecheck=False
 # cython: cdivision=True
 __module__ = 'quantiles.pyx'
-import itertools
-import numbers
+
 from cmath import isnan
-from collections import deque
 from operator import itemgetter, attrgetter
 
 from dnutils import ifnot, first, ifnone
-from scipy import stats
-from scipy.stats import norm
 
-from ...base.intervals cimport ContinuousSet, RealSet
 from ...base.intervals import R, EMPTY, EXC, INC
 
 import numpy as np
+
+from ...base.functions cimport PiecewiseFunction, LinearFunction, ConstantFunction, Undefined, Jump, Function
+from ...base.intervals cimport ContinuousSet, RealSet
 cimport numpy as np
 cimport cython
+from ...base.cutils cimport SIZE_t, DTYPE_t, sort
 
 import warnings
 
 from jpt.base.utils import pairwise, Unsatisfiability
-from ...base.cutils cimport SIZE_t, DTYPE_t, sort
 
 from .cdfreg import CDFRegressor
 
 warnings.filterwarnings("ignore")
 
 
-cpdef DTYPE_t ifnan(DTYPE_t if_, DTYPE_t else_, transform=None):
-    '''
-    Returns the condition ``if_`` iff it is not ``Nan``, or if a transformation is
-    specified, ``transform(if_)``. Returns ``else_`` if the condition is ``NaN``.
-    ``transform`` can be any callable, which will be passed ``if_`` in case ``if_`` is not ``NaN``.
-    '''
-    if np.isnan(if_):
-        return else_
-    else:
-        if transform is not None:
-            return transform(if_)
-        else:
-            return if_
-
-
-cdef inline np.int32_t equal(DTYPE_t x1, DTYPE_t x2, DTYPE_t tol=1e-7):
-    return abs(x1 - x2) < tol
-
-
-cpdef DTYPE_t[::1] linspace(DTYPE_t start, DTYPE_t stop, np.int64_t num):
-    '''
-    Modification of the ``numpy.linspace`` function to return an array of ``num``
-    equally spaced samples in the range of ``start`` and ``stop`` (both inclusive).
-
-    In contrast to the original numpy function, this variant return the centroid of
-    ``start`` and ``stop`` in the case where ``num`` is ``1``.
-
-    :param start:
-    :param stop:
-    :param num:
-    :return:
-    '''
-    cdef DTYPE_t[::1] samples = np.ndarray(shape=num, dtype=np.float64)
-    cdef DTYPE_t n
-    cdef DTYPE_t space, val = start
-    cdef np.int64_t i
-    if num == 1:
-        samples[0] = (stop - start) / 2
-    else:
-        n = <DTYPE_t> num - 1
-        space = (stop - start) / n
-        for i in range(num):
-            samples[i] = val
-            val += space
-    return samples
-
-
-cdef class ConfInterval:
-    '''Represents a prediction interval with a mean, lower und upper bound'''
-
-    def __init__(self, mean, lower, upper):
-        self.mean = mean
-        self.lower = lower
-        self.upper = upper
-
-    def __str__(self):
-        return '|<-- %s -- %s -- %s -->|' % (self.lower, self.mean, self.upper)
-
-    def __repr__(self):
-        return str(self)
-
-    cpdef tuple totuple(ConfInterval self):
-        return self.lower, self.mean, self.upper
-
-    cpdef DTYPE_t[::1] tomemview(ConfInterval self, DTYPE_t[::1] result=None):
-        if result is None:
-            result = np.ndarray(shape=3, dtype=np.float64)
-        result[0] = self.lower
-        result[1] = self.mean
-        result[2] = self.upper
-
-
-@cython.freelist(1000)
-cdef class Function:
-    '''
-    Abstract base type of functions.
-    '''
-
-    def __init__(self):
-        pass
-
-    def __call__(self, x):
-        return self.eval(x)
-
-
-@cython.final
-cdef class Undefined(Function):
-    '''
-    This class represents an undefined function.
-    '''
-
-    cpdef inline DTYPE_t eval(Undefined self, DTYPE_t x):
-        return np.nan
-
-    def __str__(self):
-        return 'undef.'
-
-    def __repr__(self):
-        return '<Undefined>'
-
-    def __eq__(self, other):
-        if isinstance(other, Undefined):
-            return True
-        return False
-
-
-cdef class KnotFunction(Function):
-    '''
-    Abstract superclass of all knot functions.
-    '''
-
-    def __init__(KnotFunction self, DTYPE_t knot, DTYPE_t weight):
-        self.knot = knot
-        self.weight = weight
-
-
-@cython.final
-cdef class Hinge(KnotFunction):
-    '''
-    Implementation of hinge functions as used in MARS regression.
-
-    alpha = 1:  hinge is zero to the right of knot
-    alpha = -1: hinge is zero to the left of knot
-    '''
-
-    def __init__(Hinge self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
-        super(Hinge, self).__init__(knot, weight)
-        assert alpha in (1, -1), 'alpha must be in {1,-1}'
-        self.alpha = alpha
-
-    cpdef inline DTYPE_t eval(Hinge self, DTYPE_t x):
-        return max(0, (self.knot - x) if self.alpha == 1 else (x - self.knot)) * self.weight
-
-    def __str__(self):
-        return '%.3f * max(0, %s)' % (self.weight, ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
-
-    def __repr__(self):
-        return '<Hinge k=%.3f a=%d w=%.3f>' % (self.knot, self.alpha, self.weight)
-
-    cpdef Function differentiate(Hinge self):
-        return Jump(self.knot, self.alpha, -self.weight if self.alpha == 1 else self.weight)
-
-    cpdef np.int32_t is_invertible(Hinge self):
-        return False
-
-
-@cython.final
-cdef class Jump(KnotFunction):
-    '''
-    Implementation of jump functions.
-    '''
-
-    def __init__(Jump self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
-        super(Jump, self).__init__(knot, weight)
-        assert alpha in (1, -1), 'alpha must be in {1,-1}'
-        self.alpha = alpha
-
-    cpdef inline DTYPE_t eval(Jump self, DTYPE_t x):
-        return max(0, (-1 if ((self.knot - x) if self.alpha == 1 else (x - self.knot)) < 0 else 1)) * self.weight
-
-    def __str__(self):
-        return '%.3f * max(0, sgn(%s))' % (self.weight, ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
-
-    def __repr__(self):
-        return '<Jump k=%.3f a=%d w=%.3f>' % (self.knot, self.alpha, self.weight)
-
-    @staticmethod
-    def from_point(p1, alpha):
-        x, y = p1
-        return Jump(x, alpha, y)
-
-    cpdef inline Function differentiate(Jump self):
-        return Impulse(self.knot, self.weight)
-
-
-@cython.final
-cdef class Impulse(KnotFunction):
-    '''
-    Represents a function that is non-zero at exactly one x-position and zero at all other positions.
-    '''
-
-    def __init__(Impulse self, DTYPE_t knot, DTYPE_t weight):
-        super(Impulse, self).__init__(knot, weight)
-
-    cpdef DTYPE_t eval(self, DTYPE_t x):
-        return self.weight if x == self.knot else 0
-
-    cpdef inline Function differentiate(Impulse self):
-        return Impulse(self.knot, np.nan)
-
-    cpdef inline np.int32_t is_invertible(Impulse self):
-        return False
-
-    def __repr__(self):
-        return '<Impulse k=%.3f w=%.3f>' % (self.knot, self.weight)
-
-    def __str__(self):
-        return '%.3f if x=%.3f else 0' % (self.weight, self.knot)
-
-
-@cython.final
-cdef class ConstantFunction(Function):
-    '''
-    Represents a constant function.
-    '''
-
-    def __init__(ConstantFunction self, DTYPE_t value):
-        self.value = value
-
-    def __hash__(self):
-        return hash((LinearFunction, 0, self.value))
-
-    def __call__(self, x=None):
-        return self.eval(x)
-
-    def __str__(self):
-        return '%s = const.' % self.value
-
-    def __repr__(self):
-        return 'const=%s' % self.value
-
-    cpdef inline DTYPE_t eval(ConstantFunction self, DTYPE_t x):
-        return self.value
-
-    cpdef inline ConstantFunction differentiate(ConstantFunction self):
-        return ConstantFunction(0)
-
-    cpdef inline np.int32_t is_invertible(ConstantFunction self):
-        return False
-
-    cpdef inline ConstantFunction copy(ConstantFunction self):
-        return ConstantFunction(self.value)
-
-    def __eq__(self, other):
-        if not isinstance(other, Function):
-            raise TypeError('Cannot compare object of type %s to %s.' % (type(self).__name__, type(other).__name__))
-        if isinstance(other, (LinearFunction, ConstantFunction)):
-            return self.m == other.m and self.c == other.c
-        return False
-
-    @property
-    def m(self):
-        return 0
-
-    @property
-    def c(self):
-        return self.value
-
-    cpdef np.int32_t crosses(ConstantFunction self, Function f) except +:
-        '''
-        Determine if the function crosses another linear function ``f``.
-        :param f: 
-        :return: 
-        '''
-        if isinstance(f, LinearFunction):
-            return f.crosses(self)
-        elif isinstance(f, ConstantFunction):
-            return f.value == self.value
-        else:
-            raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
-
-    cpdef ContinuousSet xing_point(ConstantFunction self, Function f) except +:
-        '''
-        Determine if the function crosses another linear function ``f``.
-        :param f: 
-        :return: 
-        '''
-        if isinstance(f, LinearFunction):
-            return f.crosses_at(self)
-        elif isinstance(f, ConstantFunction):
-            return R.copy() if self.value == f.value else EMPTY.copy()
-        else:
-            raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
-
-    def to_json(self):
-        return {'type': 'constant', 'value': self.value}
-
-
-@cython.final
-cdef class LinearFunction(Function):
-    '''
-    Implementation of univariate linear functions.
-    '''
-
-    def __init__(LinearFunction self, DTYPE_t m, DTYPE_t c):
-        self.m = m
-        self.c = c
-
-    def __hash__(self):
-        return hash((LinearFunction, self.m, self.c))
-
-    def __call__(self, DTYPE_t x):
-        return self.eval(x)
-
-    cpdef inline DTYPE_t eval(LinearFunction self, DTYPE_t x):
-        return self.m * x + self.c
-
-    def __str__(self):
-        l = (str(self.m) + 'x') if self.m else ''
-        op = '' if (not l and self.c > 0 or not self.c) else ('+' if self.c > 0 else '-')
-        c = '0' if (not self.c and not self.m) else ('' if not self.c else str(abs(self.c)))
-        return ('%s %s %s' % (l, op, c)).strip()
-
-    def __repr__(self):
-        return '<%s>' % str(self)
-
-    @staticmethod
-    def parse(s):
-        if s == 'undef.' or s is None:
-            return Undefined()
-        if isinstance(s, numbers.Number):
-            return ConstantFunction(s)
-        match = s.split('x')
-        if not match:
-            raise ValueError('Illegal format for linear function: "%s"' % s)
-        elif len(match) > 1:
-            linear = float(match[0].replace(' ', ''))
-            const = float(match[1].replace(' ', '')) if match[1] else 0
-            if not linear:
-                return ConstantFunction(const)
-            return LinearFunction(linear, const)
-        else:
-            return ConstantFunction(float(match[0].replace(' ', '')))
-
-
-    cpdef DTYPE_t root(LinearFunction self) except +:
-        '''
-        Find the root of the function, i.e. the ``x`` positions subject to ``self.eval(x) = 0``.
-        :return: 
-        '''
-        return -self.c / self.m
-
-    cpdef LinearFunction invert(LinearFunction self) except +:
-        '''
-        Return the inverted linear function of this LF.
-        :return: 
-        '''
-        return LinearFunction(1 / self.m, -self.c / self.m)
-
-    cpdef LinearFunction hmirror(LinearFunction self):
-        '''
-        Return the linear function that is obtained by horizonally mirroring this LF.
-        :return: 
-        '''
-        return LinearFunction(-self.m, -self.c)
-
-    cpdef LinearFunction copy(LinearFunction self):
-        return LinearFunction(self.m, self.c)
-
-    cpdef np.int32_t crosses(LinearFunction self, Function f) except +:
-        '''
-        Determine if the function crosses another linear function ``f``.
-        :param f: 
-        :return: 
-        '''
-        if isinstance(f, LinearFunction):
-            if self.m == f.m:
-                return False
-            else:
-                return True
-        elif isinstance(f, ConstantFunction):
-            if self.m == 0:
-                return False
-            else:
-                return True
-        else:
-            raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
-
-    cpdef ContinuousSet xing_point(LinearFunction self, Function f) except +:
-        '''
-        Determine if the function crosses another linear function ``f``.
-        :param f: 
-        :return: 
-        '''
-        cdef DTYPE_t x
-        if isinstance(f, LinearFunction):
-            if self.m == f.m:
-                if self.c == f.c:
-                    return R.copy()
-                else:
-                    return EMPTY.copy()
-            else:
-                x = (self.c - f.c) / (f.m - self.m)
-                return ContinuousSet(x, x)
-        elif isinstance(f, ConstantFunction):
-            if self.m == 0:
-                if self.c == f.value:
-                    return R.copy()
-                else:
-                    return EMPTY.copy()
-            x = (self.c - f.value) / -self.m
-            return ContinuousSet(x, x)
-        else:
-            raise TypeError('Argument must be of type LinearFunction or ConstantFunction, not %s' % type(f).__name__)
-
-    def __add__(self, x):
-        if isinstance(x, LinearFunction):
-            return LinearFunction(self.m + x.m, self.c + x.c)
-        elif isinstance(x, (int, float)):
-            return LinearFunction(self.m, self.c + x)
-        else:
-            raise TypeError('Operator "+" undefined for types %s and %s' % (type(x).__name__, type(self).__name__))
-
-    def __sub__(self, x):
-        return -x + self
-
-    def __radd__(self, x):
-        return self + x
-
-    def __rsub__(self, x):
-        return self - x
-
-    def __eq__(self, other):
-        if isinstance(other, (ConstantFunction, LinearFunction)):
-            return self.m == other.m and self.c == other.c
-        elif isinstance(other, Function):
-            return False
-        else:
-            raise TypeError('Can only compare objects of type "Function", but got type "%s".' % type(other).__name__)
-
-    cpdef inline Function differentiate(LinearFunction self):
-        return ConstantFunction(self.m)
-
-    cpdef inline Function simplify(LinearFunction self):
-        if self.m == 0:
-            return ConstantFunction(self.c)
-        else:
-            return self.copy()
-
-    @staticmethod
-    def from_points((DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2):
-        cdef DTYPE_t x1 = p1[0], y1 = p1[1]
-        cdef DTYPE_t x2 = p2[0], y2 = p2[1]
-        if x1 == x2:
-            raise ValueError('Points must have different coordinates to fit a line: p1=%s, p2=%s' % (p1, p2))
-        if any(np.isnan(p) for p in itertools.chain(p1, p2)):
-            raise ValueError('Arguments %s, %s are invalid.' % (p1, p2))
-        if y2 == y1:
-            return ConstantFunction(y2)
-        cdef DTYPE_t m = (y2 - y1) / (x2 - x1)
-        cdef DTYPE_t c = y1 - m * x1
-        assert not np.isnan(m) and not np.isnan(c), \
-            'Fitting linear function from %s to %s resulted in m=%s, c=%s' % (p1, p2, m, c)
-        return LinearFunction(m, c)
-
-    cpdef inline np.int32_t is_invertible(LinearFunction self):
-        return abs(self.m) >= 1e-4
-
-    cpdef inline LinearFunction fit(LinearFunction self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +:
-        self.m, self.c, _, _, _ = stats.linregress(x, y)
-        return self
-
-    def to_json(self):
-        return {'type': 'linear',
-                'slope': self.m,
-                'intercept': self.c}
-
-    @staticmethod
-    def from_json(data):
-        if data['type'] == 'linear':
-            return LinearFunction(data['slope'], data['intercept'])
-        elif data['type'] == 'constant':
-            return ConstantFunction(data['value'])
-        else:
-            raise TypeError('Unknown function type or type not given (%s)' % data.get('type'))
-
-
-@cython.final
-cdef class GaussianCDF(Function):
-
-    cdef readonly DTYPE_t mu, sigma
-
-    def __init__(GaussianCDF self, DTYPE_t mu, DTYPE_t sigma):
-        self.mu = mu
-        self.sigma = sigma
-
-    cpdef inline double eval(GaussianCDF self, DTYPE_t x):
-        return norm.cdf(x, loc=self.mu, scale=self.sigma)
-
-
-@cython.final
-cdef class GaussianPDF(Function):
-
-    cdef readonly DTYPE_t mu, sigma
-
-    def __init__(GaussianPDF self, DTYPE_t mu, DTYPE_t sigma):
-        self.mu = mu
-        self.sigma = sigma
-
-    cpdef inline double eval(GaussianPDF self, DTYPE_t x):
-        return norm.pdf(x, loc=self.mu, scale=self.sigma)
-
-    def __str__(self):
-        return '<GaussianPDF mu=%s sigma=%s>' % (self.mu, self.sigma)
-
-
-@cython.final
-cdef class GaussianPPF(Function):
-
-    cdef readonly DTYPE_t mu, sigma
-
-    def __init__(GaussianPPF self, DTYPE_t mu, DTYPE_t sigma):
-        self.mu = mu
-        self.sigma = sigma
-
-    cpdef inline double eval(GaussianPPF self, DTYPE_t x):
-        return norm.ppf(x, loc=self.mu, scale=self.sigma)
-
-
-cdef np.int32_t _FLOAT = 1
-cdef np.int32_t _INT   = 2
-cdef np.int32_t _GAUSSIAN = 3
-cdef np.int32_t _UNIFORM = 4
-
-FLOAT = np.int32(_FLOAT)
-INT = np.int32(_INT)
-GAUSSIAN = np.int32(_GAUSSIAN)
-UNIFORM = np.int32(_UNIFORM)
-
+# cdef np.int32_t _FLOAT = 1
+# cdef np.int32_t _INT   = 2
+# cdef np.int32_t _GAUSSIAN = 3
+# cdef np.int32_t _UNIFORM = 4
+#
+# FLOAT = np.int32(_FLOAT)
+# INT = np.int32(_INT)
+# GAUSSIAN = np.int32(_GAUSSIAN)
+# UNIFORM = np.int32(_UNIFORM)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 cdef class QuantileDistribution:
     '''
@@ -587,21 +78,21 @@ cdef class QuantileDistribution:
     cpdef QuantileDistribution copy(QuantileDistribution self):
         cdef QuantileDistribution result = QuantileDistribution(self.epsilon,
                                                                 min_samples_mars=self.min_samples_mars)
-        result._cdf = self.cdf.copy()
+        result.cdf = self.cdf.copy()
         return result
 
     @staticmethod
     def from_cdf(cdf):
         d = QuantileDistribution()
-        d._cdf = cdf
+        d.cdf = cdf
         return d
 
     cpdef _assert_consistency(self):
         if self._cdf is not None:
-            assert len(self._cdf.functions) > 1, self._cdf.pfmt()
-            assert len(self._cdf.intervals) == len(self._cdf.functions), \
-                '# intervals: %s != # functions: %s' % (len(self._cdf.intervals),
-                                                        len(self._cdf.functions))
+            assert len(self.cdf.functions) > 1, self.cdf.pfmt()
+            assert len(self.cdf.intervals) == len(self.cdf.functions), \
+                '# intervals: %s != # functions: %s' % (len(self.cdf.intervals),
+                                                        len(self.cdf.functions))
 
     cpdef QuantileDistribution fit(self,
                                    DTYPE_t[:, ::1] data,
@@ -753,7 +244,7 @@ cdef class QuantileDistribution:
         cdf.intervals = intervals_
 
         result = QuantileDistribution(self.epsilon, min_samples_mars=self.min_samples_mars)
-        result._cdf = cdf
+        result.cdf = cdf
 
         result._assert_consistency()
 
@@ -762,6 +253,12 @@ cdef class QuantileDistribution:
     @property
     def cdf(self):
         return self._cdf
+
+    @cdf.setter
+    def cdf(self, cdf):
+        self._cdf = cdf
+        self._pdf = None
+        self._ppf = None
 
     @property
     def pdf(self):
@@ -782,7 +279,7 @@ cdef class QuantileDistribution:
 
     @property
     def ppf(self):
-        cdef PiecewiseFunction ppf
+        cdef PiecewiseFunction ppf = PiecewiseFunction()
         cdef ContinuousSet interval
         cdef Function f
         cdef DTYPE_t one_plus_eps = np.nextafter(1, 2)
@@ -791,7 +288,6 @@ cdef class QuantileDistribution:
             raise RuntimeError('No quantile distribution fitted. Call fit() first.')
 
         elif self._ppf is None:
-            ppf = PiecewiseFunction()
 
             ppf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
 
@@ -833,7 +329,7 @@ cdef class QuantileDistribution:
 
             if not np.isnan(ppf.eval(one_plus_eps)):
                 print(ppf.functions[ppf.idx_at(one_plus_eps)],
-                      ppf.functions[ppf.idx_at(one_plus_eps)].eval(one_plus_eps),
+                      (<LinearFunction> ppf.functions[ppf.idx_at(one_plus_eps)]).eval(one_plus_eps),
                       ppf.eval(one_plus_eps))
                 raise ValueError('ppf(%.16f) = %.20f [fct: %d]:\n %s\n===cdf\n%s' % (one_plus_eps,
                                                                                      ppf.eval(one_plus_eps),
@@ -874,13 +370,15 @@ cdef class QuantileDistribution:
         # --------------------------------------------------------------------------------------------------------------
         lower = sorted([(i.lower, f, w)
                         for d, w in zip(distributions, weights)
-                        for i, f in zip(d.cdf.intervals, d.cdf.functions) if not isinstance(f, ConstantFunction) and w > 0]
+                        for i, f in zip(d.cdf.intervals, d.cdf.functions)
+                        if not isinstance(f, ConstantFunction) and w > 0]
                        + [(j.knot, j, j.weight)
                           for j in jumps.values() if j.weight > 0],
                        key=itemgetter(0))
         upper = sorted([(i.upper, f, w)
                         for d, w in zip(distributions, weights)
-                        for i, f in zip(d.cdf.intervals, d.cdf.functions) if not isinstance(f, ConstantFunction) and w > 0],
+                        for i, f in zip(d.cdf.intervals, d.cdf.functions)
+                        if not isinstance(f, ConstantFunction) and w > 0],
                        key=itemgetter(0))
 
         # --------------------------------------------------------------------------------------------------------------
@@ -941,7 +439,7 @@ cdef class QuantileDistribution:
         cdf.ensure_right(ConstantFunction(1), cdf.intervals[-1].lower)
 
         distribution = QuantileDistribution()
-        distribution._cdf = cdf
+        distribution.cdf = cdf
 
         return distribution
 
@@ -954,408 +452,5 @@ cdef class QuantileDistribution:
     def from_json(data):
         q = QuantileDistribution(epsilon=data['epsilon'],
                                  min_samples_mars=data['min_samples_mars'])
-        q._cdf = PiecewiseFunction.from_json(data['cdf'])
+        q.cdf = PiecewiseFunction.from_json(data['cdf'])
         return q
-
-
-@cython.final
-cdef class PiecewiseFunction(Function):
-    '''
-    Represents a function that is piece-wise defined by constant values.
-    '''
-
-    def __init__(PiecewiseFunction self):
-        self.functions = []
-        self.intervals = []
-
-    def __hash__(self):
-        return hash((PiecewiseFunction, ((i, f) for i, f in self.iter())))
-
-    def iter(self):
-        return zip(self.intervals, self.functions)
-
-    def __eq__(self, other):
-        if not isinstance(other, PiecewiseFunction):
-            raise TypeError('An object of type "PiecewiseFunction" '
-                            'is required, but got "%s".' % type(other).__name__)
-        for i1, f1, i2, f2 in zip(self.intervals, self.functions, other.intervals, other.functions):
-            if i1 != i2 or f1 != f2:
-                return False
-        else:
-            return True
-
-    @staticmethod
-    def from_dict(d):
-        intervals = []
-        functions = []
-        for interval, function in d.items():
-            if type(interval) is str:
-                interval = ContinuousSet.fromstring(interval)
-            intervals.append(interval)
-            if type(function) is str:
-                function = LinearFunction.parse(function)
-            elif function is None:
-                function = Undefined()
-            elif isinstance(function, numbers.Number):
-                function = ConstantFunction(function)
-            functions.append(function)
-        fcts = sorted([(i, f) for (i, f) in zip(intervals, functions)], key=lambda a: a[0].lower)
-        plf = PiecewiseFunction()
-        plf.intervals.extend([i for i, _ in fcts])
-        plf.functions.extend([f for _, f in fcts])
-        return plf
-
-    cpdef inline DTYPE_t eval(PiecewiseFunction self, DTYPE_t x):
-        return self.at(x).eval(x)
-
-    cpdef inline DTYPE_t[::1] multi_eval(PiecewiseFunction self, DTYPE_t[::1] x, DTYPE_t[::1] result=None):
-        if result is None:
-            result = np.ndarray(shape=len(x), dtype=np.float64)
-        cdef int i
-        for i in range(len(x)):
-            result[i] = self.eval(x[i])
-        return result
-
-    cpdef inline Function at(PiecewiseFunction self, DTYPE_t x):
-        '''
-        Return the linear function segment at position ``x``.
-        '''
-        cdef idx = self.idx_at(x)
-        if idx != -1:
-            return self.functions[idx]
-        return None
-
-    cpdef inline int idx_at(PiecewiseFunction self, DTYPE_t x):
-        '''
-        Return the index of the function segment at position ``x``.
-        '''
-        cdef int i
-        cdef ContinuousSet interval
-        for i, interval in enumerate(self.intervals):
-            if x in interval:
-                return i
-        return -1
-
-    def __len__(self):
-        return len(self.intervals)
-
-    cpdef inline ContinuousSet interval_at(PiecewiseFunction self, DTYPE_t x):
-        cdef int i
-        cdef ContinuousSet interval
-        for i, interval in enumerate(self.intervals):
-            if x in interval:
-                return interval
-        else:
-            return EMPTY
-
-    def __call__(self, x):
-        return self.eval(x)
-
-    cpdef PiecewiseFunction copy(PiecewiseFunction self):
-        cdef PiecewiseFunction result = PiecewiseFunction()
-        cdef ContinuousSet i
-        cdef Function f
-        result.functions = [f.copy() for f in self.functions]
-        result.intervals = [i.copy() for i in self.intervals]
-        return result
-
-    def add_function(self, interval, func):
-        if not self.intervals:
-            self.intervals.append(interval)
-            self.functions.append(func)
-            return
-        intervals = deque()
-        functions = deque()
-        added_ = False
-        for j, i in enumerate(self.intervals):
-            f = self.functions[j]
-            i_ = i.difference(interval)
-            if not i_.isempty():
-                if isinstance(i_, ContinuousSet):
-                    i_ = RealSet(i_)
-                intervals.append(i_.intervals[0])
-                functions.append(f)
-            if i_ != i and not added_:
-                intervals.append(interval)
-                functions.append(func)
-                added_ = True
-            if isinstance(i_, RealSet) and len(i_.intervals) > 1:
-                intervals.append(i_.intervals[1])
-                functions.append(f)
-        self.intervals = list(intervals)
-        self.functions = list(functions)
-
-    cpdef tuple split(PiecewiseFunction self, DTYPE_t splitpoint):
-        cdef PiecewiseFunction f1 = PiecewiseFunction(), f2 = PiecewiseFunction()
-        cdef ContinuousSet interval, i_
-        cdef Function f
-        cdef int i
-        for i, interval in enumerate(self.intervals):
-            if splitpoint in interval:
-                f1.intervals = [i_.copy() for i_ in self.intervals[:i]]
-                f1.functions = [f.copy() for f in self.functions[:i]]
-                f2.intervals = [i_.copy() for i_ in self.intervals[i:]]
-                f2.functions = [f.copy() for f in self.functions[i:]]
-                if f2.functions:
-                    f1.intervals.append(f2.intervals[0].copy())
-                    f1.functions.append(f2.functions[0].copy())
-                    f2.intervals[0].lower = splitpoint
-                    f2.intervals[0].left = 1
-                f1.intervals[-1].upper = splitpoint
-                f1.intervals[-1].right = 2
-                break
-        else:
-            raise ValueError('This function is not defined at point %s' % splitpoint)
-        return f1, f2
-
-    def add_const(self, c):
-        for f in self.functions:
-            if isinstance(f, ConstantFunction):
-                f.value += c
-            elif isinstance(f, LinearFunction):
-                f.c += c
-
-    def stretch(self, alpha):
-        for f in self.functions:
-            if isinstance(f, ConstantFunction):
-                f.value *= alpha
-            elif isinstance(f, LinearFunction):
-                f.c *= alpha
-                f.m *= alpha
-
-    cpdef inline str pfmt(PiecewiseFunction self):
-        assert len(self.intervals) == len(self.functions), \
-            ('Intervals: %s, Functions: %s' % (self.intervals, self.functions))
-        return str('\n'.join([f'{str(i): <50} |--> {str(f)}' for i, f in zip(self.intervals, self.functions)]))
-
-    cpdef PiecewiseFunction differentiate(PiecewiseFunction self):
-        cdef PiecewiseFunction diff = PiecewiseFunction()
-        cdef ContinuousSet i
-        cdef Function f
-        for i, f in zip(self.intervals, self.functions):
-            diff.intervals.append(i)
-            diff.functions.append(f.differentiate())
-        return diff
-
-    cpdef ensure_left(PiecewiseFunction self, Function left, DTYPE_t x):
-        cdef ContinuousSet xing = self.functions[0].xing_point(left)
-        if xing == R:  # With all points are crossing points, we are done
-            return
-        elif xing and xing.lower < self.intervals[0].upper and xing.upper >= x:
-            self.intervals.insert(0, ContinuousSet(np.NINF, xing.lower, EXC, EXC))
-            self.intervals[1].lower = xing.lower
-            self.intervals[1].left = INC
-            self.functions.insert(0, left)
-        else:
-            self.intervals.insert(0, ContinuousSet(np.NINF, x, EXC, EXC))
-            self.intervals[1].lower = x
-            self.intervals[1].left = INC
-            self.functions.insert(0, left)
-
-            if not self.intervals[1]:
-                del self.intervals[1]
-                del self.functions[1]
-
-    cpdef ensure_right(PiecewiseFunction self, Function right, DTYPE_t x):
-        cdef ContinuousSet xing = self.functions[-1].xing_point(right)
-        if xing == R:  # With all points are crossing points, we are done
-            return
-        elif xing and xing.upper > self.intervals[-1].lower and xing.lower <= x:
-            self.intervals.append(ContinuousSet(xing.lower, np.PINF, INC, EXC))
-            self.intervals[-2].upper = xing.upper
-            self.intervals[-2].left = INC
-            self.functions.append(right)
-        else:
-            self.intervals.append(ContinuousSet(x, np.PINF, INC, EXC))
-            self.intervals[-2].upper = x
-            self.intervals[-2].left = INC
-            self.functions.append(right)
-            if not self.intervals[-2]:
-                del self.intervals[-2]
-                del self.functions[-2]
-
-    cpdef DTYPE_t[::1] xsamples(PiecewiseFunction self, np.int32_t sort=True):
-        cdef np.int32_t n = 2
-        cdef np.int32_t samples_total = len(self.intervals) * (n + 1)
-        cdef DTYPE_t[::1] samples_x = np.ndarray(shape=samples_total, dtype=np.float64)
-        samples_x[:] = 0
-        cdef object f
-        cdef np.int32_t i = 0
-        cdef DTYPE_t stepsize = 1
-        cdef ContinuousSet interval
-        cdef np.int32_t nopen = 2
-        cdef DTYPE_t tmp_
-        for interval, f in zip(self.intervals, self.functions):
-            if interval.lower != np.NINF and interval.upper != np.PINF:
-                interval.linspace(n, default_step=1, result=samples_x[i:i + n])
-                i += n
-        if len(self.intervals) >= 2:
-            if self.intervals[0].lower != np.NINF:
-                nopen -= 1
-            if self.intervals[-1].upper != np.PINF:
-                nopen -= 1
-            if nopen:
-                stepsize = ifnot(np.mean(np.abs(np.diff(samples_x[:i]))), 1)
-        if self.intervals[0].lower == np.NINF:
-            self.intervals[0].linspace(n, default_step=stepsize, result=samples_x[i:i + n])
-            i += n
-        if self.intervals[-1].upper == np.PINF:
-            self.intervals[-1].linspace(n, default_step=stepsize, result=samples_x[i:i + n])
-            i += n
-        if sort:
-            return np.sort(samples_x[:i])
-        else:
-            return samples_x[:i]
-
-    cpdef RealSet eq(PiecewiseFunction self, DTYPE_t y):
-        result_set = RealSet()
-        y_ = ConstantFunction(y)
-        prev_f = None
-        for i, f in zip(self.intervals, self.functions):
-            x = f.xing_point(y_)
-            if x and x in i:
-                result_set.intervals.append(i.intersection(x))
-            elif prev_f and (prev_f(i.lower) < y < f(i.lower) or prev_f(i.lower) > y > f(i.lower)):
-                result_set.intervals.append(ContinuousSet(i.lower, i.lower))
-            prev_f = f
-        return result_set
-
-    cpdef RealSet lt(PiecewiseFunction self, DTYPE_t y):
-        result_set = RealSet()
-        y_ = ConstantFunction(y)
-        prev_f = None
-        current = None
-        for i, f in zip(self.intervals, self.functions):
-            x = f.xing_point(y_)
-            if x.size() == 1 and x.lower in i:
-                if f.m > 0:
-                    if current is None:
-                        result_set.intervals.append(ContinuousSet(np.NINF, x.upper, 2, 2))
-                    else:
-                        current.upper = x.upper
-                        result_set.intervals.append(current)
-                        current = None
-                elif f.m < 0:
-                    current = ContinuousSet(x.lower, np.PINF, 2, 2)
-            elif not x and f(i.lower) < y and current is None:
-                current = ContinuousSet(i.lower, np.PINF, 2, 2)
-            elif not x and f(i.lower) >= y and current is not None:
-                current.upper = i.lower
-                result_set.intervals.append(current)
-                current = None
-            prev_f = f
-        if current is not None:
-            result_set.intervals.append(current)
-        return result_set
-
-    cpdef RealSet gt(PiecewiseFunction self, DTYPE_t y):
-        result_set = RealSet()
-        y_ = ConstantFunction(y)
-        current = None
-        for i, f in zip(self.intervals, self.functions):
-            x = f.xing_point(y_)
-            if x.size() == 1 and x.lower in i:
-                if f.m < 0:
-                    if current is None:
-                        result_set.intervals.append(ContinuousSet(np.NINF, x.upper, 2, 2))
-                    else:
-                        current.upper = x.upper
-                        result_set.intervals.append(current)
-                        current = None
-                elif f.m > 0:
-                    current = ContinuousSet(x.lower, np.PINF, 2, 2)
-            elif not x and f(i.lower) > y and current is None:
-                current = ContinuousSet(i.lower, np.PINF, 1, 2)
-            elif (not x and f(i.lower) < y or x == R and f(i.lower) == y) and current is not None:
-                current.upper = i.lower
-                result_set.intervals.append(current)
-                current = None
-        if current is not None:
-            result_set.intervals.append(current)
-        return result_set
-
-    @staticmethod
-    def merge(f1, f2, mergepoint):
-        '''
-        Merge two piecewise linear functions ``f1`` and ``f2`` at the merge point ``mergepoint``.
-
-        The result will be a CDF-conform function
-        :param f1:
-        :param f2:
-        :param mergepoint:
-        :return:
-        '''
-        lower, _ = f1.split(mergepoint)
-        _, upper = f2.split(mergepoint)
-        v1 = lower.eval(lower.intervals[-1].lower)
-        v2 = upper.eval(upper.intervals[0].upper)
-        upper.add_const(v1 - v2)  # Ensure the function is continuous at the merge point
-        result = PiecewiseFunction()
-        result.intervals = lower.intervals + upper.intervals
-        result.functions = lower.functions + upper.functions
-        result.stretch(1. / result.eval(result.intervals[-1].lower))  # Ensure that the function ends with value 1 on the right
-        return result
-
-    cpdef list knots(PiecewiseFunction self, DTYPE_t lastx=np.nan):
-        result = []
-        for i, f in zip(self.intervals, self.functions):
-            if i.lower != np.NINF:
-                result.append((i.lower, f.eval(i.lower)))
-        if self.intervals and self.intervals[-1].upper != np.PINF:
-            result.append((self.intervals[-1].upper, self.functions[-1].eval(self.intervals[-1].upper)))
-        elif not np.isnan(lastx):
-            result.append((lastx, self.functions[-1].eval(lastx)))
-        return result
-
-    cpdef PiecewiseFunction add_knot(PiecewiseFunction self, DTYPE_t x, DTYPE_t y):
-        ...
-
-    cpdef PiecewiseFunction crop(PiecewiseFunction self, ContinuousSet interval):
-        cdef PiecewiseFunction result = PiecewiseFunction()
-        for i, f in zip(self.intervals, self.functions):
-            if i.intersects(interval):
-                intersection = i.intersection(interval, left=INC, right=EXC)
-                result.intervals.append(intersection)
-                result.functions.append(f.copy())
-        return result
-
-    def to_json(self):
-        return {'intervals': [i.to_json() for i in self.intervals],
-                'functions': [f.to_json() for f in self.functions]}
-
-    @staticmethod
-    def from_json(data):
-        function = PiecewiseFunction()
-        function.intervals = [ContinuousSet.from_json(d) for d in data['intervals']]
-        function.functions = [LinearFunction.from_json(d) for d in data['functions']]
-        return function
-
-    def __repr__(self):
-        return self.pfmt()
-
-    def round(self, digits=None, include_intervals=True):
-        '''
-        Return a copy of this PLF, in which all parameters of sub-functions have been rounded by
-        the specified number of digits.
-
-        If ``include_intervals`` is ``False``, the parameter values of the intervals will not be affected by
-        this operation.
-        '''
-        digits = ifnone(digits, 3)
-        round_ = lambda x: np.round(x, decimals=digits)
-
-        plf = PiecewiseFunction()
-        for interval, function in zip(self.intervals, self.functions):
-            if include_intervals:
-                interval = interval.copy()
-                interval.lower = round_(interval.lower) if not np.isinf(interval.lower) else interval.lower
-                interval.upper = round_(interval.upper) if not np.isinf(interval.upper) else interval.upper
-            plf.intervals.append(interval)
-            if isinstance(function, LinearFunction):
-                function = LinearFunction(round_(function.m), round_(function.c))
-            elif isinstance(function, ConstantFunction):
-                function = ConstantFunction(round_(function.value))
-            else:
-                raise TypeError('Unknown function type in PiecewiseFunction: "%s"' % type(function).__name__)
-            plf.functions.append(function)
-        return plf
