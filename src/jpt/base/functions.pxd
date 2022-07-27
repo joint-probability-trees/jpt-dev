@@ -174,17 +174,17 @@ cdef class QuadraticFunction(Function):
 
     # Class methods
 
+    cpdef QuadraticFunction set(self, QuadraticFunction f)
+
     cpdef DTYPE_t root(self) except +
 
     cpdef Function invert(self) except +
 
-    cpdef Function hmirror(self)
-
     cpdef Function copy(self)
 
-    cpdef np.int32_t crosses(self, Function f) except +
+    cpdef np.int32_t intersects(self, Function f) except +
 
-    cpdef ContinuousSet xing_point(self, Function f) except +
+    cpdef ContinuousSet intersection(self, Function f) except +
 
     cpdef Function differentiate(self)
 
