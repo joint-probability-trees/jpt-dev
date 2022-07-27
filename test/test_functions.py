@@ -24,7 +24,7 @@ class UndefinedFunctionTest(TestCase):
     @unpack
     def test_eval(self, x):
         f = Undefined()
-        self.assertEqual(np.nan, f.eval(x))
+        self.assertTrue(np.isnan(f.eval(x)))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

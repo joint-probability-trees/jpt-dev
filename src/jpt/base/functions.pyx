@@ -480,26 +480,29 @@ cdef class QuadraticFunction(Function):
     def __eq__(self, other):
         return isinstance(other, QuadraticFunction) and (self.a, self.b, self.c) == (other.a, other.b, other.c)
 
+    cpdef QuadraticFunction set(self, QuadraticFunction f):
+        self.a = f.a
+        self.b = f.b
+        self.c = f.c
+        return self
+
     cpdef DTYPE_t eval(self, DTYPE_t x):
         return self.a * x * x + self.b * x + self.c
 
     cpdef DTYPE_t root(self) except +:
-        pass
+        raise NotImplementedError()
 
     cpdef Function invert(self) except +:
-        pass
-
-    cpdef Function hmirror(self):
-        pass
+        raise NotImplementedError()
 
     cpdef Function copy(self):
         return QuadraticFunction(self.a, self.b, self.c)
 
-    cpdef np.int32_t crosses(self, Function f) except +:
-        return 0
+    cpdef np.int32_t intersects(self, Function f) except +:
+        raise NotImplementedError()
 
-    cpdef ContinuousSet xing_point(self, Function f) except +:
-        return EMPTY
+    cpdef ContinuousSet intersection(self, Function f) except +:
+        raise NotImplementedError()
 
     cpdef Function differentiate(self):
         return LinearFunction(2 * self.a, self.b)
@@ -778,7 +781,7 @@ cdef class PiecewiseFunction(Function):
         return diff
 
     cpdef ensure_left(self, Function left, DTYPE_t x):
-        cdef ContinuousSet xing = self.functions[0].xing_point(left)
+        cdef ContinuousSet xing = self.functions[0].intersection(left)
         if xing == R:  # With all points are crossing points, we are done
             return
         elif xing and xing.lower < self.intervals[0].upper and xing.upper >= x:
@@ -797,7 +800,7 @@ cdef class PiecewiseFunction(Function):
                 del self.functions[1]
 
     cpdef ensure_right(self, Function right, DTYPE_t x):
-        cdef ContinuousSet xing = self.functions[-1].xing_point(right)
+        cdef ContinuousSet xing = self.functions[-1].intersection(right)
         if xing == R:  # With all points are crossing points, we are done
             return
         elif xing and xing.upper > self.intervals[-1].lower and xing.lower <= x:
