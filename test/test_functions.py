@@ -1,5 +1,6 @@
 from unittest import TestCase
 
+import numpy as np
 from ddt import ddt, data, unpack
 
 try:
@@ -9,8 +10,48 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.functions import LinearFunction, QuadraticFunction, ConstantFunction, Undefined, Function
+    from jpt.base.functions import (LinearFunction, QuadraticFunction, ConstantFunction, Undefined, Function,
+                                    PiecewiseFunction)
     from jpt.base.intervals import ContinuousSet
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+@ddt
+class UndefinedFunctionTest(TestCase):
+
+    @data((1,), (-1,), (100,))
+    @unpack
+    def test_eval(self, x):
+        f = Undefined()
+        self.assertEqual(np.nan, f.eval(x))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+@ddt
+class ConstantFunctionTest(TestCase):
+
+    @data((ConstantFunction(1), -1, 1),
+          (ConstantFunction(1), 0, 1),
+          (ConstantFunction(1), 1, 1),
+          (ConstantFunction(-1), -1, -1),
+          (ConstantFunction(-1), 0, -1),
+          (ConstantFunction(-1), 1, -1),
+          (ConstantFunction(0), -1, 0),
+          (ConstantFunction(0), 0, 0),
+          (ConstantFunction(0), 1, 0))
+    @unpack
+    def test_eval(self, f, x, y):
+        self.assertEqual(y, f.eval(x))
+
+    @data((ConstantFunction(1), LinearFunction(-1, 0), ContinuousSet(-1, -1)),
+          (ConstantFunction(-1), ConstantFunction(0), EMPTY),
+          (ConstantFunction(0), ConstantFunction(0), R),
+          (LinearFunction(1, 1), ConstantFunction(0), ContinuousSet(-1, -1)))
+    @unpack
+    def test_intersection(self, f1, f2, v):
+        self.assertEqual(v, f1.intersection(f2))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -63,10 +104,29 @@ class LinearFunctionTest(TestCase):
 
     @data((LinearFunction(1, 0), LinearFunction(-1, 0), ContinuousSet(0, 0)),
           (LinearFunction(1, 0), LinearFunction(1, 1), EMPTY),
-          (LinearFunction(-1, 1), LinearFunction(-1, 1), R))
+          (LinearFunction(-1, 1), LinearFunction(-1, 1), R),
+          (LinearFunction(1, 1), ConstantFunction(0), ContinuousSet(-1, -1)))
     @unpack
     def test_intersection(self, f1, f2, v):
         self.assertEqual(v, f1.intersection(f2))
+
+    @data((LinearFunction(1, 1), LinearFunction(1, 0), LinearFunction(2, 1)),
+          (LinearFunction(1, 1), ConstantFunction(1), LinearFunction(1, 2)),
+          (LinearFunction(-1, 1), LinearFunction(1, 1), ConstantFunction(2)),
+          (LinearFunction(-1, 1), 3, LinearFunction(-1, 4)),
+          )
+    @unpack
+    def test_addition(self, f1, f2, v):
+        self.assertEqual(v, f1 + f2)
+
+    @data((LinearFunction(1, 2), 3, LinearFunction(3, 6)),
+          (LinearFunction(1, 2), ConstantFunction(3), LinearFunction(3, 6)),
+          (LinearFunction(2, 2), LinearFunction(3, 3), QuadraticFunction(6, 12, 6)),
+          (LinearFunction(-2, 2), LinearFunction(3, -3), QuadraticFunction(-6, 12, -6)),
+          )
+    @unpack
+    def test_multiplication(self, f1, f2, v):
+        self.assertEqual(v, f1 * f2)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -113,3 +173,82 @@ class QuadraticFunctionTest(TestCase):
     @unpack
     def test_simplify(self, f1: QuadraticFunction, f2: Function):
         self.assertEqual(f1.simplify(), f2)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class PLFTest(TestCase):
+
+    def test_plf_constant_from_dict(self):
+        d = {
+            ']-∞,1.000[': '0.0',
+            '[1.000,2.000[': '0.25',
+            '[3.000,4.000[': '0.5',
+            '[4.000,5.000[': '0.75',
+            '[5.000,∞[': '1.0'
+        }
+
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet.parse(']-inf,1['))
+        cdf.intervals.append(ContinuousSet.parse('[1, 2['))
+        cdf.intervals.append(ContinuousSet.parse('[3, 4['))
+        cdf.intervals.append(ContinuousSet.parse('[4, 5['))
+        cdf.intervals.append(ContinuousSet.parse('[5, inf['))
+        cdf.functions.append(ConstantFunction(0))
+        cdf.functions.append(ConstantFunction(.25))
+        cdf.functions.append(ConstantFunction(.5))
+        cdf.functions.append(ConstantFunction(.75))
+        cdf.functions.append(ConstantFunction(1))
+
+        self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
+
+    def test_plf_linear_from_dict(self):
+        d = {
+            ']-∞,0.000[': 'undef.',
+            '[0.000,0.500[': '2.000x',
+            '[0.500,1.000[': '2.000x + 1.000',
+            '[1.000,∞[': None
+        }
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet.parse(']-∞,0.000['))
+        cdf.intervals.append(ContinuousSet.parse('[0.000,0.500['))
+        cdf.intervals.append(ContinuousSet.parse('[0.500,1.000['))
+        cdf.intervals.append(ContinuousSet.parse('[1.000,∞['))
+        cdf.functions.append(Undefined())
+        cdf.functions.append(LinearFunction(2, 0))
+        cdf.functions.append(LinearFunction(2, 1))
+        cdf.functions.append(Undefined())
+
+        self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
+
+    def test_plf_mixed_from_dict(self):
+        cdf = PiecewiseFunction()
+        cdf.intervals.append(ContinuousSet.parse(']-inf,0.000['))
+        cdf.intervals.append(ContinuousSet.parse('[0.000, 1['))
+        cdf.intervals.append(ContinuousSet.parse('[1, 2['))
+        cdf.intervals.append(ContinuousSet.parse('[2, 3['))
+        cdf.intervals.append(ContinuousSet.parse('[3, inf['))
+        cdf.functions.append(ConstantFunction(0))
+        cdf.functions.append(LinearFunction.from_points((0, 0), (1, .5)))
+        cdf.functions.append(ConstantFunction(.5))
+        cdf.functions.append(LinearFunction.from_points((2, .5), (3, 1)))
+        cdf.functions.append(ConstantFunction(1))
+
+        self.assertEqual(cdf, PiecewiseFunction.from_dict({
+            ']-∞,0.000[': 0,
+            '[0.000,1.00[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2.000[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3.000,∞[': 1
+        }))
+
+    def test_serialization(self):
+        plf = PiecewiseFunction.from_dict({
+            ']-∞,0.000[': 0,
+            '[0.000,1.00[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2.000[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3.000,∞[': 1
+        })
+        self.assertEqual(plf, PiecewiseFunction.from_json(plf.to_json()))
+
