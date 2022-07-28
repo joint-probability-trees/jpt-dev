@@ -812,6 +812,24 @@ class Numeric(Distribution):
 
     @staticmethod
     def merge(distributions, weights):
+        """
+        Generate a numeric distribution as the union of all given distributions.
+        @param distributions: A list of distributions of the type QuantileDistribution.
+        @param weights: Weights indicating the importance of the distribution
+        @return: The resulting Numeric distribution
+        """
+        if not all(distributions[0].__class__ == d.__class__ for d in distributions):
+            raise TypeError('Only distributions of the same type can be merged.')
+        return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
+
+    @staticmethod
+    def intersection(distributions, weights):
+        """
+        Generate a numeric distribution as the intersection of all given distributions.
+        @param distributions: A list of distributions of the type QuantileDistribution.
+        @param weights: Weights indicating the importance of the distribution
+        @return: The resulting Numeric distribution
+        """
         if not all(distributions[0].__class__ == d.__class__ for d in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
         return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
