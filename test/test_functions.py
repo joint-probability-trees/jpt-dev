@@ -53,6 +53,21 @@ class ConstantFunctionTest(TestCase):
     def test_intersection(self, f1, f2, v):
         self.assertEqual(v, f1.intersection(f2))
 
+    @data((ConstantFunction(1), 1, ConstantFunction(2)),
+          (ConstantFunction(-1), ConstantFunction(1), ConstantFunction(0)),
+          (ConstantFunction(1), LinearFunction(2, 3), LinearFunction(2, 4)))
+    @unpack
+    def test_add(self, f, arg, res):
+        self.assertEqual(res, f + arg)
+
+    @data((ConstantFunction(2), 2, ConstantFunction(4)),
+          (ConstantFunction(2), ConstantFunction(3), ConstantFunction(6)),
+          (ConstantFunction(2), LinearFunction(3, 4), LinearFunction(6, 8)),
+          (ConstantFunction(0), LinearFunction(1, 1), ConstantFunction(0)))
+    @unpack
+    def test_mul(self, f, arg, res):
+        self.assertEqual(res, f * arg)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -174,6 +189,21 @@ class QuadraticFunctionTest(TestCase):
     def test_simplify(self, f1: QuadraticFunction, f2: Function):
         self.assertEqual(f1.simplify(), f2)
 
+    @data((QuadraticFunction(2, 3, 4), 2, QuadraticFunction(4, 6, 8)),
+          (QuadraticFunction(2, 3, 4), ConstantFunction(-2), QuadraticFunction(-4, -6, -8)),
+          (QuadraticFunction(2, 3, 4), 0, ConstantFunction(0)))
+    @unpack
+    def test_mul(self, f, a, r):
+        self.assertEqual(r, f * a)
+
+    @data((QuadraticFunction(2, 3, 4), 2, QuadraticFunction(2, 3, 6)),
+          (QuadraticFunction(2, 3, 4), ConstantFunction(-2), QuadraticFunction(2, 3, 2)),
+          (QuadraticFunction(2, 3, 4), 0, QuadraticFunction(2, 3, 4)),
+          (QuadraticFunction(2, 3, 4), LinearFunction(2, 3), QuadraticFunction(2, 5, 7)))
+    @unpack
+    def test_add(self, f, a, r):
+        self.assertEqual(r, f + a)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -252,3 +282,101 @@ class PLFTest(TestCase):
         })
         self.assertEqual(plf, PiecewiseFunction.from_json(plf.to_json()))
 
+    def test_mul_constant(self):
+        plf = PiecewiseFunction.from_dict({
+            ']-∞,0.000[': 0,
+            '[0.000,1.00[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2.000[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3.000,∞[': 1
+        })
+        plf_res = PiecewiseFunction.from_dict({
+            ']-∞,0.000[': 0,
+            '[0.000,1.00[': LinearFunction.from_points((0, 0), (1, .25)),
+            '[1.,2.000[': .25,
+            '[2,3[': LinearFunction.from_points((2, .25), (3, .5)),
+            '[3.000,∞[': .5
+        })
+        self.assertEqual(plf_res, plf * .5)
+
+    def test_add_const(self):
+        plf1 = PiecewiseFunction.from_dict({
+            ']-∞,0[': 0,
+            '[0,1[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3,∞[': 1
+        })
+        f = ConstantFunction(.5)
+        res = PiecewiseFunction.from_dict({
+            ']-∞,0[': 0.5,
+            '[0,1[': '0.5x + .5',
+            '[1.,2[': '1.',
+            '[2,3[': '.5x',
+            '[3,∞[': 1.5
+        })
+        self.assertEqual(res, plf1 + f)
+
+    def test_add_linear(self):
+        plf1 = PiecewiseFunction.from_dict({
+            ']-∞,0[': 0,
+            '[0,1[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3,∞[': 1
+        })
+        f = LinearFunction(2.5, 3.5)
+        res = PiecewiseFunction.from_dict({
+            ']-∞,0[': '2.5x + 3.5',
+            '[0,1[': '3.0x + 3.5',
+            '[1,2[': '2.5x + 4',
+            '[2,3[': '3x + 3',
+            '[3,∞[': '2.5x + 4.5'
+        })
+        self.assertEqual(res, plf1 + f)
+
+    def test_add_plf(self):
+        plf1 = PiecewiseFunction.from_dict({
+            ']-∞,0[': 0,
+            '[0,1[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3,∞[': 1
+        })
+        plf2 = PiecewiseFunction.from_dict({
+            ']-∞,-1[': 0,
+            '[-1,3[': LinearFunction(.5, 4),
+            '[3,∞[': 1
+        })
+        res = PiecewiseFunction.from_dict({
+            ']-∞,-1.0[': 0,
+            '[-1.0,0.0[': '0.5x + 4.0',
+            '[0,1[': '1.0x + 4.0',
+            '[1.,2[': '0.5x + 4.5',
+            '[2,3[': '1.0x + 3.5',
+            '[3,∞[': 2
+        })
+        self.assertEqual(res, plf1 + plf2)
+
+    def test_mul(self):
+        plf1 = PiecewiseFunction.from_dict({
+            ']-∞,0[': 0,
+            '[0,1[': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2[': '.5',
+            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3,∞[': 1
+        })
+        plf2 = PiecewiseFunction.from_dict({
+            ']-∞,-1[': 0,
+            '[-1,3[': LinearFunction(.5, 4),
+            '[3,∞[': 1
+        })
+        res = PiecewiseFunction.from_dict({
+            ']-∞,-1.0[': 0,
+            '[-1.0,0.0[': 0,
+            '[0,1[': QuadraticFunction(.25, 2, 0),
+            '[1.,2[': LinearFunction(.25, 2),
+            '[2,3[': QuadraticFunction(.25, 1.75, -2),
+            '[3,∞[': 1
+        })
+        self.assertEqual(res, plf1 * plf2)

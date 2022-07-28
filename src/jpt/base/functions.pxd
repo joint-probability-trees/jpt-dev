@@ -30,6 +30,16 @@ cdef class Function:
 
     cpdef DTYPE_t eval(self, DTYPE_t x)
 
+    cpdef Function set(self, Function f)
+
+    cpdef Function mul(self, Function f)
+
+    cpdef Function add(self, Function f)
+
+    cpdef Function simplify(self)
+
+    cpdef Function copy(self)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -146,15 +156,11 @@ cdef class LinearFunction(Function):
 
     cpdef Function hmirror(self)
 
-    cpdef Function copy(self)
-
     cpdef np.int32_t intersects(self, Function f) except +
 
     cpdef ContinuousSet intersection(self, Function f) except +
 
     cpdef Function differentiate(self)
-
-    cpdef Function simplify(self)
 
     cpdef np.int32_t is_invertible(self)
 
@@ -174,21 +180,15 @@ cdef class QuadraticFunction(Function):
 
     # Class methods
 
-    cpdef QuadraticFunction set(self, QuadraticFunction f)
-
     cpdef DTYPE_t root(self) except +
 
     cpdef Function invert(self) except +
-
-    cpdef Function copy(self)
 
     cpdef np.int32_t intersects(self, Function f) except +
 
     cpdef ContinuousSet intersection(self, Function f) except +
 
     cpdef Function differentiate(self)
-
-    cpdef Function simplify(self)
 
     cpdef np.int32_t is_invertible(self)
 
