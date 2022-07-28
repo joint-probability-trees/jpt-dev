@@ -922,6 +922,107 @@ cdef class QuantileDistribution:
 
         return distribution
 
+    @staticmethod
+    def intersection(distributions, weights=None):
+        """
+        Construct an intersection quantile-distribution from the passed distributions using the ``weights``.
+        """
+
+        # initialize weights if none are provided
+        if weights is None:
+            weights = [1. / len(distributions)] * len(distributions)
+
+        # check weights
+        if any(np.isnan(w) for w in weights):
+            raise ValueError('Detected NaN in weight vector!')
+
+        # Get all dirac impulses
+        dirac_impulse_values = [d.cdf.intervals[0].upper for d in distributions if len(d.cdf) == 2]
+
+        # if there are some
+        if len(dirac_impulse_values) > 0:
+
+            # they have to at the same place to perform a valid intersection
+            if all(v == dirac_impulse_values[0] for v in dirac_impulse_values[0]):
+                # return the dirac impulse if they are at the correct places
+                return distributions[0]
+            # if they aren't, return an invalid distribution
+            else:
+                return None
+
+        # get all possible splits
+        splits = []
+        for distribution in distributions:
+            splits.extend([interval.lower for interval in distribution.intervals[1:]])
+
+        # track integral of pdf
+        integral_value = 0.
+
+        # initialize intervals and functions as 0 for -inf < x <= first split
+        intervals = [ContinuousSet(np.NINF, splits[0])]
+        functions = [ConstantFunction(0)]
+
+        # for every interval in splits
+        for split_idx in range(len(splits)-1):
+
+            # get upper and lower value
+            lower = splits[split_idx]
+            upper = splits[split_idx+1]
+
+            # initialize pdf value
+            pdf_value = 1.
+            for distribution, weight in zip(distributions, weights):
+
+                # multiply functions values together
+                pdf_value *= distribution._p(upper) - distribution._p(lower) * weight
+
+            # if function value did not change just extend the previous interval
+            if pdf_value == functions[-1].value:
+                intervals[-1].upper = upper
+            # else create new interval with the respective value
+            else:
+                functions.append(ConstantFunction(pdf_value))
+                intervals.append(ContinuousSet(lower, upper))
+
+            # sum up integral
+            integral_value += (upper - lower) * pdf_value
+
+        # if the distribution is impossible (f(x) = 0 for all x) return None
+        if integral_value == 0:
+            return None
+
+        # append last interval and function if needed, else extend last interval
+        if functions[-1].value == 0.:
+            intervals[-1].upper = np.INF
+        else:
+            intervals.append(ContinuousSet(splits[-1], np.INF))
+            functions.append(ConstantFunction(0))
+
+        # normalize distribution
+        functions[1:-1] = [ConstantFunction(f.value / integral_value) for f in functions[1:-1]]
+
+        # initialize cdf form
+        linear_functions = [functions[0]]
+
+        # keep track of constant shift
+        c = 0
+
+        # for every interval and function in the pdf
+        for idx, (interval, function) in enumerate(zip(intervals[1:-1], functions[1:-1])):
+
+            # transform to cdf
+            c += linear_functions[idx].eval(interval.lower)
+            function = LinearFunction(function.value, c)
+
+        # append last section
+        linear_functions.append(functions[-1])
+
+        # create and return result
+        result = QuantileDistribution()
+        result._cdf = linear_functions
+
+        return result
+
     def to_json(self):
         return {'epsilon': self.epsilon,
                 'penalty': self.penalty,
