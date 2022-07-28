@@ -11,7 +11,7 @@ import itertools
 import numbers
 from collections import deque
 
-from dnutils import ifnot, ifnone
+from dnutils import ifnot, ifnone, pairwise
 from scipy import stats
 from scipy.stats import norm
 
@@ -43,6 +43,51 @@ cdef class Function:
     cpdef DTYPE_t eval(self, DTYPE_t x):
         return np.nan
 
+    cpdef Function set(self, Function f):
+        raise NotImplementedError()
+
+    cpdef Function mul(self, Function f):
+        raise NotImplementedError()
+
+    cpdef Function add(self, Function f):
+        raise NotImplementedError()
+
+    def __add__(self, other):
+        if isinstance(other, numbers.Real):
+            return self.add(ConstantFunction(other)).simplify()
+        elif isinstance(other, Function):
+            return self.add(other).simplify()
+        else:
+            raise TypeError('Unsupported operand type(s) for +: %s and %s' % (type(self).__name__,
+                                                                              type(other).__name__))
+
+    def __mul__(self, other):
+        if isinstance(other, numbers.Real):
+            return self.mul(ConstantFunction(other)).simplify()
+        elif isinstance(other, Function):
+            return self.mul(other).simplify()
+        else:
+            raise TypeError('Unsupported operand type(s) for *: %s and %s' % (type(self).__name__,
+                                                                              type(other).__name__))
+
+    def __iadd__(self, other):
+        return self.set(self + other)
+
+    def __imul__(self, other):
+        return self.set(self * other)
+
+    def __radd__(self, other):
+        return other + self
+
+    def __rmul__(self, other):
+        return other * self
+
+    cpdef Function simplify(self):
+        return self.copy()
+
+    cpdef Function copy(self):
+        raise NotImplementedError()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -64,6 +109,18 @@ cdef class Undefined(Function):
         if isinstance(other, Undefined):
             return True
         return False
+
+    cpdef Function set(self, Function f):
+        return self
+
+    cpdef Function mul(self, Function f):
+        return Undefined()
+
+    cpdef Function add(self, Function f):
+        return Undefined()
+
+    cpdef Function copy(self):
+        return Undefined()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -200,10 +257,37 @@ cdef class ConstantFunction(Function):
 
     def __eq__(self, other):
         if not isinstance(other, Function):
-            raise TypeError('Cannot compare object of type %s to %s.' % (type(self).__name__, type(other).__name__))
+            raise TypeError('Cannot compare object of type %s to %s.' % (type(self).__name__,
+                                                                         type(other).__name__))
         if isinstance(other, (LinearFunction, ConstantFunction)):
             return self.m == other.m and self.c == other.c
         return False
+
+    cpdef Function set(self, Function f):
+        if isinstance(f, ConstantFunction):
+            self.value = f.value
+            return self
+        else:
+            raise TypeError('Object of type %s can only be set to '
+                            'parameters of objects of the same type' % type(self).__name__)
+
+    cpdef Function mul(self, Function f):
+        if isinstance(f, ConstantFunction):
+            return ConstantFunction(self.value * f.value)
+        elif isinstance(f, (LinearFunction, QuadraticFunction)):
+            return f.mul(self)
+        else:
+            raise TypeError('Unsupported operand type(s) for '
+                            'mul(): %s and %s.' % (type(self).__name__, type(f).__name__))
+
+    cpdef Function add(self, Function f):
+        if isinstance(f, ConstantFunction):
+            return ConstantFunction(self.value + f.value)
+        elif isinstance(f, (LinearFunction, QuadraticFunction)):
+            return f.add(self)
+        else:
+            raise TypeError('Unsupported operand type(s) for '
+                            'add(): %s and %s.' % (type(self).__name__, type(f).__name__))
 
     @property
     def m(self):
@@ -361,27 +445,25 @@ cdef class LinearFunction(Function):
             raise TypeError('Argument must be of type LinearFunction '
                             'or ConstantFunction, not %s' % type(f).__name__)
 
-    def __mul__(self, o):
-        if isinstance(o, numbers.Number):
-            return LinearFunction(self.m * o, self.c * o)
-        elif isinstance(o, ConstantFunction):
-            return LinearFunction(self.m * o.value, self.c * o.value)
-        elif isinstance(o, LinearFunction):
-            return QuadraticFunction(self.m * o.m, self.m * o.c + o.m * self.c, self.c * o.c).simplify()
+    cpdef Function mul(self, Function f):
+        if isinstance(f, ConstantFunction):
+            return LinearFunction(self.m * f.value, self.c * f.value)
+        elif isinstance(f, LinearFunction):
+            return QuadraticFunction(self.m * f.m, self.m * f.c + f.m * self.c, self.c * f.c).simplify()
         else:
             raise TypeError('No operator "*" defined for objects of '
-                            'types %s and %s' % (type(self).__name__, type(o).__name__))
+                            'types %s and %s' % (type(self).__name__, type(f).__name__))
 
-    def __add__(self, x):
-        if isinstance(x, LinearFunction):
-            return LinearFunction(self.m + x.m, self.c + x.c)
-        elif isinstance(x, (int, float)):
-            return LinearFunction(self.m, self.c + x)
-        elif isinstance(x, ConstantFunction):
-            return LinearFunction(self.m, self.c + x.value)
+    cpdef Function add(self, Function f):
+        if isinstance(f, LinearFunction):
+            return LinearFunction(self.m + f.m, self.c + f.c)
+        elif isinstance(f, (int, float)):
+            return LinearFunction(self.m, self.c + f)
+        elif isinstance(f, ConstantFunction):
+            return LinearFunction(self.m, self.c + f.value)
         else:
             raise TypeError('Operator "+" undefined for types %s '
-                            'and %s' % (type(x).__name__, type(self).__name__))
+                            'and %s' % (type(f).__name__, type(self).__name__))
 
     def __sub__(self, x):
         return -x + self
@@ -396,10 +478,10 @@ cdef class LinearFunction(Function):
         return self * o
 
     def __iadd__(self, other):
-        self.set(self + other)
+        return self.set(self + other)
 
     def __imul__(self, other):
-        self.set(self * other)
+        return self.set(self * other)
 
     def __eq__(self, other):
         if isinstance(other, (ConstantFunction, LinearFunction)):
@@ -409,7 +491,7 @@ cdef class LinearFunction(Function):
         else:
             raise TypeError('Can only compare objects of type "Function", but got type "%s".' % type(other).__name__)
 
-    def set(self, f: LinearFunction) -> LinearFunction:
+    cpdef Function set(self, Function f):
         if not isinstance(f, LinearFunction):
             raise TypeError('Unable to assign object parameters of '
                             'type %s to object of type %s' % (type(self).__name__, type(f).__name__))
@@ -480,11 +562,26 @@ cdef class QuadraticFunction(Function):
     def __eq__(self, other):
         return isinstance(other, QuadraticFunction) and (self.a, self.b, self.c) == (other.a, other.b, other.c)
 
-    cpdef QuadraticFunction set(self, QuadraticFunction f):
+    cpdef Function set(self, Function f):
         self.a = f.a
         self.b = f.b
         self.c = f.c
         return self
+
+    cpdef Function mul(self, Function f):
+        if isinstance(f, ConstantFunction):
+            return QuadraticFunction(self.a * f.value, self.b * f.value, self.c * f.value).simplify()
+        else:
+            TypeError('Unsupported operand type(s) for mul(): %s and %s.' % (type(self).__name__,
+                                                                             type(f).__name__))
+
+    cpdef Function add(self, Function f):
+        if isinstance(f, ConstantFunction):
+            return QuadraticFunction(self.a, self.b, self.c + f.value)
+        elif isinstance(f, LinearFunction):
+            return QuadraticFunction(self.a, self.b + f.m, self.c + f.c)
+        elif isinstance(f, QuadraticFunction):
+            return QuadraticFunction(self.a + f.a, self.b + f.b, self.c + f.c)
 
     cpdef DTYPE_t eval(self, DTYPE_t x):
         return self.a * x * x + self.b * x + self.c
@@ -609,7 +706,6 @@ cdef class PiecewiseFunction(Function):
     '''
     Represents a function that is piece-wise defined by constant values.
     '''
-
     def __init__(self):
         self.functions = []
         self.intervals = []
@@ -666,9 +762,9 @@ cdef class PiecewiseFunction(Function):
         '''
         Return the linear function segment at position ``x``.
         '''
-        cdef idx = self.idx_at(x)
+        cdef int idx = self.idx_at(x)
         if idx != -1:
-            return <Function> self.functions[idx]
+            return self.functions[idx]
         return None
 
     cpdef int idx_at(self, DTYPE_t x):
@@ -678,7 +774,8 @@ cdef class PiecewiseFunction(Function):
         cdef int i
         cdef ContinuousSet interval
         for i, interval in enumerate(self.intervals):
-            if x in interval:
+            if x in interval or ((x == np.NINF and interval.lower == np.NINF) or
+                                 (x == np.PINF and interval.upper == np.PINF)):
                 return i
         return -1
 
@@ -693,6 +790,69 @@ cdef class PiecewiseFunction(Function):
                 return interval
         else:
             return EMPTY
+
+    cpdef Function set(self, Function f):
+        if not isinstance(f, PiecewiseFunction):
+            raise TypeError('Object of type %s can only be set '
+                            'to attributes of the same type.' % type(self).__name__)
+        self.intervals = [i.copy() for i in f.intervals]
+        self.functions = [g.copy() for g in f.functions]
+        return self
+
+    # noinspection DuplicatedCode
+    cpdef Function add(self, Function f):
+        if isinstance(f, (ConstantFunction, LinearFunction, QuadraticFunction)):
+            result = self.copy()
+            result.functions = [g + f for g in result.functions]
+            return result
+        elif isinstance(f, PiecewiseFunction):
+            result = PiecewiseFunction()
+            knots = sorted(set((itertools.chain(*[(i.lower, i.upper) for i in f.intervals] +
+                                                 [(i.lower, i.upper) for i in self.intervals]))))
+            for lower, upper in pairwise(knots):
+                result.intervals.append(ContinuousSet(lower, upper, INC, EXC))
+                if not np.isinf(lower) and not np.isinf(upper):
+                    middle = (lower + upper) * .5
+                elif np.isinf(lower):
+                    middle = lower
+                elif np.isinf(upper):
+                    middle = upper
+                result.functions.append(ifnone(self.at(middle),
+                                               Undefined()) +
+                                        ifnone(f.at(middle),
+                                               Undefined()))
+            if result.intervals:
+                if np.isinf(result.intervals[0].lower):
+                    result.intervals[0].left = EXC
+            return result.simplify()
+
+    # noinspection DuplicatedCode
+    cpdef Function mul(self, Function f):
+        if isinstance(f, ConstantFunction):
+            result = self.copy()
+            for i, g in result.iter():
+                g *= f
+            return result
+        elif isinstance(f, PiecewiseFunction):
+            result = PiecewiseFunction()
+            knots = sorted(set((itertools.chain(*[(i.lower, i.upper) for i in f.intervals] +
+                                                 [(i.lower, i.upper) for i in self.intervals]))))
+            for lower, upper in pairwise(knots):
+                result.intervals.append(ContinuousSet(lower, upper, INC, EXC))
+                if not np.isinf(lower) and not np.isinf(upper):
+                    middle = (lower + upper) * .5
+                elif np.isinf(lower):
+                    middle = lower
+                elif np.isinf(upper):
+                    middle = upper
+                result.functions.append(ifnone(self.at(middle),
+                                               Undefined()) *
+                                        ifnone(f.at(middle),
+                                               Undefined()))
+            if result.intervals:
+                if np.isinf(result.intervals[0].lower):
+                    result.intervals[0].left = EXC
+            return result.simplify()
 
     cpdef Function copy(self):
         cdef PiecewiseFunction result = PiecewiseFunction()
@@ -750,13 +910,6 @@ cdef class PiecewiseFunction(Function):
         else:
             raise ValueError('This function is not defined at point %s' % splitpoint)
         return f1, f2
-
-    def add_const(self, c):
-        for f in self.functions:
-            if isinstance(f, ConstantFunction):
-                f.value += c
-            elif isinstance(f, LinearFunction):
-                f.c += c
 
     def stretch(self, alpha):
         for f in self.functions:
