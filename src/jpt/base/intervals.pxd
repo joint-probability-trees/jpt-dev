@@ -1,9 +1,18 @@
+# distutils: language = c++
+# cython: auto_cpdef=True
+# cython: infer_types=True
 # cython: language_level=3
+# cython: cdividion=True
+
 
 cimport numpy as np
 cimport cython
 
-from ..base.cutils cimport DTYPE_t, SIZE_t
+from .cutils cimport DTYPE_t
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Constant definitions
 
 cdef int _INC
 cdef int _EXC
@@ -12,9 +21,13 @@ cdef int HALFOPEN = 3
 cdef int OPEN = 4
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 cdef class NumberSet:
     pass
 
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 @cython.final
 cdef class RealSet(NumberSet):
@@ -47,6 +60,8 @@ cdef class RealSet(NumberSet):
 
     cpdef inline DTYPE_t fst(RealSet self)
 
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 @cython.final
 cdef class ContinuousSet(NumberSet):
