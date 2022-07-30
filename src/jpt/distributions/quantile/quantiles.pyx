@@ -193,7 +193,7 @@ cdef class QuantileDistribution:
         cdf_ = self.cdf.crop(interval)
 
         # II: add constant to move to
-        cdf_.add_const(-cdf_.eval(cdf_.intervals[0].lowermost()))
+        cdf_ += -cdf_.eval(cdf_.intervals[0].lowermost())
 
         # everything left of the leftmost point of the cropped function evaluates to 0
         cdf = PiecewiseFunction()
