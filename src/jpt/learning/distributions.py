@@ -1247,6 +1247,32 @@ class Multinomial(Distribution):
             raise Unsatisfiability('Sum of weights must not be zero.')
         return type(distributions[0])(params=params)
 
+    @staticmethod
+    def intersection(distributions, weights):
+        if not all(type(distributions[0]).equiv(type(d)) for d in distributions):
+            raise TypeError('Only distributions of the same type can be merged.')
+
+        # create initial params
+        params = np.ones(distributions[0].n_values)
+
+        # multiply with every weight and probability
+        for d, w in zip(distributions, weights):
+            params *= d.probabilities * w
+
+        # calculate normalization constant
+        sum_ = sum(params)
+
+        # if it is 0. the resulting distribution would be invalid
+        if sum_ == 0:
+            # return None if invalid
+            return None
+
+        # normalize
+        params /= sum_
+
+        # create distribution and return
+        return type(distributions[0])(params=params)
+
     @classmethod
     def type_to_json(cls):
         return {'type': 'symbolic',
