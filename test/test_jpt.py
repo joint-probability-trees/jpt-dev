@@ -5,10 +5,10 @@ from unittest import TestCase
 
 from dnutils import out
 
-from jpt.trees import JPT
+from jpt.trees import JPT, SumJPT, ProductJPT
 from jpt.variables import NumericVariable, VariableMap
 from jpt.base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
-
+import matplotlib.pyplot as plt
 
 class JPTTest(TestCase):
 
@@ -107,3 +107,23 @@ class JPTTest(TestCase):
         mt = jpt.marginal_jpt([x])
 
         self.assertEqual(len(mt.leaves), 1)
+
+    def test_jpt_like(self):
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+
+        evidence = VariableMap()
+        evidence[y] = ContinuousSet(0.2, 0.5)
+
+        jpt = JPT(variables=[x, y],
+                  min_samples_leaf=.05, )
+        jpt.learn(self.data.reshape(-1, 2))
+
+        result = jpt.independent_marginals([x, y], evidence)
+
+        sjpt = SumJPT([x,y], [jpt, jpt])
+        s_result = sjpt.independent_marginals([x, y], evidence)
+
+        for v in [x, y]:
+            self.assertAlmostEqual(result.distributions[v].kl_divergence(s_result.distributions[v]), 0)
+
