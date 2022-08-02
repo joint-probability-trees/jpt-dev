@@ -923,11 +923,10 @@ cdef class QuantileDistribution:
         return distribution
 
     @staticmethod
-    def intersection(distributions, weights=None):
+    def product(distributions, weights=None):
         """
-        Construct an intersection quantile-distribution from the passed distributions using the ``weights``.
+        Construct a product quantile-distribution from the passed distributions using the ``weights``.
         """
-
         # initialize weights if none are provided
         if weights is None:
             weights = [1. / len(distributions)] * len(distributions)
@@ -951,9 +950,12 @@ cdef class QuantileDistribution:
                 return None
 
         # get all possible splits
-        splits = []
+        splits = set()
         for distribution in distributions:
-            splits.extend([interval.lower for interval in distribution.intervals[1:]])
+            splits.update([interval.lower for interval in distribution.cdf.intervals[1:]])
+
+        # sort them
+        splits = sorted(list(splits))
 
         # track integral of pdf
         integral_value = 0.
@@ -974,11 +976,12 @@ cdef class QuantileDistribution:
             for distribution, weight in zip(distributions, weights):
 
                 # multiply functions values together
-                pdf_value *= distribution._p(upper) - distribution._p(lower) * weight
+                pdf_value *= distribution._p(ContinuousSet(lower, upper)) * weight
 
             # if function value did not change just extend the previous interval
             if pdf_value == functions[-1].value:
                 intervals[-1].upper = upper
+
             # else create new interval with the respective value
             else:
                 functions.append(ConstantFunction(pdf_value))
@@ -995,33 +998,31 @@ cdef class QuantileDistribution:
         if functions[-1].value == 0.:
             intervals[-1].upper = np.INF
         else:
-            intervals.append(ContinuousSet(splits[-1], np.INF))
+            intervals.append(ContinuousSet(splits[-1], np.Inf))
             functions.append(ConstantFunction(0))
 
         # normalize distribution
         functions[1:-1] = [ConstantFunction(f.value / integral_value) for f in functions[1:-1]]
 
         # initialize cdf form
-        linear_functions = [functions[0]]
-
-        # keep track of constant shift
-        c = 0
+        linear_functions = [LinearFunction(0,0)]
 
         # for every interval and function in the pdf
-        for idx, (interval, function) in enumerate(zip(intervals[1:-1], functions[1:-1])):
-
+        for idx, (interval, function) in enumerate(zip(intervals[1:], functions[1:])):
             # transform to cdf
-            c += linear_functions[idx].eval(interval.lower)
-            function = LinearFunction(function.value, c)
+            c = linear_functions[-1].eval(intervals[idx].upper)
+            linear_functions.append(LinearFunction(function.value,
+                                                   c - (intervals[idx].upper * function.value)))
 
-        # append last section
-        linear_functions.append(functions[-1])
+        print(linear_functions[-1])
 
-        # create and return result
-        result = QuantileDistribution()
-        result._cdf = linear_functions
+        # create piecewise function
+        result = PiecewiseFunction()
+        result.intervals = intervals
+        result.functions = linear_functions
 
-        return result
+        # return result from the piecewise function
+        return QuantileDistribution.from_cdf(result)
 
     def to_json(self):
         return {'epsilon': self.epsilon,

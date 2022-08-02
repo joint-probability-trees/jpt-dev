@@ -1,4 +1,0 @@
-
-
-class RelationalJPT:
-    pass

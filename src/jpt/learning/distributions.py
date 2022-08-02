@@ -823,16 +823,16 @@ class Numeric(Distribution):
         return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
 
     @staticmethod
-    def intersection(distributions, weights):
+    def product(distributions, weights):
         """
-        Generate a numeric distribution as the intersection of all given distributions.
+        Generate a numeric distribution as the product of all given distributions.
         @param distributions: A list of distributions of the type QuantileDistribution.
         @param weights: Weights indicating the importance of the distribution
         @return: The resulting Numeric distribution
         """
         if not all(distributions[0].__class__ == d.__class__ for d in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
-        return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
+        return type(distributions[0])(QuantileDistribution.product(distributions, weights))
 
     def update(self, dist, weight):
         if not 0 <= weight <= 1:
@@ -1248,7 +1248,9 @@ class Multinomial(Distribution):
         return type(distributions[0])(params=params)
 
     @staticmethod
-    def intersection(distributions, weights):
+    def product(distributions, weights):
+        """Create a new multinomial distribution as a product of weighted distributions."""
+
         if not all(type(distributions[0]).equiv(type(d)) for d in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
 
