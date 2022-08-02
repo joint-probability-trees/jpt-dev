@@ -1767,41 +1767,14 @@ class JPT:
     def marginal_jpt(self, marginal_variables: List[jpt.variables.Variable]):
         """ Create a marginal joint probability distribution over all 'marginal_variables'.
         This is done by inducing a new tree that reduces variance on the marginals by calculating the variances giving
-        the original distribution. All possible splits are given by all splits in this tree since they are the only
-        meaningful dependencies.
+        the original distribution (jpt).
+        All possible splits are given by all splits in this tree since they are the only meaningful dependencies.
         @param marginal_variables:
         @return: a new JPT
         """
 
-        # construct a map for every remaining variable that contains all splits
-        all_splits = VariableMap([(v, set()) for v in marginal_variables])
-
-        # fill splits
-        for leaf in self.leaves.values():
-            for variable in marginal_variables:
-
-                # skip if there is no influence of the current variable in this leaf
-                if variable not in leaf.path.keys():
-                    continue
-
-                # get the restriction of the current leaf on that variable
-                restriction = leaf.path[variable]
-
-                # if its numeric
-                if variable.numeric:
-
-                    # add the finite values to the set of possible splits
-                    for value in [restriction.lower, restriction.upper]:
-                        if value != float("inf") and value != -float("inf"):
-                            all_splits[variable].add(value)
-
-                # add all symbolic dependencies to the possibilities
-                elif variable.symbolic:
-                    all_splits[variable].add(restriction)
-
-        # convert splits from sets to lists
-        for variable, splits in all_splits.items():
-            all_splits[variable] = list(splits)
+        # collect all splits
+        all_splits = self.all_splits(marginal_variables)
 
         # calculate variable dependencies on marginal tree
         remaining_dependencies = VariableMap()
@@ -2064,6 +2037,47 @@ class JPT:
 
         return result
 
+    def all_splits(self, variables: List[Variable], as_lists: bool = True) -> VariableMap:
+        """ Generate a variable map containing all splits that are made in the tree.
+            The splits are sorted (if lists) and unique for each variable.
+
+            @param variables: The variables to collect the splits for
+            @param as_lists: Rather to return a VariableMap of lists or sets
+            """
+
+        # construct a map for every remaining variable that contains all splits
+        all_splits = VariableMap([(v, set()) for v in variables])
+
+        # fill splits
+        for leaf in self.leaves.values():
+            for variable in variables:
+
+                # skip if there is no influence of the current variable in this leaf
+                if variable not in leaf.path.keys():
+                    continue
+
+                # get the restriction of the current leaf on that variable
+                restriction = leaf.path[variable]
+
+                # if its numeric
+                if variable.numeric:
+
+                    # add the finite values to the set of possible splits
+                    all_splits[variable].update(value for value in [restriction.lower, restriction.upper]
+                                                if value != float("inf") and value != -float("inf"))
+
+                # add all symbolic dependencies to the possibilities
+                elif variable.symbolic:
+                    all_splits[variable].update(restriction)
+
+        # convert splits from sets to lists if desired
+        if as_lists:
+            for variable, splits in all_splits.items():
+                all_splits[variable] = list(splits)
+
+        return all_splits
+
+
 class JPTLike:
     """This one implements an interface for both sum product joint probability trees.
     To be used to construct a new JPT it is necessary that independent marginals and impurities are implemented
@@ -2072,6 +2086,34 @@ class JPTLike:
     def __init__(self, variables: List[jpt.variables.Variable], jpts: List[JPT]):
         self.variables = variables
         self.jpts = jpts
+
+    def all_splits(self, variables: List[Variable], as_lists: bool = True) -> VariableMap:
+        """ Generate a variable map containing all splits of all trees in this collection.
+            The splits are sorted (if lists) and unique for each variable.
+
+            @param variables: The variables to collect the splits for
+            @param as_lists: Rather to return a VariableMap of lists or sets
+            """
+
+        # construct a map for every remaining variable that contains all splits
+        all_splits = VariableMap([(v, set()) for v in variables])
+
+        # for every tree in this operation
+        for tree in self.jpts:
+
+            # get the splits of the current tree
+            current_splits = tree.all_splits(variables, as_lists=False)
+
+            # merge them into the existing splits
+            for variable in variables:
+                all_splits[variable] |= current_splits[variable]
+
+        # convert splits from sets to lists if desired
+        if as_lists:
+            for variable, splits in all_splits.items():
+                all_splits[variable] = list(splits)
+
+        return all_splits
 
     def independent_marginals(self, variables: List[jpt.variables.Variable], evidence: jpt.variables.VariableMap,
                               fail_on_unsatisfiability=True) -> PosteriorResult or None:
