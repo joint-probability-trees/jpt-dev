@@ -108,7 +108,8 @@ class JPTTest(TestCase):
 
         self.assertEqual(len(mt.leaves), 1)
 
-    def test_jpt_like(self):
+    def test_sum_jpt(self):
+        """Check if sum jpt fulfills a 'union' a = a """
         x = NumericVariable('X')
         y = NumericVariable('Y')
 
@@ -121,9 +122,38 @@ class JPTTest(TestCase):
 
         result = jpt.independent_marginals([x, y], evidence)
 
-        sjpt = SumJPT([x,y], [jpt, jpt])
+        sjpt = SumJPT([x, y], [jpt, jpt])
         s_result = sjpt.independent_marginals([x, y], evidence)
 
         for v in [x, y]:
             self.assertAlmostEqual(result.distributions[v].kl_divergence(s_result.distributions[v]), 0)
+
+    def test_product_jpt(self):
+        """ Check if product jpt fulfills a 'intersection' a = a """
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+
+        evidence = VariableMap()
+        evidence[y] = ContinuousSet(0.2, 0.5)
+
+        jpt = JPT(variables=[x, y],
+                  min_samples_leaf=.05, )
+        jpt.learn(self.data.reshape(-1, 2))
+
+        result = jpt.independent_marginals([x, y], evidence)
+
+        sjpt = ProductJPT([x, y], [jpt, jpt])
+        s_result = sjpt.independent_marginals([x, y], evidence)
+
+        for v in [x, y]:
+            s_result.distributions[x].plot()
+            plt.show()
+            result.distributions[x].plot()
+            plt.show()
+            s_result.distributions[y].plot()
+            plt.show()
+            result.distributions[y].plot()
+            plt.show()
+            # these distributions should differ since
+            self.assertGreater(result.distributions[v].kl_divergence(s_result.distributions[v]), 0)
 

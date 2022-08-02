@@ -2171,12 +2171,12 @@ class ProductJPT(JPTLike):
 
             # form the intersection of every variable's distributions independently
             if variable.numeric:
-                result.distributions[variable] = Numeric.intersection([r.distributions[variable]
+                result.distributions[variable] = Numeric.product([r.distributions[variable]
                                                                        for r in independent_marginals],
                                                                       weights=[r.result
                                                                                for r in independent_marginals])
             elif variable.symbolic:
-                result.distributions[variable] = Multinomial.intersection([r.distributions[variable]
+                result.distributions[variable] = Multinomial.product([r.distributions[variable]
                                                                            for r in independent_marginals],
                                                                           weights=[r.result
                                                                                    for r in independent_marginals])
