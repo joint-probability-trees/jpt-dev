@@ -129,7 +129,7 @@ class JPTTest(TestCase):
             self.assertAlmostEqual(result.distributions[v].kl_divergence(s_result.distributions[v]), 0)
 
     def test_product_jpt(self):
-        """ Check if product jpt fulfills a 'intersection' a = a """
+        """ Check if product jpt fulfills a * a != a """
         x = NumericVariable('X')
         y = NumericVariable('Y')
 
