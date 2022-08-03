@@ -146,14 +146,6 @@ class JPTTest(TestCase):
         s_result = sjpt.independent_marginals([x, y], evidence)
 
         for v in [x, y]:
-            s_result.distributions[x].plot()
-            plt.show()
-            result.distributions[x].plot()
-            plt.show()
-            s_result.distributions[y].plot()
-            plt.show()
-            result.distributions[y].plot()
-            plt.show()
             # these distributions should differ since
             self.assertGreater(result.distributions[v].kl_divergence(s_result.distributions[v]), 0)
 
