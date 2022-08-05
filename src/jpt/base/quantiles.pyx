@@ -1038,6 +1038,9 @@ cdef class QuantileDistribution:
         q._cdf = PiecewiseFunction.from_json(data['cdf'])
         return q
 
+    @staticmethod
+    def uniform(interval: ContinuousSet, value: float or None = None):
+        return QuantileDistribution.from_cdf(PiecewiseFunction.uniform(interval, value))
 
 @cython.final
 cdef class PiecewiseFunction(Function):
@@ -1522,3 +1525,36 @@ cdef class PiecewiseFunction(Function):
 #     return f
 #
 #
+    @staticmethod
+    def uniform(interval: ContinuousSet, value: float or None = None):
+        """ Create a uniform distribution over the interval given.
+            Sets its value to the value given or 1/(upper-lower) if not provided."""
+
+        # calculate default value
+        value = value or (1 / interval.range())
+
+        # create intervals
+        intervals = [ContinuousSet(-float("inf"), interval.lower),
+                     interval,
+                     ContinuousSet(interval.upper, float("inf"))]
+
+        # create linear functions
+        functions = [LinearFunction(0, 0),
+                     LinearFunction(value, 0),
+                     LinearFunction(0, value * interval.range())]
+
+        # create resulting piecewise function
+        result = PiecewiseFunction()
+        result.intervals = intervals
+        result.functions = functions
+        return result
+
+    def update(self, interval: ContinuousSet, function: Function):
+        """ Updates the function such that it the given interval is replaced by the given function. """
+        for idx, (interval_, function_) in enumerate(zip(self.intervals, self.functions)):
+            intersection = interval_.intersection(interval)
+            if not intersection.isempty():
+                self.intervals[idx].upper = interval.lower
+
+                return
+

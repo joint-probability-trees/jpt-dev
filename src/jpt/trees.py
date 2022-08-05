@@ -28,7 +28,7 @@ from dnutils import first, ifnone, mapstr, err, fst
 import jpt.variables
 from .base.utils import Unsatisfiability
 
-from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
+from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable, ScaledNumeric
 from .learning.distributions import Distribution
 
 from .base.utils import list2interval, format_path, normalized
@@ -344,13 +344,23 @@ class Leaf(Node):
         :type evidence: VariableMap
         """
         return self.probability(evidence) > 0.
-
-    def probability(self, query: VariableMap) -> float:
+    
+    def path_consistent_with(self, evidence: VariableMap) -> bool:
+        return super(Leaf, self).consistent_with(evidence)
+    
+    def probability(self, query: VariableMap, dirac_scaling: float = 2.,  min_distances: VariableMap = None) -> float:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
         :param query: A VariableMap that maps to singular values (numeric or symbolic)
             or ranges (continuous set, set)
         :type query: VariableMap
+        :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
+            if a durac impulse is used to model the variable.
+        :type dirac_scaling: float
+        :param min_distances: A dict mapping the variables to the minimal distances between the observations.
+            This can be useful to use the same likelihood parameters for different test sets for example in cross
+            validation processes.
+        :type min_distances: A VariableMap from numeric variables to floats or None
         """
         result = 1.
         # for every variable and its assignment
@@ -366,27 +376,76 @@ class Leaf(Node):
 
                 # if it is a singular value
                 else:
-                    # TODO multiply by likelihood (and hope for non infinite values)
+                    # get the likelihood
                     likelihood = self.distributions[variable].pdf(value)
-                    if likelihood == float("inf"):
+
+                    # if it is infinity and no handling is provided replace it with 1.
+                    if likelihood == float("inf") and not min_distances:
                         result *= 1
+                    # if it is infinite and a handling is provided, replace with dirac_sclaing/min_distance
+                    elif likelihood == float("inf") and min_distances:
+                        result *= dirac_scaling / min_distances[variable]
                     else:
                         result *= likelihood
-                    # result *= self.distributions[variable].pdf(value)
 
             # if the variable is symbolic
             elif variable.symbolic:
 
                 # force the evidence to be a set
                 if not isinstance(value, set):
-                    value = set(value)
+                    value = set([value])
 
                 # return false if the evidence is impossible in this leaf
                 result *= self.distributions[variable].p(value)
 
         return result
 
+    def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
+            -> float:
+        """
+        Calculate the probability of a (partial) query. Exploits the independence assumption
+        :param queries: A VariableMap that maps to singular values (numeric or symbolic)
+            or ranges (continuous set, set)
+        :type queries: VariableMap
+        :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
+            if a durac impulse is used to model the variable.
+        :type dirac_scaling: float
+        :param min_distances: A dict mapping the variables to the minimal distances between the observations.
+            This can be useful to use the same likelihood parameters for different test sets for example in cross
+            validation processes.
+        :type min_distances: A VariableMap from numeric variables to floats or None
+        """
 
+        # create result vector
+        result = np.ones(len(queries))
+
+        # for each idx, variable and distribution
+        for idx, (variable, distribution) in enumerate(self.distributions.items()):
+
+            # if the variable is symbolic
+            if isinstance(variable, SymbolicVariable):
+
+                # multiply by probability
+                probs = distribution._params[queries[:, idx].astype(int)]
+
+            # if the variable is numeric
+            elif isinstance(variable, NumericVariable):
+
+                # get the likelihoods
+                probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C').astype(float)))
+
+                if min_distances:
+                    # replace them with dirac scaling if they are infinite
+                    probs[(probs == float("inf")).nonzero()] = dirac_scaling / min_distances[variable]
+
+                # if no distances are provided replace infinite values with 1.
+                else:
+                    probs[(probs == float("inf")).nonzero()] = 1.
+
+            # multiply results
+            result *= probs
+
+        return result
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -1356,15 +1415,15 @@ class JPT:
         else:
             return iv
 
-    def likelihood(self, queries: np.ndarray, durac_scaling=2., min_distances=None) -> np.ndarray:
+    def likelihood(self, queries: np.ndarray, dirac_scaling=2., min_distances=None) -> np.ndarray:
         """Get the probabilities of a list of worlds. The worlds must be fully assigned with
         single numbers (no intervals).
 
         :param queries: An array containing the worlds. The shape is (x, len(variables)).
         :type queries: np.array
-        :param durac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
+        :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
-        :type durac_scaling: float
+        :type dirac_scaling: float
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
@@ -1378,40 +1437,28 @@ class JPT:
                 if variable.numeric:
                     samples = np.unique(queries[:, idx])
                     distances = np.diff(samples)
-                    min_distances[variable] = min(distances) if len(distances) > 0 else durac_scaling
+                    min_distances[variable] = min(distances) if len(distances) > 0 else dirac_scaling
+
+        for idx, variable in enumerate(self.variables):
+            # convert the symbolic columns to the representation used in jpts
+            if variable.symbolic:
+                for value, label in zip(variable.domain.values, variable.domain.labels):
+                    queries[queries[:, idx] == value, idx] = label
+
+            # scale numeric variables if needed
+            elif variable.numeric and issubclass(variable.domain, ScaledNumeric):
+                queries[:, idx] = variable.domain.scaler.transform(queries[:, idx])
 
         # initialize probabilities
         probabilities = np.zeros(len(queries))
 
         # for all leaves
         for leaf in self.leaves.values():
-            # calculate the samples that are in this leaf
-            true_query_indices = np.ones(len(queries))
-
-            for variable, restriction in leaf.path.items():
-                idx = self.variables.index(variable)
-                column = queries[:, idx]
-
-                if isinstance(variable, NumericVariable):
-                    true_indices = ((restriction.lower < column) & (column <= restriction.upper))
-                elif isinstance(variable, SymbolicVariable):
-                    true_indices = np.isin(column, np.asarray(list(restriction)))
-                true_query_indices *= true_indices
-
-            in_leaf_probabilities = np.ones(len(queries))
-            for variable, distribution in leaf.distributions.items():
-                idx = self.variables.index(variable)
-
-                if isinstance(variable, SymbolicVariable):
-                    probs = distribution._params[queries[:, idx].astype(int)]
-
-                elif isinstance(variable, NumericVariable):
-                    probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C')))
-                    probs[(probs == float("inf")).nonzero()] = durac_scaling / min_distances[variable]
-
-                in_leaf_probabilities *= probs
-
-            probabilities += (in_leaf_probabilities * leaf.prior * true_query_indices)
+            leaf_probabilities = leaf.parallel_likelihood(queries, dirac_scaling, min_distances)
+            print(sum(leaf_probabilities))
+            print("-------------")
+            probabilities = probabilities + leaf_probabilities
+            print(sum(probabilities))
 
         return probabilities
 
@@ -2076,6 +2123,39 @@ class JPT:
                 all_splits[variable] = list(splits)
 
         return all_splits
+
+    def postprocess_leaves(self,):
+        """ Postprocess the tree such that every point in the convex hull has
+            a probability greater than 0. This only changes the numeric distributions. """
+
+        # get total number of samples and use 1/total as default value
+        total_samples = self.total_samples()
+
+        # for every leaf
+        for idx, leaf in self.leaves.items():
+            # for numeric every distribution
+            for variable, distribution in leaf.distributions.items():
+                if variable.numeric and variable in leaf.path.keys():
+                    added_distributions = []
+                    # if the leaf is not the "lowest" in this dimension
+                    if leaf.path[variable].lower > -float("inf"):
+                        # create uniform distribution as bridge between the leaves
+                        interval = ContinuousSet(leaf.path[variable].lower, distribution.cdf.intervals[0].upper)
+                        added_distributions.append(QuantileDistribution.uniform(interval, 1/total_samples))
+
+                    # if the leaf is not the "highest" in this dimension
+                    if leaf.path[variable].upper < float("inf"):
+                        # create uniform distribution as bridge between the leaves
+                        interval = ContinuousSet(distribution.cdf.intervals[-1].lower, leaf.path[variable].upper)
+                        added_distributions.append(QuantileDistribution.uniform(interval, 1/total_samples))
+
+                    # merge the distributions
+                    new_distribution = \
+                        QuantileDistribution.merge([distribution] + added_distributions)
+
+                    # save the new distribution in the leaf
+                    leaf.distributions[variable]._quantile = new_distribution
+
 
 
 class JPTLike:
