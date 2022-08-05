@@ -762,17 +762,21 @@ class JPT:
                 raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
             else:
                 return None
+
         for leaf in self.apply(evidence_):
             likelihood = 1
             # check if path of candidate leaf is consistent with evidence
             # (i.e. contains evicence variable with *correct* value or does not contain it at all)
             for var in set(evidence_.keys()):
                 evidence_set = evidence_[var]
-                if isinstance(evidence_set, ContinuousSet) and evidence_set.size() == 1:
-                    continue
                 if var in leaf.path:
                     evidence_set = evidence_set.intersection(leaf.path[var])
-                likelihood *= leaf.distributions[var]._p(evidence_set) #/ pdf_cond
+
+                if isinstance(evidence_set, ContinuousSet) and evidence_set.size() == 1:
+                    l_var = leaf.distributions[var].pdf(evidence_set.lower)
+                else:
+                    l_var = leaf.distributions[var]._p(evidence_set)
+                likelihood *= l_var
 
             if not likelihood:
                 continue
