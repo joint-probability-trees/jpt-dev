@@ -774,6 +774,7 @@ class JPT:
 
                 if isinstance(evidence_set, ContinuousSet) and evidence_set.size() == 1:
                     l_var = leaf.distributions[var].pdf(evidence_set.lower)
+                    l_var = 1 if np.isinf(l_var) else l_var
                 else:
                     l_var = leaf.distributions[var]._p(evidence_set)
                 likelihood *= l_var
