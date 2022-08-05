@@ -604,6 +604,9 @@ cdef class ContinuousSet(NumberSet):
     def __str__(self):
         return self.pfmt()
 
+    def range(self):
+        return self.upper - self.lower
+
     def pfmt(self, fmtstr=None):
         precision = ifnone(fmtstr, '%s')
         if self.isempty():
