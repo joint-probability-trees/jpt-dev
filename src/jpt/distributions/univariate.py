@@ -1057,16 +1057,17 @@ class Bool(Multinomial):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# noinspection PyPep8Naming
 def SymbolicType(name, labels):
-    if len(labels) < 2:
-        raise ValueError('A minumum number of 2 values is required '
-                         'for a symbolic type, got onlt %s' % mapstr(labels))
+    if len(labels) < 1:
+        raise ValueError('At least one value is needed for a symbolic type.')
     t = type(name, (Multinomial,), {})
     t.values = OrderedDictProxy([(lbl, int(val)) for val, lbl in zip(range(len(labels)), labels)])
     t.labels = OrderedDictProxy([(int(val), lbl) for val, lbl in zip(range(len(labels)), labels)])
     return t
 
 
+# noinspection PyPep8Naming
 def NumericType(name, values):
     t = type(name, (ScaledNumeric,), {})
     if values is not None:
