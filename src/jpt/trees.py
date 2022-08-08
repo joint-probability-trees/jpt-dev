@@ -43,7 +43,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from .base.quantiles import QuantileDistribution
+    from .base.quantiles import QuantileDistribution, LinearFunction
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
     from .learning.impurity import Impurity
 
@@ -1455,11 +1455,7 @@ class JPT:
         # for all leaves
         for leaf in self.leaves.values():
             leaf_probabilities = leaf.parallel_likelihood(queries, dirac_scaling, min_distances)
-            print(sum(leaf_probabilities))
-            print("-------------")
             probabilities = probabilities + leaf_probabilities
-            print(sum(probabilities))
-
         return probabilities
 
     def reverse(self, query, confidence=.5) -> List[Tuple[Dict, List[Node]]]:
@@ -2135,27 +2131,23 @@ class JPT:
         for idx, leaf in self.leaves.items():
             # for numeric every distribution
             for variable, distribution in leaf.distributions.items():
-                if variable.numeric and variable in leaf.path.keys():
-                    added_distributions = []
+                if variable.numeric and variable in leaf.path.keys() and not distribution.is_dirac_impulse():
+                    print(type(distribution))
                     # if the leaf is not the "lowest" in this dimension
                     if leaf.path[variable].lower > -float("inf"):
                         # create uniform distribution as bridge between the leaves
                         interval = ContinuousSet(leaf.path[variable].lower, distribution.cdf.intervals[0].upper)
-                        added_distributions.append(QuantileDistribution.uniform(interval, 1/total_samples))
+                        function_value = 1 / (2 * total_samples * interval.range())
+                        distribution._quantile.cdf.insert_convex_fragment_left(interval, function_value)
+                        distribution._quantile.cdf.normalize()
 
                     # if the leaf is not the "highest" in this dimension
                     if leaf.path[variable].upper < float("inf"):
                         # create uniform distribution as bridge between the leaves
                         interval = ContinuousSet(distribution.cdf.intervals[-1].lower, leaf.path[variable].upper)
-                        added_distributions.append(QuantileDistribution.uniform(interval, 1/total_samples))
-
-                    # merge the distributions
-                    new_distribution = \
-                        QuantileDistribution.merge([distribution] + added_distributions)
-
-                    # save the new distribution in the leaf
-                    leaf.distributions[variable]._quantile = new_distribution
-
+                        function_value = 1 / (2 * total_samples * interval.range())
+                        distribution._quantile.cdf.insert_convex_fragment_right(interval, function_value)
+                        distribution._quantile.cdf.normalize()
 
 
 class JPTLike:
