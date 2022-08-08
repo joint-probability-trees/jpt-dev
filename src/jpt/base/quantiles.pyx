@@ -1549,12 +1549,62 @@ cdef class PiecewiseFunction(Function):
         result.functions = functions
         return result
 
-    def update(self, interval: ContinuousSet, function: Function):
-        """ Updates the function such that it the given interval is replaced by the given function. """
-        for idx, (interval_, function_) in enumerate(zip(self.intervals, self.functions)):
-            intersection = interval_.intersection(interval)
-            if not intersection.isempty():
-                self.intervals[idx].upper = interval.lower
+    def insert_convex_fragment_left(self, interval: ContinuousSet, value: float):
+        """ Insert the function fragment with m='value' at the very left of this function.
+        This is used to assign probability mass to every point in the convex hull of the tree.
+        Only apply this to cdf.
 
-                return
+        @param interval: The interval where the density should be assigned.
+        @param value: The density for the whole interval in the pdf
+        """
 
+        # insert the new interval at the very left
+        intervals = [ContinuousSet(-float("inf"), interval.lower), interval]
+
+        # create the new functions at the very left
+        functions = [LinearFunction(0, 0), LinearFunction(value, 0)]
+
+        # add the resulting offset to the rest of the functions
+        offset = functions[-1].eval(interval.upper)
+        intervals = intervals + self.intervals[1:]
+        functions = functions + [LinearFunction(function.m, function.c + offset)
+                                 for function in self.functions]
+
+        # update self
+        self.intervals = intervals
+        self.functions = functions
+        return self
+
+    def insert_convex_fragment_right(self, interval: ContinuousSet, value: float):
+        """ Insert the function fragment with m='value' at the very right of this function.
+        This is used to assign probability mass to every point in the convex hull of the tree.
+        Only apply this to cdf.
+
+        @param interval: The interval where the density should be assigned.
+        @param value: The density for the whole interval in the pdf
+        """
+
+        # create intervals at the very right
+        intervals = self.intervals[:-1] + [interval, ContinuousSet(interval.upper, float("inf"))]
+
+        # create inserted function and update last interval
+        inserted_function = LinearFunction(value, 1)
+        functions = self.functions[:-1] + [inserted_function,
+                                           LinearFunction(0, inserted_function.eval(interval.upper))]
+
+        # update self
+        self.intervals = intervals
+        self.functions = functions
+        return self
+
+    def normalize(self):
+        """ Normalize this function such that it converges to 1. """
+        if self.functions[-1].m != 0 or self.functions[-1] == LinearFunction(0,0):
+            raise Exception("Cannot normalize CDFs that converge to 0, infinity or negative infinity.")
+
+        # get the probability mass
+        z = self.functions[-1].eval(self.intervals[-1].lower)
+
+        # update each piece with the linear constraint of 1/Z * f(x)
+        self.functions = [LinearFunction(function.m / z, function.c / z) for function in self.functions]
+        return self

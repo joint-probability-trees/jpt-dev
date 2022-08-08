@@ -767,6 +767,10 @@ class Numeric(Distribution):
         self._quantile.fit(np.asarray([[value]]), rows=np.asarray([0]), col=0)
         return self
 
+    def is_dirac_impulse(self):
+        """Checks if this distribution is a dirac impulse."""
+        return len(self._quantile.cdf.intervals) == 2
+
     def _p(self, value):
         if isinstance(value, numbers.Number) and np.isinf(self.pdf.eval(value)):
             return 0

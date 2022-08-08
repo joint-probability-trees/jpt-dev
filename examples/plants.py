@@ -17,21 +17,18 @@ def plants():
 
     variables = infer_from_dataframe(df, scale_numeric_types=False)
     print(variables)
-    tree = JPT(variables, min_samples_leaf=0.4)
+    tree = JPT(variables, min_samples_leaf=0.02)
     data = df.to_numpy()
     tree.fit(data.copy())
+    tree.postprocess_leaves()
     print("finished learning")
-    tree.plot(plotvars=variables,
-              directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-abalone'))
-    tree2 = tree.copy()
-    tree2.postprocess_leaves()
-    tree2.plot(plotvars=variables,
-              directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-abalone2'))
+    #tree.plot(plotvars=variables,
+     #         directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-abalone'))
 
-    # print("finished plotting")
+    print("finished plotting")
 
     l = tree.likelihood(data)
-    print(sum(l==0))
+    l[l==0] = pow(1/len(data), len(variables))
     print(sum(np.log(l)))
 
 
