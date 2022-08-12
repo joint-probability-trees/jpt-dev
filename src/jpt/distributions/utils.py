@@ -21,7 +21,8 @@ class DataScaler:
 
     def fit(self, data):
         self.mean = np.mean(data)
-        self.scale = np.std(data)
+        scale = np.std(data)
+        self.scale = ifnot(1 if np.isnan(scale) else scale, 1)
 
     def inverse_transform(self, x, make_copy=True):
         if type(x) is np.ndarray:
@@ -35,9 +36,9 @@ class DataScaler:
         if type(x) is np.ndarray:
             target = np.array(x) if make_copy else x
             target -= self.mean
-            target /= ifnot(self.scale, 1)
+            target /= self.scale
             return target
-        return (x - self.mean) / ifnot(self.scale, 1)
+        return (x - self.mean) / self.scale
 
     def __getitem__(self, x):
         if x in (np.NINF, np.PINF):
