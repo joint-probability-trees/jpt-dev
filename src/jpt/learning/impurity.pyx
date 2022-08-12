@@ -303,7 +303,7 @@ cdef class Impurity:
                 else: return False
         return True
 
-    cpdef compute_best_split(self, SIZE_t start, SIZE_t end):
+    cpdef DTYPE_t compute_best_split(self, SIZE_t start, SIZE_t end) except -1:
         '''
         Computation uses the impurity proxy from sklearn: ::
 
