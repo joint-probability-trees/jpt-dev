@@ -2,6 +2,7 @@ from collections import OrderedDict
 from typing import Dict, Any
 
 import numpy as np
+from dnutils import ifnot
 from numpy import isnan
 
 
@@ -34,9 +35,9 @@ class DataScaler:
         if type(x) is np.ndarray:
             target = np.array(x) if make_copy else x
             target -= self.mean
-            target /= self.scale
+            target /= ifnot(self.scale, 1)
             return target
-        return (x - self.mean) / self.scale
+        return (x - self.mean) / ifnot(self.scale, 1)
 
     def __getitem__(self, x):
         if x in (np.NINF, np.PINF):
