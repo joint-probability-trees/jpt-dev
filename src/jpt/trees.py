@@ -44,28 +44,8 @@ finally:
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
     from .learning.impurity import Impurity
 
-import multiprocessing as mp
-
 
 style.use(plotstyle)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Global data store to exploit copy-on-write in multiprocessing
-
-_data = None
-_lock = Lock()
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-def _prior(args):
-    var_idx, json_var = args
-    try:
-        return Variable.from_json(json_var).distribution().fit(data=_data,
-                                                               col=var_idx).to_json()
-    except ValueError as e:
-        raise ValueError('%s: %s' % (Variable.from_json(json_var), str(e)))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -76,7 +56,6 @@ GENERATIVE = 'generative'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
 
 class Node:
     '''
@@ -132,7 +111,6 @@ class Node:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
 
 class DecisionNode(Node):
     '''
@@ -232,7 +210,6 @@ class DecisionNode(Node):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
 
 class Leaf(Node):
     '''
@@ -366,6 +343,8 @@ class Result:
         return result
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class ExpectationResult(Result):
 
     def __init__(self, query, evidence, theta, lower=None, upper=None, res=None, cand=None, w=None):
@@ -420,6 +399,8 @@ class ExpectationResult(Result):
         return result
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class MPEResult(Result):
 
     def __init__(self, evidence, res=None, cand=None, w=None):
@@ -429,6 +410,8 @@ class MPEResult(Result):
     def format_result(self):
         return f'MPE({self.evidence}) = {format_path(self.path)}'
 
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class PosteriorResult(Result):
 
@@ -445,6 +428,8 @@ class PosteriorResult(Result):
     def __getitem__(self, item):
         return self.distributions[item]
 
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class JPT:
     '''
@@ -660,7 +645,10 @@ class JPT:
                                       for var, value in values.items()) if values else 1)
         return pdf
 
-    def infer(self, query, evidence=None, fail_on_unsatisfiability=True) -> Result:
+    def infer(self,
+              query: Union[Dict[Union[Variable, str], Any], VariableMap],
+              evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = None,
+              fail_on_unsatisfiability: bool = True) -> Result:
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -685,6 +673,7 @@ class JPT:
         :type query:        dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
+        :param fail_on_unsatisfiability: whether or not an error is raised in case of unsatisifiable evidence.
         '''
         # querymap = VariableMap()
         # for key, value in query.items():
