@@ -5,6 +5,8 @@ import numpy as np
 from dnutils import ifnot
 from numpy import isnan
 
+from jpt.base.intervals import R
+
 
 class DataScaler:
     '''
@@ -89,7 +91,7 @@ class DataScalerProxy:
         self.scale = self.datascaler.scale
 
     def __hash__(self):
-        return hash((self.inverse, self.mean, self.variance))
+        return hash((self.inverse, self.mean, self.scale))
 
     def __call__(self, arg):
         return self[arg]

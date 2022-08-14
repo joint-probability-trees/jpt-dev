@@ -4,7 +4,6 @@ import html
 import json
 import queue
 from operator import attrgetter
-from threading import Lock
 
 import math
 import numbers
@@ -23,9 +22,10 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, ifnone, mapstr, err, fst, out
+from dnutils import first, ifnone, mapstr, err, fst, out, ifnot
 
-from .base.utils import Unsatisfiability, prod
+from .base.utils import prod
+from .base.errors import Unsatisfiability
 
 from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
 from .distributions import Distribution
@@ -455,8 +455,8 @@ class JPT:
         '''
 
         self._variables = tuple(variables)
-        self._targets = targets
         self.varnames: OrderedDict[str, Variable] = OrderedDict((var.name, var) for var in self._variables)
+        self._targets = [self.varnames[v] if type(v) is str else v for v in targets] if targets is not None else None
         self.leaves: Dict[int, Leaf] = {}
         self.innernodes: Dict[int, DecisionNode] = {}
         self.allnodes: ChainMap[int, Node] = ChainMap(self.innernodes, self.leaves)
@@ -724,20 +724,24 @@ class JPT:
             r.weights = [w / p_e for w in r.weights]
         return r
 
+    # noinspection PyProtectedMember
     def posterior(self,
-                  variables: List[Union[Variable, str]],
-                  evidence: Union[Dict[Union[Variable, str], Any], VariableMap],
-                  fail_on_unsatisfiability: bool = True) -> PosteriorResult:
+                  variables: List[Union[Variable, str]] = None,
+                  evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = None,
+                  fail_on_unsatisfiability: bool = True,
+                  report_inconsistencies: bool = False) -> PosteriorResult:
         '''
 
         :param variables:        the query variables of the posterior to be computed
-        :type variables:         list of jpt.variables.Variable
         :param evidence:    the evidence given for the posterior to be computed
         :param fail_on_unsatisfiability: wether or not an ``Unsatisfiability`` error is raised if the
                                          likelihood of the evidence is 0.
-        :type fail_on_unsatisfiability:  bool
+        :param report_inconsistencies:   in case of an ``Unsatisfiability`` error, the exception raise
+                                         will contain information about the variable assignments that
+                                         provoked the inconsistency.
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
+        variables = ifnone(variables, self.variables)
         evidence_ = ifnone(evidence, {}, self._prepropress_query)
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
@@ -746,17 +750,11 @@ class JPT:
 
         likelihoods = []
         priors = []
-        pdf_cond = self.pdf(VariableMap([(var, val.fst())
-                                         for var, val in evidence_.items()
-                                         if isinstance(val, ContinuousSet) and val.size() == 1]))
-        if not pdf_cond:
-            if fail_on_unsatisfiability:
-                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
-            else:
-                return None
 
+        inconsistencies = {}
         for leaf in self.apply(evidence_):
             likelihood = 1
+            conflicting_assignment = VariableMap()
             # check if path of candidate leaf is consistent with evidence
             # (i.e. contains evicence variable with *correct* value or does not contain it at all)
             for var in set(evidence_.keys()):
@@ -769,12 +767,19 @@ class JPT:
                     l_var = 1 if np.isinf(l_var) else l_var
                 else:
                     l_var = leaf.distributions[var]._p(evidence_set)
-                likelihood *= l_var
 
-            if not likelihood:
+                if not l_var:
+                    conflicting_assignment[var] = var.domain.value2label(evidence_set)
+                    if not report_inconsistencies:
+                        break
+
+                likelihood *= ifnot(l_var, 1)
+
+            if conflicting_assignment:
+                inconsistencies[conflicting_assignment] = inconsistencies.get(conflicting_assignment, 0) + likelihood
                 continue
 
-            likelihoods.append(likelihood)
+            likelihoods.append(0 if conflicting_assignment else likelihood)
             priors.append(leaf.prior)
 
             for var in variables:
@@ -794,7 +799,8 @@ class JPT:
             weights = normalized(weights)
         except ValueError:
             if fail_on_unsatisfiability:
-                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
+                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_),
+                                       reasons=inconsistencies)
             return None
         result.weights = weights
 
@@ -974,10 +980,10 @@ class JPT:
         if max_gain < 0:
             raise ValueError('Something went wrong!')
 
-        JPT.logger.debug('Data range: %d-%d,' % (start, end),
-                         'split var:', split_var,
-                         ', split_pos:', split_pos,
-                         ', gain:', max_gain)
+        self.logger.debug('Data range: %d-%d,' % (start, end),
+                          'split var:', split_var,
+                          ', split_pos:', split_pos,
+                          ', gain:', max_gain)
 
         if max_gain:
             split_pos = impurity.best_split_pos
@@ -1188,14 +1194,6 @@ class JPT:
 
     @property
     def min_samples_leaf(self):
-        # if type(self._min_samples_leaf) is int:
-        #     return self._min_samples_leaf
-        # if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
-        #     if _data is None:
-        #         return self._min_samples_leaf
-        #     else:
-        #         return int(self._min_samples_leaf * len(_data))
-        # return int(self._min_samples_leaf)
         return self._min_samples_leaf
 
     @staticmethod

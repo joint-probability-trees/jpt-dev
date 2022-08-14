@@ -18,27 +18,16 @@ import numpy as np
 from ...base.functions cimport PiecewiseFunction, LinearFunction, ConstantFunction, Undefined, Jump, Function
 from ...base.intervals cimport ContinuousSet, RealSet
 cimport numpy as np
-cimport cython
 from ...base.cutils cimport SIZE_t, DTYPE_t, sort
 
 import warnings
 
-from jpt.base.utils import pairwise, Unsatisfiability
+from jpt.base.utils import pairwise
+from jpt.base.errors import Unsatisfiability
 
 from .cdfreg import CDFRegressor
 
 warnings.filterwarnings("ignore")
-
-
-# cdef np.int32_t _FLOAT = 1
-# cdef np.int32_t _INT   = 2
-# cdef np.int32_t _GAUSSIAN = 3
-# cdef np.int32_t _UNIFORM = 4
-#
-# FLOAT = np.int32(_FLOAT)
-# INT = np.int32(_INT)
-# GAUSSIAN = np.int32(_GAUSSIAN)
-# UNIFORM = np.int32(_UNIFORM)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
