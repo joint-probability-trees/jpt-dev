@@ -724,7 +724,10 @@ class JPT:
             r.weights = [w / p_e for w in r.weights]
         return r
 
-    def posterior(self, variables, evidence, fail_on_unsatisfiability=True) -> PosteriorResult:
+    def posterior(self,
+                  variables: List[Union[Variable, str]],
+                  evidence: Union[Dict[Union[Variable, str], Any], VariableMap],
+                  fail_on_unsatisfiability: bool = True) -> PosteriorResult:
         '''
 
         :param variables:        the query variables of the posterior to be computed
