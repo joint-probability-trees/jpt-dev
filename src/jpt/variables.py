@@ -5,10 +5,10 @@ import hashlib
 import math
 import numbers
 from collections import OrderedDict
-from typing import List, Tuple, Any, Union, Dict, Iterator, Set
+from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable
 
 import numpy as np
-from dnutils import first, ifnone, out, edict
+from dnutils import first, edict
 
 from jpt.base.utils import mapstr, to_json, list2interval, setstr
 from jpt.base.constants import SYMBOL
@@ -125,7 +125,7 @@ class Variable:
     def to_json(self) -> Dict[str, Any]:
         return {'name': self.name,
                 'type': 'numeric' if self.numeric else 'symbolic',
-                'domain': self.domain.to_json(),
+                'domain': None if self.domain is None else self.domain.to_json(),
                 'settings': self.settings}
 
     @staticmethod
@@ -397,6 +397,27 @@ class VariableMap:
                 list(self._map.items()) == list(o._map.items()) and
                 list(self._variables.items()) == list(o._variables.items()))
 
+    def __hash__(self):
+        return hash((VariableMap, tuple(sorted([(var, tuple(sorted(val)) if type(val) is set else val)
+                                               for var, val in self.items()], key=lambda t: t[0].name))))
+
+    def __isub__(self, other):
+        if isinstance(other, VariableMap):
+            for v in other:
+                if v in self:
+                    del self[v]
+        else:
+            del self[other]
+        return self
+
+    def __iadd__(self, other):
+        if isinstance(other, VariableMap):
+            for var, val in other.items():
+                self[var] = val
+            return self
+        else:
+            raise TypeError('Expected VariableMap, got %s' % type(other).__name__)
+
     def get(self, key: Union[str, Variable], default=None) -> Any:
         if key not in self:
             return default
@@ -420,7 +441,7 @@ class VariableMap:
         return self
 
     @staticmethod
-    def from_json(variables: List[Variable], d: Dict[str, Any], typ=None, args=()) -> 'VariableMap':
+    def from_json(variables: Iterable[Variable], d: Dict[str, Any], typ=None, args=()) -> 'VariableMap':
         vmap = VariableMap()
         varbyname = {var.name: var for var in variables}
         for vname, value in d.items():

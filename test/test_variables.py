@@ -34,8 +34,38 @@ class VariableMapTest(TestCase):
         self.assertEqual('baz', varmap['C'])
 
     def test_hash(self):
-        hash(NumericVariable('bar'))
-        hash(SymbolicVariable('baz', domain=Bool))
+        '''Custom has value calculation.'''
+        A, B, C = VariableMapTest.TEST_DATA
+        varmap = VariableMap()
+        varmap[A] = 'foo'
+        varmap[B] = 'bar'
+        varmap[C] = 'baz'
+        varmap2 = VariableMap()
+        varmap2[A] = 'foo'
+        varmap2[B] = 'bar'
+        varmap2[C] = 'baz'
+        self.assertEqual(hash(varmap), hash(varmap2))
+        varmap2[C] = 'ba'
+        self.assertNotEqual(hash(varmap), hash(varmap2))
+
+    def test_iadd_isub_operators(self):
+        A, B, C = VariableMapTest.TEST_DATA
+        D = SymbolicVariable('D', domain=None)
+        varmap = VariableMap()
+        varmap[A] = 'foo'
+        varmap[B] = 'bar'
+        varmap[C] = 'baz'
+        varmap2 = VariableMap()
+        varmap2[A] = 'foooob'
+        varmap2[D] = 'daz'
+        varmap += varmap2
+        self.assertEqual(VariableMap([(A, 'foooob'), (B, 'bar'), (C, 'baz'), (D, 'daz')]),
+                         varmap)
+        self.assertRaises(TypeError, varmap.__iadd__, 'bla')
+        varmap -= 'A'
+        self.assertEqual(VariableMap([(B, 'bar'), (C, 'baz'), (D, 'daz')]), varmap)
+        varmap -= varmap2
+        self.assertEqual(VariableMap([(B, 'bar'), (C, 'baz')]), varmap)
 
     def test_iteration(self):
         '''Iteration over map elements'''
@@ -90,12 +120,22 @@ class VariableMapTest(TestCase):
         self.assertEqual(varmap, VariableMap.from_json([A, B, C], json.loads(json.dumps(varmap.to_json()))))
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class VariableTest(TestCase):
     '''Test basic functionality of Variable classes.'''
 
     TEST_DATA = [NumericVariable('A'),
                  NumericVariable('B'),
                  SymbolicVariable('C', Bool)]
+
+    def test_hash(self):
+        '''Custom has value calculation.'''
+        h1 = hash(NumericVariable('bar'))
+        h2 = hash(SymbolicVariable('baz', domain=Bool))
+        h3 = hash(NumericVariable('bar'))
+        self.assertEqual(h1, h3)
+        self.assertNotEqual(h1, h2)
 
     def test_serialization(self):
         '''Test (de)serialization of Variable classes'''
