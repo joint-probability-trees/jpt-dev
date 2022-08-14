@@ -1115,85 +1115,88 @@ class JPT:
         :param columns: The training examples (assumed in row-shape)
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
         '''
-        with _lock:
-            # ----------------------------------------------------------------------------------------------------------
-            # Check and prepare the data
-            global _data
-            _data = self._preprocess_data(data=data, rows=rows, columns=columns)
-            if _data.shape[0] < 1:
-                raise ValueError('No data for learning.')
+        # ----------------------------------------------------------------------------------------------------------
+        # Check and prepare the data
+        _data = self._preprocess_data(data=data, rows=rows, columns=columns)
+        if _data.shape[0] < 1:
+            raise ValueError('No data for learning.')
 
-            self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
-            self.indices[0] = 0
-            np.cumsum(self.indices, out=self.indices)
-            # Initialize the impurity calculation
-            self.impurity = Impurity(self)
-            self.impurity.setup(_data, self.indices)
-            self.impurity.min_samples_leaf = max(1, self.min_samples_leaf)
+        self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
+        self.indices[0] = 0
+        np.cumsum(self.indices, out=self.indices)
 
-            JPT.logger.info('Data transformation... %d x %d' % _data.shape)
+        JPT.logger.info('Data transformation... %d x %d' % _data.shape)
 
-            # ----------------------------------------------------------------------------------------------------------
-            # Initialize the internal data structures
-            self._reset()
+        # ----------------------------------------------------------------------------------------------------------
+        # Initialize the internal data structures
+        self._reset()
 
-            # ----------------------------------------------------------------------------------------------------------
-            # Determine the prior distributions
-            started = datetime.datetime.now()
-            JPT.logger.info('Learning prior distributions...')
-            self.priors = {}
-            pool = mp.Pool()
-            for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(
-                    self.variables)])):  # {var: var.dist(data=data[:, i]) }
-                self.priors[self.variables[i].name] = self.variables[i].domain.from_json(prior)
-            JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
-            # self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
-            pool.close()
-            pool.join()
+        # ----------------------------------------------------------------------------------------------------------
+        # Determine the prior distributions
+        started = datetime.datetime.now()
+        JPT.logger.info('Learning prior distributions...')
+        self.priors = {}
+        for i, (vname, var) in enumerate(self.varnames.items()):
+            self.priors[vname] = var.distribution().fit(data=_data,
+                                                        col=i)
+        JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
 
-            # ----------------------------------------------------------------------------------------------------------
-            # Start the training
+        # ----------------------------------------------------------------------------------------------------------
+        # Start the training
 
-            started = datetime.datetime.now()
-            JPT.logger.info('Started learning of %s x %s at %s '
-                            'requiring at least %s samples per leaf' % (_data.shape[0],
-                                                                        _data.shape[1],
-                                                                        started,
-                                                                        int(self.impurity.min_samples_leaf)))
-            learning = GENERATIVE if self.targets is None else DISCRIMINATIVE
-            JPT.logger.info('Learning is %s. ' % learning)
-            if learning == DISCRIMINATIVE:
-                JPT.logger.info('Target variables (%d): %s\n'
-                                'Feature variables (%d): %s' % (len(self.targets),
-                                                                ', '.join(mapstr(self.targets)),
-                                                                len(self.variables) - len(self.targets),
-                                                                ', '.join(
-                                                                    mapstr(set(self.variables) - set(self.targets)))))
-            # build up tree
-            self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
-            while self.c45queue:
-                self.c45(*self.c45queue.popleft())
+        if type(self._min_samples_leaf) is int:
+            min_samples_leaf = self._min_samples_leaf
+        elif type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
+            min_samples_leaf = int(self._min_samples_leaf * len(_data))
+        else:
+            min_samples_leaf = self._min_samples_leaf
 
-            # ----------------------------------------------------------------------------------------------------------
-            # Print the statistics
+        # Initialize the impurity calculation
+        self.impurity = Impurity(self)
+        self.impurity.setup(_data, self.indices)
+        self.impurity.min_samples_leaf = max(1, min_samples_leaf)
 
-            JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
-            # if logger.level >= 20:
-            JPT.logger.debug(self)
-            return self
+        started = datetime.datetime.now()
+        JPT.logger.info('Started learning of %s x %s at %s '
+                        'requiring at least %s samples per leaf' % (_data.shape[0],
+                                                                    _data.shape[1],
+                                                                    started,
+                                                                    min_samples_leaf))
+        learning = GENERATIVE if self.targets is None else DISCRIMINATIVE
+        JPT.logger.info('Learning is %s. ' % learning)
+        if learning == DISCRIMINATIVE:
+            JPT.logger.info('Target variables (%d): %s\n'
+                            'Feature variables (%d): %s' % (len(self.targets),
+                                                            ', '.join(mapstr(self.targets)),
+                                                            len(self.variables) - len(self.targets),
+                                                            ', '.join(
+                                                                mapstr(set(self.variables) - set(self.targets)))))
+        # build up tree
+        self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
+        while self.c45queue:
+            self.c45(*self.c45queue.popleft())
+
+        # ----------------------------------------------------------------------------------------------------------
+        # Print the statistics
+
+        JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
+        # if logger.level >= 20:
+        JPT.logger.debug(self)
+        return self
 
     fit = learn
 
     @property
     def min_samples_leaf(self):
-        if type(self._min_samples_leaf) is int:
-            return self._min_samples_leaf
-        if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
-            if _data is None:
-                return self._min_samples_leaf
-            else:
-                return int(self._min_samples_leaf * len(_data))
-        return int(self._min_samples_leaf)
+        # if type(self._min_samples_leaf) is int:
+        #     return self._min_samples_leaf
+        # if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
+        #     if _data is None:
+        #         return self._min_samples_leaf
+        #     else:
+        #         return int(self._min_samples_leaf * len(_data))
+        # return int(self._min_samples_leaf)
+        return self._min_samples_leaf
 
     @staticmethod
     def sample(sample, ft):

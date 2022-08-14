@@ -49,7 +49,6 @@ class ImpurityTest(TestCase):
         jpt = JPT(variables=ImpurityTest.variables, targets=[ImpurityTest.wa])
 
         data = jpt._preprocess_data(ImpurityTest.data)
-        trees._data = data
 
         impurity = Impurity(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
