@@ -1153,14 +1153,14 @@ class JPT:
         if type(self._min_samples_leaf) is int:
             min_samples_leaf = self._min_samples_leaf
         elif type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
-            min_samples_leaf = int(self._min_samples_leaf * len(_data))
+            min_samples_leaf = max(1, int(self._min_samples_leaf * len(_data)))
         else:
             min_samples_leaf = self._min_samples_leaf
 
         # Initialize the impurity calculation
         self.impurity = Impurity(self)
         self.impurity.setup(_data, self.indices)
-        self.impurity.min_samples_leaf = max(1, min_samples_leaf)
+        self.impurity.min_samples_leaf = min_samples_leaf
 
         started = datetime.datetime.now()
         JPT.logger.info('Started learning of %s x %s at %s '
