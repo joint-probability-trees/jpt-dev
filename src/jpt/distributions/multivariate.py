@@ -1,32 +1,14 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-from collections import OrderedDict, deque
-from itertools import tee
-from types import FunctionType
-from typing import Any, Dict, Iterable
 
-from jpt.base.utils import classproperty, save_plot, Unsatisfiability, normalized, mapstr, setstr
-
-import copy
-import math
-import numbers
-import os
-import re
-from operator import itemgetter
-
-import dnutils
-from dnutils import first, out, ifnone, stop, ifnot, project, pairwise
-from dnutils.stats import Gaussian as Gaussian_, _matshape
+from dnutils import first
 
 from scipy.stats import multivariate_normal, mvn, norm
 
 import numpy as np
-from numpy import iterable, isnan
 
 import matplotlib.pyplot as plt
 
-from jpt.base.constants import sepcomma
-from jpt.base.sampling import wsample, wchoice
 from .univariate import Gaussian
 
 try:

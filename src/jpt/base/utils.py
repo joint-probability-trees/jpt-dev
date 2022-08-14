@@ -30,14 +30,6 @@ finally:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
-class Unsatisfiability(Exception):
-    '''Error that is raised on logically unsatisfiable inferences.'''
-    pass
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-
 def pairwise(seq):
     '''Iterate over all consecutive pairs in ``seq``.'''
     for e in seq:
@@ -160,7 +152,7 @@ def entropy(p):
 def max_entropy(n):
     '''Compute the maximal entropy that a multinomial random variable with ``n`` states can have,
     i.e. the entropy value assuming a uniform distribution over the values.
-    :param p:
+    :param n:
     :return:
     '''
     return entropy([1 / n for _ in range(n)])

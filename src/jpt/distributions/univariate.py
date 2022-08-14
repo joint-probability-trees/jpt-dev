@@ -1,11 +1,12 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-from collections import OrderedDict, deque
+from collections import deque
 from itertools import tee
 from types import FunctionType
-from typing import Any, Dict, Iterable, List, Union
+from typing import Any, Iterable, List, Union, Set
 
-from jpt.base.utils import classproperty, save_plot, Unsatisfiability, normalized, mapstr, setstr
+from jpt.base.utils import classproperty, save_plot, normalized, mapstr, setstr
+from jpt.base.errors import Unsatisfiability
 
 import copy
 import math
@@ -375,6 +376,14 @@ class Distribution:
     def __getitem__(self, value):
         return self.p(value)
 
+    @classmethod
+    def value2label(cls, value):
+        raise NotImplementedError()
+
+    @classmethod
+    def label2value(cls, label):
+        raise NotImplementedError()
+
     def sample(self, n):
         raise NotImplementedError()
 
@@ -460,8 +469,8 @@ class Distribution:
             DISTRIBUTIONS[clazz.__name__] = clazz
         return clazz
 
-# ----------------------------------------------------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------------------------------------------------
 
 class Numeric(Distribution):
     '''
@@ -496,6 +505,26 @@ class Numeric(Distribution):
 
     def __hash__(self):
         return hash((type(self), self.values, self.labels, self._quantile))
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def value2label(cls, value: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+        if isinstance(value, ContinuousSet):
+            return ContinuousSet(cls.labels[value.lower], cls.labels[value.upper], value.left, value.right)
+        elif isinstance(value, numbers.Real):
+            return cls.labels[value]
+        else:
+            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(value).__name__)
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def label2value(cls, label: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+        if isinstance(label, ContinuousSet):
+            return ContinuousSet(cls.values[label.lower], cls.values[label.upper], label.left, label.right)
+        elif isinstance(label, numbers.Real):
+            return cls.values[label]
+        else:
+            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(label).__name__)
 
     @classmethod
     def equiv(cls, other):
@@ -751,6 +780,22 @@ class Multinomial(Distribution):
             raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
         self._params: np.ndarray = None
         self.to_json: FunctionType = self.inst_to_json
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def value2label(cls, value: Union[Any, Set]) -> Union[Any, Set]:
+        if type(value) is set:
+            return {cls.labels[v] for v in value}
+        else:
+            return cls.labels[value]
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def label2value(cls, label: Union[Any, Set]) -> Union[Any, Set]:
+        if type(label) is set:
+            return {cls.values[l_] for l_ in label}
+        else:
+            return cls.values[label]
 
     @classmethod
     def pfmt(cls, max_values=10, labels_or_values='labels') -> str:

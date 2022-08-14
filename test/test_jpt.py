@@ -1,12 +1,14 @@
-import gc
 import json
+import os
 import pickle
 from unittest import TestCase
 
+import pandas as pd
 from dnutils import out
 
+from jpt.base.errors import Unsatisfiability
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, VariableMap
+from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe
 
 
 class JPTTest(TestCase):
@@ -66,3 +68,24 @@ class JPTTest(TestCase):
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
         probs = jpt.likelihood(self.data.reshape(-1, 1))
+        #TODO: add test condition
+
+    def test_unsatisfiability(self):
+        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        jpt = JPT(variables=infer_from_dataframe(df), targets=['WillWait'], min_samples_leaf=1)
+        jpt.fit(df)
+        self.assertRaises(Unsatisfiability,
+                          jpt.posterior,
+                          evidence={'WillWait': False, 'Patrons': 'Some'},
+                          fail_on_unsatisfiability=True)
+        self.assertIsNone(jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
+                                        fail_on_unsatisfiability=False))
+
+        try:
+            jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
+                          report_inconsistencies=True)
+        except Unsatisfiability as e:
+            self.assertEqual({VariableMap([(jpt.varnames['WillWait'], {False})]): 1},
+                             e.reasons)
+        else:
+            raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')

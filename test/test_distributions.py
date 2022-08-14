@@ -19,7 +19,7 @@ finally:
     from jpt.base.intervals import ContinuousSet, EXC, INC
 
 
-from jpt.base.utils import Unsatisfiability
+from jpt.base.errors import Unsatisfiability
 from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
     Distribution
 
@@ -151,6 +151,19 @@ class MultinomialTest(TestCase):
                                                                               dtype=np.float64),
                                                                      col=0))
 
+    def test_value_conversion(self):
+        DistABC = self.DistABC
+        self.assertEqual(0, DistABC.label2value('A'))
+        self.assertEqual(1, DistABC.label2value('B'))
+        self.assertEqual(2, DistABC.label2value('C'))
+        self.assertEqual('A', DistABC.value2label(0))
+        self.assertEqual('B', DistABC.value2label(1))
+        self.assertEqual('C', DistABC.value2label(2))
+        self.assertEqual({0, 2}, DistABC.label2value({'A', 'C'}))
+        self.assertEqual({'C', 'B'}, DistABC.value2label({2, 1}))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class NumericTest(TestCase):
     '''Test class for ``Numeric`` distributions'''
@@ -238,6 +251,14 @@ class NumericTest(TestCase):
         d1 = DistGauss().fit(data1, col=0)
         self.assertRaises(TypeError, d1.kl_divergence, ...)
 
+    def test_value_conversion(self):
+        DistGauss = self.DistGauss
+        self.assertEqual(0, DistGauss.value2label(DistGauss.label2value(0)))
+        self.assertEqual(ContinuousSet(0, 1),
+                         DistGauss.value2label(DistGauss.label2value(ContinuousSet(0, 1))))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class DataScalerTest(TestCase):
 

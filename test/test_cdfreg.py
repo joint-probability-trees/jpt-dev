@@ -10,7 +10,7 @@ from scipy.stats import norm
 import unittest
 import numpy as np
 
-from jpt.base.utils import Unsatisfiability
+from jpt.base.errors import Unsatisfiability
 
 from jpt.distributions import Numeric, Gaussian, SymbolicType
 from jpt.trees import JPT
