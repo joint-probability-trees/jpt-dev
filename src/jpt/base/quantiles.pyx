@@ -1021,8 +1021,6 @@ cdef class QuantileDistribution:
             linear_functions.append(LinearFunction(function.value,
                                                    c - (intervals[idx].upper * function.value)))
 
-        print(linear_functions[-1])
-
         # create piecewise function
         result = PiecewiseFunction()
         result.intervals = intervals
