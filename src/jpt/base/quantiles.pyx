@@ -826,6 +826,13 @@ cdef class QuantileDistribution:
             self._ppf = ppf
         return self._ppf
 
+    def likelihood(self, data):
+        """ Returns a numpy array with the same lenght of data containing the pdf values at the respective points.
+         @param data: The points where the likelihood should be calculated"""
+        pdf = self.pdf
+        result = pdf.multi_eval(data)
+        return np.array(result)
+
     @staticmethod
     def merge(distributions, weights=None):
         '''

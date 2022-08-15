@@ -155,6 +155,12 @@ class Gaussian(Gaussian_):
             out(self._cov)
             raise
 
+    def likelihood(self, data):
+        result = np.zeros(len(data))
+        for idx, point in enumerate(data):
+            result[idx] = self.pdf(point)
+        return result
+
     def cdf(self, *x):
         return np.array(norm.cdf(x, loc=self._mean, scale=self._cov))[0, :]
 
