@@ -2120,7 +2120,7 @@ class JPT:
 
         return all_splits
 
-    def postprocess_leaves(self,):
+    def postprocess_leaves(self):
         """ Postprocess the tree such that every point in the convex hull has
             a probability greater than 0. This only changes the numeric distributions. """
 
@@ -2286,12 +2286,10 @@ class ProductJPT(JPTLike):
             # form the intersection of every variable's distributions independently
             if variable.numeric:
                 result.distributions[variable] = Numeric.product([r.distributions[variable]
-                                                                       for r in independent_marginals],
-                                                                      weights=[r.result
-                                                                               for r in independent_marginals])
+                                                                  for r in independent_marginals],
+                                                                 weights=[r.result for r in independent_marginals])
             elif variable.symbolic:
                 result.distributions[variable] = Multinomial.product([r.distributions[variable]
-                                                                           for r in independent_marginals],
-                                                                          weights=[r.result
-                                                                                   for r in independent_marginals])
+                                                                      for r in independent_marginals],
+                                                                     weights=[r.result for r in independent_marginals])
         return result
