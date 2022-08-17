@@ -247,6 +247,9 @@ class Leaf(Node):
     def __repr__(self) -> str:
         return f'Leaf<{self.idx}> object at {hex(id(self))}'
 
+    def __hash__(self):
+        return hash((type(self), ((k.name, v) for k, v in self.distributions.items()), self.prior))
+
     def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
                 'distributions': self.distributions.to_json(),
@@ -1238,6 +1241,7 @@ class JPT:
             validation processes.
         :type min_distances: Dict[Variable, float]
         Returns: An np.array with shape (x, ) containing the probabilities.
+
         """
         # create minimal distances for each numeric variable such a senseful metric can be computed if not provided
         if min_distances is None:
@@ -1294,17 +1298,18 @@ class JPT:
         :rtype: dict
         '''
         # if none of the target variables is present in the query, there is no match possible
-        if set(query.keys()).isdisjoint(set(self.variables)):
+        # only check variable names, because multiple trees can have the (semantically) same variable, which differs as
+        # python object
+        if set([v.name if isinstance(v, Variable) else v for v in query.keys()]).isdisjoint(set(self.varnames)):
             return []
 
+        query_ = self._prepropress_query(query)
+
         # Transform into internal values/intervals (symbolic values to their indices) and update to contain all possible variables
-        query = {var: list2interval(val) if type(val) in (list, tuple) and var.numeric else val if type(val) in (
-        list, tuple) else [val] for var, val in query.items()}
-        query_ = {var: set(var.domain.value[v] for v in val) for var, val in query.items()}
         for i, var in enumerate(self.variables):
             if var in query_: continue
             if var.numeric:
-                query_[var] = list2interval([np.NINF, np.PINF])
+                query_[var] = R
             else:
                 query_[var] = var.domain.values
 
@@ -1314,23 +1319,25 @@ class JPT:
             confs_ = defaultdict(float)
             for v, dist in l.distributions.items():
                 if v.numeric:
-                    confs_[v] = dist.p(query_[v])
+                    confs_[v] = dist._p(query_[v])
                 else:
                     conf = 0.
                     for sv in query_[v]:
-                        conf += dist.p(sv)
+                        conf += dist._p(sv)
                     confs_[v] = conf
-            confs[l] = confs_
+            confs[l.idx] = confs_
 
         # the candidates are the one leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
-        candidates = sorted([leaf for leaf, confs in confs.items() if all(c >= confidence for c in confs.values())],
+        candidates = sorted([leafidx for leafidx, confs in confs.items() if all(c >= confidence for c in confs.values())],
                             key=lambda l: sum(confs[l].values()), reverse=True)
+
+        out('CANDIDATES in reverse', candidates)
 
         # for the chosen candidate determine the path to the root
         paths = []
         for c in candidates:
             p = []
-            curcand = c
+            curcand = self.leaves[c]
             while curcand is not None:
                 p.append(curcand)
                 curcand = curcand.parent
@@ -1339,6 +1346,7 @@ class JPT:
         # elements of path are tuples (a, b) with a being mappings of {var: confidence} and b being an ordered list of
         # nodes representing a path from a leaf to the root
         return paths
+
 
     def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.
@@ -1365,7 +1373,7 @@ class JPT:
 
         dot = Digraph(format='svg', name=filename or title,
                       directory=directory,
-                      filename=f'{filename or title}.dot')
+                      filename=f'{filename or title}')
 
         # create nodes
         sep = ",<BR/>"
@@ -1422,7 +1430,7 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items() if self.targets is None or v in self.targets])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" if v in self.targets else ""}{html.escape(v.name)}{"</B>" if v in self.targets else ""}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
