@@ -596,6 +596,7 @@ cdef class ContinuousSet(NumberSet):
         raise ValueError('Invalid data type: %s' % type(x).__name__)
 
     def __eq__(self, other):
+        if not isinstance(other, ContinuousSet): return False
         return self.lower == other.lower and self.upper == other.upper and self.left == other.left and self.right == other.right  # hash(self) == hash(other)
 
     def __ne__(self, other):
