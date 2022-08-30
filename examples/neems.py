@@ -51,7 +51,8 @@ def neemdata():
     arm = SymbolicVariable('arm', armTYPE)
 
     vars = [tp, st, et, dur, succ, fail, oao, bpu, arm]
-    jpt = JPT(variables=vars, min_samples_leaf=500)
+    jpt = JPT(variables=vars, min_samples_leaf=0.05, targets=[succ, fail])
+    print(jpt.variables)
     out(f'Learning sebadata-Tree...')
     jpt.learn(columns=df.values.T)
     out(f'Done! Plotting...')
@@ -59,7 +60,7 @@ def neemdata():
 
     #jpt.plot(filename='NEEMs', plotvars=vars, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
     mt = jpt.marginal_jpt([st, et])
-    mt.plot(filename='NEEMs', plotvars=mt.variables, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
+    jpt.plot(filename='NEEMs', plotvars=jpt.variables, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=True)
     print("Done Plotting")
 
 def main(*args):

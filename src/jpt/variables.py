@@ -57,6 +57,9 @@ class Variable:
     def domain(self):
         return self._domain
 
+    def copy(self):
+        return Variable.from_json(self.to_json())
+
     def dist(self, params=None, data=None, rows=None, col=None):
         '''
         Create and return a new instance of the distribution type attached to this variable.
