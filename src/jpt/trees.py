@@ -168,6 +168,24 @@ class Node:
     def depth(self):
         return len(self._path)
 
+    def contains(self, samples: np.ndarray, variable_index_map: VariableMap) -> np.array:
+        """ Check if this node contains the given samples in parallel.
+
+        @param samples: The samples to check
+        @param variable_index_map: A VariableMap mapping to the indices in 'samples'
+        @return np.array with 0s and 1s
+        """
+        result = np.ones(len(samples))
+
+        for variable, restriction in self.path.items():
+            index = variable_index_map[variable]
+            if variable.numeric:
+                result &= restriction.lower < result[:, index] <= restriction.upper
+            if variable.symbolic:
+                result &= np.isin(samples[:, index], list(restriction))
+
+        return result
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -805,6 +823,15 @@ class JPT:
                 self.variables == o.variables and
                 self.max_depth == o.max_depth and
                 self.max_leaves == o.max_leaves)
+
+    def encode(self, samples) -> np.array:
+        """ Return a list of leaf indices that describe in what leaf the sample would land """
+        result = np.zeros(len(samples))
+
+        for idx, leaf in self.leaves.items():
+            pass
+
+        return result
 
     def infer(self, query, evidence=None, fail_on_unsatisfiability=True) -> Result:
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
@@ -2293,3 +2320,15 @@ class ProductJPT(JPTLike):
                                                                       for r in independent_marginals],
                                                                      weights=[r.result for r in independent_marginals])
         return result
+
+
+class SequentialJPT:
+    def __init__(self, emission_model):
+        self.emission_model = emission_model
+
+    def fit(self, sequences: List):
+        """ Fits the transition and emission models. """
+        data = np.concatenate(*sequences)
+        self.emission_model.fit(data)
+
+        encoded = 0
