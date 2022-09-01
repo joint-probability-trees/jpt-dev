@@ -17,7 +17,7 @@ def neemdata():
     ltargz = 'https://seafile.zfn.uni-bremen.de/f/fa5a760d89234cfc83ad/?dl=1'
     df = pd.read_csv(ltargz, compression='xz', delimiter=';', skip_blank_lines=True, header=0,
                      index_col=False,
-                     names=['id', 'type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'parent', 'next', 'previous', 'object_acted_on', 'object_type', 'bodyPartsUsed', 'arm', 'grasp', 'effort'],
+                     names=['id',    'type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'parent', 'next', 'previous', 'object_acted_on', 'object_type', 'bodyPartsUsed', 'arm', 'grasp', 'effort'],
                      usecols=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm'],
                      na_values=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm', np.inf])
 
