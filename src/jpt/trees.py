@@ -18,6 +18,7 @@ from itertools import zip_longest
 from typing import Dict, List, Tuple, Any, Union
 
 import numpy as np
+import numpy.lib.stride_tricks
 import pandas as pd
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
@@ -173,16 +174,15 @@ class Node:
 
         @param samples: The samples to check
         @param variable_index_map: A VariableMap mapping to the indices in 'samples'
-        @return np.array with 0s and 1s
+        @return numpy array with 0s and 1s
         """
         result = np.ones(len(samples))
-
         for variable, restriction in self.path.items():
             index = variable_index_map[variable]
             if variable.numeric:
-                result &= restriction.lower < result[:, index] <= restriction.upper
+                result *= (restriction.lower < samples[:, index]) & (samples[:, index] <= restriction.upper)
             if variable.symbolic:
-                result &= np.isin(samples[:, index], list(restriction))
+                result *= np.isin(samples[:, index], list(restriction))
 
         return result
 
@@ -827,10 +827,10 @@ class JPT:
     def encode(self, samples) -> np.array:
         """ Return a list of leaf indices that describe in what leaf the sample would land """
         result = np.zeros(len(samples))
-
+        variable_index_map = VariableMap([(variable, idx) for (idx, variable) in enumerate(self.variables)])
         for idx, leaf in self.leaves.items():
-            pass
-
+            contains = leaf.contains(samples, variable_index_map)
+            result[contains == 1] = idx
         return result
 
     def infer(self, query, evidence=None, fail_on_unsatisfiability=True) -> Result:
@@ -2323,12 +2323,43 @@ class ProductJPT(JPTLike):
 
 
 class SequentialJPT:
-    def __init__(self, emission_model):
-        self.emission_model = emission_model
+    def __init__(self, template_tree):
+        self.template_tree = template_tree
+        self.transition_model: defaultdict[tuple, float] = defaultdict(lambda: 0.)
 
     def fit(self, sequences: List):
         """ Fits the transition and emission models. """
-        data = np.concatenate(*sequences)
-        self.emission_model.fit(data)
+        data = np.concatenate(sequences)
+        self.template_tree.fit(data)
 
-        encoded = 0
+        for sequence in sequences:
+
+            # encode the samples to 'leaf space'
+            encoded = self.template_tree.encode(sequence)
+
+            # convert to 2 sizes sliding window
+            transitions = numpy.lib.stride_tricks.sliding_window_view(encoded, (2,), axis=0)
+
+            # get all possible transitions
+            unique_values, counts = np.unique(transitions, axis=0, return_counts=True)
+
+            # normalize counts such that they are probabilities
+            counts = counts.astype(np.double)
+
+            # save probability distribution and make it accessible easily
+            for unique_value, count in zip(unique_values, counts):
+                self.transition_model[tuple(unique_value)] += count
+
+        # normalize transition model
+        probability_mass = sum(self.transition_model.values())
+        for key, value in self.transition_model.items():
+            self.transition_model[key] /= probability_mass
+
+    def mpe(self, evidences):
+        pass
+
+    def probability(self, query, evidence):
+        pass
+
+    def independent_marginals(self, variables, evidence):
+        pass
