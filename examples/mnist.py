@@ -10,6 +10,7 @@ from jpt.variables import NumericVariable, SymbolicVariable, VariableMap
 from datetime import datetime
 import os
 
+
 def main():
     from sklearn.datasets import load_digits
     import sklearn.metrics
@@ -36,33 +37,6 @@ def main():
     tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
 
     tree.learn(data=df)
-    #tree.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
-
-    cjpt = tree.conditional_jpt(VariableMap({variables[0]:5, variables[29]:2.}.items()))
-    #cjpt.plot(directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-mnist'))
-
-    #calculate log likelihood
-    queries = np.append(np.expand_dims(mnist.target, -1), mnist.data, axis=1)
-    likelihood = tree.likelihood(queries)
-    print("log-likelihood of tree:", np.sum(np.log(likelihood)))
-
-    leaves = list(tree.leaves.values())
-    
-    rows = 2
-    cols = 7
-    fig, axes = plt.subplots(rows, cols, figsize=(7, 2))
-
-    if len(axes.shape) == 1:
-        axes = np.array([axes])
-
-    for i, leaf in enumerate(leaves):
-        model = np.array([leaf.distributions[tree.varnames[pixel]].expectation() for pixel in pixels]).reshape(8, 8)
-        idx = (i // 7, i % 7)
-        axes[idx].imshow(model, cmap='gray')
-        axes[idx].set_title(leaf.distributions[tree.varnames['digit']].expectation())
-
-    plt.tight_layout()
-    plt.show()
     
     tree.plot(plotvars=tree.variables)
 
