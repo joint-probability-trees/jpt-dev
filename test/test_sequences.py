@@ -3,6 +3,7 @@ import numpy as np
 import jpt.variables
 import jpt.trees
 from jpt.learning.distributions import SymbolicType
+import factor_graphs
 
 class UniformSeries:
 
@@ -25,10 +26,13 @@ class SequenceTest(unittest.TestCase):
 
     def test_learning(self):
         template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=500)
-        sequence_tree = jpt.trees.SequentialJPT(template_tree)
-        print(self.data.shape)
-        sequence_tree.fit([self.data, self.data])
+        template_tree.fit(self.data)
 
+        tree_factor_1 = factor_graphs.JPTFactor("t1", template_tree.copy())
+        tree_factor_2 = factor_graphs.JPTFactor("t2", template_tree.copy())
+        latent_factor = factor_graphs.LatentFactor("t1t2", [tree_factor_1, tree_factor_2])
+
+        graph = factor_graphs.FactorGraph([tree_factor_1, tree_factor_2, latent_factor])
 
 if __name__ == '__main__':
     unittest.main()
