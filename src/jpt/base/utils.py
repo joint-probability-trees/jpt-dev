@@ -5,7 +5,8 @@ from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
 from csv import Dialect
 
 import math
-from typing import Callable, Iterable
+from itertools import tee
+from typing import Callable, Iterable, Any, Tuple
 
 import numpy as np
 import arff
@@ -30,15 +31,32 @@ finally:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def pairwise(seq):
+def pairwise(seq: Iterable[Any]) -> Iterable[Tuple[Any, Any]]:
     '''Iterate over all consecutive pairs in ``seq``.'''
     for e in seq:
         if 'prev' in locals():
             yield prev, e
         prev = e
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 
+def chop(seq: Iterable[Any]) -> Iterable[Tuple[Any, Iterable]]:
+    '''
+    Returns pairs of the first element ("head") and the remainder
+    ("tail") for all right subsequences of ``seq``
+    '''
+    it = iter(seq)
+    try:
+        head = next(it)
+        it, tail = tee(it)
+        yield head, tail
+        yield from chop(it)
+    except StopIteration:
+        return
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class Conditional:
 
