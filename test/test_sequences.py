@@ -2,8 +2,10 @@ import unittest
 import numpy as np
 import jpt.variables
 import jpt.trees
+import sequential_trees
 from jpt.learning.distributions import SymbolicType
-import factor_graphs
+import jpt.sequential_trees
+
 
 class UniformSeries:
 
@@ -25,14 +27,13 @@ class SequenceTest(unittest.TestCase):
         self.variables = [jpt.variables.NumericVariable("X", precision=0.1)]
 
     def test_learning(self):
-        template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=500)
-        template_tree.fit(self.data)
+        template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
+        sequence_tree = sequential_trees.SequentialJPT(template_tree)
+        sequence_tree.fit([self.data, self.data])
+        #sequence_tree.template_tree.plot(plotvars=self.variables)
+        sequence_tree.independent_marginals([{}, jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()), {}])
 
-        tree_factor_1 = factor_graphs.JPTFactor("t1", template_tree.copy())
-        tree_factor_2 = factor_graphs.JPTFactor("t2", template_tree.copy())
-        latent_factor = factor_graphs.LatentFactor("t1t2", [tree_factor_1, tree_factor_2])
 
-        graph = factor_graphs.FactorGraph([tree_factor_1, tree_factor_2, latent_factor])
 
 if __name__ == '__main__':
     unittest.main()
