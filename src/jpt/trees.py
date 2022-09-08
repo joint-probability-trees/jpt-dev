@@ -33,7 +33,7 @@ from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable,
 from .learning.distributions import Distribution
 
 from .base.utils import list2interval, format_path, normalized
-from .learning.distributions import Multinomial, Numeric
+from .learning.distributions import Multinomial, Numeric, SymbolicType
 from .base.constants import plotstyle, orange, green, SYMBOL
 
 try:
@@ -1171,6 +1171,25 @@ class JPT:
         # - lie in the interval of the numeric value in the path
         # -> return leaf that matches query
         yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
+
+    def leaf_distribution(self) -> jpt.variables.SymbolicVariable:
+        """Generate a multinomial distribution with the leaves as variables and their weights as probabilities. """
+        leaf_variable = jpt.variables.SymbolicVariable("Leaf", SymbolicType("Leaf", self.leaves.keys()))
+        leaf_variable = leaf_variable.dist([leaf.prior for leaf in self.leaves.values()])
+        return leaf_variable
+
+    def multiply_by_leaf_prior(self, leaf_prior: Dict[int, float]):
+        """Include a different prior for leaves by multiplying and normalizing both priors."""
+        result = self.copy()
+        for idx, leaf in result.leaves.items():
+            result.leaves[idx].prior *= leaf_prior[idx]
+
+        probability_mass = sum(leaf.prior for leaf in result.leaves.values())
+
+        for idx, leaf in result.leaves.items():
+            result.leaves[idx].prior /= probability_mass
+
+        return result
 
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
@@ -2320,46 +2339,3 @@ class ProductJPT(JPTLike):
                                                                       for r in independent_marginals],
                                                                      weights=[r.result for r in independent_marginals])
         return result
-
-
-class SequentialJPT:
-    def __init__(self, template_tree):
-        self.template_tree = template_tree
-        self.transition_model: defaultdict[tuple, float] = defaultdict(lambda: 0.)
-
-    def fit(self, sequences: List):
-        """ Fits the transition and emission models. """
-        data = np.concatenate(sequences)
-        self.template_tree.fit(data)
-
-        for sequence in sequences:
-
-            # encode the samples to 'leaf space'
-            encoded = self.template_tree.encode(sequence)
-
-            # convert to 2 sizes sliding window
-            transitions = numpy.lib.stride_tricks.sliding_window_view(encoded, (2,), axis=0)
-
-            # get all possible transitions
-            unique_values, counts = np.unique(transitions, axis=0, return_counts=True)
-
-            # normalize counts such that they are probabilities
-            counts = counts.astype(np.double)
-
-            # save probability distribution and make it accessible easily
-            for unique_value, count in zip(unique_values, counts):
-                self.transition_model[tuple(unique_value)] += count
-
-        # normalize transition model
-        probability_mass = sum(self.transition_model.values())
-        for key, value in self.transition_model.items():
-            self.transition_model[key] /= probability_mass
-
-    def mpe(self, evidences):
-        pass
-
-    def probability(self, query, evidence):
-        pass
-
-    def independent_marginals(self, variables, evidence):
-        pass
