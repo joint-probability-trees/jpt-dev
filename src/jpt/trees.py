@@ -180,7 +180,7 @@ class Node:
         for variable, restriction in self.path.items():
             index = variable_index_map[variable]
             if variable.numeric:
-                result *= (restriction.lower < samples[:, index]) & (samples[:, index] <= restriction.upper)
+                result *= (samples[:, index] > restriction.lower) & (samples[:, index] <= restriction.upper)
             if variable.symbolic:
                 result *= np.isin(samples[:, index], list(restriction))
 
@@ -395,6 +395,7 @@ class Leaf(Node):
                 # if it is a singular value
                 else:
                     # get the likelihood
+                    print(self.distributions[variable].pdf(value))
                     likelihood = self.distributions[variable].pdf(value)
 
                     # if it is infinity and no handling is provided replace it with 1.
@@ -828,6 +829,7 @@ class JPT:
         """ Return a list of leaf indices that describe in what leaf the sample would land """
         result = np.zeros(len(samples))
         variable_index_map = VariableMap([(variable, idx) for (idx, variable) in enumerate(self.variables)])
+        samples = self._preprocess_data(samples)
         for idx, leaf in self.leaves.items():
             contains = leaf.contains(samples, variable_index_map)
             result[contains == 1] = idx
@@ -1724,7 +1726,7 @@ class JPT:
         """Return a new copy of this jpt where all references are the original tree are cut."""
         return JPT.from_json(self.to_json())
 
-    def conditional_jpt(self, evidence: VariableMap, keep_evidence: bool = True):
+    def conditional_jpt(self, evidence: VariableMap):
         """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
         The new JPT contains all variables that are not in the evidence and is a 
@@ -1733,9 +1735,6 @@ class JPT:
         :param evidence: A variable Map mapping the observed variables to there observed,
             single values (not intervals)
         :type evidence: ``VariableMap``
-        :param keep_evidence: Rather to keep the evidence variables in the new
-            JPT or not. If kept, their PDFs are replaced with Durac impulses.
-        :type keep_evidence: bool
         """
 
         # the new jpt that acts as conditional joint probability distribution
@@ -1744,6 +1743,7 @@ class JPT:
         if len(evidence) == 0:
             return conditional_jpt
 
+        evidence = self._prepropress_query(evidence, transform_values=False)
         unvisited_nodes = queue.Queue()
         unvisited_nodes.put_nowait(conditional_jpt.allnodes[self.root.idx])
 
@@ -1803,10 +1803,7 @@ class JPT:
             leaf.prior /= probability_mass
             for variable, value in evidence.items():
                 # adjust leaf distributions
-                if keep_evidence:
-                    leaf.distributions[variable] = leaf.distributions[variable].apply_restriction(value)
-                else:
-                    del leaf.distributions[variable]
+                leaf.distributions[variable] = leaf.distributions[variable].apply_restriction(value)
 
         # clean up not needed path restrictions
         for node in conditional_jpt.allnodes.values():
@@ -1814,12 +1811,28 @@ class JPT:
                 if variable in node.path.keys():
                     del node.path[variable]
 
-        # discard unused variables
-        if not keep_evidence:
-            conditional_jpt._variables = [variable for variable in conditional_jpt.variables
-                                          if variable not in evidence.keys()]
-
         return conditional_jpt
+
+    def conditional_jpt_safe(self, evidence: VariableMap):
+        result = self.copy()
+
+        if len(evidence) == 0:
+            return result
+
+        for idx, leaf in result.leaves.items():
+            print(evidence)
+            print(leaf.probability(evidence))
+            result.leaves[idx].prior *= leaf.probability(evidence)
+
+        result.plot()
+        exit()
+        result = result.normalize()
+        return result
+    def normalize(self):
+        probability_mass = sum(leaf.prior for leaf in self.leaves.values())
+        for idx, leaf in self.leaves.items():
+            self.leaves[idx].prior /= probability_mass
+        return self
 
     def save(self, file) -> None:
         '''

@@ -21,7 +21,7 @@ class SequentialJPT:
     def fit(self, sequences: List):
         """ Fits the transition and emission models. """
         data = np.concatenate(sequences)
-        self.template_tree.fit(data)
+        self.template_tree.learn(data)
 
         transition_data = None
 
@@ -54,7 +54,7 @@ class SequentialJPT:
 
     def preprocess_sequence_map(self, evidence: List[jpt.variables.VariableMap]):
         """ Preprocess a list of variable maps to be used in JPTs. """
-        return [self.template_tree._prepropress_query(e,) for e in evidence]
+        return [self.template_tree._prepropress_query(e, transform_values=False) for e in evidence]
 
     def ground(self, evidence: List[jpt.variables.VariableMap]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
@@ -103,8 +103,11 @@ class SequentialJPT:
             state_names = {timestep: list(self.template_tree.leaves.keys())}
 
             # apply the evidence
-            conditional_jpt = self.template_tree.conditional_jpt(e)
+            conditional_jpt = self.template_tree.conditional_jpt_safe(e)
 
+            if timestep == "t0":
+                conditional_jpt.plot(plotvars=conditional_jpt.variables)
+                exit()
             # create the prior distribution from the conditional tree
             values = np.zeros((len(self.template_tree.leaves), ))
 
@@ -127,12 +130,26 @@ class SequentialJPT:
         raise NotImplementedError("Not yet implemented")
 
     def probability(self, query, evidence) -> float:
-        query = self.preprocess_sequence_map(query)
-        evidence = self.preprocess_sequence_map(evidence)
+        """
+        Calculate the probability of sequence 'query' given sequence 'evidence'.
 
-        factor_graph = self.ground(evidence)
-        bp = pgmpy.inference.BeliefPropagation(factor_graph)
-        return 1.
+        @param query: The question
+        @param evidence: The evidence
+        @return: probability (float)
+        """
+        # apply evidence
+        independent_marginals = self.independent_marginals(evidence)
+
+        # initialize probability
+        probability = 1.
+
+        # calculate q|e for every adjusted tree
+        for q, adjusted_tree in zip(query, independent_marginals):
+
+            # multiply results
+            probability *= adjusted_tree.infer(q).result
+
+        return probability
 
     def independent_marginals(self, evidence: List[jpt.variables.VariableMap]) -> List[jpt.trees.JPT]:
         """ Return the independent marginal distributions of all variables in this sequence along all
@@ -161,7 +178,6 @@ class SequentialJPT:
         for name, distribution in sorted(latent_distribution.items()):
             prior = dict(zip(distribution.state_names[name], distribution.values))
             adjusted_tree = self.template_tree.multiply_by_leaf_prior(prior)
-            adjusted_tree.plot(directory="/tmp/%s" % name)
             result.append(adjusted_tree)
 
         return result
