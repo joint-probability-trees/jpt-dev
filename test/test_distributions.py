@@ -177,9 +177,6 @@ class NumericTest(TestCase):
         cls.DistGauss = NumericType('Uniform', values=NumericTest.GAUSSIAN)
 
     def test_hash(self):
-        hash(self.DistGauss)
-        d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
-        self.assertEqual(hash(d), hash(d.copy()))
         self.assertNotEqual(hash(Numeric), hash(self.DistGauss))
 
     def test_creation(self):
