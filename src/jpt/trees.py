@@ -333,8 +333,6 @@ class Result:
     def explain(self):
         result = self.format_result()
         result += '\n'
-        out(self.candidates)
-        out(self.weights)
         for weight, leaf in sorted(zip(self.weights, self.candidates),
                                    key=operator.itemgetter(0),
                                    reverse=True):
