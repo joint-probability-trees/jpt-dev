@@ -4,17 +4,41 @@
 # cython: wraparound=True
 # cython: boundscheck=False
 # cython: nonecheck=False
+import numbers
 import re
 import traceback
+from itertools import tee
 from operator import attrgetter
 
 import math
+from typing import Iterable, Any, Tuple
+
 import numpy as np
 cimport numpy as np
 cimport cython
-from dnutils import ifnone
+from dnutils import ifnone, first, ifnot
 
 __module__ = 'intervals.pyx'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+CLOSED = 2
+HALFOPEN = 3
+OPEN = 4
+
+# NB: Do not remove this! Declaration of _INC and _EXC in intervals.pxd does not set their values!
+_INC = 1
+_EXC = 2
+
+INC = np.int32(_INC)
+EXC = np.int32(_EXC)
+
+EMPTY = ContinuousSet(0, 0, _EXC, _EXC)
+R = ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 cdef class NumberSet:
 
@@ -30,12 +54,32 @@ _CAP = u'\u2229'
 _EMPTYSET = u'\u2205'
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+def chop(seq: Iterable[Any]) -> Iterable[Tuple[Any, Iterable]]:
+    '''
+    Returns pairs of the first element ("head") and the remainder
+    ("tail") for all right subsequences of ``seq``
+    '''
+    it = iter(seq)
+    try:
+        head = next(it)
+        it, tail = tee(it)
+        yield head, tail
+        yield from chop(it)
+    except StopIteration:
+        return
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 @cython.final
 cdef class RealSet(NumberSet):
-    """Wrapper class for intervals providing convenience functions such as :func:`sample`, :func:`intersect` and
-    :func:`union`. An Instance of this type actually represents a complex range of values (possibly with gaps) by
-    wrapping around multiple intervals (:class:`matcalo.utils.utils.SInterval`). Overlapping SIntervals will be
-    merged.
+    '''
+    Class for interval calculus providing basic interval manipultion, such as :func:`sample`,
+    :func:`intersection` and :func:`union`. An Instance of this type actually represents a
+    complex range of values (possibly with gaps) by wrapping around multiple continuous intervals
+    (:class:`ContinuousSet`).
     A range of values with gaps can occur for example by unifying two intervals that do not intersect (e.g. [0, 1] and
     [3, 4]).
 
@@ -46,40 +90,23 @@ cdef class RealSet(NumberSet):
           - open intervals ``]a,b[ or (a,b)``
 
         ``a`` and ``b`` can be of type int or float (also: scientific notation) or {+-} :math:`∞`
+    '''
 
-    :Example:
-
-    >>> from fta.learning.intervals import RealSet
-    >>> i1 = ContinuousSet.fromstring('[0,1]')
-    >>> i2 = ContinuousSet.fromstring('[2,5]')
-    >>> i3 = ContinuousSet.fromstring('[3,4]')
-    >>> i1.isempty()
-    False
-    >>> i1.intersects(i2)
-    False
-    >>> i2.intersects(i3)
-    True
-    >>> i2.intersection(i3)
-    <Interval=[<SInterval=[3.0,3.0]>]>
-    >>> print(i2.intersection(i3))
-    [3.0,3.0]
-    >>> i4 = i1.union(i2)
-    >>> print(i4)
-    [[0.0,1.0]; [2.0,3.0]]
-    >>> i5 = i4.union(Interval('[0.5,3]'))
-    >>> print(i5)
-    [0.0,5.0]
-
-    """
-
-    def __init__(RealSet self, ContinuousSet interval=None):
-        if interval is None:
+    def __init__(RealSet self, intervals=None):
+        self.intervals = []
+        if type(intervals) is str:
+            intervals = [intervals]
+        if intervals is not None:
             self.intervals = []
-        else:
-            self.intervals = [interval]
+            for i in intervals:
+                if type(i) is str:
+                    i = ContinuousSet.parse(i)
+                self.intervals.append(i)
 
     def __contains__(self, value):
         '''Checks if `value` lies in interval'''
+        if not isinstance(value, numbers.Number):
+            raise TypeError('Containment check unimplemented fo object of type %s.' % type(value).__name__)
         return any([value in i for i in self.intervals])
 
     def __repr__(self):
@@ -93,17 +120,35 @@ cdef class RealSet(NumberSet):
     def __eq__(self, other):
         if self.isempty() and other.isempty():
             return True
-        elif isinstance(other, ContinuousSet) and len(self.intervals) == 1:
-            return other == self.intervals[0]
-        return hash(self) == hash(other)
+        self_ = self.simplify()
+        other_ = other.simplify() if isinstance(other, RealSet) else other
+        if isinstance(other_, ContinuousSet) and isinstance(self_, ContinuousSet):
+            return self_ == other_
+        elif isinstance(other_, RealSet) and isinstance(self_, RealSet):
+            return self_.intervals == other_.intervals
+        return False
 
     def __ne__(self, other):
         return not self == other
 
     def __hash__(self):
-        return hash((RealSet, tuple(sorted(self.intervals, key=attrgetter('lower')))))
+        tmp = sorted(self.intervals, key=attrgetter('right'))
+        tmp = sorted(self.intervals, key=attrgetter('upper'))
+        tmp = sorted(self.intervals, key=attrgetter('left'))
+        return hash((RealSet, tuple(sorted(tmp, key=attrgetter('lower')))))
+
+    def __setstate__(self, state):
+        self.intervals = state
+
+    def __getstate__(self):
+        return self.intervals
 
     cpdef DTYPE_t size(RealSet self):
+        '''
+        This size of this ``RealSet``.
+        
+        The size of a ``RealSet`` is the sum of the sizes of its constituents.
+        '''
         cdef DTYPE_t s = 0
         cdef int i
         for i in range(len(self.intervals)):
@@ -115,7 +160,8 @@ cdef class RealSet(NumberSet):
         return RealSet()
 
     cpdef DTYPE_t[::1] sample(RealSet self, np.int32_t n=1, DTYPE_t[::1] result=None):
-        '''Chooses an element from self.intervals proportionally to their sizes, then returns a uniformly sampled
+        '''
+        Chooses an element from self.intervals proportionally to their sizes, then returns a uniformly sampled
         value from that Interval.
 
         :returns: a value from the represented value range
@@ -124,7 +170,8 @@ cdef class RealSet(NumberSet):
         if self.isempty():
             raise IndexError('Cannot sample from an empty set.')
         cdef ContinuousSet i_
-        cdef DTYPE_t[::1] weights = np.array([abs(i_.upper - i_.lower) for i_ in self.intervals if i_.size()], dtype=np.float64)
+        cdef DTYPE_t[::1] weights = np.array([abs(i_.upper - i_.lower)
+                                              for i_ in self.intervals if i_.size()], dtype=np.float64)
         if sum(weights) == 0:
             weights[...] = 1.
         cdef DTYPE_t[::1] upperbounds = np.cumsum(weights)
@@ -157,16 +204,17 @@ cdef class RealSet(NumberSet):
         return False
 
     cpdef inline np.int32_t isempty(RealSet self):
-        '''Checks whether this interval contains values.
+        '''
+        Checks whether this interval contains values.
 
         :returns: True if this is interval is empty, i.e. does not contain any values, False otherwise
         :rtype: bool
 
         :Example:
 
-        >>> Interval('[0,1]').isempty()
+        >>> RealSet(['[0,1]']).isempty()
         False
-        >>> Interval(']1,1]').isempty()
+        >>> RealSet(']1,1]').isempty()
         True
 
         '''
@@ -179,8 +227,9 @@ cdef class RealSet(NumberSet):
     cpdef inline DTYPE_t fst(RealSet self):
         return min([i.fst() for i in self.intervals])
 
-    cpdef inline np.int32_t intersects(RealSet self, RealSet other):
-        '''Checks whether the this interval intersects with ``other``.
+    cpdef inline np.int32_t intersects(RealSet self, NumberSet other):
+        '''
+        Checks whether the this interval intersects with ``other``.
 
         :param other: the other interval
         :type other: matcalo.utils.utils.Interval
@@ -188,6 +237,8 @@ cdef class RealSet(NumberSet):
         :rtype: bool
 
         '''
+        if isinstance(other, ContinuousSet):
+            other = RealSet([other])
         cdef ContinuousSet s, s_
         for s in self.intervals:
             for s_ in other.intervals:
@@ -195,83 +246,98 @@ cdef class RealSet(NumberSet):
                     return True
         return False
 
-    cpdef inline np.int32_t isdisjoint(RealSet self, RealSet other):
+    cpdef inline np.int32_t isdisjoint(RealSet self, NumberSet other):
         return not self.intersects(other)
 
-    cpdef inline RealSet intersection(RealSet self, RealSet other):
-        '''Computes the intersection of this value range with ``other``.
+    cpdef inline NumberSet intersection(RealSet self, NumberSet other):
+        '''
+        Computes the intersection of this value range with ``other``.
 
         :param other: the other value range Interval
-        :type other: matcalo.utils.utils.Interval
         :returns: the intersection of this interval with ``other``
-        :rtype: matcalo.utils.utils.Interval
         '''
-        cdef RealSet nint = RealSet(ContinuousSet(np.NINF, np.inf, _EXC, _EXC))
-        cdef ContinuousSet current, ival
-        cdef list q = self.intervals
-        cdef list ivals = []
-        cdef int idx
-        for current in other.intervals:
-            for idx, ival in enumerate(q):
-                if current.intersects(ival):
-                    ivals.append(current.intersection(ival))
-                    q = q[idx:]
+        cdef RealSet other_
+        if isinstance(other, ContinuousSet):
+            other_ = RealSet([other])
+        else:
+            other_ = other
+        cdef RealSet result = RealSet()
+        for subset_i in self.intervals:
+            for subset_j in other_.intervals:
+                result.intervals.append(subset_j.intersection(subset_i))
+        return result.simplify()
+
+    cpdef inline NumberSet simplify(RealSet self):
+        '''
+        Constructs a simplified modification of this ``RealSet`` instance, in which the
+        subset intervals are guaranteed to be non-overlapping and non-empty.
+        
+        In the case that the resulting set comprises only a single ``ContinuousSet``,
+        that ``ContinuousSet`` is returned instead.
+        '''
+        intervals = []
+        tail = list(self.intervals)
+        while tail:
+            head, tail_ = first(chop(tail))
+            if not head.isempty():
+                intervals.append(head)
+            tail = []
+            for subset in tail_:
+                diff = subset.difference(head)
+                if isinstance(diff, ContinuousSet):
+                    tail.append(diff)
                 else:
-                    ivals.append(current)
-        nint.intervals = ivals
-        return nint
-
-    cpdef inline RealSet union(RealSet self, RealSet other) except +:
-        '''Unifies this value range with ``other``.
-
-        :param other: the other value range Interval
-        :type other: matcalo.utils.utils.Interval
-        :returns: the union of this interval with ``other``
-        :rtype: matcalo.utils.utils.Interval
-        '''
-        cdef RealSet nint = RealSet()
-        cdef ContinuousSet current, ival, tmpi
-        cdef list q = self.intervals + (other.intervals if other else [])
-        cdef list ivals = []
-        cdef int idx
-        while q:
-            current = q.pop(0)
-            if current.isempty():
-                continue
-            for idx, ival in enumerate(ivals):
-                if current.intersects(ival) or current.contiguous(ival):
-                    q.extend(ivals[idx+1:])
-                    ivals = ivals[:idx]
-                    q.append(current.union(ival))
-                    break
+                    tail.extend(diff.intervals)
+        if not intervals:
+            return EMPTY
+        head, tail = first(chop(sorted(intervals, key=attrgetter('upper'))))
+        intervals = [head]
+        for subset in tail:
+            if intervals[-1].contiguous(subset):
+                intervals[-1].upper = subset.upper
+                intervals[-1].right = subset.right
             else:
-                ivals.append(current)
-        nint.intervals = ivals
-        return nint
+                intervals.append(subset)
+        if len(intervals) == 1:
+            return first(intervals)
+        return RealSet(intervals)
 
-    cpdef inline RealSet difference(RealSet self, RealSet other):
-        pass
+    cpdef inline RealSet copy(RealSet self):
+        '''Return a deep copy of this real-valued set.'''
+        return RealSet([i.copy() for i in self.intervals])
 
-    cpdef inline RealSet complement(RealSet self):
-        pass
+    cpdef inline NumberSet union(RealSet self, NumberSet other):
+        '''
+        Compute the union set of this ``RealSet`` and ``other``.
+        '''
+        if isinstance(other, ContinuousSet):
+            other = RealSet([other])
+        return RealSet(self.intervals + other.intervals).simplify()
 
+    cpdef inline NumberSet difference(RealSet self, NumberSet other):
+        if isinstance(other, ContinuousSet):
+            other = RealSet([other])
+        intervals = []
+        q = list(self.intervals)
+        while q:
+            s = q.pop(0)
+            for subset in other.intervals:
+                diff = s.difference(subset)
+                if isinstance(diff, ContinuousSet):
+                    s = diff
+                else:
+                    q.insert(0, diff.intervals[1])
+                    s = diff.intervals[0]
+            intervals.append(s)
+        return RealSet(intervals).simplify()
+
+    cpdef inline NumberSet complement(RealSet self):
+        return RealSet([R]).difference(self).simplify()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 re_int = re.compile(r'(?P<ldelim>\(|\[|\])(?P<lval>.+),(?P<rval>.+)(?P<rdelim>\)|\]|\[)')
-
-CLOSED = 2
-HALFOPEN = 3
-OPEN = 4
-
-# NB: Do not remove this! Declaration of _INC and _EXC in intervals.pxd does not set their values!
-_INC = 1
-_EXC = 2
-
-INC = np.int32(_INC)
-EXC = np.int32(_EXC)
-
-
-EMPTY = ContinuousSet(0, 0, _EXC, _EXC)
-R = ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)
 
 
 @cython.final
@@ -279,23 +345,46 @@ cdef class ContinuousSet(NumberSet):
     '''
     Actual Interval representation. Wrapped by :class:`Interval` to allow more complex intervals with gaps.
 
-    .. seealso:: :class:`Interval`
+    :Example:
+
+        >>> from jpt.base.intervals import ContinuousSet
+        >>> i1 = ContinuousSet.parse('[0,1]')
+        >>> i2 = ContinuousSet.parse('[2,5]')
+        >>> i3 = ContinuousSet.parse('[3,4]')
+        >>> i1.isempty()
+        False
+        >>> i1.intersects(i2)
+        False
+        >>> i2.intersects(i3)
+        True
+        >>> i2.intersection(i3)
+        <ContinuousSet=[3.0,4.0]>
+        >>> print(i2.intersection(i3))
+        [3.0,4.0]
+        >>> i4 = i1.union(i2)
+        >>> print(i4)
+        <RealSet=[<ContinuousSet [0.0,1.0]>; <ContinuousSet [2.0,3.0]>]>
+        >>> i5 = i4.union(ContinuousSet('[0.5,3]'))
+        >>> print(i5)
+        [0.0,3.0]
     '''
 
     def __init__(ContinuousSet self,
                  DTYPE_t lower=np.nan,
                  DTYPE_t upper=np.nan,
-                 np.int32_t left=_INC,
-                 np.int32_t right=_INC):
+                 np.int32_t left=0,
+                 np.int32_t right=0):
         if lower > upper:
             raise ValueError('Lower bound must not be smaller than upper bound (%s > %s)' % (lower, upper))
         self.lower = lower
         self.upper = upper
-        self.left = left
-        self.right = right
+        self.left = ifnot(left, _INC)
+        self.right = ifnot(right, _INC)
 
     @staticmethod
     def fromstring(str s):
+        if s == _EMPTYSET:
+            return EMPTY
         interval = ContinuousSet()
         tokens = re_int.match(s.replace(" ", "").replace('∞', 'inf'))
 
@@ -369,12 +458,6 @@ cdef class ContinuousSet(NumberSet):
         else:
             result[...] = np.random.uniform(max(np.finfo(np.float64).min, lower),
                                             min(np.finfo(np.float64).max, upper), k)
-        # make sure to not sample open bounds
-        # cdef np.int32_t i
-        # if not self.isclosed():
-        #     for i in s.shape[0]:
-        #         while s[i] == self.lower and self.left == _EXC or s[i] == self.upper and self.right == _EXC:
-        #             s[i] = np.random.uniform(np.max(np.finfo(np.float64).min, self.lower), min(np.finfo(np.float64).max, self.upper))
         return result
 
     cpdef DTYPE_t[::1] linspace(ContinuousSet self,
@@ -450,14 +533,26 @@ cdef class ContinuousSet(NumberSet):
         '''Checks if ``value`` lies in interval'''
         return self.intersects(ContinuousSet(value, value))
 
-    cpdef inline np.int32_t contains_interval(ContinuousSet self, ContinuousSet other):
-        '''Checks if ``value`` lies in interval'''
+    cpdef inline np.int32_t contains_interval(ContinuousSet self,
+                                              ContinuousSet other,
+                                              int proper_containment=False):
+        '''Checks if ``other`` lies in interval.
+        
+        If ``proper_containment`` is ``True``, ``other`` needs to be properly surrounded by
+        this set, i.e. the intersection of both needs to consists of two non-empty, disjoint and 
+        non-contiguous intervals.'''
         if self.lower > other.lower or self.upper < other.upper:
             return False
-        if self.lower == other.lower and self.left == _EXC:
-            return False
-        if self.upper == other.upper and self.right == _EXC:
-            return False
+        if self.lower == other.lower:
+            if self.left == _EXC and other.left == _INC:
+                return False
+            elif self.left == other.left and proper_containment:
+                return False
+        if self.upper == other.upper:
+            if self.right == _EXC and other.right == _INC:
+                return False
+            elif self.right == other.right and proper_containment:
+                return False
         return True
 
     cpdef inline np.int32_t contiguous(ContinuousSet self, ContinuousSet other):
@@ -468,7 +563,8 @@ cdef class ContinuousSet(NumberSet):
         return False
 
     cpdef inline np.int32_t intersects(ContinuousSet self, ContinuousSet other):
-        '''Checks whether the this interval intersects with ``other``.
+        '''
+        Checks whether the this interval intersects with ``other``.
 
         :param other: the other interval
         :type other: matcalo.utils.utils.SInterval
@@ -487,25 +583,51 @@ cdef class ContinuousSet(NumberSet):
         '''Equivalent to ``not self.intersects(other)'''
         return not self.intersects(other)
 
-    cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other, int left=-1, int right=-1):
+    cpdef inline ContinuousSet intersection(ContinuousSet self,
+                                            ContinuousSet other,
+                                            int left=0,
+                                            int right=0):
+        '''
+        Compute the intersection of this ``ContinuousSet`` and ``other``.
+        
+        The arguments ``left`` and ``right`` (both boolean) can be used to specify if
+        the left or right end of the interval should be open or closed.
+        
+        :Example:
+        >>> from jpt.base.intervals import ContinuousSet, INC, EXC
+        >>> i1 = ContinuousSet.parse('[0,1]')
+        >>> i2 = ContinuousSet.parse('[0.5,1.5]')
+        >>> i1.intersection(i2)
+        <ContinuousSet=[0.500,1.000]>
+        >>> i1.intersection(i2, right=EXC)
+        <ContinuousSet=[0.500,1.000[>
+        >>> i1.intersection(i2).upper
+        1.0
+        >>> i1.intersection(i2, right=EXC).upper
+        1.0000000000000002
+        '''
         if not self.intersects(other):
             return self.emptyset()
+        result = ContinuousSet(max(self.lower, other.lower), min(self.upper, other.upper))
+        result.left = (max(self.left, other.left) if other.lower == self.lower
+                       else (self.left if self.lower > other.lower else other.left))
+        result.right = (max(self.right, other.right) if other.upper == self.upper
+                        else (self.right if self.upper < other.upper else other.right))
+        if left == _INC and result.left == _EXC:
+            result.left = _INC
+            result.lower = np.nextafter(result.lower, result.lower + 1)
+        elif left == _EXC and result.left == _INC:
+            result.left = _EXC
+            result.lower = np.nextafter(result.lower, result.lower - 1)
+        if right == _INC and result.right == _EXC:
+            result.right = _INC
+            result.upper = np.nextafter(result.upper, result.upper - 1)
+        elif right == _EXC and result.right == _INC:
+            result.right = _EXC
+            result.upper = np.nextafter(result.upper, result.upper + 1)
+        return result
 
-        cdef np.int32_t left_ = max(self.left, other.left) if self.lower == other.lower\
-            else (self.left if self.lower > other.lower
-                  else other.left)
-        cdef np.int32_t right_ = max(self.right, other.right) if self.upper == other.upper\
-            else (self.right if self.upper < other.upper
-                  else other.right)
-
-        cdef ContinuousSet result = ContinuousSet(max(self.lower, other.lower),
-                                                  min(self.upper, other.upper),
-                                                  left_,
-                                                  right_)
-
-        return result.boundaries(left, right)
-
-    cpdef inline ContinuousSet boundaries(ContinuousSet self, int left= -1, int right= -1):
+    cpdef inline ContinuousSet boundaries(ContinuousSet self, int left= 0, int right=0):
         cdef ContinuousSet result = self.copy()
         cdef lower_minus_eps = np.nextafter(result.lower, result.lower - 1.)
         cdef lower_plus_eps = np.nextafter(result.lower, result.lower + 1.)
@@ -527,34 +649,45 @@ cdef class ContinuousSet(NumberSet):
         return result
 
     cpdef inline NumberSet union(ContinuousSet self, ContinuousSet other):
+        '''
+        Compute the union of this ``ContinuousSet`` and ``other``.
+        '''
         if not self.intersects(other) and not self.contiguous(other):
             if self.isempty():
                 return other.copy()
-            return RealSet(self).union(RealSet(other))
-        cdef np.int32_t left = min(self.left, other.left) if self.lower == other.lower else (self.left if self.lower < other.lower else other.left)
-        cdef np.int32_t right = min(self.right, other.right) if self.upper == other.upper else (self.right if self.upper > other.upper else other.right)
+            return RealSet([self]).union(RealSet([other]))
+        cdef np.int32_t left = (min(self.left, other.left) if self.lower == other.lower
+                                else (self.left if self.lower < other.lower else other.left))
+        cdef np.int32_t right = (min(self.right, other.right) if self.upper == other.upper
+                                 else (self.right if self.upper > other.upper else other.right))
         return ContinuousSet(min(self.lower, other.lower), max(self.upper, other.upper), left, right)
 
-    cpdef inline NumberSet difference(ContinuousSet self, ContinuousSet other):
+    cpdef inline NumberSet difference(ContinuousSet self, NumberSet other):
+        '''
+        Compute the set difference of this ``ContinuousSet`` minus ``other``.
+        '''
+        if isinstance(other, RealSet):
+            return RealSet([self]).difference(other)
         cdef NumberSet result
-        if self.contains_interval(other) and not (self.lower == other.lower and self.left == other.left or
-                                                  self.upper == other.upper and self.right == other.right):
-            result = RealSet()
-            result.intervals.append(ContinuousSet(self.lower, other.lower, self.left, _INC if other.left == _EXC else _EXC))
-            result.intervals.append(ContinuousSet(other.upper, self.upper, INC if other.left == _EXC else _EXC, self.right))
+        if other.contains_interval(self):
+            return self.emptyset()
+        elif self.contains_interval(other, proper_containment=True):
+            result = RealSet([
+                ContinuousSet(self.lower, other.lower, self.left, _INC if other.left == _EXC else _EXC),
+                ContinuousSet(other.upper, self.upper, _INC if other.left == _EXC else _EXC, self.right)
+            ])
             return result
         elif self.intersects(other):
             result = self.copy()
-            if other.contains_interval(self):
-                return self.emptyset()
-            elif self.lower <= other.upper <= self.upper:
+            if self.contains_value(other.uppermost()) and self.uppermost() != other.uppermost():
                 result.lower = other.upper
                 result.left = _INC if other.right == _EXC else _EXC
-            elif self.upper >= other.lower >= self.lower:
+            elif self.contains_value(other.lowermost()) and self.lowermost() != other.lowermost():
                 result.upper = other.lower
                 result.right = _INC if other.left == _EXC else _EXC
             return result
-        return self.copy()
+        else:
+            return self.copy()
 
     cpdef inline NumberSet complement(ContinuousSet self):
         '''Return the complement set of this interval.'''
@@ -580,9 +713,15 @@ cdef class ContinuousSet(NumberSet):
             return np.finfo(np.float64).min
 
     cpdef inline DTYPE_t uppermost(ContinuousSet self):
+        '''
+        Return the smallest computer-representable value in this ``ContinuousSet``.
+        '''
         return self.upper if self.right == _INC else np.nextafter(self.upper, self.upper - 1)
 
     cpdef inline DTYPE_t lowermost(ContinuousSet self):
+        '''
+        Return the biggest computer-representable value in this ``ContinuousSet``.
+        '''
         return self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
 
     def __contains__(self, x):
@@ -596,8 +735,12 @@ cdef class ContinuousSet(NumberSet):
         raise ValueError('Invalid data type: %s' % type(x).__name__)
 
     def __eq__(self, other):
-        if not isinstance(other, ContinuousSet): return False
-        return self.lower == other.lower and self.upper == other.upper and self.left == other.left and self.right == other.right  # hash(self) == hash(other)
+        if isinstance(other, RealSet):
+            return other == self
+        return (self.lower == other.lower
+                and self.upper == other.upper
+                and self.left == other.left
+                and self.right == other.right)  # hash(self) == hash(other)
 
     def __ne__(self, other):
         return not self == other
@@ -617,10 +760,11 @@ cdef class ContinuousSet(NumberSet):
                                   {INC: ']', EXC: '['}[int(self.right)])
 
     def __repr__(self):
-        return '<{}={}>'.format(self.__class__.__name__, '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
-                                                                            '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
-                                                                            '∞' if self.upper == np.inf else ('%.3f' % self.upper),
-                                                                            {INC: ']', EXC: '['}[int(self.right)]))
+        return '<{}={}>'.format(self.__class__.__name__,
+                                '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
+                                                   '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
+                                                   '∞' if self.upper == np.inf else ('%.3f' % self.upper),
+                                                   {INC: ']', EXC: '['}[int(self.right)]))
 
     def __bool__(self):
         return self.size() != 0

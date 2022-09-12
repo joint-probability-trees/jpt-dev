@@ -5,7 +5,6 @@ from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
 from csv import Dialect
 
 import math
-from itertools import tee
 from typing import Callable, Iterable, Any, Tuple
 
 import numpy as np
@@ -19,6 +18,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from numpy import iterable
 
 from dnutils import ifnone, stop, out
+
 
 try:
     from jpt.base.intervals import __module__
@@ -37,23 +37,6 @@ def pairwise(seq: Iterable[Any]) -> Iterable[Tuple[Any, Any]]:
         if 'prev' in locals():
             yield prev, e
         prev = e
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-def chop(seq: Iterable[Any]) -> Iterable[Tuple[Any, Iterable]]:
-    '''
-    Returns pairs of the first element ("head") and the remainder
-    ("tail") for all right subsequences of ``seq``
-    '''
-    it = iter(seq)
-    try:
-        head = next(it)
-        it, tail = tee(it)
-        yield head, tail
-        yield from chop(it)
-    except StopIteration:
-        return
 
 
 # ----------------------------------------------------------------------------------------------------------------------
