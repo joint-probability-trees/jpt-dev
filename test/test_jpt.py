@@ -14,7 +14,7 @@ from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe
 class JPTTest(TestCase):
 
     def setUp(self) -> None:
-        with open('resources/gaussian_100.dat', 'rb') as f:
+        with open(os.path.join('resources', 'gaussian_100.dat'), 'rb') as f:
             self.data = pickle.load(f)
 
     def test_hyperparameter_serialization(self):
