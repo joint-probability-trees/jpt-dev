@@ -2,13 +2,7 @@ from typing import List, Dict
 
 import numpy as np
 import numpy.lib.stride_tricks
-import pgmpy
-import pgmpy.factors.discrete
-import pgmpy.models
-import pgmpy.inference
-
-import networkx
-import matplotlib.pyplot as plt
+import factorgraph
 
 import jpt.trees
 
@@ -43,18 +37,17 @@ class SequentialJPT:
         num_leaves = len(self.template_tree.leaves)
 
         # calculate factor values for transition model
-        values = np.zeros((num_leaves * num_leaves,))
+        values = np.zeros((num_leaves, num_leaves))
         for idx, leaf_idx in enumerate(self.template_tree.leaves.keys()):
             for jdx, leaf_jdx in enumerate(self.template_tree.leaves.keys()):
-                state_index = jdx + idx * num_leaves
                 count = sum((transition_data[:, 0] == leaf_idx) & (transition_data[:, 1] == leaf_jdx))
-                values[state_index] = count/len(transition_data)
+                values[idx, jdx] = count/len(transition_data)
 
         self.transition_model = values
 
     def preprocess_sequence_map(self, evidence: List[jpt.variables.VariableMap]):
         """ Preprocess a list of variable maps to be used in JPTs. """
-        return [self.template_tree._prepropress_query(e, transform_values=False) for e in evidence]
+        return [self.template_tree._preprocess_query(e) for e in evidence]
 
     def ground(self, evidence: List[jpt.variables.VariableMap]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
@@ -65,64 +58,37 @@ class SequentialJPT:
         """
 
         # create factorgraph
-        factor_graph = pgmpy.models.FactorGraph()
+        factor_graph = factorgraph.Graph()
 
         # add variable nodes for timesteps
         timesteps = ["t%s" % t for t in range(len(evidence))]
-        factor_graph.add_nodes_from(timesteps)
-
-        # create transition factors
-        factors = []
+        [factor_graph.rv(timestep, len(self.template_tree.leaves)) for timestep in timesteps]
 
         # for each transition
         for idx in range(len(evidence)-1):
 
             # get the variable names
-            state_names = {"t%s" % idx: list(self.template_tree.leaves.keys()),
-                           "t%s" % (idx+1): list(self.template_tree.leaves.keys())}
+            state_names = ["t%s" % idx, "t%s" % (idx+1)]
 
             # create factor with values from transition model
-            factor = pgmpy.factors.discrete.DiscreteFactor(list(state_names.keys()),
-                                                           [len(self.template_tree.leaves),
-                                                            len(self.template_tree.leaves)],
-                                                           self.transition_model, state_names)
-            factors.append(factor)
-
-        # add factors
-        factor_graph.add_factors(*factors)
-
-        # add edges for state variables and transition variables
-        for idx, factor in enumerate(factors):
-            factor_graph.add_edges_from([("t%s" % idx, factor),
-                                         (factor, "t%s" % (idx+1))])
+            factor_graph.factor(state_names, potential=self.transition_model)
 
         # create prior factors
         for timestep, e in zip(timesteps, evidence):
 
-            # create values of current variable
-            state_names = {timestep: list(self.template_tree.leaves.keys())}
-
             # apply the evidence
             conditional_jpt = self.template_tree.conditional_jpt_safe(e)
 
-            if timestep == "t0":
-                conditional_jpt.plot(plotvars=conditional_jpt.variables)
-                exit()
             # create the prior distribution from the conditional tree
-            values = np.zeros((len(self.template_tree.leaves), ))
+            prior = np.zeros((len(self.template_tree.leaves), ))
 
             # fill the distribution with the correct values
             for idx, leaf_idx in enumerate(self.template_tree.leaves.keys()):
                 if leaf_idx in conditional_jpt.leaves.keys():
-                    values[idx] = conditional_jpt.leaves[leaf_idx].prior
+                    prior[idx] = conditional_jpt.leaves[leaf_idx].prior
 
             # create a factor from it
-            factor = pgmpy.factors.discrete.DiscreteFactor([timestep], [len(self.template_tree.leaves)],
-                                                           values, state_names)
-
-            # add factor and edge from variable to prior
-            factor_graph.add_factors(factor)
-            factor_graph.add_edge(timestep, factor)
+            factor_graph.factor([timestep], potential=prior)
 
         return factor_graph
 
@@ -167,17 +133,15 @@ class SequentialJPT:
         # create result list
         result = []
 
-        # create belief propagation class
-        bp = pgmpy.inference.BeliefPropagation(factor_graph)
-
-        # infer the latent distribution
-        latent_distribution: Dict[str, pgmpy.factors.discrete.DiscreteFactor] = \
-            bp.query(factor_graph.get_variable_nodes(), joint=False)
+        # Run (loopy) belief propagation (LBP)
+        iters, converged = factor_graph.lbp(max_iters=100, progress=True)
+        latent_distribution = factor_graph.rv_marginals()
 
         # transform trees
-        for name, distribution in sorted(latent_distribution.items()):
-            prior = dict(zip(distribution.state_names[name], distribution.values))
-            adjusted_tree = self.template_tree.multiply_by_leaf_prior(prior)
+        for name, distribution in sorted(latent_distribution, key=lambda x: x[0].name):
+            prior = dict(zip(self.template_tree.leaves.keys(), distribution))
+            adjusted_tree = self.template_tree.replace_leaf_prior(prior)
             result.append(adjusted_tree)
 
         return result
+
