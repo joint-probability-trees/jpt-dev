@@ -4,6 +4,7 @@
 import hashlib
 import math
 import numbers
+import uuid
 from collections import OrderedDict
 from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable
 
@@ -290,7 +291,9 @@ def infer_from_dataframe(df,
                          min_impurity_improvement: float = None,
                          blur: float = None,
                          max_std: float = None,
-                         precision: float = None):
+                         precision: float = None,
+                         unique_domain_names: bool = False,
+                         excluded_columns: Dict[str, type] = None):
     '''
     Creates the ``Variable`` instances from column types in a Pandas or Spark data frame.
 
@@ -300,7 +303,7 @@ def infer_from_dataframe(df,
     :param scale_numeric_types: Whether of not to use scaled types for the numeric variables.
     :type scale_numeric_types: bool
 
-    :param min_impurity_improvement:   the minimum imrovement that a split must induce to be acceptable.
+    :param min_impurity_improvement:   the minimum improvement that a split must induce to be acceptable.
     :type min_impurity_improvement: ``float``
 
     :param blur:
@@ -311,19 +314,31 @@ def infer_from_dataframe(df,
 
     :param precision:
     :type precision:    ``float`` in ``[0, 1]``
+
+    :param unique_domain_names:     for multiple calls of infer_from_dataframe containing duplicate column names the
+                                    generated domain names will be unique
+    :type unique_domain_names:    ``bool``
+
+    :param excluded_columns:     user-provided domains for specific columns
+    :type excluded_columns:    ``Dict[str, type]``
     '''
 
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
         if dtype in (str, object, bool):
-            dom = SymbolicType('%s_TYPE' % col.upper(), labels=df[col].unique())
+            if excluded_columns is not None and col in excluded_columns:
+                dom = excluded_columns[col]
+            else:
+                dom = SymbolicType('%s%s_TYPE' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''), labels=df[col].unique())
             var = SymbolicVariable(col,
                                    dom,
                                    min_impurity_improvement=min_impurity_improvement)
 
         elif dtype in (np.float64, np.int64, np.float32, np.int32):
-            if scale_numeric_types:
-                dom = NumericType('%s_TYPE' % col.upper(), df[col].unique())
+            if excluded_columns is not None and col in excluded_columns:
+                dom = excluded_columns[col]
+            elif scale_numeric_types:
+                dom = NumericType('%s%s_TYPE' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''), df[col].unique())
             else:
                 dom = Numeric
             var = NumericVariable(col,
