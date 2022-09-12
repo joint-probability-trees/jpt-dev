@@ -59,8 +59,6 @@ def plot_muesli(visualize=True):
     o = SymbolicVariable('Object', ObjectType)
     s = SymbolicVariable('Success', Bool)
 
-    # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
-
     jpt = JPT([x, y, o, s], min_samples_leaf=.25)
     jpt.learn(columns=df.values.T)
 
@@ -103,9 +101,8 @@ def test_muesli(visualize=True):
 
     interval = ContinuousSet(-2.05, -2.0)
     p = d.p(interval)
-    out('query', interval, p)
-
-    print(d.cdf.pfmt())
+    if visualize:
+        out('query', interval, p)
 
     d.plot(title=' ',
            fname='BreakfastPiecewise',
