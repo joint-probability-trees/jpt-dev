@@ -241,8 +241,8 @@ class Leaf(Node):
         return []
 
     def __str__(self) -> str:
-        return (f'<Leaf # {self.idx}; '
-                f'parent: <%s # %s>>' % (type(self.parent).__qualname__, ifnone(self.parent, None, attrgetter('idx'))))
+        return (f'<Leaf #{self.idx}; '
+                f'parent: <%s #%s>>' % (type(self.parent).__qualname__, ifnone(self.parent, None, attrgetter('idx'))))
 
     def __repr__(self) -> str:
         return f'Leaf<{self.idx}> object at {hex(id(self))}'
@@ -899,10 +899,16 @@ class JPT:
 
     def _prepropress_query(self,
                            query: Union[VariableMap, Dict[Variable, Any]],
-                           remove_none: bool = True) -> VariableMap:
+                           remove_none: bool = True,
+                           skip_unknown_variables: bool = False) -> VariableMap:
         '''
         Transform a query entered by a user into an internal representation
         that can be further processed.
+
+        :param skip_unknown_variables:  skip preprocessing for variable that does not exist in tree (may happen in
+                                        multiple reverse tree inference). If False, an exception is raised;
+                                        default: False
+        :type skip_unknown_variables: bool
         '''
         # Transform lists into a numeric interval:
         query_ = VariableMap()
@@ -910,7 +916,15 @@ class JPT:
         for key, arg in query.items():
             if arg is None and remove_none:
                 continue
-            var = key if isinstance(key, Variable) else self.varnames[key]
+
+            var = key if isinstance(key, Variable) else self.varnames.get(key)
+
+            if var is None:
+                if skip_unknown_variables:
+                    continue
+                else:
+                    raise Exception(f'Variable "{key}" is unknown!')
+
             if var.numeric:
                 if type(arg) is list:
                     arg = list2interval(arg)
@@ -1287,7 +1301,7 @@ class JPT:
 
         return probabilities
 
-    def reverse(self, query, confidence=.5) -> List[Tuple[Dict, List[Node]]]:
+    def reverse(self, query, confidence=.05) -> List[Tuple[Dict, List[Node]]]:
         '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
 
         :param query: a mapping from featurenames to either numeric value intervals or an iterable of categorical values
@@ -1303,9 +1317,10 @@ class JPT:
         if set([v.name if isinstance(v, Variable) else v for v in query.keys()]).isdisjoint(set(self.varnames)):
             return []
 
-        query_ = self._prepropress_query(query)
+        # Transform into internal values/intervals (symbolic values to their indices)
+        query_ = self._prepropress_query(query, skip_unknown_variables=True)
 
-        # Transform into internal values/intervals (symbolic values to their indices) and update to contain all possible variables
+        # update non-query variables to allow all possible values
         for i, var in enumerate(self.variables):
             if var in query_: continue
             if var.numeric:
@@ -1313,21 +1328,24 @@ class JPT:
             else:
                 query_[var] = var.domain.values
 
-        # find the leaf (or the leaves) that matches the query best
+        # stores the probabilities, that the query variables take on the value(s)/a value in the interval given in
+        # the query
         confs = {}
+
+        # find the leaf (or the leaves) that matches the query best
         for k, l in self.leaves.items():
-            confs_ = defaultdict(float)
+            conf = defaultdict(float)
             for v, dist in l.distributions.items():
                 if v.numeric:
-                    confs_[v] = dist._p(query_[v])
+                    conf[v] = dist._p(query_[v])
                 else:
-                    conf = 0.
+                    conf_ = 0.
                     for sv in query_[v]:
-                        conf += dist._p(sv)
-                    confs_[v] = conf
-            confs[l.idx] = confs_
+                        conf_ += dist._p(sv)
+                    conf[v] = conf_
+            confs[l.idx] = conf
 
-        # the candidates are the one leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
+        # the candidates are the leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
         candidates = sorted([leafidx for leafidx, confs in confs.items() if all(c >= confidence for c in confs.values())],
                             key=lambda l: sum(confs[l].values()), reverse=True)
 
@@ -1371,7 +1389,7 @@ class JPT:
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-        dot = Digraph(format='svg', name=filename or title,
+        dot = Digraph(format='svg', name=title,
                       directory=directory,
                       filename=f'{filename or title}')
 
@@ -1430,7 +1448,7 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" if v in self.targets else ""}{html.escape(v.name)}{"</B>" if v in self.targets else ""}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>"  if v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
