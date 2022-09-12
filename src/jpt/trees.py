@@ -369,7 +369,7 @@ class Leaf(Node):
     def probability(self, query: VariableMap, dirac_scaling: float = 2.,  min_distances: VariableMap = None) -> float:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
-        :param query: A VariableMap that maps to singular values (numeric or symbolic)
+        :param query: A preprocessed VariableMap that maps to singular values (numeric or symbolic)
             or ranges (continuous set, set)
         :type query: VariableMap
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
@@ -395,7 +395,6 @@ class Leaf(Node):
                 # if it is a singular value
                 else:
                     # get the likelihood
-                    print(self.distributions[variable].pdf(value))
                     likelihood = self.distributions[variable].pdf(value)
 
                     # if it is infinity and no handling is provided replace it with 1.
@@ -415,7 +414,7 @@ class Leaf(Node):
                     value = set([value])
 
                 # return false if the evidence is impossible in this leaf
-                result *= self.distributions[variable].p(value)
+                result *= self.distributions[variable]._p(value)
 
         return result
 
@@ -864,12 +863,12 @@ class JPT:
         querymap = VariableMap()
         for key, value in query.items():
             querymap[key if isinstance(key, Variable) else self.varnames[key]] = value
-        query_ = self._prepropress_query(querymap)
+        query_ = self._preprocess_query(querymap)
         evidencemap = VariableMap()
         if evidence:
             for key, value in evidence.items():
                 evidencemap[key if isinstance(key, Variable) else self.varnames[key]] = value
-        evidence_ = ifnone(evidencemap, {}, self._prepropress_query)
+        evidence_ = ifnone(evidencemap, {}, self._preprocess_query)
 
         r = Result(query_, evidence_)
 
@@ -924,7 +923,7 @@ class JPT:
         :type fail_on_unsatisfiability:  bool
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         """
-        evidence_ = ifnone(evidence, {}, self._prepropress_query)
+        evidence_ = ifnone(evidence, {}, self._preprocess_query)
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
 
@@ -992,7 +991,7 @@ class JPT:
         """
 
         # preprocess evidence
-        evidence_ = ifnone(evidence, {}, self._prepropress_query)
+        evidence_ = ifnone(evidence, {}, self._preprocess_query)
 
         # construct result to save data in
         result = PosteriorResult(VariableMap.universe_map(variables), evidence_)
@@ -1050,7 +1049,7 @@ class JPT:
     def expectation(self, variables=None,
                     evidence=None,
                     confidence_level=None,
-                    fail_on_unsatisfiability=True) -> ExpectationResult:
+                    fail_on_unsatisfiability=True) -> VariableMap:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -1082,7 +1081,7 @@ class JPT:
         '''
         Compute the (conditional) MPE state of the model.
         '''
-        evidence_ = self._prepropress_query(evidence)
+        evidence_ = self._preprocess_query(evidence)
         distributions = {var: deque() for var in self.variables}
 
         r = MPEResult(evidence_)
@@ -1118,13 +1117,20 @@ class JPT:
             r.path.update({var: dist.mpe()})
         return r
 
-    def _prepropress_query(self, query, transform_values=True, remove_none=True) -> VariableMap:
-        '''
-        Transform a query entered by a user into an internal representation
-        that can be further processed.
-        '''
-        # Transform lists into a numeric interval:
+    def _preprocess_query(self, query, transform_values=True, remove_none=True, allow_singular_values=True) \
+            -> VariableMap:
+        """
+        Transform a query entered by a user into an internal representation that can be further processed.
+
+        @param query: A VariableMap or dict
+        @param transform_values: Rather to transform the values for numeric variables into scaled space or not
+        @param remove_none: Rather to remove Nones in the values or not
+        @param allow_singular_values: Rather to allow singular values or transform them to intervals
+        """
+
+        # Initialize result
         query_ = VariableMap()
+
         # Transform single numeric values in to intervals given by the haze
         # parameter of the respective variable:
         for key, arg in query.items():
@@ -1132,21 +1138,24 @@ class JPT:
                 continue
             var = key if isinstance(key, Variable) else self.varnames[key]
             if var.numeric:
-                if type(arg) is list:
+                if type(arg) in [list, tuple]:
                     arg = list2interval(arg)
                 if isinstance(arg, numbers.Number) and transform_values:
                     val = var.domain.values[arg]
-                    prior = self.priors[var.name]
-                    quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
-                                                              prior.cdf.idx_at(val)))].eval(val)
-                    lower = quantile - var.haze / 2
-                    upper = quantile + var.haze / 2
-                    query_[var] = ContinuousSet(prior.ppf.functions[max(1,
-                                                                        min(len(prior.cdf) - 2,
-                                                                            prior.ppf.idx_at(lower)))].eval(lower),
-                                                prior.ppf.functions[min(len(prior.ppf) - 2,
-                                                                        max(1,
-                                                                            prior.ppf.idx_at(upper)))].eval(upper))
+                    if allow_singular_values:
+                        query_[var] = val
+                    else:
+                        prior = self.priors[var.name]
+                        quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
+                                                                  prior.cdf.idx_at(val)))].eval(val)
+                        lower = quantile - var.haze / 2
+                        upper = quantile + var.haze / 2
+                        query_[var] = ContinuousSet(prior.ppf.functions[max(1,
+                                                                            min(len(prior.cdf) - 2,
+                                                                                prior.ppf.idx_at(lower)))].eval(lower),
+                                                    prior.ppf.functions[min(len(prior.ppf) - 2,
+                                                                            max(1,
+                                                                                prior.ppf.idx_at(upper)))].eval(upper))
                 elif isinstance(arg, ContinuousSet) and transform_values:
                     query_[var] = ContinuousSet(var.domain.values[arg.lower],
                                                 var.domain.values[arg.upper], arg.left, arg.right)
@@ -1192,6 +1201,13 @@ class JPT:
             result.leaves[idx].prior /= probability_mass
 
         return result
+
+    def replace_leaf_prior(self, leaf_prior: Dict[int, float]):
+        result = self.copy()
+        for idx, leaf in result.leaves.items():
+            result.leaves[idx].prior = leaf_prior[idx]
+
+        return result.normalize()
 
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
@@ -1732,7 +1748,7 @@ class JPT:
         The new JPT contains all variables that are not in the evidence and is a 
         full joint probability distribution over those variables.
 
-        :param evidence: A variable Map mapping the observed variables to there observed,
+        :param evidence: A preprocessed VariableMap mapping the observed variables to there observed,
             single values (not intervals)
         :type evidence: ``VariableMap``
         """
@@ -1743,7 +1759,6 @@ class JPT:
         if len(evidence) == 0:
             return conditional_jpt
 
-        evidence = self._prepropress_query(evidence, transform_values=False)
         unvisited_nodes = queue.Queue()
         unvisited_nodes.put_nowait(conditional_jpt.allnodes[self.root.idx])
 
@@ -1814,20 +1829,18 @@ class JPT:
         return conditional_jpt
 
     def conditional_jpt_safe(self, evidence: VariableMap):
-        result = self.copy()
+        # evidence = self._preprocess_query(evidence)
 
+        result = self.copy()
         if len(evidence) == 0:
             return result
 
         for idx, leaf in result.leaves.items():
-            print(evidence)
-            print(leaf.probability(evidence))
             result.leaves[idx].prior *= leaf.probability(evidence)
 
-        result.plot()
-        exit()
         result = result.normalize()
         return result
+
     def normalize(self):
         probability_mass = sum(leaf.prior for leaf in self.leaves.values())
         for idx, leaf in self.leaves.items():
@@ -2191,7 +2204,6 @@ class JPT:
             # for numeric every distribution
             for variable, distribution in leaf.distributions.items():
                 if variable.numeric and variable in leaf.path.keys() and not distribution.is_dirac_impulse():
-                    print(type(distribution))
                     # if the leaf is not the "lowest" in this dimension
                     if leaf.path[variable].lower > -float("inf"):
                         # create uniform distribution as bridge between the leaves
