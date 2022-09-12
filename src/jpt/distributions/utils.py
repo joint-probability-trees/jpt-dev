@@ -5,7 +5,13 @@ import numpy as np
 from dnutils import ifnot
 from numpy import isnan
 
-from jpt.base.intervals import R
+try:
+    from jpt.base.intervals import __module__
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+finally:
+    from jpt.base.intervals import R
 
 
 class DataScaler:
