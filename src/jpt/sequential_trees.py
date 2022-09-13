@@ -11,40 +11,7 @@ class SequentialJPT:
         self.template_tree: jpt.trees.JPT = template_tree
         self.transition_model: np.array or None = None
 
-    def fit(self, sequences: List):
-        """ Fits the transition and emission models. """
-        data = np.concatenate(sequences)
-        self.template_tree.learn(data)
-
-        transition_data = None
-
-        for sequence in sequences:
-
-            # encode the samples to 'leaf space'
-            encoded = self.template_tree.encode(sequence)
-
-            # convert to 2 sizes sliding window
-            transitions = numpy.lib.stride_tricks.sliding_window_view(encoded, (2,), axis=0)
-
-            # concatenate transitions
-            if transition_data is None:
-                transition_data = transitions
-            else:
-                transition_data = np.concatenate((transition_data, transitions))
-
-        # load number of leaves
-        num_leaves = len(self.template_tree.leaves)
-
-        # calculate factor values for transition model
-        values = np.zeros((num_leaves, num_leaves))
-        for idx, leaf_idx in enumerate(self.template_tree.leaves.keys()):
-            for jdx, leaf_jdx in enumerate(self.template_tree.leaves.keys()):
-                count = sum((transition_data[:, 0] == leaf_idx) & (transition_data[:, 1] == leaf_jdx))
-                values[idx, jdx] = count/len(transition_data)
-
-        self.transition_model = values
-
-    def fit_complex(self, sequences: List[np.ndarray], timesteps: int = 2):
+    def fit(self, sequences: List[np.ndarray], timesteps: int = 2):
         """ Fits the transition and emission models. The emission model is fitted
          with respect to the variables in the next timestep, but it doesn't use them.
 

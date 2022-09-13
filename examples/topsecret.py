@@ -29,11 +29,11 @@ def main():
 
     targets = [variable for variable in variables if variable.name == "avg_pppnc_hotel_touroperator"]
 
-    template_tree = jpt.trees.JPT(variables, min_samples_leaf=0.05, targets=targets)
+    template_tree = jpt.trees.JPT(variables, min_samples_leaf=0.01, targets=targets)
 
     stree = sequential_trees.SequentialJPT(template_tree)
 
-    stree.fit_complex([df.to_numpy() for df in dfs])
+    stree.fit([df.to_numpy() for df in dfs])
     evidence_t0 = dict((column, value) for column, value in zip(dfs[-1].columns, dfs[-1].iloc[-1]))
 
     evidence = [evidence_t0] + [{}] * 20
