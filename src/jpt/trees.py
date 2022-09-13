@@ -41,7 +41,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import Impurity
 
 
@@ -946,8 +946,13 @@ class JPT:
                 elif isinstance(arg, ContinuousSet):
                     query_[var] = ContinuousSet(var.domain.values[arg.lower],
                                                 var.domain.values[arg.upper], arg.left, arg.right)
+                elif isinstance(arg, RealSet):
+                    query_[var] = RealSet([ContinuousSet(var.domain.labels[i.lower],
+                                                         var.domain.labels[i.upper],
+                                                         i.left,
+                                                         i.right) for i in arg.intervals])
                 else:
-                    query_[var] = arg
+                    raise TypeError()
             if var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
                 if type(arg) is not set:
