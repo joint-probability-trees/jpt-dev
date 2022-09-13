@@ -184,6 +184,7 @@ cdef class Impurity:
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                        if v.symbolic and (tree.targets is None or v in tree.targets)],
                                       dtype=np.int64)
+
         self.n_sym_vars = len(self.symbolic_vars)
         self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
 
@@ -200,7 +201,7 @@ cdef class Impurity:
         self.features = np.concatenate((self.numeric_features, self.symbolic_features))
 
 
-        if self.n_sym_vars:
+        if self.n_sym_vars_total:
             # Thread-invariant buffers
             self.symbols = np.array([v.domain.n_values for v in tree.variables if v.symbolic], dtype=np.int64)
             self.max_sym_domain = max(self.symbols)
@@ -220,7 +221,7 @@ cdef class Impurity:
 
         self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
 
-        if self.n_num_vars:
+        if self.n_num_vars_total:
             # Thread-invariant buffers
             self.sums_total = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.sq_sums_total = np.ndarray(self.n_num_vars, dtype=np.float64)

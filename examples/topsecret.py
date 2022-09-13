@@ -3,7 +3,7 @@ import os
 import pickle
 from jpt.variables import infer_from_dataframe
 import jpt.trees
-import sequential_trees
+from jpt import sequential_trees
 import numpy as np
 from datetime import datetime
 import plotly.express as px
@@ -29,7 +29,7 @@ def main():
 
     targets = [variable for variable in variables if variable.name == "avg_pppnc_hotel_touroperator"]
 
-    template_tree = jpt.trees.JPT(variables, min_samples_leaf=0.4, targets=targets)
+    template_tree = jpt.trees.JPT(variables, min_samples_leaf=0.05, targets=targets)
 
     stree = sequential_trees.SequentialJPT(template_tree)
 
