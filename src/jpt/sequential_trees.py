@@ -97,10 +97,45 @@ class SequentialJPT:
             else:
                 data = np.concatenate((data, unfolded), axis=0)
 
+        # fit joint timesteps tree
         expanded_template_tree.learn(data=data)
-        exit()
 
-    def _shift_variable_to_timestep(self, variable: jpt.variables.Variable, timestep: int=1) -> jpt.variables.Variable:
+        # create template tree from learnt joint tree
+        self.template_tree.innernodes = expanded_template_tree.innernodes
+        for idx, leaf in expanded_template_tree.leaves.items():
+            leaf.distributions = jpt.variables.VariableMap([(v, d) for v, d in leaf.distributions.items()
+                                                            if v in self.template_tree.variables])
+            self.template_tree.leaves[idx] = leaf
+
+        transition_data = None
+
+        for sequence in sequences:
+
+            # encode the samples to 'leaf space'
+            encoded = self.template_tree.encode(sequence)
+
+            # convert to 2 sizes sliding window
+            transitions = numpy.lib.stride_tricks.sliding_window_view(encoded, (2,), axis=0)
+
+            # concatenate transitions
+            if transition_data is None:
+                transition_data = transitions
+            else:
+                transition_data = np.concatenate((transition_data, transitions))
+
+        # load number of leaves
+        num_leaves = len(self.template_tree.leaves)
+
+        # calculate factor values for transition model
+        values = np.zeros((num_leaves, num_leaves))
+        for idx, leaf_idx in enumerate(self.template_tree.leaves.keys()):
+            for jdx, leaf_jdx in enumerate(self.template_tree.leaves.keys()):
+                count = sum((transition_data[:, 0] == leaf_idx) & (transition_data[:, 1] == leaf_jdx))
+                values[idx, jdx] = count/len(transition_data)
+
+        self.transition_model = values
+
+    def _shift_variable_to_timestep(self, variable: jpt.variables.Variable, timestep: int = 1) -> jpt.variables.Variable:
         """ Create a new variable where the name is shifted by +n and the domain remains the same.
 
         @param variable: The variable to shift
@@ -205,7 +240,7 @@ class SequentialJPT:
         # transform trees
         for name, distribution in sorted(latent_distribution, key=lambda x: x[0].name):
             prior = dict(zip(self.template_tree.leaves.keys(), distribution))
-            adjusted_tree = self.template_tree.replace_leaf_prior(prior)
+            adjusted_tree = self.template_tree.multiply_by_leaf_prior(prior)
             result.append(adjusted_tree)
 
         return result
