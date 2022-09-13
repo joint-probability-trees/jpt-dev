@@ -163,6 +163,10 @@ class VariableTest(TestCase):
                       ['C = False v C = True', 'C = True v C = False'])
         self.assertIn(C.str({True, False}, fmt='set'),
                       ['C ∈ {False, True}', 'C ∈ {True, False}'])
+        self.assertEqual('A = 2.0 v A = 3.0', A.str({2, 3}, fmt='logic'))
+        self.assertEqual('A ∈ {2.0} ∪ {3.0}', A.str({2, 3}, fmt='set'))
+        self.assertEqual('2.000 ≤ A ≤ 4.000', A.str({(2, 3), (3, 4)}, fmt='logic'))
+        self.assertEqual('A ∈ [2.0,4.0]', A.str({(2, 3), (3, 4)}, fmt='set'))
 
 
 class DuplicateDomainTest(TestCase):
@@ -174,15 +178,15 @@ class DuplicateDomainTest(TestCase):
                  SymbolicVariable('C', Bool)]
 
     data1 = {'A': ['one', 'two', 'three', 'four'],
-            'B': [68, 74, 77, 78],
-            'C': [84, 56, 73, 69],
-            'D': [78, 88, 82, 87]}
+             'B': [68, 74, 77, 78],
+             'C': [84, 56, 73, 69],
+             'D': [78, 88, 82, 87]}
     DF1 = pd.DataFrame(data1)
 
     data2 = {'A': ['three', 'six', 'seven', 'four'],
-            'B': [5, 4, 3, 2],
-            'C': [9, 8, 5, 2],
-            'E': [7, 8, 5, 1]}
+             'B': [5, 4, 3, 2],
+             'C': [9, 8, 5, 2],
+             'E': [7, 8, 5, 1]}
     DF2 = pd.DataFrame(data2)
 
     def test_duplicate_dom_symbolic_raise_err(self):
