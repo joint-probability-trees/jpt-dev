@@ -254,6 +254,12 @@ class NumericTest(TestCase):
         self.assertEqual(ContinuousSet(0, 1),
                          DistGauss.value2label(DistGauss.label2value(ContinuousSet(0, 1))))
 
+    def test_label_inference(self):
+        raise NotImplementedError()
+
+    def test_value_inference(self):
+        raise NotImplementedError()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 

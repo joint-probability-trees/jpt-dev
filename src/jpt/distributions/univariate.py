@@ -37,7 +37,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from ..base.intervals import R, ContinuousSet
+    from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
     from ..base.functions import LinearFunction
     from .quantile.quantiles import QuantileDistribution
 
@@ -580,19 +580,30 @@ class Numeric(Distribution):
         self._quantile = params
         return self
 
-    def _p(self, value):
+    def _p(self, value: Union[numbers.Number, NumberSet]) -> numbers.Real:
         if isinstance(value, numbers.Number) and np.isinf(self.pdf.eval(value)):
             return 0
+        elif isinstance(value, RealSet):
+            return sum(self._p(i) for i in value.intervals)
         elif value.lower == value.upper and not value.isempty() and np.isinf(self.pdf.eval(value.lower)):
             return 1
         return ((self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
                 (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
 
-    def p(self, labels):
-        if not isinstance(labels, (ContinuousSet, numbers.Number)):
-            raise TypeError('Argument must be numbers.Number or jpt.base.intervals.ContinuousSet (got %s).' % type(labels))
+    def p(self, labels: Union[numbers.Number, NumberSet]) -> numbers.Real:
+        if not isinstance(labels, (NumberSet, numbers.Number)):
+            raise TypeError('Argument must be numbers.Number or '
+                            'jpt.base.intervals.NumberSet (got %s).' % type(labels))
         if isinstance(labels, ContinuousSet):
-            return self._p(ContinuousSet(self.values[labels.lower], self.values[labels.upper], labels.left, labels.right))
+            return self._p(ContinuousSet(self.values[labels.lower],
+                                         self.values[labels.upper],
+                                         labels.left,
+                                         labels.right))
+        elif isinstance(labels, RealSet):
+            self._p(RealSet([ContinuousSet(self.values[i.lower],
+                                           self.values[i.upper],
+                                           i.left,
+                                           i.right) for i in labels.intervals]))
         else:
             return self._p(self.values[labels])
 
