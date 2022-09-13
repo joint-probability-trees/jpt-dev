@@ -1,16 +1,15 @@
-from typing import List, Dict
+from typing import List
 
 import numpy as np
 import numpy.lib.stride_tricks
 import factorgraph
-
 import jpt.trees
 
 
 class SequentialJPT:
     def __init__(self, template_tree):
         self.template_tree: jpt.trees.JPT = template_tree
-        self.transition_model: np.array = None
+        self.transition_model: np.array or None = None
 
     def fit(self, sequences: List):
         """ Fits the transition and emission models. """
@@ -44,6 +43,72 @@ class SequentialJPT:
                 values[idx, jdx] = count/len(transition_data)
 
         self.transition_model = values
+
+    def fit_complex(self, sequences: List[np.ndarray], timesteps: int = 2):
+        """ Fits the transition and emission models. The emission model is fitted
+         with respect to the variables in the next timestep, but it doesn't use them.
+
+         @param sequences: The sequences to learn from
+         @param timesteps: The timesteps to jointly model (minimum of 2 required) """
+
+        # extract copies of variables for the expanded tree
+        expanded_variables = [var.copy() for var in self.template_tree.variables]
+
+        # keep track of which dimensions to include in the training process
+        data_indices = list(range(len(expanded_variables)))
+
+        # extract target indices from the
+        if self.template_tree.targets:
+            target_indices = [idx for idx, var in enumerate(self.template_tree.variables)
+                              if var in self.template_tree.targets]
+        else:
+            target_indices = [list(range(len(self.template_tree.variables)))]
+
+        # create variables for jointly modelled timesteps
+        for timestep in range(1, timesteps):
+            expanded_variables += [self._shift_variable_to_timestep(self.template_tree.variables[idx], timestep) for idx
+                                   in target_indices]
+
+            # append targets to data index
+            data_indices += [idx + timestep * len(self.template_tree.variables) for idx in target_indices]
+
+        # create expanded tree
+        expanded_template_tree = jpt.trees.JPT(expanded_variables,
+                                               expanded_variables[len(self.template_tree.variables):],
+                                               self.template_tree.min_samples_leaf,
+                                               self.template_tree.min_impurity_improvement,
+                                               self.template_tree.max_leaves, self.template_tree.max_depth)
+
+        # initialize data
+        data = None
+
+        # for every sequence
+        for sequence in sequences:
+
+            # unfold the timesteps such that they are expanded to jointly model all timesteps
+            unfolded = np.lib.stride_tricks.sliding_window_view(sequence, (timesteps, ), axis=0)
+            unfolded = unfolded.reshape((len(unfolded), len(self.template_tree.variables) * timesteps), order="F")
+
+            unfolded = unfolded[:, data_indices]
+
+            # append or set data
+            if data is None:
+                data = unfolded
+            else:
+                data = np.concatenate((data, unfolded), axis=0)
+
+        expanded_template_tree.learn(data=data)
+        exit()
+
+    def _shift_variable_to_timestep(self, variable: jpt.variables.Variable, timestep: int=1) -> jpt.variables.Variable:
+        """ Create a new variable where the name is shifted by +n and the domain remains the same.
+
+        @param variable: The variable to shift
+        @param timestep: timestep in the future, i.e. timestep >= 1
+        """
+        variable_ = variable.copy()
+        variable_._name = "%s+%s" % (variable_.name, timestep)
+        return variable_
 
     def preprocess_sequence_map(self, evidence: List[jpt.variables.VariableMap]):
         """ Preprocess a list of variable maps to be used in JPTs. """
@@ -145,3 +210,13 @@ class SequentialJPT:
 
         return result
 
+    def to_json(self):
+        return {"template_tree": self.template_tree.to_json(),
+                "transition_model": self.transition_model.tolist()}
+
+    @staticmethod
+    def from_json(data):
+        template_tree = jpt.trees.JPT.from_json(data["template_tree"])
+        result = SequentialJPT(template_tree)
+        result.transition_model = np.array(data["transition_model"])
+        return result

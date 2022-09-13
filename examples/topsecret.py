@@ -8,7 +8,7 @@ import numpy as np
 from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
-
+import dnutils
 
 def main():
     start = datetime.now()
@@ -23,15 +23,17 @@ def main():
             del df_["event_date"]
             dfs.append(df_)
 
+    logger = dnutils.getlogger('/topsecret', level=dnutils.INFO)
+
     variables = infer_from_dataframe(pandas.concat(dfs), scale_numeric_types=True)
 
     targets = [variable for variable in variables if variable.name == "avg_pppnc_hotel_touroperator"]
 
-    template_tree = jpt.trees.JPT(variables, min_samples_leaf=0.01)
+    template_tree = jpt.trees.JPT(variables, min_samples_leaf=0.4, targets=targets)
 
     stree = sequential_trees.SequentialJPT(template_tree)
 
-    stree.fit([df.to_numpy() for df in dfs])
+    stree.fit_complex([df.to_numpy() for df in dfs])
     evidence_t0 = dict((column, value) for column, value in zip(dfs[-1].columns, dfs[-1].iloc[-1]))
 
     evidence = [evidence_t0] + [{}] * 20
