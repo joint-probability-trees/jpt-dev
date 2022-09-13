@@ -562,7 +562,7 @@ cdef class ContinuousSet(NumberSet):
             return True
         return False
 
-    cpdef inline np.int32_t intersects(ContinuousSet self, ContinuousSet other):
+    cpdef inline np.int32_t intersects(ContinuousSet self, NumberSet other):
         '''
         Checks whether the this interval intersects with ``other``.
 
@@ -571,6 +571,8 @@ cdef class ContinuousSet(NumberSet):
         :returns True if the two intervals intersect, False otherwise
         :rtype: bool
         '''
+        if isinstance(other, RealSet):
+            return other.intersects(self)
         if other.lower > self.upper or other.upper < self.lower:
             return False
         if self.lower == other.upper and (other.right == _EXC or self.left == _EXC):
@@ -579,7 +581,7 @@ cdef class ContinuousSet(NumberSet):
             return False
         return True
 
-    cpdef inline np.int32_t isdisjoint(ContinuousSet self, ContinuousSet other):
+    cpdef inline np.int32_t isdisjoint(ContinuousSet self, NumberSet other):
         '''Equivalent to ``not self.intersects(other)'''
         return not self.intersects(other)
 
@@ -753,7 +755,7 @@ cdef class ContinuousSet(NumberSet):
         if self.isempty():
             return _EMPTYSET
         if self.lower == self.upper and self.left == self.right == INC:
-            return precision % self.lower
+            return f'{{{precision % self.lower}}}'
         return '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
                                   '-∞' if self.lower == np.NINF else (precision % float(self.lower)),
                                   '∞' if self.upper == np.inf else (precision % float(self.upper)),

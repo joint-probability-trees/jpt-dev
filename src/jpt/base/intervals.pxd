@@ -95,9 +95,9 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef inline np.int32_t contiguous(ContinuousSet self, ContinuousSet other)
 
-    cpdef inline np.int32_t intersects(ContinuousSet self, ContinuousSet other)
+    cpdef inline np.int32_t intersects(ContinuousSet self, NumberSet other)
 
-    cpdef inline np.int32_t isdisjoint(ContinuousSet self, ContinuousSet other)
+    cpdef inline np.int32_t isdisjoint(ContinuousSet self, NumberSet other)
 
     cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other, int left=*, int right=*)
 

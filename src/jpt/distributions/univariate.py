@@ -503,9 +503,6 @@ class Numeric(Distribution):
                                                                                                type(o)))
         return type(o).equiv(type(self)) and self._quantile == o._quantile
 
-    def __hash__(self):
-        return hash((type(self), self.values, self.labels, self._quantile))
-
     # noinspection DuplicatedCode
     @classmethod
     def value2label(cls, value: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
@@ -844,9 +841,6 @@ class Multinomial(Distribution):
 
     def __eq__(self, other):
         return type(self).equiv(type(other)) and (self.probabilities == other.probabilities).all()
-
-    def __hash__(self):
-        return hash((Multinomial, self.values.values(), self.labels.values(), self._params))
 
     def __str__(self):
         if self._p is None:
