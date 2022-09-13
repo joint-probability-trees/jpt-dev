@@ -22,7 +22,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.intervals import INC, EXC, ContinuousSet
+    from jpt.base.intervals import INC, EXC, ContinuousSet, RealSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -214,35 +214,61 @@ class NumericVariable(Variable):
     def max_std(self):
         return self.max_std_lbl
 
+    # noinspection PyIncorrectDocstring
     def str(self, assignment: Union[List, Set, numbers.Number], **kwargs) -> str:
+        '''
+        Construct a pretty-formatted string representation of the respective
+        variable assignment.
+
+        :param assignment:        the value(s) assigned to this variable.
+        :param fmt:               ["set" | "logic"] use either set or logical notation.
+        :param precision:         (int) the number of decimals to use for rounding.
+        :param convert_values:
+        '''
         fmt = kwargs.get('fmt', 'set')
         precision = kwargs.get('precision', 3)
+        convert_values = kwargs.get('convert_values', True)
         lower = '%%.%df %%s ' % precision
         upper = ' %%s %%.%df' % precision
+
         if type(assignment) is list:
             assignment = list2interval(assignment)
-        if type(assignment) is set:
-            if len(assignment) == 1:
-                valstr = str(first(assignment))
-            else:
-                valstr = ', '.join([self.str(a, fmt=fmt) for a in assignment])
-        else:
-            valstr = str(ContinuousSet(self.domain.labels[assignment.lower],
-                                       self.domain.labels[assignment.upper],
-                                       assignment.left,
-                                       assignment.right))
+        elif type(assignment) is set:
+            intervals = []
+            for s in assignment:
+                if isinstance(s, ContinuousSet):
+                    intervals.append(s)
+                elif type(s) is tuple:
+                    intervals.append(list2interval(s))
+                elif isinstance(s, numbers.Number):
+                    intervals.append(ContinuousSet(s, s))
+                else:
+                    raise TypeError('Expected number of ContinuousSet, got %s.' % type(s).__name__)
+            assignment = RealSet(intervals).simplify()
+        if isinstance(assignment, ContinuousSet):
+            assignment = RealSet([assignment])
+        elif convert_values:
+            assignment = RealSet([ContinuousSet(self.domain.labels[i.lower],
+                                                self.domain.labels[i.upper],
+                                                i.left,
+                                                i.right) for i in assignment.intervals])
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
-            return f'{self.name} {SYMBOL.IN} {valstr}'
+            return f'{self.name} {SYMBOL.IN} {str(assignment)}'
         elif fmt == 'logic':
-            return '%s%s%s' % (lower % (self.domain.labels[assignment.lower],
-                                        {INC: SYMBOL.LTE,
-                                         EXC: SYMBOL.LT}[assignment.left]) if assignment.lower != np.NINF else '',
-                               self.name,
-                               upper % ({INC: SYMBOL.LTE,
-                                         EXC: SYMBOL.LT}[assignment.right],
-                                        self.domain.labels[assignment.upper]) if assignment.upper != np.PINF else '')
+            s = []
+            for i in assignment.intervals:
+                if i.size() == 1:
+                    s.append('%s = %s' % (self.name, self.domain.labels[i.lower]))
+                else:
+                    s.append('%s%s%s' % (lower % (self.domain.labels[i.lower], {INC: SYMBOL.LTE,
+                                                  EXC: SYMBOL.LT}[i.left]) if i.lower != np.NINF else '',
+                                         self.name,
+                                         upper % ({INC: SYMBOL.LTE,
+                                                  EXC: SYMBOL.LT}[i.right],
+                                                  self.domain.labels[i.upper]) if i.upper != np.PINF else ''))
+            return ' v '.join(s)
         else:
             raise ValueError('Unknown format for numeric variable: %s.' % fmt)
 
