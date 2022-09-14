@@ -14,7 +14,7 @@ rmvirtualenv:
 	@(rm -rf .venv)
 
 virtualenv:
-	@(virtualenv ${ENV_NAME})
+	@(virtualenv ${ENV_NAME} --python ${PYTHON_PATH})
 	@(. ${ENV_NAME}/bin/activate && pip install -r requirements.txt -r requirements-dev.txt)
 
 sdist: virtualenv versioncheck

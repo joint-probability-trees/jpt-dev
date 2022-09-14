@@ -4,7 +4,6 @@ import html
 import json
 import queue
 from operator import attrgetter
-from threading import Lock
 
 import math
 import numbers
@@ -24,16 +23,16 @@ from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 import dnutils
-from dnutils import first, ifnone, mapstr, err, fst
+from dnutils import first, ifnone, mapstr, err, fst, out, ifnot
 
-import jpt.variables
-from .base.utils import Unsatisfiability
+from .base.utils import prod
+from .base.errors import Unsatisfiability
 
-from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable, ScaledNumeric
-from .learning.distributions import Distribution
+from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
+from .distributions import Distribution
 
 from .base.utils import list2interval, format_path, normalized
-from .learning.distributions import Multinomial, Numeric, SymbolicType
+from .distributions import Multinomial, Numeric
 from .base.constants import plotstyle, orange, green, SYMBOL
 
 try:
@@ -44,30 +43,11 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from .base.quantiles import QuantileDistribution, LinearFunction
-    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import Impurity
 
+
 style.use(plotstyle)
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Global data store to exploit copy-on-write in multiprocessing
-
-import multiprocessing as mp
-
-_data = None
-_lock = Lock()
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-
-def _prior(args):
-    var_idx, json_var = args
-    try:
-        return Variable.from_json(json_var).dist(data=_data, col=var_idx).to_json()
-    except ValueError as e:
-        raise ValueError('%s: %s' % (Variable.from_json(json_var), str(e)))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -187,7 +167,6 @@ class Node:
         return result
 
 # ----------------------------------------------------------------------------------------------------------------------
-
 
 class DecisionNode(Node):
     '''
@@ -319,11 +298,14 @@ class Leaf(Node):
         return []
 
     def __str__(self) -> str:
-        return (f'<Leaf # {self.idx}; '
-                f'parent: <%s # %s>>' % (type(self.parent).__qualname__, ifnone(self.parent, None, attrgetter('idx'))))
+        return (f'<Leaf #{self.idx}; '
+                f'parent: <%s #%s>>' % (type(self.parent).__qualname__, ifnone(self.parent, None, attrgetter('idx'))))
 
     def __repr__(self) -> str:
         return f'Leaf<{self.idx}> object at {hex(id(self))}'
+
+    def __hash__(self):
+        return hash((type(self), ((k.name, v) for k, v in self.distributions.items()), self.prior))
 
     def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
@@ -362,10 +344,10 @@ class Leaf(Node):
         :type evidence: VariableMap
         """
         return self.probability(evidence) > 0.
-    
+
     def path_consistent_with(self, evidence: VariableMap) -> bool:
         return super(Leaf, self).consistent_with(evidence)
-    
+
     def probability(self, query: VariableMap, dirac_scaling: float = 2.,  min_distances: VariableMap = None) -> float:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
@@ -475,6 +457,7 @@ class Result:
         self._res = ifnone(res, [])
         self._cand = ifnone(cand, [])
         self._w = ifnone(w, [])
+        self.candidate_dists = defaultdict(list)
 
     def __str__(self):
         return self.format_result()
@@ -512,18 +495,24 @@ class Result:
 
     def format_result(self):
         return ('P(%s%s) = %.3f%%' % (format_path(self.query),
-                                      (' | %s' % format_path(self.evidence)) if self.evidence else '',
+                                      (' | %s' % format_path(self._evidence)) if self.evidence else '',
                                       self.result * 100))
 
     def explain(self):
         result = self.format_result()
         result += '\n'
-        for weight, leaf in sorted(zip(self.weights, self.candidates), key=operator.itemgetter(0), reverse=True):
-            result += '%.3f%%: %s\n' % (weight,
+        for weight, leaf in sorted(zip(self.weights, self.candidates),
+                                   key=operator.itemgetter(0),
+                                   reverse=True):
+            if not weight:
+                continue
+            result += '%.3f%%: %s\n' % (weight * 100,
                                         format_path({var: val for var, val in leaf.path.items()
                                                      if var not in self.evidence}))
         return result
 
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class ExpectationResult(Result):
 
@@ -549,7 +538,7 @@ class ExpectationResult(Result):
         left = 'E(%s%s%s; %s = %.3f)' % (self.query.name,
                                          ' | ' if self.evidence else '',
                                          # ', '.join([var.str(val, fmt='logic') for var, val in self._evidence.items()]),
-                                         format_path(self.evidence),
+                                         format_path(self._evidence),
                                          SYMBOL.THETA,
                                          self.theta)
         right = '[%.3f %s %.3f %s %.3f]' % (self.lower,
@@ -559,6 +548,27 @@ class ExpectationResult(Result):
                                             self.upper) if self.query.numeric else self.result
         return '%s = %s' % (left, right)
 
+    def explain(self):
+        result = self.format_result()
+        result += '\n'
+        out(self.candidates)
+        out(self.weights)
+        for weight, leaf, dist in sorted(zip(self.weights, self.candidates, self.candidate_dists),
+                                   key=operator.itemgetter(0),
+                                   reverse=True):
+            if not weight:
+                continue
+            result += '%.3f%%: %s: %s - %s - %s\n' % (weight * 100,
+                                                      format_path({var: val for var, val in leaf.path.items()}),
+                                                      dist.quantile(.05),
+                                                      dist.expectation(),
+                                                      dist.quantile(.95))
+        print(self.distribution.ppf.pfmt())
+        self.distribution.plot(view=True)
+        return result
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class MPEResult(Result):
 
@@ -570,15 +580,17 @@ class MPEResult(Result):
         return f'MPE({self.evidence}) = {format_path(self.path)}'
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class PosteriorResult(Result):
 
     def __init__(self, query, evidence, dists=None, cand=None, w=None):
         super().__init__(query, evidence, res=None, cand=cand)
-        self._w = ifnone(w, {})
         self.distributions: Dict[Variable, Distribution] = dists
 
+
     def format_result(self):
-        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query.items()]),
+        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query]),
                                         ' | ' if self.evidence else '',
                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
                                         self.result * 100))
@@ -618,6 +630,8 @@ class PosteriorResult(Result):
             return False
         return self.result == other.result and self.distributions == other.distributions
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class JPT:
     '''
     Joint Probability Trees.
@@ -644,6 +658,7 @@ class JPT:
         self._variables = tuple(variables)
         self._targets = targets
         self.varnames: OrderedDict[str, Variable] = OrderedDict((var.name, var) for var in self._variables)
+        self._targets = [self.varnames[v] if type(v) is str else v for v in targets] if targets is not None else None
         self.leaves: Dict[int, Leaf] = {}
         self.innernodes: Dict[int, DecisionNode] = {}
         self.allnodes: ChainMap[int, Node] = ChainMap(self.innernodes, self.leaves)
@@ -834,7 +849,18 @@ class JPT:
             result[contains == 1] = idx
         return result
 
-    def infer(self, query, evidence=None, fail_on_unsatisfiability=True) -> Result:
+    def pdf(self, values: VariableMap) -> float:
+        values_ = VariableMap([(var, ContinuousSet(val, val)) for var, val in values.items()])
+        pdf = 0
+        for leaf in self.apply(values_):
+            pdf += leaf.prior * (prod(leaf.distributions[var].pdf(value)
+                                      for var, value in values.items()) if values else 1)
+        return pdf
+
+    def infer(self,
+              query: Union[Dict[Union[Variable, str], Any], VariableMap],
+              evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = None,
+              fail_on_unsatisfiability: bool = True) -> Result:
         r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -859,16 +885,17 @@ class JPT:
         :type query:        dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
+        :param fail_on_unsatisfiability: whether or not an error is raised in case of unsatisifiable evidence.
         '''
         querymap = VariableMap()
         for key, value in query.items():
             querymap[key if isinstance(key, Variable) else self.varnames[key]] = value
-        query_ = self._preprocess_query(querymap)
+        query_ = self._prepropress_query(querymap)
         evidencemap = VariableMap()
         if evidence:
             for key, value in evidence.items():
                 evidencemap[key if isinstance(key, Variable) else self.varnames[key]] = value
-        evidence_ = ifnone(evidencemap, {}, self._preprocess_query)
+        evidence_ = ifnone(evidencemap, {}, self._prepropress_query)
 
         r = Result(query_, evidence_)
 
@@ -913,17 +940,25 @@ class JPT:
             r.weights = [w / p_e for w in r.weights]
         return r
 
-    def posterior(self, variables, evidence, fail_on_unsatisfiability=True) -> PosteriorResult:
-        """
+    # noinspection PyProtectedMember
+    def posterior(self,
+                  variables: List[Union[Variable, str]] = None,
+                  evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = None,
+                  fail_on_unsatisfiability: bool = True,
+                  report_inconsistencies: bool = False) -> PosteriorResult:
+        '''
+
         :param variables:        the query variables of the posterior to be computed
-        :type variables:         list of jpt.variables.Variable
         :param evidence:    the evidence given for the posterior to be computed
         :param fail_on_unsatisfiability: wether or not an ``Unsatisfiability`` error is raised if the
                                          likelihood of the evidence is 0.
-        :type fail_on_unsatisfiability:  bool
+        :param report_inconsistencies:   in case of an ``Unsatisfiability`` error, the exception raise
+                                         will contain information about the variable assignments that
+                                         provoked the inconsistency.
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
-        """
-        evidence_ = ifnone(evidence, {}, self._preprocess_query)
+        '''
+        variables = ifnone(variables, self.variables)
+        evidence_ = ifnone(evidence, {}, self._prepropress_query)
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
 
@@ -932,16 +967,35 @@ class JPT:
         likelihoods = []
         priors = []
 
+        inconsistencies = {}
         for leaf in self.apply(evidence_):
             likelihood = 1
+            conflicting_assignment = VariableMap()
             # check if path of candidate leaf is consistent with evidence
             # (i.e. contains evicence variable with *correct* value or does not contain it at all)
             for var in set(evidence_.keys()):
                 evidence_set = evidence_[var]
                 if var in leaf.path:
                     evidence_set = evidence_set.intersection(leaf.path[var])
-                likelihood *= leaf.distributions[var]._p(evidence_set)
-            likelihoods.append(likelihood)
+
+                if isinstance(evidence_set, ContinuousSet) and evidence_set.size() == 1:
+                    l_var = leaf.distributions[var].pdf(evidence_set.lower)
+                    l_var = 1 if np.isinf(l_var) else l_var
+                else:
+                    l_var = leaf.distributions[var]._p(evidence_set)
+
+                if not l_var:
+                    conflicting_assignment[var] = var.domain.value2label(evidence_set)
+                    if not report_inconsistencies:
+                        break
+
+                likelihood *= ifnot(l_var, 1)
+
+            if conflicting_assignment:
+                inconsistencies[conflicting_assignment] = inconsistencies.get(conflicting_assignment, 0) + likelihood
+                continue
+
+            likelihoods.append(0 if conflicting_assignment else likelihood)
             priors.append(leaf.prior)
 
             for var in variables:
@@ -954,15 +1008,17 @@ class JPT:
                 distributions[var].append(distribution)
 
             result.candidates.append(leaf)
+            result.candidate_dists[var].append(distribution)
 
         weights = [l * p for l, p in zip(likelihoods, priors)]
-        # result.result = sum(weights)
         try:
             weights = normalized(weights)
         except ValueError:
             if fail_on_unsatisfiability:
-                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
+                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_),
+                                       reasons=inconsistencies)
             return None
+        result.weights = weights
 
         # initialize all query variables with None, in case dists
         # is empty (i.e. no candidate leaves -> query unsatisfiable)
@@ -976,87 +1032,21 @@ class JPT:
 
         return result
 
-    def independent_marginals(self, variables: List[Variable], evidence: VariableMap, fail_on_unsatisfiability=True) ->\
-            PosteriorResult or None:
-        """ Compute the marginal distribution of every varialbe in 'variables' assuming independence.
-        Unlike JPT.posterior, this method also can compute marginals on variables that are in the evidence.
-
-        :param variables:        the query variables of the posterior to be computed
-        :type variables:         list of jpt.variables.Variable
-        :param evidence:    the evidence given for the posterior to be computed
-        :param fail_on_unsatisfiability: wether or not an ``Unsatisfiability`` error is raised if the
-                                         likelihood of the evidence is 0.
-        :type fail_on_unsatisfiability:  bool
-        :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
-        """
-
-        # preprocess evidence
-        evidence_ = ifnone(evidence, {}, self._preprocess_query)
-
-        # construct result to save data in
-        result = PosteriorResult(VariableMap.universe_map(variables), evidence_)
-
-        # parse variables to variables if strings are given
-        variables = [self.varnames[v] if type(v) is str else v for v in variables]
-
-        # default map containing the distributions that need to be merged
-        distributions = defaultdict(list)
-
-        # list of weights that will determine how important the distributions are
-        weights = []
-
-        for leaf in self.leaves.values():
-            leaf_prob = leaf.probability(evidence_)
-            if leaf_prob <= 0.:
-                continue
-            weights.append(leaf_prob * leaf.prior)
-
-            for var in variables:
-                evidence_set = evidence_.get(var)
-                distribution = leaf.distributions[var].copy()
-                if evidence_set is not None:
-                    if var in leaf.path:
-                        evidence_set = evidence_set.intersection(leaf.path[var])
-                        distribution = distribution.crop(evidence_set)
-                distributions[var].append(distribution)
-
-            result.candidates.append(leaf)
-
-        weight_sum = sum(weights)
-        result.result = weight_sum
-        weights = [w/weight_sum for w in weights]
-
-        if weight_sum == 0:
-            if fail_on_unsatisfiability:
-                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence_))
-            else:
-                return None
-
-        # initialize all query variables with None, in case dists
-        # is empty (i.e. no candidate leaves -> query unsatisfiable)
-        result.distributions = VariableMap()
-
-        # for every variable and distribution that got selected
-        for var, dists in distributions.items():
-            # merge the distributions with weights according to their probability
-            if var.numeric:
-                result.distributions[var] = Numeric.merge(dists, weights=weights)
-            elif var.symbolic:
-                result.distributions[var] = Multinomial.merge(dists, weights=weights)
-
-        return result
-
-    def expectation(self, variables=None,
+    def expectation(self,
+                    variables=None,
                     evidence=None,
                     confidence_level=None,
-                    fail_on_unsatisfiability=True) -> VariableMap:
+                    fail_on_unsatisfiability=True) -> ExpectationResult:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
         '''
         variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
                            set(self.variables) - set(evidence))
-        posteriors = self.posterior(variables, evidence, fail_on_unsatisfiability=fail_on_unsatisfiability)
+
+        posteriors = self.posterior(variables,
+                                    evidence,
+                                    fail_on_unsatisfiability=fail_on_unsatisfiability)
         conf_level = ifnone(confidence_level, .95)
 
         if posteriors is None:
@@ -1070,10 +1060,13 @@ class JPT:
             result = ExpectationResult(var, posteriors._evidence, conf_level)
             result._res = dist._expectation()
             result.candidates.extend(posteriors.candidates)
+            result.weights = posteriors.weights
+            result.candidate_dists = posteriors.candidate_dists[var]
+            result.distribution = dist
             if var.numeric:
                 exp_quantile = dist.cdf.eval(result._res)
-                result._lower = dist.ppf.eval(max(0., (exp_quantile - conf_level / 2.)))
-                result._upper = dist.ppf.eval(min(1., (exp_quantile + conf_level / 2.)))
+                result._lower = dist.ppf.eval((1 - conf_level) / 2)  # max(0., (exp_quantile - conf_level / 2.)))
+                result._upper = dist.ppf.eval(1 - (1 - conf_level) / 2)  # min(1., (exp_quantile + conf_level / 2.)))
             final[var] = result
         return final
 
@@ -1117,55 +1110,69 @@ class JPT:
             r.path.update({var: dist.mpe()})
         return r
 
-    def _preprocess_query(self, query, transform_values=True, remove_none=True, allow_singular_values=True) \
-            -> VariableMap:
-        """
-        Transform a query entered by a user into an internal representation that can be further processed.
+    def _prepropress_query(self,
+                           query: Union[VariableMap, Dict[Variable, Any]],
+                           remove_none: bool = True,
+                           skip_unknown_variables: bool = False) -> VariableMap:
+        '''
+        Transform a query entered by a user into an internal representation
+        that can be further processed.
 
-        @param query: A VariableMap or dict
-        @param transform_values: Rather to transform the values for numeric variables into scaled space or not
-        @param remove_none: Rather to remove Nones in the values or not
-        @param allow_singular_values: Rather to allow singular values or transform them to intervals
-        """
-
-        # Initialize result
+        :param skip_unknown_variables:  skip preprocessing for variable that does not exist in tree (may happen in
+                                        multiple reverse tree inference). If False, an exception is raised;
+                                        default: False
+        :type skip_unknown_variables: bool
+        '''
+        # Transform lists into a numeric interval:
         query_ = VariableMap()
-
-        # Transform single numeric values in to intervals given by the haze
         # parameter of the respective variable:
         for key, arg in query.items():
             if arg is None and remove_none:
                 continue
-            var = key if isinstance(key, Variable) else self.varnames[key]
+
+            var = key if isinstance(key, Variable) else self.varnames.get(key)
+
+            if var is None:
+                if skip_unknown_variables:
+                    continue
+                else:
+                    raise Exception(f'Variable "{key}" is unknown!')
+
             if var.numeric:
-                if type(arg) in [list, tuple]:
+                if type(arg) is list:
                     arg = list2interval(arg)
-                if isinstance(arg, numbers.Number) and transform_values:
+                if isinstance(arg, numbers.Number):
                     val = var.domain.values[arg]
-                    if allow_singular_values:
-                        query_[var] = val
-                    else:
+                    # Apply a "blur" to single value evidences, if any blur is set
+                    if var.blur:
                         prior = self.priors[var.name]
                         quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
                                                                   prior.cdf.idx_at(val)))].eval(val)
-                        lower = quantile - var.haze / 2
-                        upper = quantile + var.haze / 2
+                        lower = quantile - var.blur / 2
+                        upper = quantile + var.blur / 2
                         query_[var] = ContinuousSet(prior.ppf.functions[max(1,
                                                                             min(len(prior.cdf) - 2,
                                                                                 prior.ppf.idx_at(lower)))].eval(lower),
                                                     prior.ppf.functions[min(len(prior.ppf) - 2,
                                                                             max(1,
                                                                                 prior.ppf.idx_at(upper)))].eval(upper))
-                elif isinstance(arg, ContinuousSet) and transform_values:
+                    else:
+                        query_[var] = ContinuousSet(val, val)
+                elif isinstance(arg, ContinuousSet):
                     query_[var] = ContinuousSet(var.domain.values[arg.lower],
                                                 var.domain.values[arg.upper], arg.left, arg.right)
+                elif isinstance(arg, RealSet):
+                    query_[var] = RealSet([ContinuousSet(var.domain.labels[i.lower],
+                                                         var.domain.labels[i.upper],
+                                                         i.left,
+                                                         i.right) for i in arg.intervals])
                 else:
-                    query_[var] = arg
+                    raise TypeError()
             if var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
                 if type(arg) is not set:
                     arg = {arg}
-                query_[var] = {var.domain.values[v] if transform_values else v for v in arg}
+                query_[var] = {var.domain.values[v] for v in arg}
 
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
@@ -1182,32 +1189,6 @@ class JPT:
         # - lie in the interval of the numeric value in the path
         # -> return leaf that matches query
         yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
-
-    def leaf_distribution(self) -> jpt.variables.SymbolicVariable:
-        """Generate a multinomial distribution with the leaves as variables and their weights as probabilities. """
-        leaf_variable = jpt.variables.SymbolicVariable("Leaf", SymbolicType("Leaf", self.leaves.keys()))
-        leaf_variable = leaf_variable.dist([leaf.prior for leaf in self.leaves.values()])
-        return leaf_variable
-
-    def multiply_by_leaf_prior(self, leaf_prior: Dict[int, float]):
-        """Include a different prior for leaves by multiplying and normalizing both priors."""
-        result = self.copy()
-        for idx, leaf in result.leaves.items():
-            result.leaves[idx].prior *= leaf_prior[idx]
-
-        probability_mass = sum(leaf.prior for leaf in result.leaves.values())
-
-        for idx, leaf in result.leaves.items():
-            result.leaves[idx].prior /= probability_mass
-
-        return result
-
-    def replace_leaf_prior(self, leaf_prior: Dict[int, float]):
-        result = self.copy()
-        for idx, leaf in result.leaves.items():
-            result.leaves[idx].prior = leaf_prior[idx]
-
-        return result.normalize()
 
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
         '''
@@ -1230,10 +1211,14 @@ class JPT:
         impurity = self.impurity
 
         max_gain = impurity.compute_best_split(start, end)
-        JPT.logger.debug('Data range: %d-%d,' % (start, end),
-                         'split var:', split_var,
-                         ', split_pos:', split_pos,
-                         ', gain:', max_gain)
+
+        if max_gain < 0:
+            raise ValueError('Something went wrong!')
+
+        self.logger.debug('Data range: %d-%d,' % (start, end),
+                          'split var:', split_var,
+                          ', split_pos:', split_pos,
+                          ', gain:', max_gain)
 
         if max_gain:
             split_pos = impurity.best_split_pos
@@ -1247,9 +1232,9 @@ class JPT:
                 parent.set_child(child_idx, leaf)
 
             for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.dist(data=data,
-                                               rows=self.indices[start:end], col=i)
-
+                leaf.distributions[v] = v.distribution().fit(data=data,
+                                                             rows=self.indices[start:end],
+                                                             col=i)
             leaf.prior = n_samples / data.shape[0]
             leaf.samples = n_samples
 
@@ -1371,85 +1356,80 @@ class JPT:
         :param columns: The training examples (assumed in row-shape)
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
         '''
-        with _lock:
-            # ----------------------------------------------------------------------------------------------------------
-            # Check and prepare the data
-            global _data
-            _data = self._preprocess_data(data=data, rows=rows, columns=columns)
-            if _data.shape[0] < 1:
-                raise ValueError('No data for learning.')
+        # ----------------------------------------------------------------------------------------------------------
+        # Check and prepare the data
+        _data = self._preprocess_data(data=data, rows=rows, columns=columns)
+        if _data.shape[0] < 1:
+            raise ValueError('No data for learning.')
 
-            self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
-            self.indices[0] = 0
-            np.cumsum(self.indices, out=self.indices)
-            # Initialize the impurity calculation
-            self.impurity = Impurity(self)
-            self.impurity.setup(_data, self.indices)
-            self.impurity.min_samples_leaf = max(1, self.min_samples_leaf)
+        self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
+        self.indices[0] = 0
+        np.cumsum(self.indices, out=self.indices)
 
-            JPT.logger.info('Data transformation... %d x %d' % _data.shape)
+        JPT.logger.info('Data transformation... %d x %d' % _data.shape)
 
-            # ----------------------------------------------------------------------------------------------------------
-            # Initialize the internal data structures
-            self._reset()
+        # ----------------------------------------------------------------------------------------------------------
+        # Initialize the internal data structures
+        self._reset()
 
-            # ----------------------------------------------------------------------------------------------------------
-            # Determine the prior distributions
-            started = datetime.datetime.now()
-            JPT.logger.info('Learning prior distributions...')
-            self.priors = {}
-            pool = mp.Pool()
-            for i, prior in enumerate(pool.map(_prior, [(i, var.to_json()) for i, var in enumerate(
-                    self.variables)])):  # {var: var.dist(data=data[:, i]) }
-                self.priors[self.variables[i].name] = self.variables[i].domain.from_json(prior)
-            JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
-            # self.impurity.priors = [self.priors[v.name] for v in self.variables if v.numeric]
-            pool.close()
-            pool.join()
+        # ----------------------------------------------------------------------------------------------------------
+        # Determine the prior distributions
+        started = datetime.datetime.now()
+        JPT.logger.info('Learning prior distributions...')
+        self.priors = {}
+        for i, (vname, var) in enumerate(self.varnames.items()):
+            self.priors[vname] = var.distribution().fit(data=_data,
+                                                        col=i)
+        JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
 
-            # ----------------------------------------------------------------------------------------------------------
-            # Start the training
+        # ----------------------------------------------------------------------------------------------------------
+        # Start the training
 
-            started = datetime.datetime.now()
-            JPT.logger.info('Started learning of %s x %s at %s '
-                            'requiring at least %s samples per leaf' % (_data.shape[0],
-                                                                        _data.shape[1],
-                                                                        started,
-                                                                        int(self.impurity.min_samples_leaf)))
-            learning = GENERATIVE if self.targets is None else DISCRIMINATIVE
-            JPT.logger.info('Learning is %s. ' % learning)
-            if learning == DISCRIMINATIVE:
-                JPT.logger.info('Target variables (%d): %s\n'
-                                'Feature variables (%d): %s' % (len(self.targets),
-                                                                ', '.join(mapstr(self.targets)),
-                                                                len(self.variables) - len(self.targets),
-                                                                ', '.join(
-                                                                    mapstr(set(self.variables) - set(self.targets)))))
-            # build up tree
-            self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
-            while self.c45queue:
-                self.c45(*self.c45queue.popleft())
+        if type(self._min_samples_leaf) is int:
+            min_samples_leaf = self._min_samples_leaf
+        elif type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
+            min_samples_leaf = max(1, int(self._min_samples_leaf * len(_data)))
+        else:
+            min_samples_leaf = self._min_samples_leaf
 
-            # ----------------------------------------------------------------------------------------------------------
-            # Print the statistics
+        # Initialize the impurity calculation
+        self.impurity = Impurity(self)
+        self.impurity.setup(_data, self.indices)
+        self.impurity.min_samples_leaf = min_samples_leaf
 
-            JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
-            # if logger.level >= 20:
-            JPT.logger.debug(self)
-            return self
+        started = datetime.datetime.now()
+        JPT.logger.info('Started learning of %s x %s at %s '
+                        'requiring at least %s samples per leaf' % (_data.shape[0],
+                                                                    _data.shape[1],
+                                                                    started,
+                                                                    min_samples_leaf))
+        learning = GENERATIVE if self.targets is None else DISCRIMINATIVE
+        JPT.logger.info('Learning is %s. ' % learning)
+        if learning == DISCRIMINATIVE:
+            JPT.logger.info('Target variables (%d): %s\n'
+                            'Feature variables (%d): %s' % (len(self.targets),
+                                                            ', '.join(mapstr(self.targets)),
+                                                            len(self.variables) - len(self.targets),
+                                                            ', '.join(
+                                                                mapstr(set(self.variables) - set(self.targets)))))
+        # build up tree
+        self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
+        while self.c45queue:
+            self.c45(*self.c45queue.popleft())
+
+        # ----------------------------------------------------------------------------------------------------------
+        # Print the statistics
+
+        JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
+        # if logger.level >= 20:
+        JPT.logger.debug(self)
+        return self
 
     fit = learn
 
     @property
     def min_samples_leaf(self):
-        if type(self._min_samples_leaf) is int:
-            return self._min_samples_leaf
-        if type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
-            if _data is None:
-                return self._min_samples_leaf
-            else:
-                return int(self._min_samples_leaf * len(_data))
-        return int(self._min_samples_leaf)
+        return self._min_samples_leaf
 
     @staticmethod
     def sample(sample, ft):
@@ -1493,6 +1473,7 @@ class JPT:
             validation processes.
         :type min_distances: Dict[Variable, float]
         Returns: An np.array with shape (x, ) containing the probabilities.
+
         """
         # create minimal distances for each numeric variable such a senseful metric can be computed if not provided
         if min_distances is None:
@@ -1522,7 +1503,7 @@ class JPT:
             probabilities = probabilities + leaf_probabilities
         return probabilities
 
-    def reverse(self, query, confidence=.5) -> List[Tuple[Dict, List[Node]]]:
+    def reverse(self, query, confidence=.05) -> List[Tuple[Dict, List[Node]]]:
         '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
 
         :param query: a mapping from featurenames to either numeric value intervals or an iterable of categorical values
@@ -1533,43 +1514,50 @@ class JPT:
         :rtype: dict
         '''
         # if none of the target variables is present in the query, there is no match possible
-        if set(query.keys()).isdisjoint(set(self.variables)):
+        # only check variable names, because multiple trees can have the (semantically) same variable, which differs as
+        # python object
+        if set([v.name if isinstance(v, Variable) else v for v in query.keys()]).isdisjoint(set(self.varnames)):
             return []
 
-        # Transform into internal values/intervals (symbolic values to their indices) and update to contain all possible variables
-        query = {var: list2interval(val) if type(val) in (list, tuple) and var.numeric else val if type(val) in (
-        list, tuple) else [val] for var, val in query.items()}
-        query_ = {var: set(var.domain.value[v] for v in val) for var, val in query.items()}
+        # Transform into internal values/intervals (symbolic values to their indices)
+        query_ = self._prepropress_query(query, skip_unknown_variables=True)
+
+        # update non-query variables to allow all possible values
         for i, var in enumerate(self.variables):
             if var in query_: continue
             if var.numeric:
-                query_[var] = list2interval([np.NINF, np.PINF])
+                query_[var] = R
             else:
                 query_[var] = var.domain.values
 
-        # find the leaf (or the leaves) that matches the query best
+        # stores the probabilities, that the query variables take on the value(s)/a value in the interval given in
+        # the query
         confs = {}
+
+        # find the leaf (or the leaves) that matches the query best
         for k, l in self.leaves.items():
-            confs_ = defaultdict(float)
+            conf = defaultdict(float)
             for v, dist in l.distributions.items():
                 if v.numeric:
-                    confs_[v] = dist.p(query_[v])
+                    conf[v] = dist._p(query_[v])
                 else:
-                    conf = 0.
+                    conf_ = 0.
                     for sv in query_[v]:
-                        conf += dist.p(sv)
-                    confs_[v] = conf
-            confs[l] = confs_
+                        conf_ += dist._p(sv)
+                    conf[v] = conf_
+            confs[l.idx] = conf
 
-        # the candidates are the one leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
-        candidates = sorted([leaf for leaf, confs in confs.items() if all(c >= confidence for c in confs.values())],
+        # the candidates are the leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
+        candidates = sorted([leafidx for leafidx, confs in confs.items() if all(c >= confidence for c in confs.values())],
                             key=lambda l: sum(confs[l].values()), reverse=True)
+
+        out('CANDIDATES in reverse', candidates)
 
         # for the chosen candidate determine the path to the root
         paths = []
         for c in candidates:
             p = []
-            curcand = c
+            curcand = self.leaves[c]
             while curcand is not None:
                 p.append(curcand)
                 curcand = curcand.parent
@@ -1578,6 +1566,7 @@ class JPT:
         # elements of path are tuples (a, b) with a being mappings of {var: confidence} and b being an ordered list of
         # nodes representing a path from a leaf to the root
         return paths
+
 
     def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.
@@ -1602,9 +1591,9 @@ class JPT:
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-        dot = Digraph(format='svg', name=filename or title,
+        dot = Digraph(format='svg', name=title,
                       directory=directory,
-                      filename=f'{filename or title}.dot')
+                      filename=f'{filename or title}')
 
         # create nodes
         sep = ",<BR/>"
@@ -1661,7 +1650,7 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items() if self.targets is None or v in self.targets])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>"  if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>

@@ -6,7 +6,7 @@ from dnutils import out
 from matplotlib import pyplot as plt
 
 from jpt.base.utils import format_path
-from jpt.learning.distributions import SymbolicType, Numeric
+from jpt.distributions import SymbolicType, Numeric
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 

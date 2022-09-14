@@ -4,20 +4,24 @@ from unittest import TestCase
 
 import numpy as np
 
+from jpt.distributions.utils import OrderedDictProxy, DataScaler
+
 try:
-    from jpt.base.quantiles import __module__
+    from jpt.base.functions import __module__
+    from jpt.distributions.quantile.quantiles import __module__
     from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.quantiles import PiecewiseFunction, LinearFunction, QuantileDistribution
+    from jpt.base.functions import PiecewiseFunction, LinearFunction
+    from jpt.distributions.quantile.quantiles import QuantileDistribution
     from jpt.base.intervals import ContinuousSet, EXC, INC
 
 
-from jpt.base.utils import Unsatisfiability
-from jpt.learning.distributions import SymbolicType, OrderedDictProxy, Multinomial, NumericType, Gaussian, Numeric, \
-    Distribution, DataScaler
+from jpt.base.errors import Unsatisfiability
+from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
+    Distribution
 
 
 class MultinomialTest(TestCase):
@@ -59,9 +63,9 @@ class MultinomialTest(TestCase):
         Dist123 = self.Dist123
 
         probs = [1 / 3] * 3
-        d1 = DistABC(params=probs)
+        d1 = DistABC().set(params=probs)
 
-        self.assertRaises(ValueError, Dist123, params=probs)
+        self.assertRaises(ValueError, Dist123().set, params=probs)
 
         self.assertIsInstance(d1, DistABC)
         self.assertEqual(list(d1._params), probs)
@@ -81,12 +85,12 @@ class MultinomialTest(TestCase):
     def test_inference(self):
         '''Posterior, MPE, Expectation'''
         DistABC = self.DistABC
-        d1 = DistABC(params=[1/2, 1/4, 1/4])
+        d1 = DistABC().set(params=[1/2, 1/4, 1/4])
 
         self.assertEqual(d1.expectation(), 'A')
         self.assertEqual(d1.mpe(), 'A')
-        self.assertEqual(d1.crop(excl_values=['B']), DistABC([2/3, 0, 1/3]))
-        self.assertEqual(d1.crop(incl_values=['A', 'B']), DistABC([2 / 3, 1 / 3, 0]))
+        self.assertEqual(d1.crop(excl_values=['B']), DistABC().set([2/3, 0, 1/3]))
+        self.assertEqual(d1.crop(incl_values=['A', 'B']), DistABC().set([2 / 3, 1 / 3, 0]))
         self.assertRaises(Unsatisfiability, d1.crop, excl_values=['A', 'B', 'C'])
         self.assertEqual(d1.crop(), d1)
 
@@ -104,49 +108,62 @@ class MultinomialTest(TestCase):
     def test_distributions_serialization(self):
         '''(De-)Serialziation of Multinomial distributions'''
         DistABC = self.DistABC
-        d1 = DistABC(params=[1 / 2, 1 / 4, 1 / 4])
+        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
         Distribution.type_from_json(DistABC.type_to_json())
         d2 = Distribution.from_json(json.loads(json.dumps(d1.to_json())))
         self.assertEqual(d1, d2)
 
     def test_distribution_manipulation(self):
         DistABC = self.DistABC
-        d1 = DistABC(params=[1 / 2, 1 / 4, 1 / 4])
-        d2 = DistABC(params=[0, .5, .5])
+        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+        d2 = DistABC().set(params=[0, .5, .5])
         d3 = DistABC.merge([d1, d2], weights=[.5, .5])
         d1.update(d2, .5)
 
-        self.assertEqual(d3, DistABC(params=[.25, .375, .375]))
+        self.assertEqual(d3, DistABC().set(params=[.25, .375, .375]))
         self.assertEqual(d1, d3)
         self.assertEqual(d1.update(d2, 0), d1)
 
     def test_kldiv_equality(self):
         DistABC = self.DistABC
-        d1 = DistABC(params=[1 / 2, 1 / 4, 1 / 4])
-        d2 = DistABC(params=[1 / 2, 1 / 4, 1 / 4])
+        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+        d2 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
         self.assertEqual(d1.kl_divergence(d2), 0)
         self.assertEqual(d1.kl_divergence(d1), 0)
-        self.assertEqual(0, DistABC(params=[1, 0, 0]).kl_divergence(DistABC(params=[1, 0, 0])))
+        self.assertEqual(0, DistABC().set(params=[1, 0, 0]).kl_divergence(DistABC().set(params=[1, 0, 0])))
 
     def test_kldiv_inequality(self):
         DistABC = self.DistABC
-        d1 = DistABC(params=[.5, .25, .25])
-        d2 = DistABC(params=[.25, .5, .25])
+        d1 = DistABC().set(params=[.5, .25, .25])
+        d2 = DistABC().set(params=[.25, .5, .25])
         self.assertEqual(0.1875, d1.kl_divergence(d2))
 
     def test_kldiv_extreme_inequality(self):
         DistABC = self.DistABC
-        d1 = DistABC(params=[1, 0, 0])
-        d2 = DistABC(params=[0, .5, .5])
+        d1 = DistABC().set(params=[1, 0, 0])
+        d2 = DistABC().set(params=[0, .5, .5])
         self.assertEqual(1, d1.kl_divergence(d2))
 
     def test_kldiv_type(self):
         DistABC = self.DistABC
-        d1 = DistABC(params=[.5, .25, .25])
+        d1 = DistABC().set(params=[.5, .25, .25])
         self.assertRaises(TypeError, d1.kl_divergence, Numeric().fit(np.array([[1], [2], [3]],
                                                                               dtype=np.float64),
                                                                      col=0))
 
+    def test_value_conversion(self):
+        DistABC = self.DistABC
+        self.assertEqual(0, DistABC.label2value('A'))
+        self.assertEqual(1, DistABC.label2value('B'))
+        self.assertEqual(2, DistABC.label2value('C'))
+        self.assertEqual('A', DistABC.value2label(0))
+        self.assertEqual('B', DistABC.value2label(1))
+        self.assertEqual('C', DistABC.value2label(2))
+        self.assertEqual({0, 2}, DistABC.label2value({'A', 'C'}))
+        self.assertEqual({'C', 'B'}, DistABC.value2label({2, 1}))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class NumericTest(TestCase):
     '''Test class for ``Numeric`` distributions'''
@@ -160,9 +177,6 @@ class NumericTest(TestCase):
         cls.DistGauss = NumericType('Uniform', values=NumericTest.GAUSSIAN)
 
     def test_hash(self):
-        hash(self.DistGauss)
-        d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
-        self.assertEqual(hash(d), hash(d.copy()))
         self.assertNotEqual(hash(Numeric), hash(self.DistGauss))
 
     def test_creation(self):
@@ -234,6 +248,20 @@ class NumericTest(TestCase):
         d1 = DistGauss().fit(data1, col=0)
         self.assertRaises(TypeError, d1.kl_divergence, ...)
 
+    def test_value_conversion(self):
+        DistGauss = self.DistGauss
+        self.assertEqual(0, DistGauss.value2label(DistGauss.label2value(0)))
+        self.assertEqual(ContinuousSet(0, 1),
+                         DistGauss.value2label(DistGauss.label2value(ContinuousSet(0, 1))))
+
+    def test_label_inference(self):
+        raise NotImplementedError()
+
+    def test_value_inference(self):
+        raise NotImplementedError()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class DataScalerTest(TestCase):
 

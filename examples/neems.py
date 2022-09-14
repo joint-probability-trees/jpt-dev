@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from dnutils import out
-from jpt.learning.distributions import SymbolicType, Numeric, Bool
+from jpt.distributions import SymbolicType, Numeric, Bool
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable, NumericVariable
 

@@ -4,7 +4,7 @@ pyximport.install()
 from examples import tourism, quantile, restaurant, neems, alarm, muesli, regression, mnist
 
 from dnutils import out
-from jpt.learning.distributions import Bool
+from jpt.distributions import Bool
 from jpt.variables import Variable
 
 

@@ -72,9 +72,10 @@ basedir = 'src'
 
 pyxfiles = [
     "jpt/base/cutils.pyx",
+    "jpt/base/functions.pyx",
     "jpt/base/intervals.pyx",
-    "jpt/base/quantiles.pyx",
-    "jpt/learning/cdfreg.pyx",
+    "jpt/distributions/quantile/quantiles.pyx",
+    "jpt/distributions/quantile/cdfreg.pyx",
     "jpt/learning/impurity.pyx",
 ]
 
@@ -84,6 +85,10 @@ extensions = [
               extra_compile_args=["-O3"],
               language="c++"),
     Extension("intervals", sources=[os.path.join(basedir, pyxfiles[1]), os.path.join(basedir, pyxfiles[0])],
+              include_dirs=[numpy.get_include()],
+              extra_compile_args=["-O3"],
+              language="c++"),
+    Extension("functions", sources=[os.path.join(basedir, pyxfiles[1]), os.path.join(basedir, pyxfiles[0])],
               include_dirs=[numpy.get_include()],
               extra_compile_args=["-O3"],
               language="c++"),
@@ -122,7 +127,7 @@ compiled = cythonize([os.path.join(basedir, f) for f in pyxfiles],
 
 setup(
     name='jpt',
-    packages=['jpt', 'jpt.learning', 'jpt.base'],
+    packages=['jpt', 'jpt.learning', 'jpt.base', 'jpt.distributions', 'jpt.distributions.quantile'],
     package_dir={'': 'src'},
     ext_modules=compiled,
     zip_safe=False,

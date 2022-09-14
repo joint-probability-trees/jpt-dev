@@ -18,7 +18,9 @@ VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH = (0, 1, 2)
 VERSION_STRING_SHORT = '%s.%s' % (VERSION_MAJOR, VERSION_MINOR)
 VERSION_STRING_FULL = '%s.%s' % (VERSION_STRING_SHORT, VERSION_PATCH)
 
+
 __version__ = VERSION_STRING_FULL
+
 
 if sys.version_info[0] < 3:
     raise Exception('Unsupported Python version: %s' % sys.version_info[0])
