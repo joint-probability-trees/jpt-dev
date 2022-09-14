@@ -184,7 +184,6 @@ cdef class Impurity:
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                        if v.symbolic and (tree.targets is None or v in tree.targets)],
                                       dtype=np.int64)
-
         self.n_sym_vars = len(self.symbolic_vars)
         self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
 
@@ -201,15 +200,17 @@ cdef class Impurity:
         self.features = np.concatenate((self.numeric_features, self.symbolic_features))
 
 
-        if self.n_sym_vars_total:
+        if self.n_sym_vars:
             # Thread-invariant buffers
             self.symbols = np.array([v.domain.n_values for v in tree.variables if v.symbolic], dtype=np.int64)
             self.max_sym_domain = max(self.symbols)
             self.symbols_total = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
             
-            # Thread-private buffers
+        # if self.n_sym_vars_total:  # Symbolic features require two buffers
             self.symbols_left = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
             self.symbols_right = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
+
+        if self.n_sym_vars:  # Symbolic targets require a buffer for improvement calculation
             self.gini_improvements = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
             self.gini_impurities = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
             self.gini_left = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
@@ -221,14 +222,13 @@ cdef class Impurity:
 
         self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
 
-        if self.n_num_vars_total:
+        if self.n_num_vars:
             # Thread-invariant buffers
             self.sums_total = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.sq_sums_total = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.variances_total = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.max_variances = np.array([v._max_std ** 2 for v in tree.variables if v.numeric], dtype=np.float64)
 
-            # Thread-private buffers
             self.sums_left = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.sums_right = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.sq_sums_left = np.ndarray(self.n_num_vars, dtype=np.float64)
@@ -239,7 +239,7 @@ cdef class Impurity:
 
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
-        #copy the dependency structure
+        # copy the dependency structure
         self.dependency_matrix = tree.dependency_matrix
         self.numeric_dependency_matrix = tree.numeric_dependency_matrix
         self.symbolic_dependency_matrix = tree.symbolic_dependency_matrix
@@ -258,10 +258,16 @@ cdef class Impurity:
         self.index_buffer = np.ndarray(shape=indices.shape[0], dtype=np.int64)
 
     cdef inline int has_numeric_vars(Impurity self) nogil:
-        return self.numeric_vars.shape[0]
+        return self.n_num_vars
 
     cdef inline int has_symbolic_vars(Impurity self) nogil:
-        return self.symbolic_vars.shape[0]
+        return self.n_sym_vars
+
+    cdef inline int has_symbolic_features(Impurity self) nogil:
+        return self.n_sym_vars_total - self.n_sym_vars
+
+    cdef inline int has_numeric_features(Impurity self) nogil:
+        return self.n_num_vars_total - self.n_num_vars
 
     cdef inline void gini_impurity(Impurity self, SIZE_t[:, ::1] counts, SIZE_t n_samples, DTYPE_t[::1] result) nogil:
         '''
@@ -299,7 +305,7 @@ cdef class Impurity:
                 else: return False
         return True
 
-    cpdef compute_best_split(self, SIZE_t start, SIZE_t end):
+    cpdef DTYPE_t compute_best_split(self, SIZE_t start, SIZE_t end) except -1:
         '''
         Computation uses the impurity proxy from sklearn: ::
 
@@ -337,7 +343,7 @@ cdef class Impurity:
             if not self.check_max_variances(self.variances_total):
                 return 0
 
-        if self.symbolic_vars.shape[0]:
+        if self.has_symbolic_vars():
             bincount(self.data,
                      self.indices[self.start:self.end],
                      self.symbolic_vars,
@@ -513,10 +519,12 @@ cdef class Impurity:
                                               * (1 - self.w_numeric))
 
             if symbolic:
-                self.symbols_left[...] = 0
-                self.symbols_right[...] =  self.symbols_total[...]
-                self.gini_improvements[...] = 0
-                self.num_samples[...] = 0
+                if self.has_symbolic_vars():
+                    self.symbols_left[...] = 0
+                    self.symbols_right[...] =  self.symbols_total[...]
+
+                    self.gini_improvements[...] = 0
+                    self.num_samples[...] = 0
 
                 if self.has_numeric_vars():
                     self.sums_left[...] = 0

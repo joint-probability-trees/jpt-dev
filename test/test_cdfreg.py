@@ -1,8 +1,7 @@
 import statistics
-import tempfile
-from unittest import TestCase
 
 import pandas as pd
+from ddt import ddt, data
 from matplotlib import pyplot as plt
 from pandas import DataFrame
 from scipy.stats import norm
@@ -10,21 +9,23 @@ from scipy.stats import norm
 import unittest
 import numpy as np
 
-from jpt.base.utils import Unsatisfiability
+from jpt.base.errors import Unsatisfiability
 
-from jpt.learning.distributions import Numeric, Gaussian, SymbolicType
+from jpt.distributions import Numeric, Gaussian, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
 
 try:
     from jpt.base.intervals import __module__
-    from jpt.base.quantiles import __module__
+    from jpt.distributions.quantile.quantiles import __module__
+    from jpt.base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from jpt.base.intervals import ContinuousSet, INC, EXC
-    from jpt.base.quantiles import QuantileDistribution, PiecewiseFunction, ConstantFunction, LinearFunction, Undefined
+    from jpt.distributions.quantile.quantiles import QuantileDistribution
+    from jpt.base.functions import (PiecewiseFunction, ConstantFunction, LinearFunction, Undefined, QuadraticFunction)
 
 
 class TestCaseMerge(unittest.TestCase):
@@ -175,82 +176,6 @@ class TestCasePPFTransform(unittest.TestCase):
         }))
 
 
-class PLFTest(unittest.TestCase):
-
-    def test_plf_constant_from_dict(self):
-        d = {
-            ']-∞,1.000[': '0.0',
-            '[1.000,2.000[': '0.25',
-            '[3.000,4.000[': '0.5',
-            '[4.000,5.000[': '0.75',
-            '[5.000,∞[': '1.0'
-        }
-
-        cdf = PiecewiseFunction()
-        cdf.intervals.append(ContinuousSet.parse(']-inf,1['))
-        cdf.intervals.append(ContinuousSet.parse('[1, 2['))
-        cdf.intervals.append(ContinuousSet.parse('[3, 4['))
-        cdf.intervals.append(ContinuousSet.parse('[4, 5['))
-        cdf.intervals.append(ContinuousSet.parse('[5, inf['))
-        cdf.functions.append(ConstantFunction(0))
-        cdf.functions.append(ConstantFunction(.25))
-        cdf.functions.append(ConstantFunction(.5))
-        cdf.functions.append(ConstantFunction(.75))
-        cdf.functions.append(ConstantFunction(1))
-
-        self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
-
-    def test_plf_linear_from_dict(self):
-        d = {
-            ']-∞,0.000[': 'undef.',
-            '[0.000,0.500[': '2.000x',
-            '[0.500,1.000[': '2.000x + 1.000',
-            '[1.000,∞[': None
-        }
-        cdf = PiecewiseFunction()
-        cdf.intervals.append(ContinuousSet.parse(']-∞,0.000['))
-        cdf.intervals.append(ContinuousSet.parse('[0.000,0.500['))
-        cdf.intervals.append(ContinuousSet.parse('[0.500,1.000['))
-        cdf.intervals.append(ContinuousSet.parse('[1.000,∞['))
-        cdf.functions.append(Undefined())
-        cdf.functions.append(LinearFunction(2, 0))
-        cdf.functions.append(LinearFunction(2, 1))
-        cdf.functions.append(Undefined())
-
-        self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
-
-    def test_plf_mixed_from_dict(self):
-        cdf = PiecewiseFunction()
-        cdf.intervals.append(ContinuousSet.parse(']-inf,0.000['))
-        cdf.intervals.append(ContinuousSet.parse('[0.000, 1['))
-        cdf.intervals.append(ContinuousSet.parse('[1, 2['))
-        cdf.intervals.append(ContinuousSet.parse('[2, 3['))
-        cdf.intervals.append(ContinuousSet.parse('[3, inf['))
-        cdf.functions.append(ConstantFunction(0))
-        cdf.functions.append(LinearFunction.from_points((0, 0), (1, .5)))
-        cdf.functions.append(ConstantFunction(.5))
-        cdf.functions.append(LinearFunction.from_points((2, .5), (3, 1)))
-        cdf.functions.append(ConstantFunction(1))
-
-        self.assertEqual(cdf, PiecewiseFunction.from_dict({
-            ']-∞,0.000[': 0,
-            '[0.000,1.00[': str(LinearFunction.from_points((0, 0), (1, .5))),
-            '[1.,2.000[': '.5',
-            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
-            '[3.000,∞[': 1
-        }))
-
-    def test_serialization(self):
-        plf = PiecewiseFunction.from_dict({
-            ']-∞,0.000[': 0,
-            '[0.000,1.00[': str(LinearFunction.from_points((0, 0), (1, .5))),
-            '[1.,2.000[': '.5',
-            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
-            '[3.000,∞[': 1
-        })
-        self.assertEqual(plf, PiecewiseFunction.from_json(plf.to_json()))
-
-
 class TestCaseQuantileCrop(unittest.TestCase):
 
     @classmethod
@@ -391,7 +316,6 @@ class TestCasePosteriorNumeric(unittest.TestCase):
     def f(cls, x):
         """The function to predict."""
         # return x * np.sin(x)
-        import math
         return x
 
     @classmethod
@@ -484,7 +408,7 @@ class TestCasePosteriorSymbolic(unittest.TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, blur=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
@@ -540,7 +464,7 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=False, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=False, precision=.01, blur=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
@@ -638,7 +562,7 @@ class TestCaseExpectation(unittest.TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, blur=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
@@ -684,7 +608,10 @@ class TestCaseInference(unittest.TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, haze=.01)
+        cls.variables = infer_from_dataframe(cls.data,
+                                             scale_numeric_types=True,
+                                             precision=.01,
+                                             blur=.01)
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
@@ -722,26 +649,4 @@ class TestCaseInference(unittest.TestCase):
     #           'with calculated posterior',
     #           f'Posterior P(' +
     #           f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k}={v}" for k, v in self.e.items()])})')
-
-
-class LinearFunctionTest(TestCase):
-
-    def test_equality(self):
-        f1 = LinearFunction(1, 1)
-        f2 = ConstantFunction(1)
-        f3 = LinearFunction(0, 1)
-
-        self.assertTrue(f1 == LinearFunction(1, 1))
-        self.assertTrue(f2 == ConstantFunction(1))
-        self.assertTrue(f3 == LinearFunction(0, 1))
-        self.assertEqual(f2, f3)
-
-    def test_serialization(self):
-        f1 = LinearFunction(1, 1)
-        f2 = ConstantFunction(1)
-        f3 = LinearFunction(0, 1)
-        self.assertEqual(f1, LinearFunction.from_json(f1.to_json()))
-        self.assertEqual(f2, LinearFunction.from_json(f2.to_json()))
-        self.assertEqual(f3, LinearFunction.from_json(f3.to_json()))
-
 

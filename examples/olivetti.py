@@ -3,7 +3,7 @@ from datetime import datetime
 
 import numpy as np
 
-from jpt.learning.distributions import Numeric, SymbolicType
+from jpt.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 

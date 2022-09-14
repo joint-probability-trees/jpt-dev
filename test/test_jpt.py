@@ -1,19 +1,20 @@
-import gc
 import json
+import os
 import pickle
 from unittest import TestCase
 
+import pandas as pd
 from dnutils import out
 
-from jpt.trees import JPT, SumJPT, ProductJPT
-from jpt.variables import NumericVariable, VariableMap
-from jpt.base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
-import matplotlib.pyplot as plt
+from jpt.base.errors import Unsatisfiability
+from jpt.trees import JPT
+from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe
+
 
 class JPTTest(TestCase):
 
     def setUp(self) -> None:
-        with open('resources/gaussian_100.dat', 'rb') as f:
+        with open(os.path.join('resources', 'gaussian_100.dat'), 'rb') as f:
             self.data = pickle.load(f)
 
     def test_hyperparameter_serialization(self):
@@ -67,85 +68,24 @@ class JPTTest(TestCase):
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
         probs = jpt.likelihood(self.data.reshape(-1, 1))
+        #TODO: add test condition
 
-    def test_conditional_jpt_hard_evidence(self):
-        x = NumericVariable('X')
-        y = NumericVariable('Y')
-        jpt = JPT(variables=[x, y],
-                  min_samples_leaf=.05,)
-        jpt.learn(self.data.reshape(-1, 2))
-        evidence = VariableMap()
-        evidence[x] = 0.5
-        ct = jpt.conditional_jpt(evidence, keep_evidence=True)
-        self.assertEqual(len(ct.leaves), 2)
+    def test_unsatisfiability(self):
+        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        jpt = JPT(variables=infer_from_dataframe(df), targets=['WillWait'], min_samples_leaf=1)
+        jpt.fit(df)
+        self.assertRaises(Unsatisfiability,
+                          jpt.posterior,
+                          evidence={'WillWait': False, 'Patrons': 'Some'},
+                          fail_on_unsatisfiability=True)
+        self.assertIsNone(jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
+                                        fail_on_unsatisfiability=False))
 
-    def test_conditional_jpt_soft_evidence(self):
-        x = NumericVariable('X')
-        y = NumericVariable('Y')
-        jpt = JPT(variables=[x, y],
-                  min_samples_leaf=.05, )
-        evidence = VariableMap()
-        evidence[y] = ContinuousSet(0.2, 0.5)
-        jpt.learn(self.data.reshape(-1, 2))
-
-        ct = jpt.conditional_jpt(evidence, keep_evidence=True)
-        r = jpt.expectation([x], evidence)
-        r_ = ct.expectation([x], VariableMap())
-        self.assertAlmostEqual(r[x].result, r_[x].result, delta=0.01)
-
-    def test_marginal(self):
-        x = NumericVariable('X')
-        y = NumericVariable('Y')
-
-        evidence = VariableMap()
-        evidence[y] = ContinuousSet(0.2, 0.5)
-
-        jpt = JPT(variables=[x, y],
-                  min_samples_leaf=.05, )
-        jpt.learn(self.data.reshape(-1, 2))
-
-        mt = jpt.marginal_jpt([x])
-
-        self.assertEqual(len(mt.leaves), 1)
-
-    def test_sum_jpt(self):
-        """Check if sum jpt fulfills a 'union' a = a """
-        x = NumericVariable('X')
-        y = NumericVariable('Y')
-
-        evidence = VariableMap()
-        evidence[y] = ContinuousSet(0.2, 0.5)
-
-        jpt = JPT(variables=[x, y],
-                  min_samples_leaf=.05, )
-        jpt.learn(self.data.reshape(-1, 2))
-
-        result = jpt.independent_marginals([x, y], evidence)
-
-        sjpt = SumJPT([x, y], [jpt, jpt])
-        s_result = sjpt.independent_marginals([x, y], evidence)
-
-        for v in [x, y]:
-            self.assertAlmostEqual(result.distributions[v].kl_divergence(s_result.distributions[v]), 0)
-
-    def test_product_jpt(self):
-        """ Check if product jpt fulfills a * a != a """
-        x = NumericVariable('X')
-        y = NumericVariable('Y')
-
-        evidence = VariableMap()
-        evidence[y] = ContinuousSet(0.2, 0.5)
-
-        jpt = JPT(variables=[x, y],
-                  min_samples_leaf=.05, )
-        jpt.learn(self.data.reshape(-1, 2))
-
-        result = jpt.independent_marginals([x, y], evidence)
-
-        sjpt = ProductJPT([x, y], [jpt, jpt])
-        s_result = sjpt.independent_marginals([x, y], evidence)
-
-        for v in [x, y]:
-            # these distributions should differ since
-            self.assertGreater(result.distributions[v].kl_divergence(s_result.distributions[v]), 0)
-
+        try:
+            jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
+                          report_inconsistencies=True)
+        except Unsatisfiability as e:
+            self.assertEqual({VariableMap([(jpt.varnames['WillWait'], {False})]): 1},
+                             e.reasons)
+        else:
+            raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')

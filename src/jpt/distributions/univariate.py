@@ -1,10 +1,12 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-from collections import OrderedDict, deque
+from collections import deque
 from itertools import tee
-from typing import Any, Dict
+from types import FunctionType
+from typing import Any, Iterable, List, Union, Set
 
-from jpt.base.utils import classproperty, save_plot, Unsatisfiability, normalized
+from jpt.base.utils import classproperty, save_plot, normalized, mapstr, setstr
+from jpt.base.errors import Unsatisfiability
 
 import copy
 import math
@@ -13,33 +15,47 @@ import os
 import re
 from operator import itemgetter
 
-import dnutils
-from dnutils import first, out, ifnone, stop, ifnot, project, mapstr, pairwise
+from dnutils import first, out, ifnone, stop, ifnot, project, pairwise
 from dnutils.stats import Gaussian as Gaussian_, _matshape
 
-from scipy.stats import multivariate_normal, mvn, norm
+from scipy.stats import multivariate_normal, norm
 
 import numpy as np
-from numpy import iterable, isnan
+from numpy import iterable
 
 import matplotlib.pyplot as plt
 
 from jpt.base.constants import sepcomma
 from jpt.base.sampling import wsample, wchoice
+from .utils import Identity, OrderedDictProxy, DataScalerProxy, DataScaler
 
 try:
     from ..base.intervals import __module__
-    from ..base.quantiles import __module__
+    from .quantile.quantiles import __module__
+    from ..base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from ..base.intervals import R, ContinuousSet
-    from ..base.quantiles import QuantileDistribution, LinearFunction, ConstantFunction
+    from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
+    from ..base.functions import LinearFunction
+    from .quantile.quantiles import QuantileDistribution
 
 
-logger = dnutils.getlogger(name='GaussianLogger', level=dnutils.ERROR)
+# ----------------------------------------------------------------------------------------------------------------------
+# Constant symbols
 
+SYMBOLIC = 'symbolic'
+NUMERIC = 'numeric'
+CONTINUOUS = 'continuous'
+DISCRETE = 'discrete'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Gaussian distribution. This is somewhat deprecated as we use model-free
+# quantile distributions, but this code is used in testing to sample
+# from Gaussian distributions.
+# TODO: In order to keep the code consistent, this class should inherit from 'Distribution'
 
 class Gaussian(Gaussian_):
     '''Extension of :class:`dnutils.stats.Gaussian`'''
@@ -154,12 +170,6 @@ class Gaussian(Gaussian_):
             out(self._mean)
             out(self._cov)
             raise
-
-    def likelihood(self, data):
-        result = np.zeros(len(data))
-        for idx, point in enumerate(data):
-            result[idx] = self.pdf(point)
-        return result
 
     def cdf(self, *x):
         return np.array(norm.cdf(x, loc=self._mean, scale=self._cov))[0, :]
@@ -316,147 +326,7 @@ class Gaussian(Gaussian_):
         return True
 
 
-class MultiVariateGaussian(Gaussian):
-
-    def __init__(self, mean=None, cov=None, data=None, ignore=-6000000):
-        '''A Multivariate Gaussian distribution that can be incrementally updated with new samples
-        '''
-        self.ignore = ignore
-        super(MultiVariateGaussian, self).__init__(mean=mean, cov=cov, data=data)
-
-    def cdf(self, intervals):
-        '''Computes the CDF for a multivariate normal distribution.
-
-        :param intervals: the boundaries of the integral
-        :type intervals: list of matcalo.utils.utils.Interval
-        '''
-        return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], self.mean, self.cov))
-
-    def pdf(self):
-        var = multivariate_normal(mean=self.mean, cov=self.cov)
-        return var.pdf
-
-    @property
-    def mvg(self):
-        '''Computes the multivariate Gaussian distribution.
-        '''
-        return multivariate_normal(self.mean, self.cov, allow_singular=True)
-
-    @property
-    def dim(self):
-        '''Returns the dimension of the distribution.
-        '''
-        if self._mean is None:
-            raise ValueError('no dimensionality specified yet.')
-        return len(self._mean) if hasattr(self.mean, '__len__') else 1
-
-    @property
-    def cov_(self):
-        '''Returns the covariance matrix for prettyprinting (precision .2).
-        '''
-        return list([round(c, 2) for c in r] for r in self.cov) if hasattr(self.cov, '__len__') else round(self.cov, 2)
-
-    @property
-    def mean_(self):
-        '''Returns the mean vector for prettyprinting (precision .2).
-        '''
-        return list([round(c, 2) for c in self.mean]) if hasattr(self.mean, '__len__') else round(self.mean, 2)
-
-    def conditional(self, evidence):
-        r'''Returns a distribution conditioning on the variables in ``evidence`` following the calculations described
-        in `Conditional distributions <https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions>`_,
-        i.e., after determining the partitions of :math:`\mu`, i.e. :math:`\mu_{1}` and :math:`\mu_{2}` as well as
-        the partitions of :math:`\Sigma`, i.e. :math:`\Sigma_{11}, \Sigma_{12}, \Sigma_{21} \text{ and } \Sigma_{22}`, we
-        calculate the multivariate normal :math:`N(\overline\mu,\overline\Sigma)` using
-
-        .. math::
-            \overline\mu = \mu_{1} + \Sigma_{12}\Sigma_{22}^{-1}(a-\mu_{2})
-            :label: mu
-
-        .. math::
-            \overline\Sigma = \Sigma_{11} + \Sigma_{12}\Sigma_{22}^{-1}\Sigma_{21}
-            :label: sigma
-
-        :param evidence: the variables the returned distribution conditions on (mapping indices to values or Intervals of values)
-        :type evidence: dict
-        '''
-        indices = sorted(list(evidence.keys()))
-        k = self.dim - len(indices)
-        a = np.array([evidence[i] for i in indices])
-
-        # sort conditioning variables to the bottom right corner of the covariance matrix
-        order = [i for i in range(self.dim) if i not in indices] + indices
-        sigma = self.cov[:, order][order]
-
-        # determining the partitions of µ, i.e. µ_{1} and µ_{2}
-        mu1 = self.mean[order][:k]
-        mu2 = self.mean[order][k:]
-
-        # determining the partitions of Σ, i.e. Σ_{11}, Σ_{12}, Σ_{21} and Σ_{22}
-        sigma11 = sigma[:k, :k]
-        sigma12 = sigma[k:, :k]
-        sigma21 = sigma[:k, k:]
-        sigma22 = sigma[k:, k:]
-
-        # determine the inverse for matrix Σ_{22}
-        sigma22inv = np.linalg.inv(sigma22)
-
-        # µ' = µ_{1} + Σ_{12}Σ_{22}^{-1}(a-µ_{2})
-        mu_ = mu1 + sigma12.dot(sigma22inv).dot((a-mu2).T).T
-
-        # Σ' = Σ_{11} - Σ_{12}Σ{22}^{-1}Σ_{21}
-        sigma_ = sigma11 - sigma12.dot(sigma22inv).dot(sigma21)
-        return MultiVariateGaussian(mean=mu_, cov=sigma_)
-
-    def plot(self):
-        '''
-        .. highlight:: python
-        .. code-block:: python
-
-            import sys
-            self.dim==1
-        '''
-        if self.dim == 1:
-            x = np.linspace(self.mean - 2 * self.cov, self.mean + 2 * self.cov, 500)
-            y = multivariate_normal.pdf(x, mean=self.mean, cov=self.cov)
-
-            fig1 = plt.figure(f'Distribution Leaf N{self.mean, self.cov}')
-            ax = fig1.add_subplot(111)
-            ax.plot(x, y)
-
-        elif self.dim == 2:
-            x = np.linspace(self.mean[0]-2*self.cov[0][0], self.mean[0]+2*self.cov[0][0], 500)
-            y = np.linspace(self.mean[1]-2*self.cov[1][1], self.mean[1]+2*self.cov[1][1], 500)
-            rv = multivariate_normal(self.mean, self.cov)
-            pos = np.dstack((x, y))
-
-            # plot
-            fig2 = plt.figure(f'Distribution Leaf N{self.mean, self.cov}')
-            ax2 = fig2.add_subplot(111)
-            ax2.contourf(x, y, rv.pdf(pos))
-
-        elif self.dim == 3:
-            # grid and mvn
-            x = np.linspace(self.mean[0]-2*self.cov[0][0], self.mean[0]+2*self.cov[0][0], 500)
-            y = np.linspace(self.mean[1]-2*self.cov[1][1], self.mean[1]+2*self.cov[1][1], 500)
-            rv = multivariate_normal(self.mean, self.cov)
-            X, Y = np.meshgrid(x, y)
-            pos = np.empty(X.shape + (2,))
-            pos[:, :, 0] = X
-            pos[:, :, 1] = Y
-
-            # plot
-            fig = plt.figure(f'Distribution Leaf N{self.mean, self.cov}')
-            ax = fig.gca(projection='3d')
-            ax.plot_surface(X, Y, rv.pdf(pos), cmap='viridis', linewidth=0)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            plt.show()
-
-
 # ----------------------------------------------------------------------------------------------------------------------
-
 
 class Distribution:
     '''
@@ -465,19 +335,54 @@ class Distribution:
     values = None
     labels = None
 
-    def __init__(self):
+    SETTINGS = {
+    }
+
+    def __init__(self, **settings):
         # used for str and repr methods to be able to print actual type
         # of Distribution when created with jpt.variables.Variable
         self._cl = f'{self.__class__.__name__}' \
                    + (f' ({self.__class__.__mro__[1].__name__})'
                       if self.__module__ != __name__
                       else '')
+        self.settings = type(self).SETTINGS.copy()
+        for attr in type(self).SETTINGS:
+            try:
+                super().__getattribute__(attr)
+            except AttributeError:
+                pass
+            else:
+                raise AttributeError('Attribute ambiguity: Object of type "%s" '
+                                     'already has an attribute with name "%s"' % (type(self).__name__,
+                                                                                  attr))
+        for attr, value in settings.items():
+            if attr not in self.settings:
+                raise AttributeError('Unknown settings "%s": '
+                                     'expected one of {%s}' % (attr, setstr(type(self).SETTINGS)))
+            self.settings[attr] = value
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattribute__(name)
+        except AttributeError:
+            if name in type(self).SETTINGS:
+                return self.settings[name]
+            else:
+                raise
 
     def __hash__(self):
         return hash((type(self), self.values, self.labels))
 
     def __getitem__(self, value):
         return self.p(value)
+
+    @classmethod
+    def value2label(cls, value):
+        raise NotImplementedError()
+
+    @classmethod
+    def label2value(cls, label):
+        raise NotImplementedError()
 
     def sample(self, n):
         raise NotImplementedError()
@@ -491,7 +396,7 @@ class Distribution:
     def _p(self, value):
         raise NotImplementedError()
 
-    def expectation(self):
+    def expectation(self) -> numbers.Real:
         raise NotImplementedError()
 
     def mpe(self):
@@ -509,10 +414,13 @@ class Distribution:
     def update(self):
         raise NotImplementedError()
 
-    def fit(self, data, rows=None, col=None):
+    def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Distribution':
         raise NotImplementedError()
 
-    def kl_divergence(self, other):
+    def set(self, params: Any) -> 'Distribution':
+        raise NotImplementedError()
+
+    def kl_divergence(self, other: 'Distribution'):
         raise NotImplementedError()
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
@@ -562,136 +470,25 @@ class Distribution:
         return clazz
 
 
-class DataScaler:
-    '''
-    A numeric data transformation that represents data points in form of a translation
-    by their mean and a scaling by their variance. After the transformation, the transformed
-    input data have zero mean and unit variance.
-    '''
-
-    def __init__(self, data=None):
-        self.mean = None
-        self.scale = None
-        if data is not None:
-            self.fit(data.reshape(-1, 1))
-
-    def fit(self, data):
-        self.mean = np.mean(data)
-        self.scale = np.std(data)
-
-    def inverse_transform(self, x, make_copy=True):
-        if type(x) is np.ndarray:
-            target = np.array(x) if make_copy else x
-            target *= self.scale
-            target += self.mean
-            return target
-        return x * self.scale + self.mean
-
-    def transform(self, x, make_copy=True):
-        if type(x) is np.ndarray:
-            target = np.array(x) if make_copy else x
-            target -= self.mean
-            target /= self.scale
-            return target
-        return (x - self.mean) / self.scale
-
-    def __getitem__(self, x):
-        if x in (np.NINF, np.PINF):
-            return x
-        return self.inverse_transform(x)
-
-    def to_json(self):
-        return {'mean_': [self.mean],
-                'scale_': [self.scale]}
-
-    def __eq__(self, other):
-        return self.mean == other.mean and self.scale == other.scale
-
-    @staticmethod
-    def from_json(data: Dict[str, Any]):
-        scaler = DataScaler()
-        scaler.mean = data['mean_'][0]
-        scaler.scale = data['scale_'][0]
-        return scaler
-
-
-class Identity:
-    '''
-    Simple identity mapping that mimics the __getitem__ protocol of dicts.
-    '''
-
-    def __getitem__(self, item):
-        return item
-
-    __call__ = __getitem__
-
-    def transformer(self):
-        return lambda a: self[a]
-
-    def __eq__(self, o):
-        return type(o) is Identity
-
-    def __hash__(self):
-        return hash(Identity)
-
-
-class DataScalerProxy:
-
-    def __init__(self, datascaler, inverse=False):
-        self.datascaler = datascaler
-        self.inverse = inverse
-        self.mean = self.datascaler.mean
-        self.scale = self.datascaler.scale
-
-    def __hash__(self):
-        return hash((self.inverse, self.mean, self.variance))
-
-    def __call__(self, arg):
-        return self[arg]
-
-    def __eq__(self, o):
-        return (isinstance(o, DataScalerProxy) and
-                self.datascaler == o.datascaler and
-                self.inverse == o.inverse)
-
-    def transformer(self):
-        return lambda a: self[a]
-
-    def __getitem__(self, item):
-        if item in (np.NINF, np.PINF):
-            return item
-        if item is None or isnan(item):
-            return 0
-        return (self.datascaler.transform
-                if not self.inverse
-                else self.datascaler.inverse_transform)(item)
-
-    def transform(self, x):
-        return self.datascaler.transform(x)
-
-    @staticmethod
-    def keys():
-        return R
-
-    @staticmethod
-    def values():
-        return R
-
-    def __repr__(self):
-        return '<DataScalerProxy, mean=%f, var=%s>' % (self.datascaler.mean, self.datascaler.scale)
-
+# ----------------------------------------------------------------------------------------------------------------------
 
 class Numeric(Distribution):
     '''
     Wrapper class for numeric domains and distributions.
     '''
 
+    PRECISION = 'precision'
+
     values = Identity()
     labels = Identity()
 
-    def __init__(self, quantile=None):
-        super().__init__()
-        self._quantile: QuantileDistribution = quantile
+    SETTINGS = {
+        PRECISION: .01
+    }
+
+    def __init__(self, **settings):
+        super().__init__(**settings)
+        self._quantile: QuantileDistribution = None
         self.to_json = self.inst_to_json
 
     def __str__(self):
@@ -700,13 +497,31 @@ class Numeric(Distribution):
     def __getitem__(self, value):
         return self.p(value)
 
-    def __eq__(self, o):
+    def __eq__(self, o: 'Numeric'):
         if not issubclass(type(o), Numeric):
-            return False
+            raise TypeError('Cannot compare object of type %s with other object of type %s' % (type(self),
+                                                                                               type(o)))
         return type(o).equiv(type(self)) and self._quantile == o._quantile
 
-    def __hash__(self):
-        return hash((type(self), self.values, self.labels, self._quantile))
+    # noinspection DuplicatedCode
+    @classmethod
+    def value2label(cls, value: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+        if isinstance(value, ContinuousSet):
+            return ContinuousSet(cls.labels[value.lower], cls.labels[value.upper], value.left, value.right)
+        elif isinstance(value, numbers.Real):
+            return cls.labels[value]
+        else:
+            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(value).__name__)
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def label2value(cls, label: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+        if isinstance(label, ContinuousSet):
+            return ContinuousSet(cls.values[label.lower], cls.values[label.upper], label.left, label.right)
+        elif isinstance(label, numbers.Real):
+            return cls.values[label]
+        else:
+            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(label).__name__)
 
     @classmethod
     def equiv(cls, other):
@@ -733,7 +548,7 @@ class Numeric(Distribution):
     def sample_one(self):
         raise NotImplemented()
 
-    def _expectation(self):
+    def _expectation(self) -> numbers.Real:
         e = 0
         singular = True  # In case the CDF is jump fct the expectation is where the jump happens
         for i, f in zip(self.cdf.intervals, self.cdf.functions):
@@ -743,52 +558,56 @@ class Numeric(Distribution):
             singular = False
         return e if not singular else i.lower
 
-    def expectation(self):
+    def expectation(self) -> numbers.Real:
         return self.labels[self._expectation()]
+
+    def quantile(self, gamma: numbers.Real) -> numbers.Real:
+        return self.ppf.eval(gamma)
 
     def mpe(self):
         return max([(interval, function)
                     for interval, function in zip(self.cdf.intervals, self.cdf.functions)],
                    key=lambda x: x[1].m if isinstance(x[1], LinearFunction) else 0)[0]
 
-    def fit(self, data, rows=None, col=None, **params):
-        self._quantile = QuantileDistribution(**params)
-        self._quantile.fit(data, rows=rows, col=col)
+    def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Numeric':
+        self._quantile = QuantileDistribution(epsilon=self.precision)
+        self._quantile.fit(data,
+                           rows=rows,
+                           col=col)
         return self
 
-    def apply_restriction(self, restriction: ContinuousSet or float or int, normalize=True):
-        """Apply a restriction to this distribution. The restricted distrubtion will only assign mass
-        to the given range and will preserve the relativity of the pdf.
-
-        :param restriction: The range to limit this distribution
-        :type restriction: float or int or ContinuousSet
-        """
-        if not isinstance(restriction, ContinuousSet):
-            return self.create_dirac_impulse(restriction)
-        return self.crop(restriction)
-
-    def create_dirac_impulse(self, value):
-        """Create a dirac impulse at the given value aus quantile distribution."""
-        self._quantile = QuantileDistribution()
-        self._quantile.fit(np.asarray([[value]]), rows=np.asarray([0]), col=0)
+    def set(self, params: QuantileDistribution) -> 'Numeric':
+        self._quantile = params
         return self
 
-    def is_dirac_impulse(self):
-        """Checks if this distribution is a dirac impulse."""
-        return len(self._quantile.cdf.intervals) == 2
-
-    def _p(self, value):
+    def _p(self, value: Union[numbers.Number, NumberSet]) -> numbers.Real:
         if isinstance(value, numbers.Number) and np.isinf(self.pdf.eval(value)):
             return 0
+        elif isinstance(value, RealSet):
+            return sum(self._p(i) for i in value.intervals)
         elif value.lower == value.upper and not value.isempty() and np.isinf(self.pdf.eval(value.lower)):
             return 1
         return ((self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
                 (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
 
-    def p(self, value):
-        pass
+    def p(self, labels: Union[numbers.Number, NumberSet]) -> numbers.Real:
+        if not isinstance(labels, (NumberSet, numbers.Number)):
+            raise TypeError('Argument must be numbers.Number or '
+                            'jpt.base.intervals.NumberSet (got %s).' % type(labels))
+        if isinstance(labels, ContinuousSet):
+            return self._p(ContinuousSet(self.values[labels.lower],
+                                         self.values[labels.upper],
+                                         labels.left,
+                                         labels.right))
+        elif isinstance(labels, RealSet):
+            self._p(RealSet([ContinuousSet(self.values[i.lower],
+                                           self.values[i.upper],
+                                           i.left,
+                                           i.right) for i in labels.intervals]))
+        else:
+            return self._p(self.values[labels])
 
-    def kl_divergence(self, other):
+    def kl_divergence(self, other: 'Numeric') -> numbers.Real:
         if type(other) is not type(self):
             raise TypeError('Can only compute KL divergence between '
                             'distributions of the same type, got %s' % type(other))
@@ -815,36 +634,18 @@ class Numeric(Distribution):
         return result
 
     def copy(self):
-        dist = type(self)(quantile=self._quantile.copy())
+        dist = type(self)(**self.settings).set(params=self._quantile.copy())
         dist.values = copy.copy(self.values)
         dist.labels = copy.copy(self.labels)
         return dist
 
     @staticmethod
-    def merge(distributions, weights):
-        """
-        Generate a numeric distribution as the union of all given distributions.
-        @param distributions: A list of distributions of the type QuantileDistribution.
-        @param weights: Weights indicating the importance of the distribution
-        @return: The resulting Numeric distribution
-        """
+    def merge(distributions: List['Numeric'], weights: Iterable[numbers.Real]) -> 'Numeric':
         if not all(distributions[0].__class__ == d.__class__ for d in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
-        return type(distributions[0])(QuantileDistribution.merge(distributions, weights))
+        return type(distributions[0])().set(QuantileDistribution.merge(distributions, weights))
 
-    @staticmethod
-    def product(distributions, weights):
-        """
-        Generate a numeric distribution as the product of all given distributions.
-        @param distributions: A list of distributions of the type QuantileDistribution.
-        @param weights: Weights indicating the importance of the distribution
-        @return: The resulting Numeric distribution
-        """
-        if not all(distributions[0].__class__ == d.__class__ for d in distributions):
-            raise TypeError('Only distributions of the same type can be merged.')
-        return type(distributions[0])(QuantileDistribution.product(distributions, weights))
-
-    def update(self, dist, weight):
+    def update(self, dist: 'Numeric', weight: numbers.Real) -> 'Numeric':
         if not 0 <= weight <= 1:
             raise ValueError('Weight must be in [0, 1]')
         if type(dist) is not type(self):
@@ -873,45 +674,18 @@ class Numeric(Distribution):
 
     def inst_to_json(self):
         return {'class': type(self).__name__,
+                'settings': self.settings,
                 'quantile': self._quantile.to_json() if self._quantile is not None else None}
 
     to_json = type_to_json
 
     @staticmethod
     def from_json(data):
-        return Numeric(quantile=QuantileDistribution.from_json(data['quantile']))
+        return Numeric(**data['settings']).set(QuantileDistribution.from_json(data['quantile']))
 
     @classmethod
     def type_from_json(cls, data):
         return cls
-
-    def variance(self) -> float:
-        """
-        Calculate the variance of this distribution as the integral over x^2 * f(x) minus the squared expectation.
-        @return: The variance as float
-        """
-        # initialize variance as 0.
-        variance = 0.
-        for interval, function in zip(self.cdf.intervals, self.cdf.functions):
-            interval: ContinuousSet
-            function: LinearFunction
-
-            # calculate pdf value and w. r. t. jumps
-            pdf_value = function.eval(interval.upper) - function.eval(interval.lower)
-
-            # skip impossible intervals
-            if pdf_value == 0.:
-                continue
-
-            # if this is a dirac impulse return variance of 0.
-            elif pdf_value == float("inf"):
-                return 0.
-
-            # add variance as \int_x x^2 * f(x) dx - \mu^2
-            variance += (pdf_value/3) * (pow(interval.upper, 3) - pow(interval.lower, 3)) - \
-                pow(pdf_value * (interval.upper + interval.lower) / 2, 2)
-
-        return variance
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''
@@ -950,9 +724,8 @@ class Numeric(Distribution):
                           [self.cdf.intervals[-1].lower + std / 2])
 
         bounds_ = np.array([self.labels[b] for b in bounds])
-
         ax.plot(bounds_,
-                self.cdf.multi_eval(bounds),
+                np.asarray(self.cdf.multi_eval(bounds)),
                 color='cornflowerblue',
                 linestyle='dashed',
                 label='Piecewise linear CDF from bounds',
@@ -960,7 +733,7 @@ class Numeric(Distribution):
                 markersize=12)
 
         ax.scatter(bounds_[1:-1],
-                   self.cdf.multi_eval(bounds[1:-1]),
+                   np.asarray(self.cdf.multi_eval(bounds[1:-1])),
                    color='orange',
                    marker='o',
                    label='Piecewise Function limits')
@@ -980,8 +753,8 @@ class ScaledNumeric(Numeric):
 
     scaler = None
 
-    def __init__(self, quantile=None):
-        super().__init__(quantile=quantile)
+    def __init__(self, **settings):
+        super().__init__(**settings)
 
     @classmethod
     def type_to_json(cls):
@@ -1001,89 +774,58 @@ class ScaledNumeric(Numeric):
 
     @classmethod
     def from_json(cls, data):
-        return cls(quantile=QuantileDistribution.from_json(data['quantile']))
+        return cls(**data['settings']).set(QuantileDistribution.from_json(data['quantile']))
 
 
-class HashableOrderedDict(OrderedDict):
-    '''
-    Ordered dict that can be hashed.
-    '''
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def __call__(self, arg):
-        return self[arg]
-
-    def __hash__(self):
-        return hash((tuple(self.values()), tuple(self.keys())))
-
-
-class OrderedDictProxy:
-    '''
-    This is a proxy class that mimics the interface of a regular dict
-    without inheriting from dict.
-    '''
-
-    def __init__(self, *args, **kwargs):
-        self._dict = HashableOrderedDict(*args, **kwargs)
-        self.values = self._dict.values
-        self.keys = self._dict.keys
-
-    def get(self, key, default):
-        return self._dict.get(key, default)
-
-    def __repr__(self):
-        return '<OrderedDictProxy #%d values=[%s]>' % (len(self), ';'.join(mapstr(self.keys())))
-
-    def transformer(self):
-        return lambda a: self._dict[a]
-
-    def __getitem__(self, arg):
-        return self._dict[arg]
-
-    def __iter__(self):
-        return iter(self._dict)
-
-    def __call__(self, arg):
-        return self._dict[arg]
-
-    def __hash__(self):
-        return hash((tuple(self._dict.values()), tuple(self._dict.keys())))
-
-    def __len__(self):
-        return len(self._dict)
-
-    def __eq__(self, other):
-        if not isinstance(other, OrderedDictProxy):
-            return False
-        for self_, other_ in zip(self._dict.items(), other._dict.items()):
-            if self_[0] != other_[0] or self_[1] != other_[1]:
-                return False
-        return True
-
+# ----------------------------------------------------------------------------------------------------------------------
 
 class Multinomial(Distribution):
     '''
     Abstract supertype of all symbolic domains and distributions.
     '''
 
-    values = None
-    labels = None
+    values: OrderedDictProxy = None
+    labels: OrderedDictProxy = None
 
-    def __init__(self, params=None):
-        super().__init__()
-        if params is not None:
-            if not iterable(params):
-                raise ValueError(f'Probabilities must be an iterable with {len(self.values)} elements, got {params}')
-            if len(self.values) != len(params):
-                raise ValueError('Number of values and probabilities must coincide.')
-            self._params = np.array(params)
-        else:
-            self._params = None
+    def __init__(self, **settings):
+        super().__init__(**settings)
         if not issubclass(type(self), Multinomial) or type(self) is Multinomial:
             raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
-        self.to_json = self.inst_to_json
+        self._params: np.ndarray = None
+        self.to_json: FunctionType = self.inst_to_json
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def value2label(cls, value: Union[Any, Set]) -> Union[Any, Set]:
+        if type(value) is set:
+            return {cls.labels[v] for v in value}
+        else:
+            return cls.labels[value]
+
+    # noinspection DuplicatedCode
+    @classmethod
+    def label2value(cls, label: Union[Any, Set]) -> Union[Any, Set]:
+        if type(label) is set:
+            return {cls.values[l_] for l_ in label}
+        else:
+            return cls.values[label]
+
+    @classmethod
+    def pfmt(cls, max_values=10, labels_or_values='labels') -> str:
+        '''
+        Returns a pretty-formatted string representation of this class.
+
+        By default, a set notation with value labels is used. By setting
+        ``labels_or_values`` to ``"values"``, the internal value representation
+        is used. If the domain comprises more than ``max_values`` values,
+        the middle part of the list of values is abbreviated by "...".
+        '''
+        if labels_or_values not in ('labels', 'values'):
+            raise ValueError('Illegal Value for "labels_or_values": Expected one out of '
+                             '{"labels", "values"}, got "%s"' % labels_or_values)
+        return '%s = {%s}' % (cls.__name__, ', '.join(mapstr(cls.values.values()
+                                                             if labels_or_values == 'values'
+                                                             else cls.labels.values(), limit=max_values)))
 
     @property
     def probabilities(self):
@@ -1103,16 +845,13 @@ class Multinomial(Distribution):
         return cls.__name__ == other.__name__ and cls.labels == other.labels and cls.values == other.values
 
     def __getitem__(self, value):
-        return self.p(value)
+        return self.p([value])
 
     def __setitem__(self, label, p):
         self._params[self.values[label]] = p
 
     def __eq__(self, other):
         return type(self).equiv(type(other)) and (self.probabilities == other.probabilities).all()
-
-    def __hash__(self):
-        return hash((Multinomial, self.values.values(), self.labels.values(), self._params))
 
     def __str__(self):
         if self._p is None:
@@ -1133,27 +872,10 @@ class Multinomial(Distribution):
         return [(p, l) for p, l in zip(self._params, self.labels.values())]
 
     def copy(self):
-        return type(self)(params=self._params)
-
-    def apply_restriction(self, restriction: set or int or str, normalize=True):
-        if not isinstance(restriction, ContinuousSet):
-            return self.create_dirac_impulse(restriction)
-
-        for idx, value in enumerate(self.values):
-            if value not in restriction:
-                self._params[idx] = 0
-
-        if normalize:
-            self._params = self._params / sum(self._params)
-        return self
-
-    def create_dirac_impulse(self, value):
-        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
-        self._params[self.values[value]] = 1
-        return self
+        return type(self)(**self.settings).set(params=self._params)
 
     def p(self, labels):
-        if not iterable(labels):
+        if not isinstance(labels, (set, list, tuple, np.ndarray)):
             raise TypeError('Argument must be iterable (got %s).' % type(labels))
         return self._p(self.values[label] for label in labels)
 
@@ -1165,19 +887,19 @@ class Multinomial(Distribution):
 
     def sample(self, n):
         '''Returns ``n`` sample `values` according to their respective probability'''
-        return wsample(self.values, self._params, n)
+        return wsample(list(self.values.values()), self._params, n)
 
     def sample_one(self):
         '''Returns one sample `value` according to its probability'''
-        return wchoice(self.values, self._params)
+        return wchoice(list(self.values.values()), self._params)
 
     def sample_labels(self, n):
         '''Returns ``n`` sample `labels` according to their respective probability'''
-        return [self.labels[i] for i in wsample(self.values, self._params, n)]
+        return [self.labels[i] for i in wsample(list(self.values.values()), self._params, n)]
 
     def sample_one_label(self):
         '''Returns one sample `label` according to its probability'''
-        return self.labels[wchoice(self.values, self._params)]
+        return self.labels[wchoice(list(self.values.values()), self._params)]
 
     def _expectation(self):
         '''Returns the value with the highest probability for this variable'''
@@ -1227,7 +949,7 @@ class Multinomial(Distribution):
         excl_values_ = [self.values[v] for v in excl_values] if excl_values is not None else None
         return self._crop(incl_values_, excl_values_)
 
-    def fit(self, data, rows=None, col=None):
+    def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Multinomial':
         self._params = np.zeros(shape=self.n_values, dtype=np.float64)
         n_samples = ifnone(rows, len(data), len)
         col = ifnone(col, 0)
@@ -1235,7 +957,13 @@ class Multinomial(Distribution):
             self._params[int(data[row, col])] += 1 / n_samples
         return self
 
-    def update(self, dist, weight):
+    def set(self, params: Iterable[numbers.Real]) -> 'Multinomial':
+        if len(self.values) != len(params):
+            raise ValueError('Number of values and probabilities must coincide.')
+        self._params = np.array(params)
+        return self
+
+    def update(self, dist: 'Multinomial', weight: numbers.Real) -> 'Multinomial':
         if not 0 <= weight <= 1:
             raise ValueError('Weight must be in [0, 1]')
         if self._params is None:
@@ -1245,7 +973,7 @@ class Multinomial(Distribution):
         return self
 
     @staticmethod
-    def merge(distributions, weights):
+    def merge(distributions: Iterable['Multivariate'], weights: Iterable[numbers.Real]) -> 'Multinomial':
         if not all(type(distributions[0]).equiv(type(d)) for d in distributions):
             raise TypeError('Only distributions of the same type can be merged.')
         if abs(1 - sum(weights)) > 1e-10:
@@ -1255,35 +983,7 @@ class Multinomial(Distribution):
             params += d.probabilities * w
         if abs(sum(params)) < 1e-10:
             raise Unsatisfiability('Sum of weights must not be zero.')
-        return type(distributions[0])(params=params)
-
-    @staticmethod
-    def product(distributions, weights):
-        """Create a new multinomial distribution as a product of weighted distributions."""
-
-        if not all(type(distributions[0]).equiv(type(d)) for d in distributions):
-            raise TypeError('Only distributions of the same type can be merged.')
-
-        # create initial params
-        params = np.ones(distributions[0].n_values)
-
-        # multiply with every weight and probability
-        for d, w in zip(distributions, weights):
-            params *= d.probabilities * w
-
-        # calculate normalization constant
-        sum_ = sum(params)
-
-        # if it is 0. the resulting distribution would be invalid
-        if sum_ == 0:
-            # return None if invalid
-            return None
-
-        # normalize
-        params /= sum_
-
-        # create distribution and return
-        return type(distributions[0])(params=params)
+        return type(distributions[0])().set(params)
 
     @classmethod
     def type_to_json(cls):
@@ -1293,7 +993,8 @@ class Multinomial(Distribution):
 
     def inst_to_json(self):
         return {'class': type(self).__qualname__,
-                'params': list(self._params)}
+                'params': list(self._params),
+                'settings': self.settings}
 
     to_json = type_to_json
 
@@ -1303,11 +1004,7 @@ class Multinomial(Distribution):
 
     @classmethod
     def from_json(cls, data):
-        return cls(data['params'])
-
-    def gini_impurity(self) -> float:
-        """Calculate the gini impurity of this distribution."""
-        return 1 - sum(np.square(self._params))
+        return cls(**data['settings']).set(data['params'])
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
@@ -1383,6 +1080,8 @@ class Multinomial(Distribution):
             plt.show()
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class Bool(Multinomial):
     '''
     Wrapper class for Boolean domains and distributions.
@@ -1391,10 +1090,14 @@ class Bool(Multinomial):
     values = OrderedDictProxy([(False, 0), (True, 1)])
     labels = OrderedDictProxy([(0, False), (1, True)])
 
-    def __init__(self, params=None):
+    def __init__(self, **settings):
+        super().__init__(**settings)
+
+    def set(self, params: Union[np.ndarray, numbers.Real]) -> 'Bool':
         if params is not None and not iterable(params):
             params = [1 - params, params]
-        super().__init__(params=params)
+        super().set(params)
+        return self
 
     def __str__(self):
         if self.p is None:
@@ -1407,13 +1110,19 @@ class Bool(Multinomial):
         super().__setitem__(v, p)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+# noinspection PyPep8Naming
 def SymbolicType(name, labels):
+    if len(labels) < 1:
+        raise ValueError('At least one value is needed for a symbolic type.')
     t = type(name, (Multinomial,), {})
     t.values = OrderedDictProxy([(lbl, int(val)) for val, lbl in zip(range(len(labels)), labels)])
     t.labels = OrderedDictProxy([(int(val), lbl) for val, lbl in zip(range(len(labels)), labels)])
     return t
 
 
+# noinspection PyPep8Naming
 def NumericType(name, values):
     t = type(name, (ScaledNumeric,), {})
     if values is not None:
@@ -1422,6 +1131,8 @@ def NumericType(name, values):
         t.labels = DataScalerProxy(t.scaler, inverse=True)
     return t
 
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 _DISTRIBUTION_TYPES = {
     'numeric': Numeric,

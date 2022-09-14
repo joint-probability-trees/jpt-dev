@@ -12,7 +12,7 @@ import requests
 import dnutils
 from dnutils import out
 from jpt.base.utils import arfftocsv
-from jpt.learning.distributions import Numeric, SymbolicType, Bool
+from jpt.distributions import Numeric, SymbolicType, Bool
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 

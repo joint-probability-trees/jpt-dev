@@ -1,9 +1,18 @@
+# distutils: language = c++
+# cython: auto_cpdef=True
+# cython: infer_types=True
 # cython: language_level=3
+# cython: cdividion=True
+
 
 cimport numpy as np
 cimport cython
 
-from ..base.cutils cimport DTYPE_t, SIZE_t
+from .cutils cimport DTYPE_t
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Constant definitions
 
 cdef int _INC
 cdef int _EXC
@@ -12,9 +21,13 @@ cdef int HALFOPEN = 3
 cdef int OPEN = 4
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 cdef class NumberSet:
     pass
 
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 @cython.final
 cdef class RealSet(NumberSet):
@@ -33,20 +46,26 @@ cdef class RealSet(NumberSet):
 
     cpdef inline np.int32_t isempty(RealSet self)
 
-    cpdef inline np.int32_t intersects(RealSet self, RealSet other)
+    cpdef inline np.int32_t intersects(RealSet self, NumberSet other)
 
-    cpdef inline np.int32_t isdisjoint(RealSet self, RealSet other)
+    cpdef inline np.int32_t isdisjoint(RealSet self, NumberSet other)
 
-    cpdef inline RealSet intersection(RealSet self, RealSet other)
+    cpdef inline NumberSet intersection(RealSet self, NumberSet other)
 
-    cpdef inline RealSet union(RealSet self, RealSet other) except +
+    cpdef inline NumberSet union(RealSet self, NumberSet other)
 
-    cpdef inline RealSet difference(RealSet self, RealSet other)
+    cpdef inline NumberSet difference(RealSet self, NumberSet other)
 
-    cpdef inline RealSet complement(RealSet self)
+    cpdef inline NumberSet complement(RealSet self)
 
     cpdef inline DTYPE_t fst(RealSet self)
 
+    cpdef inline NumberSet simplify(RealSet self)
+
+    cpdef inline RealSet copy(RealSet self)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 @cython.final
 cdef class ContinuousSet(NumberSet):
@@ -72,19 +91,19 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef inline np.int32_t contains_value(ContinuousSet self, DTYPE_t value)
 
-    cpdef inline np.int32_t contains_interval(ContinuousSet self, ContinuousSet other)
+    cpdef inline np.int32_t contains_interval(ContinuousSet self, ContinuousSet other, int proper_containment=*)
 
     cpdef inline np.int32_t contiguous(ContinuousSet self, ContinuousSet other)
 
-    cpdef inline np.int32_t intersects(ContinuousSet self, ContinuousSet other)
+    cpdef inline np.int32_t intersects(ContinuousSet self, NumberSet other)
 
-    cpdef inline np.int32_t isdisjoint(ContinuousSet self, ContinuousSet other)
+    cpdef inline np.int32_t isdisjoint(ContinuousSet self, NumberSet other)
 
     cpdef inline ContinuousSet intersection(ContinuousSet self, ContinuousSet other, int left=*, int right=*)
 
     cpdef inline NumberSet union(ContinuousSet self, ContinuousSet other)
 
-    cpdef inline NumberSet difference(ContinuousSet self, ContinuousSet other)
+    cpdef inline NumberSet difference(ContinuousSet self, NumberSet other)
 
     cpdef inline NumberSet complement(ContinuousSet self)
 

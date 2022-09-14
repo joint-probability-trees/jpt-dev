@@ -6,6 +6,7 @@
 # cython: boundscheck=False
 # cython: nonehcheck=False
 
+import numpy as np
 cimport numpy as np
 
 
@@ -15,14 +16,14 @@ ctypedef np.int64_t SIZE_t               # Type for indices and counters
 ctypedef np.npy_int32 INT32_t            # Signed 32 bit integer
 ctypedef np.npy_uint32 UINT32_t          # Unsigned 32 bit integer
 
-from libc.math cimport nan as _libc_nan
+from libc.math cimport nan as _libc_nan, isnan
 cdef DTYPE_t nan = <DTYPE_t> _libc_nan
 
 
 from libc.math cimport log as ln
 
-# ----------------------------------------------------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------------------------------------------------
 
 cdef inline DTYPE_t mean(DTYPE_t[::1] arr) nogil:
     '''Arithmetic mean in the vector ``arr``.'''
@@ -34,7 +35,6 @@ cdef inline DTYPE_t mean(DTYPE_t[::1] arr) nogil:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
 
 cdef inline int alltrue(SIZE_t[::1] mask, SIZE_t[::1] pos) nogil:
     cdef SIZE_t i
@@ -192,4 +192,63 @@ cdef inline SIZE_t bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t n) nogil:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+
+cpdef inline DTYPE_t ifnan(DTYPE_t if_, DTYPE_t else_, transform=None):
+    '''
+    Returns the condition ``if_`` iff it is not ``Nan``, or if a transformation is
+    specified, ``transform(if_)``. Returns ``else_`` if the condition is ``NaN``.
+    ``transform`` can be any callable, which will be passed ``if_`` in case ``if_`` is not ``NaN``.
+    '''
+    if isnan(if_):
+        return else_
+    else:
+        if transform is not None:
+            return transform(if_)
+        else:
+            return if_
+
+
+cdef inline np.int32_t equal(DTYPE_t x1, DTYPE_t x2, DTYPE_t tol=1e-7):
+    return abs(x1 - x2) < tol
+
+
+cpdef inline DTYPE_t[::1] linspace(DTYPE_t start, DTYPE_t stop, np.int64_t num):
+    '''
+    Modification of the ``numpy.linspace`` function to return an array of ``num``
+    equally spaced samples in the range of ``start`` and ``stop`` (both inclusive).
+
+    In contrast to the original numpy function, this variant return the centroid of
+    ``start`` and ``stop`` in the case where ``num`` is ``1``.
+
+    :param start:
+    :param stop:
+    :param num:
+    :return:
+    '''
+    cdef DTYPE_t[::1] samples = np.ndarray(shape=num, dtype=np.float64)
+    cdef DTYPE_t n
+    cdef DTYPE_t space, val = start
+    cdef np.int64_t i
+    if num == 1:
+        samples[0] = (stop - start) / 2
+    else:
+        n = <DTYPE_t> num - 1
+        space = (stop - start) / n
+        for i in range(num):
+            samples[i] = val
+            val += space
+    return samples
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+cdef class ConfInterval:
+    '''Represents a prediction interval with a predicted value, lower und upper bound'''
+
+    cdef readonly:
+        DTYPE_t mean, lower, upper
+
+    cpdef tuple totuple(self)
+
+    cpdef DTYPE_t[::1] tomemview(self, DTYPE_t[::1] result=*)
 

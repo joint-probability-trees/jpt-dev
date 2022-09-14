@@ -4,8 +4,7 @@ from unittest import TestCase
 import numpy as np
 import pandas as pd
 
-from jpt import trees
-from jpt.learning.distributions import SymbolicType, Bool
+from jpt.distributions import SymbolicType, Bool
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable
 
@@ -49,7 +48,6 @@ class ImpurityTest(TestCase):
         jpt = JPT(variables=ImpurityTest.variables, targets=[ImpurityTest.wa])
 
         data = jpt._preprocess_data(ImpurityTest.data)
-        trees._data = data
 
         impurity = Impurity(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
