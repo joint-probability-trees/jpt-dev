@@ -150,7 +150,7 @@ Module Contents
       Compute the (conditional) MPE state of the model.
 
 
-   .. py:method:: _prepropress_query(self, query, transform_values=True, remove_none=True) -> jpt.variables.VariableMap
+   .. py:method:: _preprocess_query(self, query, transform_values=True, remove_none=True) -> jpt.variables.VariableMap
 
       Transform a query entered by a user into an internal representation
       that can be further processed.
