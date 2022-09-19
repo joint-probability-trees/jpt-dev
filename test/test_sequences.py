@@ -3,7 +3,7 @@ import numpy as np
 import jpt.variables
 import jpt.trees
 import sequential_trees
-from jpt.learning.distributions import SymbolicType
+from jpt.distributions.univariate import SymbolicType
 import jpt.sequential_trees
 
 

@@ -564,6 +564,27 @@ class Numeric(Distribution):
     def quantile(self, gamma: numbers.Real) -> numbers.Real:
         return self.ppf.eval(gamma)
 
+    def apply_restriction(self, restriction: ContinuousSet or float or int, normalize=True):
+        """Apply a restriction to this distribution. The restricted distrubtion will only assign mass
+        to the given range and will preserve the relativity of the pdf.
+
+        :param restriction: The range to limit this distribution
+        :type restriction: float or int or ContinuousSet
+        """
+        if not isinstance(restriction, ContinuousSet):
+            return self.create_dirac_impulse(restriction)
+        return self.crop(restriction)
+
+    def create_dirac_impulse(self, value):
+        """Create a dirac impulse at the given value aus quantile distribution."""
+        self._quantile = QuantileDistribution()
+        self._quantile.fit(np.asarray([[value]]), rows=np.asarray([0]), col=0)
+        return self
+
+    def is_dirac_impulse(self):
+        """Checks if this distribution is a dirac impulse."""
+        return len(self._quantile.cdf.intervals) == 2
+
     def mpe(self):
         return max([(interval, function)
                     for interval, function in zip(self.cdf.intervals, self.cdf.functions)],
@@ -884,6 +905,23 @@ class Multinomial(Distribution):
         if not all(isinstance(v, numbers.Integral) for v in i1):
             raise TypeError('All arguments must be integers.')
         return sum(self._params[v] for v in i2)
+
+    def apply_restriction(self, restriction: set or int or str, normalize=True):
+        if not isinstance(restriction, ContinuousSet):
+            return self.create_dirac_impulse(restriction)
+
+        for idx, value in enumerate(self.values):
+            if value not in restriction:
+                self._params[idx] = 0
+
+        if normalize:
+            self._params = self._params / sum(self._params)
+        return self
+
+    def create_dirac_impulse(self, value):
+        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
+        self._params[self.values[self.labels[value]]] = 1
+        return self
 
     def sample(self, n):
         '''Returns ``n`` sample `values` according to their respective probability'''
