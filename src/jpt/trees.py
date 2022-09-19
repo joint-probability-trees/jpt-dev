@@ -32,7 +32,7 @@ from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
 from .distributions import Distribution
 
 from .base.utils import list2interval, format_path, normalized
-from .distributions import Multinomial, Numeric
+from .distributions import Multinomial, Numeric, ScaledNumeric
 from .base.constants import plotstyle, orange, green, SYMBOL
 
 try:
@@ -122,18 +122,11 @@ class Node:
                 elif variable.symbolic:
 
                     # if it is a set of possible values
-                    if isinstance(restriction, set):
-
-                        # check if the sets intersect
-                        if len(restriction & value) == 0:
-                            return False
-
-                    # if it is a singular observation
-                    else:
-
-                        # check if the path allows this value
-                        if value not in restriction:
-                            return False
+                    if not isinstance(value, set):
+                        value = set([value])
+                    # check if the sets intersect
+                    if len(restriction & value) == 0:
+                        return False
 
         return True
 
@@ -1868,7 +1861,7 @@ class JPT:
         """Calculate the total number of samples represented by this tree."""
         return sum(l.samples for l in self.leaves.values())
 
-    def marginal_jpt(self, marginal_variables: List[jpt.variables.Variable]):
+    def marginal_jpt(self, marginal_variables: List[Variable]):
         """ Create a marginal joint probability distribution over all 'marginal_variables'.
         This is done by inducing a new tree that reduces variance on the marginals by calculating the variances giving
         the original distribution (jpt).
@@ -2049,12 +2042,12 @@ class JPT:
             return None
 
         # construct left (positive) node
-        left_node = jpt.trees.DecisionNode(2 * node.idx, marginal_variables[best_split_idx[0]], node)
+        left_node = DecisionNode(2 * node.idx, marginal_variables[best_split_idx[0]], node)
         left_node.samples = best_splits[best_split_idx[0], 3]
         left_node._path = node._path.copy()
 
         # construct right (negative) node
-        right_node = jpt.trees.DecisionNode(2 * node.idx + 1, marginal_variables[best_split_idx[0]], node)
+        right_node = DecisionNode(2 * node.idx + 1, marginal_variables[best_split_idx[0]], node)
         right_node.samples = best_splits[best_split_idx[0], 4]
         right_node._path = node._path.copy()
 
@@ -2215,7 +2208,7 @@ class JPTLike:
     To be used to construct a new JPT it is necessary that independent marginals and impurities are implemented
     """
 
-    def __init__(self, variables: List[jpt.variables.Variable], jpts: List[JPT]):
+    def __init__(self, variables: List[Variable], jpts: List[JPT]):
         self.variables = variables
         self.jpts = jpts
 
@@ -2247,7 +2240,7 @@ class JPTLike:
 
         return all_splits
 
-    def independent_marginals(self, variables: List[jpt.variables.Variable], evidence: jpt.variables.VariableMap,
+    def independent_marginals(self, variables: List[Variable], evidence: VariableMap,
                               fail_on_unsatisfiability=True) -> PosteriorResult or None:
         """ Compute the marginal distribution of every varialbe in 'variables' assuming independence.
         Unlike JPT.posterior, this method also can compute marginals on variables that are in the evidence.
@@ -2268,7 +2261,7 @@ class SumJPT(JPTLike):
         This is needed in the variable nodes of factor graphs.
      """
 
-    def independent_marginals(self, variables: List[jpt.variables.Variable], evidence: jpt.variables.VariableMap,
+    def independent_marginals(self, variables: List[Variable], evidence: VariableMap,
                               fail_on_unsatisfiability=True) -> PosteriorResult or None:
 
         # construct a list with the independent marginals
@@ -2292,7 +2285,7 @@ class SumJPT(JPTLike):
             return None
 
         # construct result type
-        result = jpt.trees.PosteriorResult(independent_marginals[0].query, independent_marginals[0].evidence,
+        result = PosteriorResult(independent_marginals[0].query, independent_marginals[0].evidence,
                                            dists=VariableMap())
         result.result = sum(r.result for r in independent_marginals) / len(independent_marginals)
 
@@ -2320,7 +2313,7 @@ class ProductJPT(JPTLike):
         This is needed in the factor nodes of factor graphs.
      """
 
-    def independent_marginals(self, variables: List[jpt.variables.Variable], evidence: jpt.variables.VariableMap,
+    def independent_marginals(self, variables: List[Variable], evidence: VariableMap,
                               fail_on_unsatisfiability=True) -> PosteriorResult or None:
 
         # construct a list with the independent marginals
@@ -2336,7 +2329,7 @@ class ProductJPT(JPTLike):
                 return None
 
         # construct the result type
-        result = jpt.trees.PosteriorResult(independent_marginals[0].query, independent_marginals[0].evidence,
+        result = PosteriorResult(independent_marginals[0].query, independent_marginals[0].evidence,
                                            dists=VariableMap())
         result.result = sum(r.result for r in independent_marginals) / len(independent_marginals)
 

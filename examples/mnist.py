@@ -9,7 +9,7 @@ from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable, VariableMap
 
 
-def main(visualize=True):
+def main(visualize=False):
     try:
         from sklearn.datasets import load_digits
         import sklearn.metrics
@@ -42,13 +42,8 @@ def main(visualize=True):
 
     tree.learn(data=df)
 
-    cjpt = tree.conditional_jpt(VariableMap({variables[0]: 5,
-                                             variables[29]: 2.}.items()))
-
-    #calculate log likelihood
-    queries = np.append(np.expand_dims(mnist.target, -1), mnist.data, axis=1)
-    likelihood = tree.likelihood(queries)
-    print("log-likelihood of tree:", np.sum(np.log(likelihood)))
+    # cjpt = tree.conditional_jpt(VariableMap({variables[0]: 5,
+    #                                          variables[29]: 2.}.items()))
 
     leaves = list(tree.leaves.values())
     
@@ -69,7 +64,7 @@ def main(visualize=True):
         plt.tight_layout()
         plt.show()
     
-    tree.plot(plotvars=tree.variables, view=visualize)
+    # tree.plot(plotvars=tree.variables, view=visualize)
 
 
 if __name__ == '__main__':
