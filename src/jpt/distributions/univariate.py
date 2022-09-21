@@ -505,23 +505,27 @@ class Numeric(Distribution):
 
     # noinspection DuplicatedCode
     @classmethod
-    def value2label(cls, value: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+    def value2label(cls, value: Union[numbers.Real, NumberSet]) -> Union[numbers.Real, NumberSet]:
         if isinstance(value, ContinuousSet):
             return ContinuousSet(cls.labels[value.lower], cls.labels[value.upper], value.left, value.right)
+        elif isinstance(value, RealSet):
+            return RealSet([cls.value2label(i) for i in value.intervals])
         elif isinstance(value, numbers.Real):
             return cls.labels[value]
         else:
-            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(value).__name__)
+            raise TypeError('Expected float or NumberSet type, got %s.' % type(value).__name__)
 
     # noinspection DuplicatedCode
     @classmethod
-    def label2value(cls, label: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+    def label2value(cls, label: Union[numbers.Real, NumberSet]) -> Union[numbers.Real, NumberSet]:
         if isinstance(label, ContinuousSet):
             return ContinuousSet(cls.values[label.lower], cls.values[label.upper], label.left, label.right)
+        elif isinstance(label, RealSet):
+            return RealSet([cls.label2value(i) for i in label.intervals])
         elif isinstance(label, numbers.Real):
             return cls.values[label]
         else:
-            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(label).__name__)
+            raise TypeError('Expected float or NumberSet type, got %s.' % type(label).__name__)
 
     @classmethod
     def equiv(cls, other):

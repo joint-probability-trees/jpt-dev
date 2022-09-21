@@ -16,7 +16,7 @@ except ModuleNotFoundError:
 finally:
     from jpt.base.functions import PiecewiseFunction, LinearFunction
     from jpt.distributions.quantile.quantiles import QuantileDistribution
-    from jpt.base.intervals import ContinuousSet, EXC, INC
+    from jpt.base.intervals import ContinuousSet, EXC, INC, RealSet
 
 
 from jpt.base.errors import Unsatisfiability
@@ -253,11 +253,13 @@ class NumericTest(TestCase):
         self.assertEqual(0, DistGauss.value2label(DistGauss.label2value(0)))
         self.assertEqual(ContinuousSet(0, 1),
                          DistGauss.value2label(DistGauss.label2value(ContinuousSet(0, 1))))
+        self.assertEqual(RealSet(['[0, 1]', '[2,3]']),
+                         DistGauss.value2label(DistGauss.label2value(RealSet(['[0, 1]', '[2,3]']))))
 
-    def test_label_inference(self):
+    def _test_label_inference(self):
         raise NotImplementedError()
 
-    def test_value_inference(self):
+    def _test_value_inference(self):
         raise NotImplementedError()
 
 
