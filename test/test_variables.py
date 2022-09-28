@@ -7,8 +7,10 @@ import numpy as np
 import pandas as pd
 
 from jpt import NumericType, SymbolicType
+from jpt.base.intervals import ContinuousSet
 from jpt.distributions import Bool, Numeric, Distribution
-from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable, infer_from_dataframe
+from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable, infer_from_dataframe, \
+    LabelAssignment, ValueAssignment
 
 
 class VariableMapTest(TestCase):
@@ -36,6 +38,25 @@ class VariableMapTest(TestCase):
 
         self.assertEqual('baz', varmap[C])
         self.assertEqual('baz', varmap['C'])
+
+    def test_raises(self):
+        A, B, C = VariableMapTest.TEST_DATA
+        varmap = VariableMap()
+        self.assertRaises(ValueError, varmap.__setitem__, 'C', True)
+
+    def test_equality(self):
+        A, B, C = VariableMapTest.TEST_DATA
+        varmap = VariableMap()
+        varmap[A] = 1
+        varmap[C] = 'blub'
+        self.assertEqual(varmap, varmap)
+
+    def test_copy(self):
+        A, B, C = VariableMapTest.TEST_DATA
+        varmap = VariableMap()
+        varmap[A] = 1
+        varmap[C] = 'blub'
+        self.assertEqual(varmap, varmap.copy())
 
     def test_hash(self):
         '''Custom has value calculation.'''
@@ -122,6 +143,47 @@ class VariableMapTest(TestCase):
         varmap[B] = 'bar'
         varmap[C] = 'baz'
         self.assertEqual(varmap, VariableMap.from_json([A, B, C], json.loads(json.dumps(varmap.to_json()))))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class LabelValueAssignmentTest(TestCase):
+
+    def test_label_assignment(self):
+        A, B, C = VariableMapTest.TEST_DATA
+        a = LabelAssignment()
+        self.assertRaises(ValueError, a.__setitem__, 'C', True)
+        self.assertRaises(TypeError, a.__setitem__, C, 'Bla')
+        self.assertRaises(TypeError, a.__setitem__, A, 'blub')
+        a[A] = ContinuousSet(0, 1)
+        self.assertEqual(ContinuousSet(0, 1), a['A'])
+
+    def test_value_assignment(self):
+        A, B, C = VariableMapTest.TEST_DATA
+        dom = SymbolicType('TestType', labels=['zero', 'one', 'two'])
+        D = SymbolicVariable('D', domain=dom)
+        a = ValueAssignment()
+        self.assertRaises(TypeError, a.__setitem__, C, 'Bla')
+        self.assertRaises(TypeError, a.__setitem__, D, 'zero')
+        self.assertRaises(TypeError, a.__setitem__, D, 'one')
+        a[D] = 0
+        self.assertEqual(0, a['D'])
+
+    def test_conversion(self):
+        A, B, C = VariableMapTest.TEST_DATA
+        dom = SymbolicType('TestType', labels=['zero', 'one', 'two'])
+        D = SymbolicVariable('D', domain=dom)
+        l = LabelAssignment([(A, ContinuousSet(0, 1)),
+                             (D, 'one')])
+        self.assertEqual(l, l.value_assignment().label_assignment())
+        v = l.value_assignment()
+        self.assertIsInstance(v, ValueAssignment)
+        self.assertEqual(v['A'], ContinuousSet(0, 1))
+        self.assertEqual(v['D'], 1)
+        l_ = v.label_assignment()
+        self.assertIsInstance(v, LabelAssignment)
+        self.assertEqual(v['A'], ContinuousSet(0, 1))
+        self.assertEqual(v['D'], 'one')
 
 
 # ----------------------------------------------------------------------------------------------------------------------

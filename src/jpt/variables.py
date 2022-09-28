@@ -434,12 +434,12 @@ class VariableMap:
         return bool(len(self))
 
     def __eq__(self, o: 'VariableMap'):
-        return (type(o) is VariableMap and
+        return (type(o) is type(self) and
                 list(self._map.items()) == list(o._map.items()) and
                 list(self._variables.items()) == list(o._variables.items()))
 
     def __hash__(self):
-        return hash((VariableMap, tuple(sorted([(var, tuple(sorted(val)) if type(val) is set else val)
+        return hash((type(self), tuple(sorted([(var, tuple(sorted(val)) if type(val) is set else val)
                                                for var, val in self.items()], key=lambda t: t[0].name))))
 
     def __isub__(self, other):
@@ -483,9 +483,9 @@ class VariableMap:
 
     def copy(self, deep: bool = False) -> 'VariableMap':
         if not deep:
-            return VariableMap([(var, val) for var, val in self.items()])
+            return type(self)([(var, val) for var, val in self.items()])
 
-        vmap = VariableMap()
+        vmap = type(self)()
         for vname, value in self.items():
             if isinstance(value, (numbers.Number, str)):
                 vmap[vname] = value
@@ -493,9 +493,9 @@ class VariableMap:
                 vmap[vname] = value.copy()
         return vmap
 
-    @staticmethod
-    def from_json(variables: Iterable[Variable], d: Dict[str, Any], typ=None, args=()) -> 'VariableMap':
-        vmap = VariableMap()
+    @classmethod
+    def from_json(cls, variables: Iterable[Variable], d: Dict[str, Any], typ=None, args=()) -> 'VariableMap':
+        vmap = cls()
         varbyname = {var.name: var for var in variables}
         for vname, value in d.items():
             vmap[varbyname[vname]] = (typ.from_json(value, *args)
@@ -504,4 +504,80 @@ class VariableMap:
         return vmap
 
     def __repr__(self):
-        return '<VariableMap {%s}>' % ','.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()])
+        return '<%s {%s}>' % (type(self).__name__,
+                              ','.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()]))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class VariableAssignment(VariableMap):
+    '''
+    Specialization of a ``VariableMap`` that maps a set of variables
+    to values of the respective variables. This is an abstract base class
+    that cannot be instantiated.
+    There exist two specializations ``LabelAssignment`` and ``ValueAssignment``
+    that are supposed to be used instead.
+    '''
+
+    def __init__(self, data: List[Tuple] = None):
+        super().__init__(data)
+        if type(self) is VariableAssignment:
+            raise TypeError('Abstract super class %s cannot be instantiated.' % type(self).__name__)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+# noinspection DuplicatedCode
+class LabelAssignment(VariableAssignment):
+    '''
+    Maps a set of variables to values represented by their exterior representation, i.e.
+    the perspective of a user.
+    '''
+
+    def __setitem__(self,
+                    variable: Variable,
+                    value: Union[Set[int],
+                                 Set[str],
+                                 NumberSet,
+                                 numbers.Number,
+                                 str]) -> None:
+        if isinstance(variable, NumericVariable) and not isinstance(value, (numbers.Number, NumberSet)):
+            raise TypeError('Expected value of type numbers.Number or NumberSet, got %s.' % type(value).__name__)
+        elif isinstance(variable, SymbolicVariable):
+            if type(value) is not set:
+                value_ = {value}
+            else:
+                value_ = value
+            for v in value_:
+                if v not in set(variable.domain.labels.values()):
+                    raise TypeError('Value %s is not in the labels of domain %s.' % (v, variable.domain.__name__))
+        super().__setitem__(variable, value)
+
+    def value_assignment(self) -> 'ValueAssignment':
+        return ValueAssignment([(var, var.domain.label2value(val)) for var, val in self.items()])
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+# noinspection DuplicatedCode
+class ValueAssignment(VariableAssignment):
+    '''
+    Maps a set of variables to values represented by their interior representation, i.e.
+    the internal value representation used by JPTs.
+    '''
+
+    def __setitem__(self, variable: Variable, value: Union[Set[int], NumberSet, numbers.Number]) -> None:
+        if isinstance(variable, NumericVariable) and not isinstance(value, (numbers.Number, NumberSet)):
+            raise TypeError('Expected value of type numbers.Number or NumberSet, got %s.' % type(value).__name__)
+        elif isinstance(variable, SymbolicVariable) and type(value) not in (numbers.Integral, set):
+            if type(value) is not set:
+                value_ = {value}
+            else:
+                value_ = value
+            for v in value_:
+                if v not in set(variable.domain.values.values()):
+                    raise TypeError('Value %s is not in the values of domain %s.' % (v, variable.domain.__name__))
+        super().__setitem__(variable, value)
+
+    def label_assignment(self) -> LabelAssignment:
+        return LabelAssignment([(var, var.domain.value2label(val)) for var, val in self.items()])
