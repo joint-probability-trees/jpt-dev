@@ -17,7 +17,7 @@ from jpt.base.constants import SYMBOL
 from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType
 
 try:
-    from jpt.base.intervals import __module__
+    from jpt.base.intervals import __module__, NumberSet
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
@@ -110,7 +110,7 @@ class Variable:
                 self.min_impurity_improvement == other.min_impurity_improvement)
 
     def __hash__(self):
-        return hash((hashlib.md5(self.name.encode()).hexdigest(), self.domain))
+        return hash((hashlib.md5(self.name.encode()).hexdigest()))
 
     @property
     def symbolic(self) -> bool:
@@ -454,6 +454,18 @@ class VariableMap:
         self._map.update(varmap._map)
         self._variables.update(varmap._variables)
         return self
+
+    def copy(self, deep: bool = False) -> 'VariableMap':
+        if not deep:
+            return VariableMap([(var, val) for var, val in self.items()])
+
+        vmap = VariableMap()
+        for vname, value in self.items():
+            if isinstance(value, (numbers.Number, str)):
+                vmap[vname] = value
+            elif isinstance(value, (set, NumberSet)):
+                vmap[vname] = value.copy()
+        return vmap
 
     @staticmethod
     def from_json(variables: Iterable[Variable], d: Dict[str, Any], typ=None, args=()) -> 'VariableMap':
