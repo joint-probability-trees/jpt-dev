@@ -1,5 +1,4 @@
 import statistics
-from unittest import TestCase
 
 import pandas as pd
 from ddt import ddt, data
@@ -19,6 +18,7 @@ from jpt.variables import NumericVariable, SymbolicVariable, infer_from_datafram
 try:
     from jpt.base.intervals import __module__
     from jpt.distributions.quantile.quantiles import __module__
+    from jpt.base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
@@ -174,7 +174,6 @@ class TestCasePPFTransform(unittest.TestCase):
             ContinuousSet(.5, np.nextafter(1, 2), INC, EXC): LinearFunction(2, 1),
             ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC): None
         }))
-
 
 
 class TestCaseQuantileCrop(unittest.TestCase):

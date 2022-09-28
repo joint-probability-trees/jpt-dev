@@ -5,7 +5,7 @@ from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
 from csv import Dialect
 
 import math
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Any, Tuple
 
 import numpy as np
 import arff
@@ -19,6 +19,7 @@ from numpy import iterable
 
 from dnutils import ifnone, stop, out
 
+
 try:
     from jpt.base.intervals import __module__
 except ModuleNotFoundError:
@@ -30,15 +31,15 @@ finally:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def pairwise(seq):
+def pairwise(seq: Iterable[Any]) -> Iterable[Tuple[Any, Any]]:
     '''Iterate over all consecutive pairs in ``seq``.'''
     for e in seq:
         if 'prev' in locals():
             yield prev, e
         prev = e
 
-# ----------------------------------------------------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------------------------------------------------
 
 class Conditional:
 

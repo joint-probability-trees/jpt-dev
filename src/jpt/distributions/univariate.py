@@ -37,7 +37,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from ..base.intervals import R, ContinuousSet
+    from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
     from ..base.functions import LinearFunction
     from .quantile.quantiles import QuantileDistribution
 
@@ -503,28 +503,29 @@ class Numeric(Distribution):
                                                                                                type(o)))
         return type(o).equiv(type(self)) and self._quantile == o._quantile
 
-    def __hash__(self):
-        return hash((type(self), self.values, self.labels, self._quantile))
-
     # noinspection DuplicatedCode
     @classmethod
-    def value2label(cls, value: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+    def value2label(cls, value: Union[numbers.Real, NumberSet]) -> Union[numbers.Real, NumberSet]:
         if isinstance(value, ContinuousSet):
             return ContinuousSet(cls.labels[value.lower], cls.labels[value.upper], value.left, value.right)
+        elif isinstance(value, RealSet):
+            return RealSet([cls.value2label(i) for i in value.intervals])
         elif isinstance(value, numbers.Real):
             return cls.labels[value]
         else:
-            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(value).__name__)
+            raise TypeError('Expected float or NumberSet type, got %s.' % type(value).__name__)
 
     # noinspection DuplicatedCode
     @classmethod
-    def label2value(cls, label: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+    def label2value(cls, label: Union[numbers.Real, NumberSet]) -> Union[numbers.Real, NumberSet]:
         if isinstance(label, ContinuousSet):
             return ContinuousSet(cls.values[label.lower], cls.values[label.upper], label.left, label.right)
+        elif isinstance(label, RealSet):
+            return RealSet([cls.label2value(i) for i in label.intervals])
         elif isinstance(label, numbers.Real):
             return cls.values[label]
         else:
-            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(label).__name__)
+            raise TypeError('Expected float or NumberSet type, got %s.' % type(label).__name__)
 
     @classmethod
     def equiv(cls, other):
@@ -583,19 +584,30 @@ class Numeric(Distribution):
         self._quantile = params
         return self
 
-    def _p(self, value):
+    def _p(self, value: Union[numbers.Number, NumberSet]) -> numbers.Real:
         if isinstance(value, numbers.Number) and np.isinf(self.pdf.eval(value)):
             return 0
+        elif isinstance(value, RealSet):
+            return sum(self._p(i) for i in value.intervals)
         elif value.lower == value.upper and not value.isempty() and np.isinf(self.pdf.eval(value.lower)):
             return 1
         return ((self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
                 (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
 
-    def p(self, labels):
-        if not isinstance(labels, (ContinuousSet, numbers.Number)):
-            raise TypeError('Argument must be numbers.Number or jpt.base.intervals.ContinuousSet (got %s).' % type(labels))
+    def p(self, labels: Union[numbers.Number, NumberSet]) -> numbers.Real:
+        if not isinstance(labels, (NumberSet, numbers.Number)):
+            raise TypeError('Argument must be numbers.Number or '
+                            'jpt.base.intervals.NumberSet (got %s).' % type(labels))
         if isinstance(labels, ContinuousSet):
-            return self._p(ContinuousSet(self.values[labels.lower], self.values[labels.upper], labels.left, labels.right))
+            return self._p(ContinuousSet(self.values[labels.lower],
+                                         self.values[labels.upper],
+                                         labels.left,
+                                         labels.right))
+        elif isinstance(labels, RealSet):
+            self._p(RealSet([ContinuousSet(self.values[i.lower],
+                                           self.values[i.upper],
+                                           i.left,
+                                           i.right) for i in labels.intervals]))
         else:
             return self._p(self.values[labels])
 
@@ -844,9 +856,6 @@ class Multinomial(Distribution):
 
     def __eq__(self, other):
         return type(self).equiv(type(other)) and (self.probabilities == other.probabilities).all()
-
-    def __hash__(self):
-        return hash((Multinomial, self.values.values(), self.labels.values(), self._params))
 
     def __str__(self):
         if self._p is None:
