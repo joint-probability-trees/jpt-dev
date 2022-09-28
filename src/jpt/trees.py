@@ -439,6 +439,23 @@ class Leaf(Node):
             result *= probs
 
         return result
+
+    def max(self, infinity_cap=1.) -> float:
+        """ Get the maximal likelihood this leaf can have."""
+        result = 1.
+        for variable, distribution in self.distributions.items():
+            dm = distribution.max()
+            dm = infinity_cap if dm == float("inf") else dm
+            result *= dm
+        return result
+
+    def argmax(self):
+        result = dict()
+        for variable, distribution in self.distributions.items():
+            result[variable] = distribution.argmax()
+        return VariableMap(result.items())
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -883,12 +900,12 @@ class JPT:
         querymap = VariableMap()
         for key, value in query.items():
             querymap[key if isinstance(key, Variable) else self.varnames[key]] = value
-        query_ = self._prepropress_query(querymap)
+        query_ = self._preprocess_query(querymap)
         evidencemap = VariableMap()
         if evidence:
             for key, value in evidence.items():
                 evidencemap[key if isinstance(key, Variable) else self.varnames[key]] = value
-        evidence_ = ifnone(evidencemap, {}, self._prepropress_query)
+        evidence_ = ifnone(evidencemap, {}, self._preprocess_query)
 
         r = Result(query_, evidence_)
 
@@ -951,7 +968,7 @@ class JPT:
         :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
         '''
         variables = ifnone(variables, self.variables)
-        evidence_ = ifnone(evidence, {}, self._prepropress_query)
+        evidence_ = ifnone(evidence, {}, self._preprocess_query)
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
 
@@ -1103,10 +1120,73 @@ class JPT:
             r.path.update({var: dist.mpe()})
         return r
 
-    def _prepropress_query(self,
-                           query: Union[VariableMap, Dict[Variable, Any]],
-                           remove_none: bool = True,
-                           skip_unknown_variables: bool = False) -> VariableMap:
+    def _mpe(self, evidence=VariableMap()) -> List[VariableMap]:
+        """ Return the most probable explanation of all variables given the evidence.
+
+        @param evidence: The evidence
+        @return: List[VariableMap] A list of assignments to every variable that are maximal likely."""
+
+        # transform the evidence
+        evidence = self._preprocess_query(evidence)
+
+        # apply the conditions given
+        conditional_jpt = self.conditional_jpt(evidence)
+
+        # calculate the maximal probabilities for each leaf
+        maxima = [leaf.max() * leaf.prior for leaf in conditional_jpt.leaves.values()]
+
+        # get the maximum of those maxima
+        highest_likelihood = max(maxima)
+
+        # get all leaves that are maximal likely
+        best_leaves = [leaf for leaf, maximum in zip(self.leaves.values(), maxima) if maximum == highest_likelihood]
+
+        # create a list for all possible maximal occurrences
+        results = []
+
+        # for every most probable leaf
+        for leaf in best_leaves:
+            # append the argmax to the results
+            results.append(leaf.argmax())
+
+        # return the results
+        return results
+
+    def independent_marginals(self, evidence: VariableMap = VariableMap()) -> VariableMap:
+        """ Get the marginal distribution of every variable given the evidence.
+        @param evidence: The evidence
+        @return: VariableMap that maps to every distribution
+        """
+
+        # preprocess the evidence
+        evidence = self._preprocess_query(evidence)
+
+        # apply conditions
+        conditional_jpt = self.conditional_jpt(evidence)
+
+        # generate results
+        result = dict()
+
+        # for every variables
+        for variable in self.variables:
+
+            # collect the weights and distributions
+            weights, distributions = [], []
+            for leaf in conditional_jpt.leaves.values():
+                weights.append(leaf.prior)
+                distributions.append(leaf.distributions[variable])
+
+            # merge the distributions w. r. t. the leaf priors
+            result[variable] = type(distributions[0]).merge(distributions, weights)
+
+        # transform to VariableMap and return it
+        return VariableMap(result.items())
+
+    def _preprocess_query(self,
+                          query: Union[VariableMap, Dict[Variable, Any]],
+                          remove_none: bool = True,
+                          skip_unknown_variables: bool = False,
+                          allow_singular_values: bool = True) -> VariableMap:
         '''
         Transform a query entered by a user into an internal representation
         that can be further processed.
@@ -1115,6 +1195,9 @@ class JPT:
                                         multiple reverse tree inference). If False, an exception is raised;
                                         default: False
         :type skip_unknown_variables: bool
+        :param allow_singular_values: Allow singular values, such that they are transformed to the daomin
+            specification of numeric variables but not transformed to intervals.
+        :type allow_singular_values: bool
         '''
         # Transform lists into a numeric interval:
         query_ = VariableMap()
@@ -1136,8 +1219,10 @@ class JPT:
                     arg = list2interval(arg)
                 if isinstance(arg, numbers.Number):
                     val = var.domain.values[arg]
+                    if allow_singular_values:
+                        query_[var] = val
                     # Apply a "blur" to single value evidences, if any blur is set
-                    if var.blur:
+                    elif var.blur:
                         prior = self.priors[var.name]
                         quantile = prior.cdf.functions[max(1, min(len(prior.cdf) - 2,
                                                                   prior.cdf.idx_at(val)))].eval(val)
@@ -1513,7 +1598,7 @@ class JPT:
             return []
 
         # Transform into internal values/intervals (symbolic values to their indices)
-        query_ = self._prepropress_query(query, skip_unknown_variables=True)
+        query_ = self._preprocess_query(query, skip_unknown_variables=True)
 
         # update non-query variables to allow all possible values
         for i, var in enumerate(self.variables):
@@ -1811,7 +1896,12 @@ class JPT:
         return conditional_jpt
 
     def conditional_jpt_safe(self, evidence: VariableMap):
-        # evidence = self._preprocess_query(evidence)
+        """Construct a conditional jpt where 0 probability paths are not deleted.
+
+        :param evidence: A preprocessed VariableMap mapping the observed variables to there observed,
+            single values (not intervals)
+        :type evidence: ``VariableMap``
+        """
 
         result = self.copy()
         if len(evidence) == 0:

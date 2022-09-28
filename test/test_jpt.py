@@ -89,3 +89,23 @@ class JPTTest(TestCase):
                              e.reasons)
         else:
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')
+
+    def test_exact_mpe(self):
+        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        jpt = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
+        jpt.fit(df)
+
+        mpe = jpt._mpe()
+        self.assertEqual(len(mpe), 1)
+
+    def test_independent_marginals(self):
+        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        jpt = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
+        jpt.fit(df)
+
+        im = jpt.independent_marginals()
+        self.assertEqual(len(im), len(jpt.variables))
+
+        evidence = {jpt.varnames["Hungry"]: {1}}
+        im = jpt.independent_marginals(VariableMap(evidence.items()))
+        self.assertEqual(len(im), len(jpt.variables))
