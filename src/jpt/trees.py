@@ -423,7 +423,7 @@ class PosteriorResult(Result):
         self.distributions = dists
 
     def format_result(self):
-        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query]),
+        return ('P(%s%s%s) = %.3f%%' % (', '.join(self.query),
                                         ' | ' if self.evidence else '',
                                         ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
                                         self.result * 100))
@@ -946,8 +946,7 @@ class JPT:
                     else:
                         query_[var] = ContinuousSet(val, val)
                 elif isinstance(arg, ContinuousSet):
-                    query_[var] = ContinuousSet(var.domain.values[arg.lower],
-                                                var.domain.values[arg.upper], arg.left, arg.right)
+                    query_[var] = var.domain.label2value(arg)
                 else:
                     query_[var] = arg
             if var.symbolic:
