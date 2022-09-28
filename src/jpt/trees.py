@@ -41,7 +41,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet
+    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import Impurity
 
 
@@ -333,8 +333,6 @@ class Result:
     def explain(self):
         result = self.format_result()
         result += '\n'
-        out(self.candidates)
-        out(self.weights)
         for weight, leaf in sorted(zip(self.weights, self.candidates),
                                    key=operator.itemgetter(0),
                                    reverse=True):
@@ -947,8 +945,13 @@ class JPT:
                         query_[var] = ContinuousSet(val, val)
                 elif isinstance(arg, ContinuousSet):
                     query_[var] = var.domain.label2value(arg)
+                elif isinstance(arg, RealSet):
+                    query_[var] = RealSet([ContinuousSet(var.domain.labels[i.lower],
+                                                         var.domain.labels[i.upper],
+                                                         i.left,
+                                                         i.right) for i in arg.intervals])
                 else:
-                    query_[var] = arg
+                    raise TypeError()
             if var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
                 if type(arg) is not set:
@@ -1447,7 +1450,7 @@ class JPT:
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>"  if v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>"  if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>

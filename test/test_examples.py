@@ -31,7 +31,7 @@ class ExamplesTestRun(TestCase):
 
     def test_mnist(self):
         import mnist
-        mnist.main(visualize=True)
+        mnist.main(visualize=False)
 
     def test_muesli(self):
         import muesli

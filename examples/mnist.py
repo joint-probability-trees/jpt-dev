@@ -68,8 +68,8 @@ def main(visualize=True):
     if visualize:
         plt.tight_layout()
         plt.show()
-    
-    tree.plot(plotvars=tree.variables, view=visualize)
+        tree.plot(plotvars=tree.variables, view=visualize)
+
 
 
 if __name__ == '__main__':

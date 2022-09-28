@@ -24,7 +24,6 @@ class SequenceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.g = UniformSeries()
         self.data = np.expand_dims(self.g.sample(np.arange(np.pi / 2, 10000, np.pi)), -1)
-        out(self.data)
         self.variables = [NumericVariable("X", precision=0.1)]
 
     def test_learning(self):
