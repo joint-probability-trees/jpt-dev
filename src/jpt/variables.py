@@ -144,6 +144,9 @@ class Variable:
     def __setstate__(self, state):
         self.__dict__ = Variable.from_json(state).__dict__
 
+    def copy(self):
+        return Variable.from_json(self.to_json())
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Numeric variables
 

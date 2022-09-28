@@ -423,6 +423,12 @@ class Distribution:
     def kl_divergence(self, other: 'Distribution'):
         raise NotImplementedError()
 
+    def max(self) -> float:
+        raise NotImplementedError()
+
+    def argmax(self) -> float or str or int:
+        raise NotImplementedError()
+
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the distribution.
 
@@ -708,6 +714,13 @@ class Numeric(Distribution):
     def type_from_json(cls, data):
         return cls
 
+    def max(self) -> float:
+        return max(f.value for f in self.pdf.functions)
+
+    def argmax(self) -> List[float or str or int or ContinuousSet]:
+        max = self.max()
+        return [interval for interval, function in zip(self.pdf.intervals, self.pdf.functions) if function.value == max]
+
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''
         Generates a plot of the piecewise linear function representing
@@ -907,10 +920,10 @@ class Multinomial(Distribution):
         return sum(self._params[v] for v in i2)
 
     def apply_restriction(self, restriction: set or int or str, normalize=True):
-        if not isinstance(restriction, ContinuousSet):
+        if not isinstance(restriction, set):
             return self.create_dirac_impulse(restriction)
 
-        for idx, value in enumerate(self.values):
+        for idx, value in enumerate(self.labels):
             if value not in restriction:
                 self._params[idx] = 0
 
@@ -1043,6 +1056,13 @@ class Multinomial(Distribution):
     @classmethod
     def from_json(cls, data):
         return cls(**data['settings']).set(data['params'])
+
+    def max(self) -> float:
+        return max(self.probabilities)
+
+    def argmax(self) -> List[float or str or int]:
+        maximum = self.max()
+        return [label for label, p in zip(self.labels, self.probabilities) if p == maximum]
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.

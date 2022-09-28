@@ -29,7 +29,7 @@ class SequentialJPT:
             target_indices = [idx for idx, var in enumerate(self.template_tree.variables)
                               if var in self.template_tree.targets]
         else:
-            target_indices = [list(range(len(self.template_tree.variables)))]
+            target_indices = list(range(len(self.template_tree.variables)))
 
         # create variables for jointly modelled timesteps
         for timestep in range(1, timesteps):

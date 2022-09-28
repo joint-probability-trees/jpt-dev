@@ -42,8 +42,9 @@ def main(visualize=False):
 
     tree.learn(data=df)
 
-    # cjpt = tree.conditional_jpt(VariableMap({variables[0]: 5,
-    #                                          variables[29]: 2.}.items()))
+    # testing conditional jpts in a complex scenario
+    cjpt = tree.conditional_jpt(tree._preprocess_query(VariableMap({variables[0]: {"5", "6"},
+                                             variables[29]: 2.}.items())))
 
     leaves = list(tree.leaves.values())
     
