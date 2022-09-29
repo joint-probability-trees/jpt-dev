@@ -109,3 +109,11 @@ class JPTTest(TestCase):
         evidence = {jpt.varnames["Hungry"]: {1}}
         im = jpt.independent_marginals(VariableMap(evidence.items()))
         self.assertEqual(len(im), len(jpt.variables))
+
+    def test_conditional_jpt(self):
+        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'))
+        evidence = {jpt.varnames["Arson"]: [20,30]}
+        evidence = jpt._preprocess_query(VariableMap(evidence.items()))
+        cjpt = jpt.conditional_jpt(evidence)
+        marginals = cjpt.independent_marginals()
+        self.assertEqual(marginals["Arson"].p(evidence["Arson"]), 1.)

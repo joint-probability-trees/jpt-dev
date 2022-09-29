@@ -1139,7 +1139,8 @@ class JPT:
         highest_likelihood = max(maxima)
 
         # get all leaves that are maximal likely
-        best_leaves = [leaf for leaf, maximum in zip(self.leaves.values(), maxima) if maximum == highest_likelihood]
+        best_leaves = [leaf for leaf, maximum in zip(conditional_jpt.leaves.values(), maxima)
+                       if maximum == highest_likelihood]
 
         # create a list for all possible maximal occurrences
         results = []
