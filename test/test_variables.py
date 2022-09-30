@@ -181,9 +181,9 @@ class LabelValueAssignmentTest(TestCase):
         self.assertEqual(v['A'], ContinuousSet(0, 1))
         self.assertEqual(v['D'], 1)
         l_ = v.label_assignment()
-        self.assertIsInstance(v, LabelAssignment)
-        self.assertEqual(v['A'], ContinuousSet(0, 1))
-        self.assertEqual(v['D'], 'one')
+        self.assertIsInstance(l_, LabelAssignment)
+        self.assertEqual(l_['A'], ContinuousSet(0, 1))
+        self.assertEqual(l_['D'], 'one')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
