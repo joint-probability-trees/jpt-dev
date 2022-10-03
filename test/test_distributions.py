@@ -9,7 +9,7 @@ from jpt.distributions.utils import OrderedDictProxy, DataScaler
 try:
     from jpt.base.functions import __module__
     from jpt.distributions.quantile.quantiles import __module__
-    from jpt.base.intervals import __module__
+    from jpt.base.intervals import __module__, R
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
@@ -259,8 +259,28 @@ class NumericTest(TestCase):
     def _test_label_inference(self):
         raise NotImplementedError()
 
-    def _test_value_inference(self):
-        raise NotImplementedError()
+    def test_value_inference_normal(self):
+        '''Inference under "normal" circumstances.'''
+        dist = Numeric().set(params=QuantileDistribution.from_cdf(PiecewiseFunction.from_dict(
+            {']-inf,0[': 0,
+             '[0,1[': LinearFunction(1, 0),
+             '[1,inf[': 1}
+        )))
+        self.assertEqual(0, dist._p(-1))
+        self.assertEqual(0, dist._p(.5))
+        self.assertEqual(0, dist._p(2))
+        self.assertEqual(1, dist._p(R))
+        self.assertEqual(.5, dist._p(ContinuousSet.parse('[0,.5]')))
+
+    def test_value_inference_sinularity(self):
+        '''PDF has a singularity like a Dirac impulse function.'''
+        dist = Numeric().set(params=QuantileDistribution.from_cdf(PiecewiseFunction.from_dict(
+            {']-inf,0.0[': 0,
+             '[0.0,inf[': 1}
+        )))
+        self.assertEqual(0, dist._p(ContinuousSet.parse(']-inf,0[')))
+        self.assertEqual(1, dist._p(ContinuousSet.parse('[0,inf[')))
+        self.assertEqual(1, dist._p(0))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

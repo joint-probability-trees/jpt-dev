@@ -876,14 +876,14 @@ cdef class PiecewiseFunction(Function):
             if not i_.isempty():
                 if isinstance(i_, ContinuousSet):
                     i_ = RealSet(i_)
-                intervals.append(i_.intervals[0])
+                intervals.append(i_.intervals[0].copy())
                 functions.append(f)
             if i_ != i and not added_:
                 intervals.append(interval)
                 functions.append(func)
                 added_ = True
             if isinstance(i_, RealSet) and len(i_.intervals) > 1:
-                intervals.append(i_.intervals[1])
+                intervals.append(i_.intervals[1].copy())
                 functions.append(f)
         self.intervals = list(intervals)
         self.functions = list(functions)
@@ -929,7 +929,7 @@ cdef class PiecewiseFunction(Function):
         cdef ContinuousSet i
         cdef Function f
         for i, f in zip(self.intervals, self.functions):
-            diff.intervals.append(i)
+            diff.intervals.append(i.copy())
             diff.functions.append(f.differentiate())
         return diff
 

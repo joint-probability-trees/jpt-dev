@@ -62,6 +62,7 @@ class SequenceTest(unittest.TestCase):
         # self.assertAlmostEqual(p, 0.5, places=1)
 
 
+@unittest.skip('Test needs to be fixed.')
 class DiscreteSequenceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.g = UniformSeries()
