@@ -599,10 +599,7 @@ class Numeric(Distribution):
             raise TypeError('Argument must be numbers.Number or '
                             'jpt.base.intervals.NumberSet (got %s).' % type(labels))
         if isinstance(labels, ContinuousSet):
-            return self._p(ContinuousSet(self.values[labels.lower],
-                                         self.values[labels.upper],
-                                         labels.left,
-                                         labels.right))
+            return self._p(self.label2value(labels))
         elif isinstance(labels, RealSet):
             self._p(RealSet([ContinuousSet(self.values[i.lower],
                                            self.values[i.upper],
