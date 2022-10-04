@@ -220,6 +220,7 @@ class Leaf(Node):
         super().__init__(idx, parent=parent)
         self.distributions = VariableMap()
         self.prior = prior
+        self.s_indices = []
 
     @property
     def str_node(self) -> str:
@@ -255,6 +256,7 @@ class Leaf(Node):
                 'distributions': self.distributions.to_json(),
                 'prior': self.prior,
                 'samples': self.samples,
+                's_indices': [int(i) for i in self.s_indices],
                 'parent': ifnone(self.parent, None, attrgetter('idx')),
                 'child_idx': self.parent.children.index(self) if self.parent is not None else -1}
 
@@ -267,6 +269,8 @@ class Leaf(Node):
             leaf.parent.set_child(data['child_idx'], leaf)
         leaf.prior = data['prior']
         leaf.samples = data['samples']
+        if 's_indices' in data:
+            leaf.s_indices = np.array(data['s_indices'])
         tree.leaves[leaf.idx] = leaf
         return leaf
 
@@ -464,6 +468,7 @@ class JPT:
         self.priors = {}
 
         self._min_samples_leaf = min_samples_leaf
+        self._keep_samples = False
         self.min_impurity_improvement = min_impurity_improvement
         self._numsamples = 0
         self.root = None
@@ -1021,6 +1026,8 @@ class JPT:
                                                              col=i)
             leaf.prior = n_samples / data.shape[0]
             leaf.samples = n_samples
+            if self._keep_samples:
+                leaf.s_indices = self.indices[start:end]
 
             self.leaves[leaf.idx] = leaf
 
@@ -1130,7 +1137,7 @@ class JPT:
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
-    def learn(self, data=None, rows=None, columns=None) -> 'JPT':
+    def learn(self, data=None, rows=None, columns=None, keep_samples=False) -> 'JPT':
         '''Fits the ``data`` into a regression tree.
 
         :param data:    The training examples (assumed in row-shape)
@@ -1139,6 +1146,9 @@ class JPT:
         :type rows:     [[str or float or bool]]; (according to `self.variables`)
         :param columns: The training examples (assumed in row-shape)
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
+        :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
+                        purposes only. Default is false.
+        :type keep_samples:  bool
         '''
         # ----------------------------------------------------------------------------------------------------------
         # Check and prepare the data
@@ -1175,6 +1185,8 @@ class JPT:
             min_samples_leaf = max(1, int(self._min_samples_leaf * len(_data)))
         else:
             min_samples_leaf = self._min_samples_leaf
+
+        self._keep_samples = keep_samples
 
         # Initialize the impurity calculation
         self.impurity = Impurity(self)

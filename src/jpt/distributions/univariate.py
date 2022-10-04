@@ -38,7 +38,7 @@ except ModuleNotFoundError:
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
-    from ..base.functions import LinearFunction
+    from ..base.functions import LinearFunction, ConstantFunction
     from .quantile.quantiles import QuantileDistribution
 
 
@@ -721,28 +721,44 @@ class Numeric(Distribution):
         ax.set_title(f'{title or f"CDF of {self._cl}"}')
         ax.set_xlabel(xlabel)
         ax.set_ylabel('%')
-        std = ifnot(np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
-                    self.cdf.intervals[1].upper - self.cdf.intervals[1].lower) * 2
-        bounds = np.array([self.cdf.intervals[0].upper - std / 2] +
-                          [v.upper for v in self.cdf.intervals[:-2]] +
-                          [self.cdf.intervals[-1].lower] +
-                          [self.cdf.intervals[-1].lower + std / 2])
+        ax.set_ylim(-.1, 1.1)
 
-        bounds_ = np.array([self.labels[b] for b in bounds])
-        ax.plot(bounds_,
-                np.asarray(self.cdf.multi_eval(bounds)),
+        if len(self.cdf.intervals) == 2:
+            std = abs(self.cdf.intervals[0].upper) * .1
+        else:
+            std = ifnot(np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
+                        self.cdf.intervals[1].upper - self.cdf.intervals[1].lower) * 2
+
+        # add horizontal line before first interval of distribution
+        X = np.array([self.cdf.intervals[0].upper - std])
+
+        for i, f in zip(self.cdf.intervals[:-1], self.cdf.functions[:-1]):
+            if isinstance(f, ConstantFunction):
+                X = np.append(X, [np.nextafter(i.upper, i.upper - 1), i.upper])
+            else:
+                X = np.append(X, i.upper)
+
+        # add horizontal line after last interval of distribution
+        X = np.append(X, self.cdf.intervals[-1].lower + std)
+        X_ = np.array([self.labels[x] for x in X])
+        Y = np.array(self.cdf.multi_eval(X))
+        ax.plot(X_,
+                Y,
                 color='cornflowerblue',
                 linestyle='dashed',
                 label='Piecewise linear CDF from bounds',
                 linewidth=2,
                 markersize=12)
 
-        ax.scatter(bounds_[1:-1],
-                   np.asarray(self.cdf.multi_eval(bounds[1:-1])),
+        bounds = np.array([i.upper for i in self.cdf.intervals[:-1]])
+        bounds_ = np.array([self.labels[b] for b in bounds])
+        ax.scatter(bounds_,
+                   np.asarray(self.cdf.multi_eval(bounds)),
                    color='orange',
                    marker='o',
                    label='Piecewise Function limits')
-        ax.legend()  # do we need a legend with only one plotted line?
+
+        ax.legend(loc='upper left', prop={'size': 8})  # do we need a legend with only one plotted line?
         fig.tight_layout()
 
         save_plot(fig, directory, fname or self.__class__.__name__, fmt='pdf' if pdf else 'svg')
