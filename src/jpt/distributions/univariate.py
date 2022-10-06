@@ -718,8 +718,9 @@ class Numeric(Distribution):
         return max(f.value for f in self.pdf.functions)
 
     def argmax(self) -> List[float or str or int or ContinuousSet]:
-        max = self.max()
-        return [interval for interval, function in zip(self.pdf.intervals, self.pdf.functions) if function.value == max]
+        _max = self.max()
+        return RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
+                if function.value == _max])
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''

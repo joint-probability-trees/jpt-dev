@@ -126,11 +126,11 @@ def muesli_tree(visualize=True):
 
     # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
 
-    jpt = JPT([x, y, o, s], min_samples_leaf=.01)
+    jpt = JPT([x, y, o, s], min_samples_leaf=.2)
     jpt.learn(columns=data.values.T)
     print(len(jpt.leaves))
     jpt.save("muesli.jpt")
-    exit()
+
     # json_data = jpt.to_json()
     # pprint.pprint(json_data)
     # jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))

@@ -583,9 +583,11 @@ class ExpectationResult(Result):
 
 class MPEResult(Result):
 
-    def __init__(self, evidence, res=None, cand=None, w=None):
+    def __init__(self, evidence, res, maximum, path=dict(), cand=None, w=None):
         super().__init__(None, evidence, res=res, cand=cand, w=w)
-        self.path = {}
+        self.maximum = maximum
+        self.path = path
+
 
     def format_result(self):
         return f'MPE({self.evidence}) = {format_path(self.path)}'
@@ -1081,57 +1083,17 @@ class JPT:
             final[var] = result
         return final
 
-    def mpe(self, evidence=None, fail_on_unsatisfiability=True) -> MPEResult:
-        '''
-        Compute the (conditional) MPE state of the model.
-        '''
-        evidence_ = self._preprocess_query(evidence)
-        distributions = {var: deque() for var in self.variables}
-
-        r = MPEResult(evidence_)
-
-        for leaf in self.apply(evidence_):
-            p_m = 1
-            for var in set(evidence_.keys()):
-                evidence_val = evidence_[var]
-                if var.numeric and var in leaf.path:
-                    evidence_val = evidence_val.intersection(leaf.path[var])
-                elif var.symbolic and var in leaf.path:
-                    continue
-                p_m *= leaf.distributions[var]._p(evidence_val)
-
-            if not p_m: continue
-
-            for var in self.variables:
-                distributions[var].append((leaf.distributions[var], p_m))
-
-        if not all([sum([w for _, w in distributions[var]]) for v in self.variables]):
-            if fail_on_unsatisfiability:
-                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % var.str(evidence_val, fmt='logic'))
-            else:
-                return None
-
-        posteriors = {var: var.domain.merge([d for d, _ in distributions[var]],
-                                            normalized([w for _, w in distributions[var]]))
-                      for var in distributions}
-
-        for var, dist in posteriors.items():
-            if var in evidence_:
-                continue
-            r.path.update({var: dist.mpe()})
-        return r
-
-    def _mpe(self, evidence=VariableMap()) -> List[VariableMap]:
+    def mpe(self, evidence=VariableMap()) -> List[VariableMap]:
         """ Return the most probable explanation of all variables given the evidence.
 
         @param evidence: The evidence
         @return: List[VariableMap] A list of assignments to every variable that are maximal likely."""
 
         # transform the evidence
-        evidence = self._preprocess_query(evidence, allow_singular_values=True)
+        preprocessed_evidence = self._preprocess_query(evidence, allow_singular_values=True)
 
         # apply the conditions given
-        conditional_jpt = self.conditional_jpt(evidence)
+        conditional_jpt = self.conditional_jpt(preprocessed_evidence)
 
         # calculate the maximal probabilities for each leaf
         maxima = [leaf.max() * leaf.prior for leaf in conditional_jpt.leaves.values()]
@@ -1149,7 +1111,8 @@ class JPT:
         # for every most probable leaf
         for leaf in best_leaves:
             # append the argmax to the results
-            results.append(leaf.argmax())
+            mpe_result = MPEResult(evidence, highest_likelihood, leaf.argmax(), leaf.path)
+            results.append(mpe_result)
 
         # return the results
         return results
