@@ -1083,7 +1083,7 @@ class JPT:
             final[var] = result
         return final
 
-    def mpe(self, evidence=VariableMap()) -> List[VariableMap]:
+    def mpe(self, evidence=VariableMap()) -> List[MPEResult]:
         """ Return the most probable explanation of all variables given the evidence.
 
         @param evidence: The evidence
