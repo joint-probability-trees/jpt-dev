@@ -90,12 +90,20 @@ class JPTTest(TestCase):
         else:
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')
 
-    def test_exact_mpe(self):
+    def test_exact_mpe_discrete(self):
         df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
         jpt = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
         jpt.fit(df)
 
-        mpe = jpt._mpe()
+        mpe = jpt.mpe()
+        self.assertEqual(len(mpe), 1)
+
+    def test_exact_mpe_continuous(self):
+        var = NumericVariable('X')
+        jpt = JPT([var], min_samples_leaf=.1)
+        jpt.learn(self.data.reshape(-1, 1))
+
+        mpe = jpt.mpe()
         self.assertEqual(len(mpe), 1)
 
     def test_independent_marginals(self):
