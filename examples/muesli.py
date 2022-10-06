@@ -114,19 +114,23 @@ def test_muesli(visualize=True):
 def muesli_tree(visualize=True):
     # generate Joint Probability Tree from muesli data (use .csv file because it contains the additional Success column)
     data = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
+    data["Success"] = data["Success"].astype(str)
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
+    SuccessType = SymbolicType("Success", data['Success'].unique())
     XType = NumericType('XType', data['X'].values)
 
     x = NumericVariable('X', Numeric, blur=.01)
     y = NumericVariable('Y', Numeric, blur=.01)
     o = SymbolicVariable('Object', ObjectType)
-    s = SymbolicVariable('Success', Bool)
+    s = SymbolicVariable('Success', SuccessType)
 
     # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
 
-    jpt = JPT([x, y, o, s], min_samples_leaf=.25)
+    jpt = JPT([x, y, o, s], min_samples_leaf=.01)
     jpt.learn(columns=data.values.T)
-
+    print(len(jpt.leaves))
+    jpt.save("muesli.jpt")
+    exit()
     # json_data = jpt.to_json()
     # pprint.pprint(json_data)
     # jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
@@ -143,6 +147,7 @@ def muesli_tree(visualize=True):
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
     print(jpt)
+
     # jpt.plot(plotvars=[x, y, o, s])
 
     # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
@@ -199,8 +204,8 @@ def picklemuesli():
 
 
 def main(visualize=True):
-    plot_muesli(visualize=visualize)
-    test_muesli(visualize=visualize)
+    # plot_muesli(visualize=visualize)
+    # test_muesli(visualize=visualize)
     muesli_tree(visualize=visualize)
     # picklemuesli()
 

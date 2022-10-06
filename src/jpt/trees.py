@@ -25,6 +25,7 @@ from matplotlib import style, pyplot as plt
 import dnutils
 from dnutils import first, ifnone, mapstr, err, fst, out, ifnot
 
+import jpt.variables
 from .base.utils import prod
 from .base.errors import Unsatisfiability
 
@@ -1884,6 +1885,7 @@ class JPT:
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
             leaf.prior /= probability_mass
+
             for variable, value in evidence.items():
                 # adjust leaf distributions
                 leaf.distributions[variable] = leaf.distributions[variable].apply_restriction(value)
@@ -1896,23 +1898,18 @@ class JPT:
 
         return conditional_jpt
 
-    def conditional_jpt_safe(self, evidence: VariableMap):
-        """Construct a conditional jpt where 0 probability paths are not deleted.
+    def multiply_by_leaf_prior(self, prior: Dict[int, float]):
+        """ Multiply every leafs prior by the given priors. This serves as handling the factor message
+            from factor nodes.
 
-        :param evidence: A preprocessed VariableMap mapping the observed variables to there observed,
-            single values (not intervals)
-        :type evidence: ``VariableMap``
-        """
+        @param prior: The priors, a Dict mapping from leaf indices to float
+            """
 
-        result = self.copy()
-        if len(evidence) == 0:
-            return result
+        for idx, leaf in self.leaves.items():
+            self.leaves[idx].prior *= prior[idx]
+        self.normalize()
 
-        for idx, leaf in result.leaves.items():
-            result.leaves[idx].prior *= leaf.probability(evidence)
-
-        result = result.normalize()
-        return result
+        return self
 
     def normalize(self):
         probability_mass = sum(leaf.prior for leaf in self.leaves.values())

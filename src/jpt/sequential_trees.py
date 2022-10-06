@@ -68,10 +68,11 @@ class SequentialJPT:
         expanded_template_tree.learn(data=data)
 
         # create template tree from learnt joint tree
+        self.template_tree.root = expanded_template_tree.root
         self.template_tree.innernodes = expanded_template_tree.innernodes
         for idx, leaf in expanded_template_tree.leaves.items():
             leaf.distributions = jpt.variables.VariableMap([(v, d) for v, d in leaf.distributions.items()
-                                                            if v in self.template_tree.variables])
+                                                            if v.name in self.template_tree.varnames.keys()])
             self.template_tree.leaves[idx] = leaf
 
         transition_data = None
@@ -116,7 +117,7 @@ class SequentialJPT:
         """ Preprocess a list of variable maps to be used in JPTs. """
         return [self.template_tree._preprocess_query(e) for e in evidence]
 
-    def ground(self, evidence: List[jpt.variables.VariableMap]):
+    def ground(self, evidence: List[jpt.variables.VariableMap]) -> (factorgraph.Graph, List[jpt.trees.JPT]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
         one variable for each timestep, one prior node as factor for each timestep and one factor node for each
         transition.
@@ -131,6 +132,8 @@ class SequentialJPT:
         timesteps = ["t%s" % t for t in range(len(evidence))]
         [factor_graph.rv(timestep, len(self.template_tree.leaves)) for timestep in timesteps]
 
+        altered_jpts = []
+
         # for each transition
         for idx in range(len(evidence)-1):
 
@@ -144,7 +147,10 @@ class SequentialJPT:
         for timestep, e in zip(timesteps, evidence):
 
             # apply the evidence
-            conditional_jpt = self.template_tree.conditional_jpt_safe(e)
+            conditional_jpt = self.template_tree.conditional_jpt(e)
+
+            # append altered jpt
+            altered_jpts.append(conditional_jpt)
 
             # create the prior distribution from the conditional tree
             prior = np.zeros((len(self.template_tree.leaves), ))
@@ -157,7 +163,7 @@ class SequentialJPT:
             # create a factor from it
             factor_graph.factor([timestep], potential=prior)
 
-        return factor_graph
+        return factor_graph, altered_jpts
 
     def mpe(self, evidence):
         raise NotImplementedError("Not yet implemented")
@@ -170,19 +176,7 @@ class SequentialJPT:
         @param evidence: The evidence
         @return: probability (float)
         """
-        # apply evidence
-        independent_marginals = self.independent_marginals(evidence)
-
-        # initialize probability
-        probability = 1.
-
-        # calculate q|e for every adjusted tree
-        for q, adjusted_tree in zip(query, independent_marginals):
-
-            # multiply results
-            probability *= adjusted_tree.infer(q).result
-
-        return probability
+        raise NotImplementedError("Not yet implemented")
 
     def independent_marginals(self, evidence: List[jpt.variables.VariableMap]) -> List[jpt.trees.JPT]:
         """ Return the independent marginal distributions of all variables in this sequence along all
@@ -195,7 +189,7 @@ class SequentialJPT:
         evidence = self.preprocess_sequence_map(evidence)
 
         # ground factor graph
-        factor_graph = self.ground(evidence)
+        factor_graph, altered_jpts = self.ground(evidence)
 
         # create result list
         result = []
@@ -205,9 +199,9 @@ class SequentialJPT:
         latent_distribution = factor_graph.rv_marginals()
 
         # transform trees
-        for name, distribution in sorted(latent_distribution, key=lambda x: x[0].name):
+        for ((name, distribution), tree) in zip(sorted(latent_distribution, key=lambda x: x[0].name), altered_jpts):
             prior = dict(zip(self.template_tree.leaves.keys(), distribution))
-            adjusted_tree = self.template_tree.multiply_by_leaf_prior(prior)
+            adjusted_tree = tree.multiply_by_leaf_prior(prior)
             result.append(adjusted_tree)
 
         return result
