@@ -17,7 +17,7 @@ def neemdata():
     ltargz = 'https://seafile.zfn.uni-bremen.de/f/fa5a760d89234cfc83ad/?dl=1'
     df = pd.read_csv(ltargz, compression='xz', delimiter=';', skip_blank_lines=True, header=0,
                      index_col=False,
-                     names=['id',    'type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'parent', 'next', 'previous', 'object_acted_on', 'object_type', 'bodyPartsUsed', 'arm', 'grasp', 'effort'],
+                     names=['id',   'type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'parent', 'next', 'previous', 'object_acted_on', 'object_type', 'bodyPartsUsed', 'arm', 'grasp', 'effort'],
                      usecols=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm'],
                      na_values=['type', 'startTime', 'endTime', 'duration', 'success', 'failure', 'object_acted_on', 'bodyPartsUsed', 'arm', np.inf])
 
@@ -31,9 +31,11 @@ def neemdata():
     df['startTime'] = df['startTime'].fillna(-1)
     df['endTime'] = df['endTime'].fillna(-1)
     df['duration'] = df['duration'].fillna(-1)
+    df["success"] = df["success"].astype(str)
 
     # type declarations
     tpTYPE = SymbolicType('type', df['type'].unique())
+    succTYPE = SymbolicType("success", df["success"].unique())
     failTYPE = SymbolicType('failure', df['failure'].unique())
     oaoTYPE = SymbolicType('object_acted_on', df['object_acted_on'].unique())
     bpuTYPE = SymbolicType('bodyPartsUsed', df['bodyPartsUsed'].unique())
@@ -44,20 +46,22 @@ def neemdata():
     st = NumericVariable('startTime', Numeric, blur=.1)
     et = NumericVariable('endTime', Numeric, blur=.1)
     dur = NumericVariable('duration', Numeric, blur=.1)
-    succ = SymbolicVariable('success', Bool)
+    succ = SymbolicVariable('success', succTYPE)
     fail = SymbolicVariable('failure', failTYPE)
     oao = SymbolicVariable('object_acted_on', oaoTYPE)
     bpu = SymbolicVariable('bodyPartsUsed', bpuTYPE)
     arm = SymbolicVariable('arm', armTYPE)
 
-    vars = [tp, st, et, dur, succ, fail, oao, bpu, arm]
-    jpt = JPT(variables=vars, min_samples_leaf=0.001,)# targets=[succ, fail])
+    vars = [tp, dur, succ, fail, oao, bpu, arm]
+    # vars = [tp, st, et, dur, succ, fail, oao, bpu, arm]
+
+    jpt = JPT(variables=vars, min_samples_leaf=0.0005,)# targets=[succ, fail])
 
     out(f'Learning sebadata-Tree...')
-    jpt.learn(columns=df.values.T)
+    jpt.learn(columns=df[[v.name for v in vars]].values.T)
 
     out(f'Done! Plotting...')
-
+    jpt.save("neem.jpt")
     # jpt.plot(filename='NEEMs', plotvars=jpt.variables, directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-NEEMdata'), view=False)
     print(len(jpt.leaves))
     print("Done Plotting")

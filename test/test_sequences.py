@@ -27,22 +27,16 @@ class SequenceTest(unittest.TestCase):
         self.variables = [jpt.variables.NumericVariable("X", precision=0.1)]
 
     def test_learning(self):
-        return
         template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
         sequence_tree = sequential_trees.SequentialJPT(template_tree)
         sequence_tree.fit([self.data, self.data])
-        #sequence_tree.template_tree.plot(plotvars=self.variables)
-        sequence_tree.independent_marginals([{},
-                                             jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()), {}])
-    def test_prob(self):
-        return
-        template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
-        sequence_tree = sequential_trees.SequentialJPT(template_tree)
-        sequence_tree.fit([self.data, self.data])
-        p = sequence_tree.probability([jpt.variables.VariableMap({self.variables[0]: [-1.05, -0.95]}.items()),
-                                       jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()),
-                                       jpt.variables.VariableMap({self.variables[0]: [-1.05, -0.95]}.items()),],
-                                      [{}, {}, {}])
+
+        r = sequence_tree.independent_marginals([{},
+                                                 jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()),
+                                                 {}])
+
+        for tree in r:
+            self.assertEqual(sum(l.prior for l in tree.leaves.values()), 1.)
 
 
 if __name__ == '__main__':
