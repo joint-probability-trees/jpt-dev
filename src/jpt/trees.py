@@ -14,7 +14,7 @@ import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 from itertools import zip_longest
-from typing import Dict, List, Tuple, Any, Union
+from typing import Dict, List, Tuple, Any, Union, Iterable
 
 import numpy as np
 import pandas as pd
@@ -27,7 +27,7 @@ from dnutils import first, ifnone, mapstr, err, fst, out, ifnot
 from .base.utils import prod
 from .base.errors import Unsatisfiability
 
-from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
+from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable, VariableAssignment
 from .distributions import Distribution
 
 from .base.utils import list2interval, format_path, normalized
@@ -738,7 +738,7 @@ class JPT:
                   report_inconsistencies: bool = False) -> PosteriorResult:
         '''
 
-        :param variables:        the query variables of the posterior to be computed
+        :param variables:   the query variables of the posterior to be computed
         :param evidence:    the evidence given for the posterior to be computed
         :param fail_on_unsatisfiability: wether or not an ``Unsatisfiability`` error is raised if the
                                          likelihood of the evidence is 0.
@@ -823,10 +823,10 @@ class JPT:
         return result
 
     def expectation(self,
-                    variables=None,
-                    evidence=None,
-                    confidence_level=None,
-                    fail_on_unsatisfiability=True) -> ExpectationResult:
+                    variables: Iterable[Variable] = None,
+                    evidence: VariableAssignment = None,
+                    confidence_level: float = None,
+                    fail_on_unsatisfiability: bool = True) -> ExpectationResult:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
