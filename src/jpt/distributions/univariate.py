@@ -423,12 +423,6 @@ class Distribution:
     def kl_divergence(self, other: 'Distribution'):
         raise NotImplementedError()
 
-    def max(self) -> float:
-        raise NotImplementedError()
-
-    def argmax(self) -> float or str or int:
-        raise NotImplementedError()
-
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the distribution.
 
@@ -570,31 +564,24 @@ class Numeric(Distribution):
     def quantile(self, gamma: numbers.Real) -> numbers.Real:
         return self.ppf.eval(gamma)
 
-    def apply_restriction(self, restriction: ContinuousSet or float or int, normalize=True):
-        """Apply a restriction to this distribution. The restricted distrubtion will only assign mass
-        to the given range and will preserve the relativity of the pdf.
-
-        :param restriction: The range to limit this distribution
-        :type restriction: float or int or ContinuousSet
-        """
-        if not isinstance(restriction, ContinuousSet):
-            return self.create_dirac_impulse(restriction)
-        return self.crop(restriction)
-
     def create_dirac_impulse(self, value):
         """Create a dirac impulse at the given value aus quantile distribution."""
         self._quantile = QuantileDistribution()
         self._quantile.fit(np.asarray([[value]]), rows=np.asarray([0]), col=0)
         return self
 
-    def is_dirac_impulse(self):
+    def is_dirac_impulse(self) -> bool:
         """Checks if this distribution is a dirac impulse."""
         return len(self._quantile.cdf.intervals) == 2
 
-    def mpe(self):
-        return max([(interval, function)
-                    for interval, function in zip(self.cdf.intervals, self.cdf.functions)],
-                   key=lambda x: x[1].m if isinstance(x[1], LinearFunction) else 0)[0]
+    def mpe(self) -> (float, RealSet):
+        """
+        Calculate the most probable configuration of this quantile distribution.
+        :return: The likelihood of the mpe as float and the mpe itself as RealSet
+        """
+        _max = max(f.value for f in self.pdf.functions)
+        return _max, RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
+                              if function.value == _max])
 
     def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Numeric':
         self._quantile = QuantileDistribution(epsilon=self.precision)
@@ -688,10 +675,18 @@ class Numeric(Distribution):
         dist._quantile = self._quantile.crop(interval)
         return dist
 
-    def crop(self, interval):
-        interval_ = interval.copy()
-        interval_.lower = self.values[interval.lower]
-        interval_.upper = self.values[interval.upper]
+    def crop(self, restriction: ContinuousSet or float or int):
+        """Apply a restriction to this distribution. The restricted distrubtion will only assign mass
+        to the given range and will preserve the relativity of the pdf.
+
+        :param restriction: The range to limit this distribution (or singular value)
+        :type restriction: float or int or ContinuousSet
+        """
+        if not isinstance(restriction, ContinuousSet):
+            return self.create_dirac_impulse(restriction)
+        interval_ = restriction.copy()
+        interval_.lower = self.values[restriction.lower]
+        interval_.upper = self.values[restriction.upper]
         return self._crop(interval_)
 
     @classmethod
@@ -713,14 +708,6 @@ class Numeric(Distribution):
     @classmethod
     def type_from_json(cls, data):
         return cls
-
-    def max(self) -> float:
-        return max(f.value for f in self.pdf.functions)
-
-    def argmax(self) -> List[float or str or int or ContinuousSet]:
-        _max = self.max()
-        return RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
-                if function.value == _max])
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''
@@ -920,22 +907,11 @@ class Multinomial(Distribution):
             raise TypeError('All arguments must be integers.')
         return sum(self._params[v] for v in i2)
 
-    def apply_restriction(self, restriction: set or int or str, normalize=True):
-        if not isinstance(restriction, set):
-            return self.create_dirac_impulse(restriction)
-
-        for idx, value in enumerate(self.labels):
-            if value not in restriction:
-                self._params[idx] = 0
-
-        if normalize:
-            self._params = self._params / sum(self._params)
-        return self
-
     def create_dirac_impulse(self, value):
-        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
-        self._params[self.values[self.labels[value]]] = 1
-        return self
+        result = self.copy()
+        result._params = np.zeros(shape=result.n_values, dtype=np.float64)
+        result._params[result.values[result.labels[value]]] = 1
+        return result
 
     def sample(self, n):
         '''Returns ``n`` sample `values` according to their respective probability'''
@@ -957,11 +933,20 @@ class Multinomial(Distribution):
         '''Returns the value with the highest probability for this variable'''
         return max([(v, p) for v, p in zip(self.values.values(), self._params)], key=itemgetter(1))[0]
 
-    def expectation(self):
-        return self.labels[self._expectation()]
+    def expectation(self) -> set:
+        """
+        For symbolic variables the expectation is equal to the mpe.
+        :return: The set of all most likely values
+        """
+        return self.mpe()[1]
 
-    def mpe(self):
-        return self.expectation()
+    def mpe(self) -> (float, set):
+        """
+        Calculate the most probable configuration of this distribution.
+        :return: The likelihood of the mpe as float and the mpe itself as Set
+        """
+        _max = max(self.probabilities)
+        return _max, set([label for label, p in zip(self.values.keys(), self.probabilities) if p == _max])
 
     def kl_divergence(self, other):
         if type(other) is not type(self):
@@ -991,15 +976,27 @@ class Multinomial(Distribution):
             posterior._params = np.array(params)
         return posterior
 
-    def crop(self, incl_values=None, excl_values=None):
-        '''
-        Compute the posterior of the multinomial distribution.
+    def crop(self, restriction: set or List or str):
+        """
+        Apply a restriction to this distribution such that all values are in the given set.
 
-        ``values`` and ``exclude`` are indices of the values (labels) that are admitted and/or excluded.
-        '''
-        incl_values_ = [self.values[v] for v in incl_values] if incl_values is not None else None
-        excl_values_ = [self.values[v] for v in excl_values] if excl_values is not None else None
-        return self._crop(incl_values_, excl_values_)
+        :param restriction: The values to remain
+        :return: Copy of self that is consistent with the restriction
+        """
+        if not isinstance(restriction, set) and not isinstance(restriction, list):
+            return self.create_dirac_impulse(restriction)
+
+        result = self.copy()
+        print(result.labels.keys())
+        for idx, value in enumerate(result.labels.keys()):
+            if value not in restriction:
+                result._params[idx] = 0
+
+        if sum(result._params) == 0:
+            raise Unsatisfiability('All values have zero probability [%s].' % type(result).__name__)
+        else:
+            result._params = result._params / sum(result._params)
+        return result
 
     def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Multinomial':
         self._params = np.zeros(shape=self.n_values, dtype=np.float64)
@@ -1057,13 +1054,6 @@ class Multinomial(Distribution):
     @classmethod
     def from_json(cls, data):
         return cls(**data['settings']).set(data['params'])
-
-    def max(self) -> float:
-        return max(self.probabilities)
-
-    def argmax(self) -> List[float or str or int]:
-        maximum = self.max()
-        return [label for label, p in zip(self.labels, self.probabilities) if p == maximum]
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
