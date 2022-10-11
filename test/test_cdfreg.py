@@ -428,25 +428,25 @@ class TestCasePosteriorSymbolic(unittest.TestCase):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: '10--30', self.variables[8]: 'Thai'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, self.posterior[self.q[-1]].expectation())
+        self.assertEqual({True}, self.posterior[self.q[-1]].expectation())
 
     def test_posterior_symbolic_single_candidatet_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: '10--30', self.variables[8]: 'Italian'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(False, self.posterior[self.q[-1]].expectation())
+        self.assertEqual({False}, self.posterior[self.q[-1]].expectation())
 
     def test_posterior_symbolic_evidence_not_in_path_T(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, self.posterior[self.q[-1]].expectation())
+        self.assertEqual({True}, self.posterior[self.q[-1]].expectation())
 
     def test_posterior_symbolic_evidence_not_in_path_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(False, self.posterior[self.q[-1]].expectation())
+        self.assertEqual({False}, self.posterior[self.q[-1]].expectation())
 
     def test_posterior_symbolic_unsatisfiable(self):
         self.q = [self.variables[-1]]
@@ -489,25 +489,25 @@ class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
         self.q = ['WillWait']
         self.e = {'WaitEstimate': [0, 0], 'Food': 'Thai'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, self.posterior.distributions[self.q[-1]].expectation())
+        self.assertEqual({True, False}, self.posterior.distributions[self.q[-1]].expectation())
 
     def test_posterior_mixed_single_candidatet_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Italian'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(False, self.posterior.distributions[self.q[-1]].expectation())
+        self.assertEqual({False}, self.posterior.distributions[self.q[-1]].expectation())
 
     def test_posterior_mixed_evidence_not_in_path_T(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, self.posterior.distributions[self.q[-1]].expectation())
+        self.assertEqual({True}, self.posterior.distributions[self.q[-1]].expectation())
 
     def test_posterior_mixed_evidence_not_in_path_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(False, self.posterior.distributions[self.q[-1]].expectation())
+        self.assertEqual({False}, self.posterior.distributions[self.q[-1]].expectation())
 
     def test_posterior_mixed_unsatisfiable(self):
         self.q = [self.variables[-1]]
@@ -641,7 +641,7 @@ class TestCaseInference(unittest.TestCase):
         self.q = [self.variables[-1]]
         self.e = {self.variables[-1]: True}
         posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual(True, posterior.distributions['WillWait'].expectation())
+        self.assertEqual({True}, posterior.distributions['WillWait'].expectation())
 
     # def tearDown(self):
     #     print('Tearing down test method',

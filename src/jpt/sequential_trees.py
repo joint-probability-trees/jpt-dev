@@ -2,6 +2,7 @@ from typing import List
 
 import numpy as np
 import numpy.lib.stride_tricks
+import fglib
 import factorgraph
 import jpt.trees
 
@@ -131,6 +132,54 @@ class SequentialJPT:
         # add variable nodes for timesteps
         timesteps = ["t%s" % t for t in range(len(evidence))]
         [factor_graph.rv(timestep, len(self.template_tree.leaves)) for timestep in timesteps]
+
+        altered_jpts = []
+
+        # for each transition
+        for idx in range(len(evidence)-1):
+
+            # get the variable names
+            state_names = ["t%s" % idx, "t%s" % (idx+1)]
+
+            # create factor with values from transition model
+            factor_graph.factor(state_names, potential=self.transition_model)
+
+        # create prior factors
+        for timestep, e in zip(timesteps, evidence):
+
+            # apply the evidence
+            conditional_jpt = self.template_tree.conditional_jpt(e)
+
+            # append altered jpt
+            altered_jpts.append(conditional_jpt)
+
+            # create the prior distribution from the conditional tree
+            prior = np.zeros((len(self.template_tree.leaves), ))
+
+            # fill the distribution with the correct values
+            for idx, leaf_idx in enumerate(self.template_tree.leaves.keys()):
+                if leaf_idx in conditional_jpt.leaves.keys():
+                    prior[idx] = conditional_jpt.leaves[leaf_idx].prior
+
+            # create a factor from it
+            factor_graph.factor([timestep], potential=prior)
+
+        return factor_graph, altered_jpts
+
+    def ground_fglib(self, evidence: List[jpt.variables.VariableMap]) -> (factorgraph.Graph, List[jpt.trees.JPT]):
+        """Ground a factor graph where inference can be done. The factor graph is grounded with
+        one variable for each timestep, one prior node as factor for each timestep and one factor node for each
+        transition.
+
+        @param evidence: A list of VariableMaps that describe evidence in the given timesteps.
+        """
+
+        # create factorgraph
+        factor_graph = fglib.graphs.FactorGraph()
+
+        # add variable nodes for timesteps
+        timesteps = ["t%s" % t for t in range(len(evidence))]
+        fg_variables = [fglib.rv.Discrete()]
 
         altered_jpts = []
 

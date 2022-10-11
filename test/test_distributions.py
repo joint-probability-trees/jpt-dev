@@ -87,12 +87,12 @@ class MultinomialTest(TestCase):
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1/2, 1/4, 1/4])
 
-        self.assertEqual(d1.expectation(), 'A')
-        self.assertEqual(d1.mpe(), 'A')
-        self.assertEqual(d1.crop(excl_values=['B']), DistABC().set([2/3, 0, 1/3]))
-        self.assertEqual(d1.crop(incl_values=['A', 'B']), DistABC().set([2 / 3, 1 / 3, 0]))
-        self.assertRaises(Unsatisfiability, d1.crop, excl_values=['A', 'B', 'C'])
-        self.assertEqual(d1.crop(), d1)
+        self.assertEqual(d1.expectation(), {'A'})
+        self.assertEqual(d1.mpe(), (0.5, {'A'}))
+        self.assertEqual(d1.crop([0, 2]), DistABC().set([2/3, 0, 1/3]))
+        self.assertEqual(d1.crop([0, 1]), DistABC().set([2 / 3, 1 / 3, 0]))
+        self.assertRaises(Unsatisfiability, d1.crop, restriction=[])
+        # self.assertEqual(d1.crop(), d1)
 
     def test_domain_serialization(self):
         '''(De-)Serialization of Multinomial domains'''
