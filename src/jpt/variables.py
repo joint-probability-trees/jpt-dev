@@ -247,11 +247,8 @@ class NumericVariable(Variable):
             assignment = RealSet(intervals).simplify()
         if isinstance(assignment, ContinuousSet):
             assignment = RealSet([assignment])
-        elif convert_values:
-            assignment = RealSet([ContinuousSet(self.domain.labels[i.lower],
-                                                self.domain.labels[i.upper],
-                                                i.left,
-                                                i.right) for i in assignment.intervals])
+        if convert_values:
+            assignment = RealSet([self.domain.value2label(i) for i in assignment.intervals])
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         if fmt == 'set':

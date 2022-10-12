@@ -8,7 +8,8 @@
 
 import numpy as np
 cimport numpy as np
-
+from libc.math cimport isnan
+from libc.math cimport log as ln
 
 ctypedef double DTYPE_t                  # Type of X
 ctypedef np.npy_float64 DOUBLE_t         # Type of y, sample_weight
@@ -16,12 +17,7 @@ ctypedef np.int64_t SIZE_t               # Type for indices and counters
 ctypedef np.npy_int32 INT32_t            # Signed 32 bit integer
 ctypedef np.npy_uint32 UINT32_t          # Unsigned 32 bit integer
 
-from libc.math cimport nan as _libc_nan, isnan
-cdef DTYPE_t nan = <DTYPE_t> _libc_nan
-
-
-from libc.math cimport log as ln
-
+cdef DTYPE_t nan
 
 # ----------------------------------------------------------------------------------------------------------------------
 

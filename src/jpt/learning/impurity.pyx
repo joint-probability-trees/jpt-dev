@@ -12,6 +12,7 @@ import numpy as np
 cimport numpy as np
 import tabulate
 from libc.stdio cimport printf
+from libc.math cimport isinf, isnan
 
 from dnutils import mapstr
 
@@ -288,18 +289,25 @@ cdef class Impurity:
             result[i] -= 1
             result[i] /= 1. / (<DTYPE_t> self.symbols[i]) - 1.
 
-    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil except -1:
-        cdef DTYPE_t v_ = nan, v
+    cpdef SIZE_t _col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col):
+        '''For testing only.'''
+        return self.col_is_constant(start, end, col)
+
+    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil:
+        cdef DTYPE_t v_ = nan
+        cdef DTYPE_t v
         cdef SIZE_t i
         if end - start <= 1:
             return True
         for i in range(start, end):
             v = self.data[self.indices[i], col]
-            if v != v:
+            if isinf(v) or isnan(v):
                 return -1
-            if v_ == v: continue
+            if v_ == v:
+                continue
             if v_ != v:
-                if v_ != v_: v_ = v  # NB: x != x is True iff x is NaN or inf
+                if isinf(v_) or isnan(v_):
+                    v_ = v
                 else: return False
         return True
 
@@ -448,6 +456,8 @@ cdef class Impurity:
         cdef int last_iter
         cdef DTYPE_t min_samples
 
+        cdef int subsequent_equal
+
         for split_pos in range(n_samples):
             sample_idx = index_buffer[split_pos]
             last_iter = (symbolic and split_pos == n_samples - 1
@@ -479,10 +489,13 @@ cdef class Impurity:
                                                              self.symbolic_dependency_matrix[var_idx, :])
                 #self.update_symbolic_stats(sample_idx)
 
-            # Skip calculation for identical values (i.e. until next 'real' splitpoint is reached:
-            # for skipping, the sample must not be the last one (1) and consequtive values must be equal (2)
-            if not last_iter:
-                if data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]:
+            # Skip calculation for identical values (i.e. until next 'real' split point is reached:
+            # for skipping, the sample must not be the last one (1) and consecutive values must be equal (2)
+            subsequent_equal = data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]
+            if subsequent_equal:
+                if numeric and last_iter:
+                    break
+                if not last_iter:
                     continue
 
             impurity_improvement = 0.
