@@ -11,7 +11,7 @@ from itertools import tee
 from operator import attrgetter
 
 import math
-from typing import Iterable, Any, Tuple
+from typing import Iterable, Any, Tuple, List
 
 import numpy as np
 cimport numpy as np
@@ -41,7 +41,9 @@ R = ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)
 # ----------------------------------------------------------------------------------------------------------------------
 
 cdef class NumberSet:
-
+    """
+    Abstract superclass for RealSet and ContinuousSet.
+    """
     def __getstate__(self):
         return ()
 
@@ -57,10 +59,12 @@ _EMPTYSET = u'\u2205'
 # ----------------------------------------------------------------------------------------------------------------------
 
 def chop(seq: Iterable[Any]) -> Iterable[Tuple[Any, Iterable]]:
-    '''
+    """
     Returns pairs of the first element ("head") and the remainder
     ("tail") for all right subsequences of ``seq``
-    '''
+    :param seq: The sequence to yield from
+    :return: Head and Tail of the sequence
+    """
     it = iter(seq)
     try:
         head = next(it)
@@ -75,8 +79,8 @@ def chop(seq: Iterable[Any]) -> Iterable[Tuple[Any, Iterable]]:
 
 @cython.final
 cdef class RealSet(NumberSet):
-    '''
-    Class for interval calculus providing basic interval manipultion, such as :func:`sample`,
+    """
+    Class for interval calculus providing basic interval manipulation, such as :func:`sample`,
     :func:`intersection` and :func:`union`. An Instance of this type actually represents a
     complex range of values (possibly with gaps) by wrapping around multiple continuous intervals
     (:class:`ContinuousSet`).
@@ -90,9 +94,17 @@ cdef class RealSet(NumberSet):
           - open intervals ``]a,b[ or (a,b)``
 
         ``a`` and ``b`` can be of type int or float (also: scientific notation) or {+-} :math:`∞`
-    '''
+    """
 
-    def __init__(RealSet self, intervals=None):
+    def __init__(RealSet self, intervals: str or List[ContinuousSet or str]=None):
+        """
+        Create a RealSet
+
+        :param intervals: The List of intervals to create the RealSet from
+        :type intervals: str, or List of ContinuousSet or str that can be parsed
+        """
+
+        # member for all intervals
         self.intervals = []
         if type(intervals) is str:
             intervals = [intervals]
@@ -103,8 +115,12 @@ cdef class RealSet(NumberSet):
                     i = ContinuousSet.parse(i)
                 self.intervals.append(i)
 
-    def __contains__(self, value):
-        '''Checks if `value` lies in interval'''
+    def __contains__(self, value: numbers.Number) -> bool:
+        """
+        Checks if ``value`` lies in interval
+        :param value: The value to check
+        :return: Rather the value is in this RealSet or not
+        """
         if not isinstance(value, numbers.Number):
             raise TypeError('Containment check unimplemented fo object of type %s.' % type(value).__name__)
         return any([value in i for i in self.intervals])
@@ -144,29 +160,47 @@ cdef class RealSet(NumberSet):
         return self.intervals
 
     cpdef DTYPE_t size(RealSet self):
-        '''
+        """
         This size of this ``RealSet``.
         
         The size of a ``RealSet`` is the sum of the sizes of its constituents.
-        '''
+        
+        Size refers to the number of values that are possible. For any range that allows more than
+        one value this is infinite.
+        
+        :return: float
+        """
         cdef DTYPE_t s = 0
         cdef int i
-        for i in range(len(self.intervals)):
-            s += self.intervals[i].size()
+
+        # simplify set, s. t. singular values are only counted once
+        simplified = self.simplify()
+        if isinstance(simplified, ContinuousSet):
+            return simplified.size()
+
+        for i in range(len(simplified.intervals)):
+            s += simplified.intervals[i].size()
+
         return s
 
     @staticmethod
     def emptyset():
+        """
+        Create an empty ``RealSet``
+        :return: empty RealSet
+        """
         return RealSet()
 
     cpdef DTYPE_t[::1] sample(RealSet self, np.int32_t n=1, DTYPE_t[::1] result=None):
-        '''
+        """
         Chooses an element from self.intervals proportionally to their sizes, then returns a uniformly sampled
         value from that Interval.
-
-        :returns: a value from the represented value range
+        :param n: The amount of samples to generate
+        :param result: None or an array to write into
+        :returns: value(s) from the represented value range
         :rtype: float
-        '''
+
+        """
         if self.isempty():
             raise IndexError('Cannot sample from an empty set.')
         cdef ContinuousSet i_
@@ -188,7 +222,11 @@ cdef class RealSet(NumberSet):
         return result
 
     cpdef inline np.int32_t contains_value(RealSet self, DTYPE_t value):
-        '''Checks if ``value`` lies in interval'''
+        """
+        Checks if `value` lies in this RealSet
+        :param value: The value to check
+        :return: Rather the value is in this RealSet or not
+        """
         cdef ContinuousSet s
         for s in self.intervals:
             if s.contains_value(value):
@@ -196,7 +234,11 @@ cdef class RealSet(NumberSet):
         return False
 
     cpdef inline np.int32_t contains_interval(RealSet self, ContinuousSet other):
-        '''Checks if ``value`` lies in interval'''
+        """
+        Checks if ``value`` lies in interval
+        :param other: The other interval
+        :return: bool
+        """
         cdef ContinuousSet s
         for s in self.intervals:
             if s.contains_interval(other):
@@ -204,8 +246,8 @@ cdef class RealSet(NumberSet):
         return False
 
     cpdef inline np.int32_t isempty(RealSet self):
-        '''
-        Checks whether this interval contains values.
+        """
+        Checks whether this RealSet is empty or not.
 
         :returns: True if this is interval is empty, i.e. does not contain any values, False otherwise
         :rtype: bool
@@ -217,7 +259,7 @@ cdef class RealSet(NumberSet):
         >>> RealSet(']1,1]').isempty()
         True
 
-        '''
+        """
         cdef ContinuousSet s
         for s in self.intervals:
             if not s.isempty():
@@ -225,18 +267,22 @@ cdef class RealSet(NumberSet):
         return True
 
     cpdef inline DTYPE_t fst(RealSet self):
+        """
+        Get the lowest value
+        :return: the lowest value as number
+        :rtype: numbers.Number
+        """
         return min([i.fst() for i in self.intervals])
 
     cpdef inline np.int32_t intersects(RealSet self, NumberSet other):
-        '''
+        """
         Checks whether the this interval intersects with ``other``.
 
         :param other: the other interval
-        :type other: matcalo.utils.utils.Interval
+        :type other: NumberSet
         :returns: True if the two intervals intersect, False otherwise
         :rtype: bool
-
-        '''
+        """
         if isinstance(other, ContinuousSet):
             other = RealSet([other])
         cdef ContinuousSet s, s_
@@ -247,15 +293,23 @@ cdef class RealSet(NumberSet):
         return False
 
     cpdef inline np.int32_t isdisjoint(RealSet self, NumberSet other):
+        """
+        Checks whether the this interval is disjoint with ``other``.
+        Inverse methode of ``NumberSet.intersects``
+        :param other: The other NumberSet
+        :return: True if the two sets are disjoint, False otherwise
+        :rtype: bool
+        """
         return not self.intersects(other)
 
     cpdef inline NumberSet intersection(RealSet self, NumberSet other):
-        '''
+        """
         Computes the intersection of this value range with ``other``.
 
-        :param other: the other value range Interval
+        :param other: the other NumberSet
         :returns: the intersection of this interval with ``other``
-        '''
+        :rtype: RealSet
+        """
         cdef RealSet other_
         if isinstance(other, ContinuousSet):
             other_ = RealSet([other])
@@ -268,13 +322,13 @@ cdef class RealSet(NumberSet):
         return result.simplify()
 
     cpdef inline NumberSet simplify(RealSet self):
-        '''
-        Constructs a simplified modification of this ``RealSet`` instance, in which the
+        """        
+        Constructs a new simplified modification of this ``RealSet`` instance, in which the
         subset intervals are guaranteed to be non-overlapping and non-empty.
         
         In the case that the resulting set comprises only a single ``ContinuousSet``,
         that ``ContinuousSet`` is returned instead.
-        '''
+        """
         intervals = []
         tail = list(self.intervals)
         while tail:
@@ -303,7 +357,10 @@ cdef class RealSet(NumberSet):
         return RealSet(intervals)
 
     cpdef inline RealSet copy(RealSet self):
-        '''Return a deep copy of this real-valued set.'''
+        """
+        Return a deep copy of this real-valued set.
+        :return: copy of this RealSet
+        """
         return RealSet([i.copy() for i in self.intervals])
 
     cpdef inline NumberSet union(RealSet self, NumberSet other):

@@ -1,3 +1,4 @@
+import math
 import pickle
 
 from ddt import ddt, data, unpack
@@ -49,7 +50,7 @@ class IntervalTest(unittest.TestCase):
           (']-1,-1[', ContinuousSet(-1, -1, EXC, EXC)))
     @unpack
     def test_creation_parsing(self, s, i):
-        '''Parsing and creation'''
+        """Parsing and creation"""
         self.assertEqual(ContinuousSet.parse(s), i)
         self.assertEqual(hash(i), hash(i.copy()))
 
@@ -307,3 +308,107 @@ class RealSetTest(unittest.TestCase):
         self.assertEqual(hash(i1), hash(pickle.loads(pickle.dumps(i1))))
         self.assertEqual(hash(i2), hash(pickle.loads(pickle.dumps(i2))))
         self.assertNotEqual(hash(i1), hash(i3))
+
+    def test_size(self):
+        # test infinitely big sets
+        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        self.assertEqual(float("inf"), r1.size())
+
+        # test RealSet of size 1
+        r2 = RealSet(["[-.5, -.5]"])
+        self.assertEqual(r2.size(), 1)
+
+        # test multiple but same single values
+        r3 = RealSet(["[-.5, -.5]", "[-.5, -.5]"])
+        self.assertEqual(r3.size(), 1)
+
+        # test multiple but different values
+        r4 = RealSet(["[-.5, -.5]", "[-.6, -.6]"])
+        self.assertEqual(r4.size(), 2)
+
+        # test emptyset
+        r5 = RealSet.emptyset()
+        self.assertEqual(r5.size(), 0)
+
+    def test_sample(self):
+        # test default usage
+        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        samples = r1.sample(100)
+        for sample in samples:
+            self.assertTrue(sample in r1)
+
+        # test raising index error
+        r2 = RealSet.emptyset()
+        self.assertRaises(IndexError, r2.sample, 100)
+
+        # test singular value
+        r3 = RealSet(["[-.5, -.5]"])
+        samples = r3.sample(100)
+        for sample in samples:
+            self.assertEqual(sample, -0.5)
+
+    def test_contains_value(self):
+        # test infinitely big sets
+        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        self.assertTrue(r1.contains_value(.5))
+        self.assertTrue(r1.contains_value(0.75))
+        self.assertFalse(r1.contains_value(10))
+
+        # test singular values
+        r4 = RealSet(["[-.5, -.5]", "[-.6, -.6]"])
+        self.assertTrue(r4.contains_value(-.5))
+        self.assertTrue(r4.contains_value(-.6))
+        self.assertFalse(r4.contains_value(-.55))
+
+        # test emptyset
+        r5 = RealSet.emptyset()
+        self.assertFalse(r5.contains_value(1))
+
+    def test_contains_interval(self):
+        # test regular case
+        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        self.assertTrue(r1.contains_interval(ContinuousSet(-0.25, 0.25)))
+        self.assertFalse(r1.contains_interval(ContinuousSet(-2, 0.25)))
+        self.assertTrue(r1.contains_interval(ContinuousSet(0, 0, 2, 2)))
+
+        # test empty set
+        r2 = RealSet.emptyset()
+        self.assertFalse(r2.contains_interval(ContinuousSet(-0.25, 0.25)))
+        self.assertFalse(r2.contains_interval(ContinuousSet(0, 0, 2, 2)))
+
+        # test singular value
+        r3 = RealSet(["[-.5, -.5]"])
+        self.assertTrue(r3.contains_interval(ContinuousSet(-0.5, -0.5)))
+        self.assertFalse(r3.contains_interval(ContinuousSet(0, 0, 2, 2)))
+
+    def test_fst(self):
+        # test default case
+        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        self.assertEqual(r1.fst(), -1.)
+
+        # test set containing empty set
+        r2 = RealSet([ContinuousSet(0, 0, 2, 2)])
+        self.assertTrue(math.isnan(r2.fst()))
+
+        # test empty set
+        # TODO ask daniel if this is the desired behavior
+        # r3 = RealSet.emptyset()
+        # self.assertRaises(ValueError, r3.fst)
+
+    def test_intersects(self):
+        # test regular case
+        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        self.assertTrue(r1.intersects(ContinuousSet(-0.25, 0.25)))
+        self.assertFalse(r1.intersects(ContinuousSet(-7, -6)))
+        self.assertTrue(r1.intersects(ContinuousSet(0, 0, 2, 2)))
+
+        # test empty set
+        r2 = RealSet.emptyset()
+        self.assertFalse(r2.intersects(ContinuousSet(-0.25, 0.25)))
+        self.assertFalse(r2.intersects(ContinuousSet(0, 0, 2, 2)))
+
+        # test singular value
+        r3 = RealSet(["[-.5, -.5]"])
+        self.assertTrue(r3.intersects(ContinuousSet(-0.5, -0.5)))
+        self.assertFalse(r3.intersects(ContinuousSet(0, 0, 2, 2)))
+
