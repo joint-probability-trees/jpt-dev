@@ -54,6 +54,15 @@ class IntervalTest(unittest.TestCase):
         self.assertEqual(ContinuousSet.parse(s), i)
         self.assertEqual(hash(i), hash(i.copy()))
 
+    def test_itype(self):
+        i1 = ContinuousSet.parse('(0,1)')
+        self.assertEqual(i1.itype(), 4)
+
+        i2 = ContinuousSet.parse('[0,1]')
+        self.assertEqual(i2.itype(), 2)
+
+        self.assertEqual(ContinuousSet.parse('(0,1]').itype(), ContinuousSet.parse('[3,4)').itype())
+
     def test_value_check(self):
         self.assertRaises(ValueError, ContinuousSet, 1, -1)
 
@@ -64,6 +73,7 @@ class IntervalTest(unittest.TestCase):
     def test_emptyness(self, s):
         self.assertTrue(ContinuousSet.parse(s).isempty(),
                         msg='%s is not recognized empty.' % s)
+        self.assertEqual(ContinuousSet.emptyset_p(), ContinuousSet.parse(']0, 0['))
 
     @data(']0,0[', '[0,1]', '[2,3[')
     @unpack
@@ -211,6 +221,33 @@ class IntervalTest(unittest.TestCase):
     @unpack
     def test_hash(self, i):
         self.assertEqual(hash(i), hash(pickle.loads(pickle.dumps(i))))
+
+    def test_sample(self):
+        # test default usage
+        i1 = ContinuousSet.parse("[-1,1]")
+        samples = i1.sample(100)
+        for sample in samples:
+            self.assertTrue(sample in i1)
+
+        # test raising index error
+        i2 = ContinuousSet.emptyset_p()
+        self.assertRaises(IndexError, i2.sample, 100)
+
+        # test singular value
+        i3 = ContinuousSet.parse("[-.5, -.5]")
+        samples = i3.sample(100)
+        for sample in samples:
+            self.assertEqual(sample, -0.5)
+
+    def test_linspace(self):
+        i1 = ContinuousSet.parse("(-1,1)")
+        samples = i1.linspace(100)
+        self.assertEqual(len(samples), 100)
+        for sample in samples[1:-1]:
+            self.assertTrue(sample in i1)
+
+        i2 = ContinuousSet.emptyset_p()
+        self.assertRaises(IndexError, i2.sample, 100)
 
 
 @ddt
@@ -391,9 +428,8 @@ class RealSetTest(unittest.TestCase):
         self.assertTrue(math.isnan(r2.fst()))
 
         # test empty set
-        # TODO ask daniel if this is the desired behavior
-        # r3 = RealSet.emptyset()
-        # self.assertRaises(ValueError, r3.fst)
+        r3 = RealSet.emptyset()
+        self.assertTrue(math.isnan(r3.fst()))
 
     def test_intersects(self):
         # test regular case

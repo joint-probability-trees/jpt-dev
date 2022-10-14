@@ -163,9 +163,11 @@ cdef class QuantileDistribution:
         return self
 
     cpdef crop(self, ContinuousSet interval):
-        '''
+        """
         Return a copy this quantile distribution that is cropped to the ``interval``.
-        '''
+        :param interval: The interval to crop to
+        :return: A modified, normalized copy of this QuantileDistribution
+        """
         if self._cdf is None:
             raise RuntimeError('No quantile distribution fitted. Call fit() first.')
 
