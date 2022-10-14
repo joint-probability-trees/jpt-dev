@@ -41,7 +41,6 @@ def main(visualize=False):
     tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
 
     tree.learn(data=df)
-
     # testing conditional jpts in a complex scenario
     cjpt = tree.conditional_jpt(tree._preprocess_query(VariableMap({variables[0]: {"5", "6"},
                                              variables[29]: 2.}.items())))

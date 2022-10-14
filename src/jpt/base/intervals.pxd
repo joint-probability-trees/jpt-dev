@@ -81,7 +81,8 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef inline np.int32_t isclosed(ContinuousSet self)
 
-    cpdef inline ContinuousSet emptyset(ContinuousSet self)
+    @staticmethod
+    cdef inline ContinuousSet emptyset()
 
     cpdef inline ContinuousSet allnumbers(ContinuousSet self)
 
