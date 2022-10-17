@@ -73,7 +73,7 @@ class IntervalTest(unittest.TestCase):
     def test_emptyness(self, s):
         self.assertTrue(ContinuousSet.parse(s).isempty(),
                         msg='%s is not recognized empty.' % s)
-        self.assertEqual(ContinuousSet.emptyset_p(), ContinuousSet.parse(']0, 0['))
+        self.assertEqual(ContinuousSet.emptyset(), ContinuousSet.parse(']0, 0['))
 
     @data(']0,0[', '[0,1]', '[2,3[')
     @unpack
@@ -230,7 +230,7 @@ class IntervalTest(unittest.TestCase):
             self.assertTrue(sample in i1)
 
         # test raising index error
-        i2 = ContinuousSet.emptyset_p()
+        i2 = ContinuousSet.emptyset()
         self.assertRaises(IndexError, i2.sample, 100)
 
         # test singular value
@@ -246,8 +246,41 @@ class IntervalTest(unittest.TestCase):
         for sample in samples[1:-1]:
             self.assertTrue(sample in i1)
 
-        i2 = ContinuousSet.emptyset_p()
+        i2 = ContinuousSet.emptyset()
         self.assertRaises(IndexError, i2.sample, 100)
+
+    def test_size(self):
+        # test infinitely big sets
+        i1 = ContinuousSet.allnumbers()
+        self.assertEqual(float("inf"), i1.size())
+
+        # test RealSet of size 1
+        i2 = ContinuousSet.parse("[-.5, -.5]")
+        self.assertEqual(i2.size(), 1)
+
+        # test emptyset
+        i3 = ContinuousSet.emptyset()
+        self.assertEqual(i3.size(), 0)
+
+    def test_uppermost_lowermost(self):
+        # test infinitely big sets
+        i1 = ContinuousSet.allnumbers()
+        self.assertEqual(float("inf"), i1.uppermost())
+        self.assertEqual(-float("inf"), i1.lowermost())
+
+        # test regular set
+        i2 = ContinuousSet.parse("[-.5, .5]")
+        self.assertEqual(-0.5, i2.lowermost())
+        self.assertEqual(0.5, i2.uppermost())
+
+        # test impulse
+        i3 = ContinuousSet.parse("[-.5, -.5]")
+        self.assertEqual(i3.lowermost(), i3.uppermost())
+
+        # test open borders
+        i4 = ContinuousSet.parse("(-.5, .5)")
+        self.assertEqual(-0.5, i2.lowermost())
+        self.assertEqual(0.5, i2.uppermost())
 
 
 @ddt
@@ -432,6 +465,7 @@ class RealSetTest(unittest.TestCase):
         self.assertTrue(math.isnan(r3.fst()))
 
     def test_intersects(self):
+        # this also tests isdisjoint
         # test regular case
         r1 = RealSet(['[-1,1]', '[-.5,.5]'])
         self.assertTrue(r1.intersects(ContinuousSet(-0.25, 0.25)))

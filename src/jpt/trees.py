@@ -107,7 +107,6 @@ class Result:
         return ('P(%s%s) = %.3f%%' % (format_path(self.query),
                                       (' | %s' % format_path(self._evidence)) if self.evidence else '',
                                       self.result * 100))
-
     def explain(self):
         result = self.format_result()
         result += '\n'
@@ -186,7 +185,6 @@ class MPEResult(Result):
         super().__init__(None, evidence, res=res, cand=cand, w=w)
         self.maximum = maximum
         self.path = path
-
 
     def format_result(self):
         return f'MPE({self.evidence}) = {format_path(self.path)}'

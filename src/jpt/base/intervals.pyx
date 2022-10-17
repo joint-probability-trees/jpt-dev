@@ -518,7 +518,7 @@ cdef class ContinuousSet(NumberSet):
         return self.itype() == CLOSED
 
     @staticmethod
-    cdef inline ContinuousSet emptyset():
+    cdef inline ContinuousSet c_emptyset():
         """
         Create an empty interval centered at 0.
         :return: An empty interval
@@ -526,19 +526,24 @@ cdef class ContinuousSet(NumberSet):
         return ContinuousSet(0, 0, _EXC, _EXC)
 
     @staticmethod
-    def emptyset_p():
+    def emptyset():
         """
         Python method for creating an empty interval
         :return: An empty interval
         """
-        return ContinuousSet.emptyset()
+        return ContinuousSet.c_emptyset()
 
-    cpdef inline ContinuousSet allnumbers(ContinuousSet self):
+    @staticmethod
+    cdef inline ContinuousSet c_allnumbers():
         """
         Create a ContinuousSet that contains all numbers but infinity and -infinity
         :return: Infinitely big ContinuousSet
         """
         return ContinuousSet(np.NINF, np.inf, _EXC, _EXC)
+
+    @staticmethod
+    def allnumbers():
+        return ContinuousSet.c_allnumbers()
 
     cpdef DTYPE_t[::1] sample(ContinuousSet self, np.int32_t k=1, DTYPE_t[::1] result=None):
         """
@@ -717,18 +722,27 @@ cdef class ContinuousSet(NumberSet):
         return True
 
     cpdef inline np.int32_t isdisjoint(ContinuousSet self, NumberSet other):
-        '''Equivalent to ``not self.intersects(other)'''
+        """
+        Check if ``other`` and this are disjoint, i. e. do not intersect.
+        :param other: the other NumberSet
+        :return: True if they are disjoint, False if they intersect 
+        """
         return not self.intersects(other)
 
     cpdef inline ContinuousSet intersection(ContinuousSet self,
                                             ContinuousSet other,
                                             int left=0,
                                             int right=0):
-        '''
+        """
         Compute the intersection of this ``ContinuousSet`` and ``other``.
         
         The arguments ``left`` and ``right`` (both boolean) can be used to specify if
         the left or right end of the interval should be open or closed.
+        
+        :param other: The other ContinousSet
+        :param left: Open/Close flag for the left border
+        :param right: Open/Close flag for the right border
+        :return: 
         
         :Example:
         >>> from jpt.base.intervals import ContinuousSet, INC, EXC
@@ -742,9 +756,9 @@ cdef class ContinuousSet(NumberSet):
         1.0
         >>> i1.intersection(i2, right=EXC).upper
         1.0000000000000002
-        '''
+        """
         if not self.intersects(other):
-            return ContinuousSet.emptyset()
+            return ContinuousSet.c_emptyset()
         result = ContinuousSet(max(self.lower, other.lower), min(self.upper, other.upper))
         result.left = (max(self.left, other.left) if other.lower == self.lower
                        else (self.left if self.lower > other.lower else other.left))
@@ -786,9 +800,11 @@ cdef class ContinuousSet(NumberSet):
         return result
 
     cpdef inline NumberSet union(ContinuousSet self, ContinuousSet other):
-        '''
+        """
         Compute the union of this ``ContinuousSet`` and ``other``.
-        '''
+        :param other: The other ContinuousSet 
+        :return: The union of both sets as ContinuousSet if the union is contiguous or RealSet if it is not.
+        """
         if not self.intersects(other) and not self.contiguous(other):
             if self.isempty():
                 return other.copy()
@@ -800,14 +816,16 @@ cdef class ContinuousSet(NumberSet):
         return ContinuousSet(min(self.lower, other.lower), max(self.upper, other.upper), left, right)
 
     cpdef inline NumberSet difference(ContinuousSet self, NumberSet other):
-        '''
+        """
         Compute the set difference of this ``ContinuousSet`` minus ``other``.
-        '''
+        :param other: the other NumberSet 
+        :return: difference of those sets as RealSet
+        """
         if isinstance(other, RealSet):
             return RealSet([self]).difference(other)
         cdef NumberSet result
         if other.contains_interval(self):
-            return ContinuousSet.emptyset()
+            return ContinuousSet.c_emptyset()
         elif self.contains_interval(other, proper_containment=True):
             result = RealSet([
                 ContinuousSet(self.lower, other.lower, self.left, _INC if other.left == _EXC else _EXC),
@@ -827,11 +845,17 @@ cdef class ContinuousSet(NumberSet):
             return self.copy()
 
     cpdef inline NumberSet complement(ContinuousSet self):
-        '''Return the complement set of this interval.'''
+        """
+        Calculate the complement set of this interval.
+        :return: Complement of this interval
+        """
         return R.difference(self)
 
     cpdef inline DTYPE_t size(ContinuousSet self):
-        '''Alternative to __len__ but may return float (inf)'''
+        """
+        Alternative to __len__ but may return float (inf)
+        :return: The amount of numbers in this ``ContinuousSet``
+        """
         if self.isempty():
             return 0
         if self.lower == self.upper or np.nextafter(self.lower, self.upper) == self.upper and self.itype() == HALFOPEN:
@@ -839,6 +863,10 @@ cdef class ContinuousSet(NumberSet):
         return np.inf
 
     cpdef inline DTYPE_t fst(ContinuousSet self):
+        """
+        Get the lowest value in this interval or nan if it's empty.
+        :return: the lowest value as float
+        """
         if self.isempty():
             return np.nan
         if self.lower != np.NINF:
@@ -850,15 +878,15 @@ cdef class ContinuousSet(NumberSet):
             return np.finfo(np.float64).min
 
     cpdef inline DTYPE_t uppermost(ContinuousSet self):
-        '''
-        Return the smallest computer-representable value in this ``ContinuousSet``.
-        '''
+        """
+        :return: The highest computer-representable value in this ``ContinuousSet``.
+        """
         return self.upper if self.right == _INC else np.nextafter(self.upper, self.upper - 1)
 
     cpdef inline DTYPE_t lowermost(ContinuousSet self):
-        '''
-        Return the biggest computer-representable value in this ``ContinuousSet``.
-        '''
+        """
+        :return: The lowest computer-representable value in this ``ContinuousSet``.
+        """
         return self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
 
     def __contains__(self, x):
@@ -886,6 +914,9 @@ cdef class ContinuousSet(NumberSet):
         return self.pfmt()
 
     def range(self):
+        """
+        :return: The range of this interval as lower - upper.
+        """
         return self.upper - self.lower
 
     def pfmt(self, fmtstr=None):

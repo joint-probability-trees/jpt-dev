@@ -82,9 +82,10 @@ cdef class ContinuousSet(NumberSet):
     cpdef inline np.int32_t isclosed(ContinuousSet self)
 
     @staticmethod
-    cdef inline ContinuousSet emptyset()
+    cdef inline ContinuousSet c_emptyset()
 
-    cpdef inline ContinuousSet allnumbers(ContinuousSet self)
+    @staticmethod
+    cdef inline ContinuousSet c_allnumbers()
 
     cpdef DTYPE_t[::1] sample(ContinuousSet self, np.int32_t k=*, DTYPE_t[::1] result=*)
 
