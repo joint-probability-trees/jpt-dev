@@ -2,7 +2,6 @@ import unittest
 import numpy as np
 import jpt.variables
 import jpt.trees
-import sequential_trees
 from jpt.distributions.univariate import SymbolicType
 import jpt.sequential_trees
 
@@ -28,7 +27,7 @@ class SequenceTest(unittest.TestCase):
 
     def test_learning(self):
         template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
-        sequence_tree = sequential_trees.SequentialJPT(template_tree)
+        sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
         sequence_tree.fit([self.data, self.data])
 
         r = sequence_tree.independent_marginals([{},
