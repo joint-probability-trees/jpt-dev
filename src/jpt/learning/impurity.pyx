@@ -29,7 +29,16 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
                                    DTYPE_t[::1] variances_right,
                                    SIZE_t samples_left,
                                    SIZE_t samples_right) nogil:
-                                   # DTYPE_t[::1] result) nogil:
+    """
+    Compute the variance improvement of a split. 
+    
+   :param variances_total: The variances before the split
+   :param variances_left: The variances of the left side of the split
+   :param variances_right: The variances of the right side of the split
+   :param samples_left: The samples of the left side of the split
+   :param samples_right: The samples of the right side of the split
+   :return: double describing the relative variance improvement
+   """
     # result[:] = variances_total
     cdef SIZE_t i
     cdef DTYPE_t result = mean(variances_total)
@@ -54,6 +63,17 @@ cdef inline void sum_at(DTYPE_t[:, ::1] M,
                         SIZE_t[::1] rows,
                         SIZE_t[::1] cols,
                         DTYPE_t[::1] result) nogil:
+    """
+    Sum rows at columns.
+    :param M: Matrix with the raw data
+    :type M; 2D contiguous view of array 
+    :param rows: Indices of rows to sum
+    :type rows: 1D contiguous view of rows
+    :param cols: Indices of cols to sum
+    :type cols: 1D contiguous view of columns
+    :param result: Result to write into. Has to have the same length as ``cols``
+    :type result: 1D contiguous view of numpy array 
+    """
     result[...] = 0
     cdef SIZE_t i, j
     for j in range(cols.shape[0]):
@@ -67,6 +87,17 @@ cdef inline void sq_sum_at(DTYPE_t[:, ::1] M,
                            SIZE_t[::1] rows,
                            SIZE_t[::1] cols,
                            DTYPE_t[::1] result) nogil:
+    """
+    Square the values in the rows and sum them..
+    :param M: Matrix with the raw data
+    :type M; 2D contiguous view of array 
+    :param rows: Indices of rows to sum
+    :type rows: 1D contiguous view of rows
+    :param cols: Indices of cols to sum
+    :type cols: 1D contiguous view of columns
+    :param result: Result to write into. Has to have the same length as ``cols``
+    :type result: 1D contiguous view of numpy array 
+    """
     result[...] = 0
     cdef SIZE_t i, j
     cdef DTYPE_t v
@@ -82,14 +113,19 @@ cdef inline void variances(DTYPE_t[::1] sq_sums,
                            DTYPE_t[::1] sums,
                            SIZE_t n_samples,
                            DTYPE_t[::1] result) nogil:
-    '''
+    """
     Variance computation uses the proxy from sklearn: ::
 
-        var = \sum_i^n (y_i - y_bar) ** 2
-        = (\sum_i^n y_i ** 2) - n_samples * y_bar ** 2
+    var = \sum_i^n (y_i - y_bar) ** 2
+    = (\sum_i^n y_i ** 2) - n_samples * y_bar ** 2
 
-    See also: https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/sklearn/tree/_criterion.pyx#L683
-    '''
+    See also: 'https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/sklearn/
+              tree/_criterion.pyx#L683'
+    :param sq_sums: The square sums 
+    :param sums: The ordinary sums
+    :param n_samples: the number of samples
+    :param result: The array to write into (result will be overwritten)
+    """
     result[:] = sq_sums
     cdef SIZE_t i
     for i in range(sums.shape[0]):
@@ -101,6 +137,13 @@ cdef inline void variances(DTYPE_t[::1] sq_sums,
 # in-place vector addition
 
 cdef inline void ivadd(DTYPE_t[::1] target, DTYPE_t[::1] arg, SIZE_t n, int sq=False) nogil:
+    """
+    Inplace vector addition
+    :param target: the target vector
+    :param arg: the vector to add to the target vector
+    :param n: the size of the target vector
+    :param sq: rather to square the numbers in ``arg`` before they are added or not
+    """
     cdef SIZE_t i
     for i in range(n):
         target[i] += arg[i] if not sq else (arg[i] * arg[i])
@@ -112,6 +155,17 @@ cdef inline void bincount(DTYPE_t[:, ::1] data,
                           SIZE_t[::1] rows,
                           SIZE_t[::1] cols,
                           SIZE_t[:, ::1] result) nogil:
+    """
+    Compute a histogram where the first dimension denotes the values of the column and the second denotes the column.
+    The value stored at a specific position denotes the frequency.
+    :param data: The raw data. In the raw data every accesses value by this method has to be index-able
+    :param rows: The rows to select the datapoints from (array of indices)
+    :type rows: Integer contiguous array
+    :param cols: The columns to select the data from (array of indices)
+    :type cols: Integer 1D contiguous array
+    :param result: The result to write into
+    :type result: 2D contiguous integer array 
+    """
     result[...] = 0
     cdef SIZE_t i, j
     for i in range(rows.shape[0]):
@@ -123,27 +177,68 @@ cdef inline void bincount(DTYPE_t[:, ::1] data,
 
 
 cdef class Impurity:
+    """
+    Class to implement fast impurity calculations on splits.
 
+    Note:
+        A general name convention is, that left and right refer to sides of a split made on a sorted array
+        On this array with a split value of 104.25
+        -----------------------------------------
+        | 1  |  3 |  8.5 | 200  | 210  |  210.5 |
+        ----------------------------------------
+        left would be considered as 1,3,8.5 and right would be considered as 200,210,210.5
+
+
+        Whenever an index is considered as invalid or not initialized '-1' is used.
+    """
+
+    # the raw 'read-only' data
     cdef DTYPE_t [:, ::1] data
+
+    # the indices TODO: more detailed please
     cdef readonly SIZE_t [::1] indices, index_buffer
+
+    # the features to split on
     cdef readonly DTYPE_t[::1] feat
+
+    # indices to mark start and end of a reading
     cdef SIZE_t start, end
 
+    # array of indices that describe where to find what kind of target variable
     cdef SIZE_t[::1] numeric_vars, symbolic_vars, all_vars
+
+    # array of indices describing what features are of symbolic and what are of numeric nature
     cdef SIZE_t[::1] numeric_features, symbolic_features
+
+    # percentage of samples that have to be in a leaf to valid
     cdef public DTYPE_t min_samples_leaf
+
+    # integer array describing the number of symbols per symbolic variable
     cdef SIZE_t[::1] symbols
+
+    # integers holding the number of numeric targets, number of symbolic targets, maximum size of a symbolic domain,
+    # number of targets, number of total numeric variables, number of total symbolic variable,
+    # number of total variables
     cdef SIZE_t n_num_vars, n_sym_vars, max_sym_domain, n_vars, n_num_vars_total, n_sym_vars_total, n_vars_total
 
+    # 2D integer array describing histograms total, left and right
     cdef SIZE_t[:, ::1] symbols_left, \
         symbols_right, \
         symbols_total
 
+    # double array describing the gini improvements
     cdef DTYPE_t[::1] gini_improvements
+
+    # double array describing the gini impurities
     cdef DTYPE_t[::1] gini_impurities
+
+    # float array of gini impurities left of the split
     cdef DTYPE_t[::1] gini_left
+
+    # float array of gini impurities right of the split
     cdef DTYPE_t[::1] gini_right
 
+    # float arrays of all kinds of statistics left and right of a split
     cdef DTYPE_t[::1] variances_left, \
         variances_right, \
         variances_total, \
@@ -155,80 +250,149 @@ cdef class Impurity:
         sums_total, \
         sq_sums_total
 
+    # double array containing the maximum variances of each numeric variable
     cdef DTYPE_t[::1] max_variances
 
+    # integer array containing number of samples in left and right split
     cdef SIZE_t[::1] num_samples
+
+    # integer array containing all indices of features
     cdef SIZE_t[::1] features
+
+    # integer describing the best split position as index
     cdef readonly SIZE_t best_split_pos
+
+    # integer describing the index of the best variable
     cdef readonly SIZE_t best_var
+
+    # float describing the best impurity improvement
     cdef readonly  DTYPE_t max_impurity_improvement
+
+    # percentage of numeric targets
     cdef DTYPE_t w_numeric
 
-
+    # 2D integer array describing all dependencies that are considered under all variables
     cdef SIZE_t[:, ::1] dependency_matrix
+
+    # 2D integer array describing all dependencies that are considered under numeric variables
     cdef SIZE_t[:, ::1] numeric_dependency_matrix
+
+    # 2D integer array describing all dependencies that are considered under symbolic variables
     cdef SIZE_t[:, ::1] symbolic_dependency_matrix
 
     def __init__(self, tree):
+        """
+        Construct the impurity
+
+        :param tree: the tree to take the parameters from
+        :type tree: jpt.trees.JPT
+        """
+
+        # copy min_samples_leaf
         self.min_samples_leaf = tree.min_samples_leaf
+
+        # initialize data, features, index buffer and indices as None
         self.data = self.feat = self.index_buffer = self.indices = None
+
+        # initialize start and end as -1
         self.start = self.end = -1
 
+        # initialize best_variance index as -1
         self.best_var = -1
+
+        # initialize best_split index as -1
         self.best_split_pos = -1
+
+        # initialize max_impurity_improvement as 0
         self.max_impurity_improvement = 0
 
+        # initialize array of indices of the numeric targets
         self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                       if v.numeric and (tree.targets is None or v in tree.targets)],
                                      dtype=np.int64)
+
+        # initialize array of indices of the symbolic targets
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                        if v.symbolic and (tree.targets is None or v in tree.targets)],
                                       dtype=np.int64)
+
+        # get the number of symbolic targets
         self.n_sym_vars = len(self.symbolic_vars)
+
+        # get number of numeric targets
+        self.n_num_vars = len(self.numeric_vars)
+
+        # get the number of all symbolic variables
         self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
 
+        # get the number of all numeric variables
+        self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric])
+
+        # get indices of all targets
         self.all_vars = np.concatenate((self.numeric_vars, self.symbolic_vars))
+
+        # number of all target variables
         self.n_vars = self.all_vars.shape[0]  # len(tree.variables)
+
+        # number of all variables
         self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
 
+        # get the indices of numeric features
         self.numeric_features = np.array([i for i, v in enumerate(tree.variables)
                                          if v.numeric and (tree.targets is None or v not in tree.targets)],
                                          dtype=np.int64)
+        # get the indices of symbolic features
         self.symbolic_features = np.array([i for i, v in enumerate(tree.variables)
                                           if v.symbolic and (tree.targets is None or v not in tree.targets)],
                                          dtype=np.int64)
+        # construct all feature indices
         self.features = np.concatenate((self.numeric_features, self.symbolic_features))
 
-
+        # if symbolic targets exist
         if self.n_sym_vars:
             # Thread-invariant buffers
+
+            # get the size of each symbolic variables domain
             self.symbols = np.array([v.domain.n_values for v in tree.variables if v.symbolic], dtype=np.int64)
+
+            # get the maximum size of symbolic domains
             self.max_sym_domain = max(self.symbols)
+
+            # initialize a 2D matrix of size (max_sym_domain, n_sym_vars) such that the histograms can be calculated
             self.symbols_total = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
             
-        # if self.n_sym_vars_total:  # Symbolic features require two buffers
+            # histograms for symbolic variables left and right of the splits
             self.symbols_left = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
             self.symbols_right = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
 
-        if self.n_sym_vars:  # Symbolic targets require a buffer for improvement calculation
+            # Symbolic targets require a buffer for improvement calculation
+            # initialize the gini improvement per symbolic target
             self.gini_improvements = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
+
+            # initialize the gini impurities per symbolic target
             self.gini_impurities = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
+
+            # initialize gini impurities of symbolic targets left of the split
             self.gini_left = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
+
+            # initialize gini impurities of symbolic targets right of the split
             self.gini_right = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
 
+        # initialize number of samples in left and right split
         self.num_samples = np.ndarray(shape=2, dtype=np.int64)  # max(max(self.symbols) if self.n_sym_vars else 2, 2)
-        self.n_num_vars = len(self.numeric_vars)
-        self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric])
 
-        self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
-
+        # if numeric targets exist
         if self.n_num_vars:
+
             # Thread-invariant buffers
             self.sums_total = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.sq_sums_total = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.variances_total = np.ndarray(self.n_num_vars, dtype=np.float64)
+
+            # calculate the prior variance of every variable
             self.max_variances = np.array([v._max_std ** 2 for v in tree.variables if v.numeric], dtype=np.float64)
 
+            # buffers for left and right splits, similar to symbolic stuff
             self.sums_left = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.sums_right = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.sq_sums_left = np.ndarray(self.n_num_vars, dtype=np.float64)
@@ -237,6 +401,7 @@ cdef class Impurity:
             self.variances_right = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.variance_improvements = np.ndarray(self.n_num_vars, dtype=np.float64)
 
+        # calculate percentage of numeric targets
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
         # copy the dependency structure
@@ -245,6 +410,11 @@ cdef class Impurity:
         self.symbolic_dependency_matrix = tree.symbolic_dependency_matrix
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
+        """
+        Checks if a variance in ``variances`` is higher than the initial variances
+        :param variances: The calculated variances.
+        :return: True if there is a higher variance, False if all are lower.
+        """
         cdef int i
         for i in range(self.n_num_vars):
             if variances[i] > self.max_variances[i]:
@@ -252,35 +422,59 @@ cdef class Impurity:
         return False
 
     cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices) except +:
+        """
+        Set data and indices, update features and index_buffer
+        :param data: the data to set
+        :param indices: the indices to set
+        """
         self.data = data
         self.feat = np.ndarray(shape=data.shape[0], dtype=np.float64)
         self.indices = indices
         self.index_buffer = np.ndarray(shape=indices.shape[0], dtype=np.int64)
 
     cdef inline int has_numeric_vars(Impurity self) nogil:
+        """
+        :return: number of numeric targets
+        """
         return self.n_num_vars
 
     cdef inline int has_symbolic_vars(Impurity self) nogil:
+        """
+        :return: number of symbolic targets 
+        """
         return self.n_sym_vars
 
     cdef inline int has_symbolic_features(Impurity self) nogil:
+        """
+        :return: number of symbolic features 
+        """
         return self.n_sym_vars_total - self.n_sym_vars
 
     cdef inline int has_numeric_features(Impurity self) nogil:
+        """
+        :return: number of numeric features 
+        """
         return self.n_num_vars_total - self.n_num_vars
 
     cdef inline void gini_impurity(Impurity self, SIZE_t[:, ::1] counts, SIZE_t n_samples, DTYPE_t[::1] result) nogil:
-        '''
+        """
+        Calculate gini impurity of data
+        
         Following the gini impurity measure (normalized by the number of possible symbolic values:
-            ..
-            In the uniform distribution: -Gini_u(C) = -|C|/|C| + |C|/|C|^2 = 1/|C| - 1
-            
-             Gini(C) = 1 / Gini_u(C) * \sum_c (P(c) * (1 - P(c)) = 1 / Gini_u(C) * \sum_c (P(c) - P(c)^2)
-            -Gini(C) = 1 / Gini_u(C) * (\sum_c P(c)^2 - \sum_c P(c)) | \sum_c P(c) = 1 
-            -Gini(C) = 1 / Gini_u(C) * (\sum_c P(c)^2 - 1)
-             Gini(C) = 1 / -Gini_u(C) * (\sum_c P(c)^2 - 1)
-             Gini(C) = (\sum_c P(c)^2 - 1) / (1 / |C| - 1)
-        '''
+        ..
+        In the uniform distribution: -Gini_u(C) = -|C|/|C| + |C|/|C|^2 = 1/|C| - 1
+        
+         Gini(C) = 1 / Gini_u(C) * \sum_c (P(c) * (1 - P(c)) = 1 / Gini_u(C) * \sum_c (P(c) - P(c)^2)
+        -Gini(C) = 1 / Gini_u(C) * (\sum_c P(c)^2 - \sum_c P(c)) | \sum_c P(c) = 1 
+        -Gini(C) = 1 / Gini_u(C) * (\sum_c P(c)^2 - 1)
+         Gini(C) = 1 / -Gini_u(C) * (\sum_c P(c)^2 - 1)
+         Gini(C) = (\sum_c P(c)^2 - 1) / (1 / |C| - 1)
+         
+        :param counts: 
+        :param n_samples: number of samples 
+        :param result: resulting array to write into, will be overwritten completely
+        :return: 
+        """
         cdef SIZE_t i, j
         result[...] = 0
         for i in range(self.n_sym_vars):

@@ -332,11 +332,11 @@ cdef class ConstantFunction(Function):
         return self.value
 
     cpdef np.int32_t intersects(self, Function f) except +:
-        '''
-        Determine if the function crosses another linear function ``f``.
-        :param f: 
-        :return: 
-        '''
+        """
+        Determine if the function crosses another function ``f``.
+        :param f: the other ``Function``
+        :return: True if they intersect, False else
+        """
         if isinstance(f, LinearFunction):
             return f.intersects(self)
         elif isinstance(f, ConstantFunction):
@@ -346,11 +346,11 @@ cdef class ConstantFunction(Function):
                             'or ConstantFunction, not %s' % type(f).__name__)
 
     cpdef ContinuousSet intersection(self, Function f) except +:
-        '''
-        Determine if the function crosses another linear function ``f``.
-        :param f: 
-        :return: 
-        '''
+        """
+        Determine where the function crosses another function ``f``.
+        :param f: the other ``Function``
+        :return: the ``ContinuousSet`` where they intersect. ContinuousSet.empty() if they dont intersect.
+        """
         if isinstance(f, LinearFunction):
             return f.intersection(self)
         elif isinstance(f, ConstantFunction):
