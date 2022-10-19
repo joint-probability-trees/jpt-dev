@@ -120,7 +120,7 @@ cdef inline void variances(DTYPE_t[::1] sq_sums,
     = (\sum_i^n y_i ** 2) - n_samples * y_bar ** 2
 
     See also: 'https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/sklearn/
-              tree/_criterion.pyx#L683'
+               tree/_criterion.pyx#L683'
     :param sq_sums: The square sums 
     :param sums: The ordinary sums
     :param n_samples: the number of samples
@@ -195,7 +195,7 @@ cdef class Impurity:
     # the raw 'read-only' data
     cdef DTYPE_t [:, ::1] data
 
-    # the indices TODO: more detailed please
+    # the indices of the sorted datapoints used for TODO
     cdef readonly SIZE_t [::1] indices, index_buffer
 
     # the features to split on
@@ -411,7 +411,8 @@ cdef class Impurity:
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
         """
-        Checks if a variance in ``variances`` is higher than the initial variances
+        Check if a variance in ``variances`` is higher than the initial variances
+        
         :param variances: The calculated variances.
         :return: True if there is a higher variance, False if all are lower.
         """
@@ -424,6 +425,7 @@ cdef class Impurity:
     cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices) except +:
         """
         Set data and indices, update features and index_buffer
+        
         :param data: the data to set
         :param indices: the indices to set
         """
@@ -458,7 +460,7 @@ cdef class Impurity:
 
     cdef inline void gini_impurity(Impurity self, SIZE_t[:, ::1] counts, SIZE_t n_samples, DTYPE_t[::1] result) nogil:
         """
-        Calculate gini impurity of data
+        Calculate gini impurity of histogram
         
         Following the gini impurity measure (normalized by the number of possible symbolic values:
         ..
@@ -470,10 +472,9 @@ cdef class Impurity:
          Gini(C) = 1 / -Gini_u(C) * (\sum_c P(c)^2 - 1)
          Gini(C) = (\sum_c P(c)^2 - 1) / (1 / |C| - 1)
          
-        :param counts: 
+        :param counts: TODO: histogram?
         :param n_samples: number of samples 
         :param result: resulting array to write into, will be overwritten completely
-        :return: 
         """
         cdef SIZE_t i, j
         result[...] = 0
@@ -485,6 +486,14 @@ cdef class Impurity:
             result[i] /= 1. / (<DTYPE_t> self.symbols[i]) - 1.
 
     cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil except -1:
+        """
+        Check if a column in self.data is a constant, i.e. only contains the same value in every row.
+        The column is only evaluated between start and end
+        :param start: start index of the rows
+        :param end: end index of the rows
+        :param col: the index of the column
+        :return: 1 if it is constant, 0 else 
+        """
         cdef DTYPE_t v_ = nan, v
         cdef SIZE_t i
         if end - start <= 1:
@@ -500,55 +509,87 @@ cdef class Impurity:
         return True
 
     cpdef DTYPE_t compute_best_split(self, SIZE_t start, SIZE_t end) except -1:
-        '''
+        """
+        Calculate the best split on all variables.
+        
+        
+        Note:
         Computation uses the impurity proxy from sklearn: ::
 
             var = \sum_i^n (y_i - y_bar) ** 2
             = (\sum_i^n y_i ** 2) - n_samples * y_bar ** 2
 
-        See also: https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/sklearn/tree/_criterion.pyx#L683
-        '''
+        See also: 'https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/
+                   sklearn/tree/_criterion.pyx#L683'
+                   
+        :param start:  the start index used in ``self.indices``
+        :param end: the end index in ``self.indices``
+        :return: The best impurity improvement as a float
+        """
+
+        # initialize best variable index
         cdef int best_var = -1
+
+        # take over parameters
         self.start = start
         self.end = end
+
+        # calculate number of samples
         cdef int n_samples = end - start
 
+        # initialize impurity and gini index
         cdef np.float64_t impurity_total = 0
         cdef np.float64_t gini_total = 0
 
-        self.max_impurity_improvement = 0
+        # if numeric targets exist
         if self.has_numeric_vars():
+
+            # reset the variances
             self.variances_total[:] = 0
+
+            # calculate square sums of all current data
             sq_sum_at(self.data,
                       self.indices[self.start:self.end],
                       self.numeric_vars,
                       result=self.sq_sums_total)
 
+            # calculate ordinary sums of all current data
             sum_at(self.data,
                    self.indices[self.start:self.end],
                    self.numeric_vars,
                    result=self.sums_total)
 
+            # calculate variances from square and ordinary sums of all current data
             variances(self.sq_sums_total,
                       self.sums_total,
                       n_samples,
                       result=self.variances_total)
 
+            # sanity check to see if the variances "make sense"
             if not self.check_max_variances(self.variances_total):
                 return 0
 
+        # if symbolic targets exist
         if self.has_symbolic_vars():
+
+            # compute histogram of all current data
             bincount(self.data,
                      self.indices[self.start:self.end],
                      self.symbolic_vars,
                      result=self.symbols_total)
 
+            # calculate gini impurity of histogram
             self.gini_impurity(self.symbols_total, n_samples, self.gini_impurities)
+
+            # save total gini impurity as mean of all symbolic dimensions impurities
             gini_total = mean(self.gini_impurities)
         else:
             gini_total = 0
 
+        # int describing if the current variable is symbolic or not
         cdef int symbolic = 0
+
+        # variable for tracking the index of symbolic variables
         cdef int symbolic_idx = -1
 
         cdef DTYPE_t impurity_improvement
@@ -557,10 +598,22 @@ cdef class Impurity:
         cdef SIZE_t split_pos
         self.index_buffer[:n_samples] = self.indices[self.start:self.end]
 
+        # reset best impurity improvement
+        self.max_impurity_improvement = 0
+
+        # for every feature
         for variable in self.features:
+
+            # check if this variable is symbolic or not
             symbolic = variable in self.symbolic_features
+
+            # increase symbolic index tracking by one if variable is symbolic
             symbolic_idx += symbolic
+
+            # initialize split position
             split_pos = -1
+
+            # evaluate the current variable
             impurity_improvement = self.evaluate_variable(variable,
                                                           symbolic,
                                                           symbolic_idx,
@@ -569,21 +622,40 @@ cdef class Impurity:
                                                           self.index_buffer,
                                                           &split_pos)
 
+            # if the best impurity improvement of this variable is better than the current best
             if impurity_improvement > self.max_impurity_improvement:
+
+                # update current best impurity
                 self.max_impurity_improvement = impurity_improvement
+
+                # update index of best variable
                 self.best_var = variable
+
+                # update the position of the split
                 self.best_split_pos = split_pos
+
+                # TODO IDK
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
 
+        # if max impurity improvement has been updated at least once and the best variable is symbolic
         if self.max_impurity_improvement and self.best_var in self.symbolic_features:
+
+            # TODO IDK
             self.move_best_values_to_front(self.best_var,
                                            self.data[self.indices[start + self.best_split_pos],
                                                      self.best_var],
                                            &self.best_split_pos)
 
+        # return the best improvement value
         return self.max_impurity_improvement
 
     cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos):  #nogil
+        """
+        TODO IDK
+        :param var_idx: 
+        :param value: 
+        :param split_pos: pointer to position of the split
+        """
         cdef SIZE_t n_samples = self.end - self.start
         cdef int j
         cdef DTYPE_t v
@@ -604,6 +676,22 @@ cdef class Impurity:
                                    DTYPE_t gini_total,
                                    SIZE_t[::1] index_buffer,
                                    SIZE_t* best_split_pos) nogil except -1:
+        """
+        Evaluate a variable w. r. t. its possible slit. Calculate the best split on this variable
+        and the corresponding impurity.
+        
+        TODO Document source code
+        
+        :param var_idx: the index of the variable in self.data
+        :param symbolic: 1 if the variable is symbolic, 0 if numeric
+        :param symbolic_idx: 
+        :param variances_total: 
+        :param gini_total: 
+        :param index_buffer: 
+        :param best_split_pos: pointer to the position of the best split
+        :return: 
+        """
+
         cdef DTYPE_t[:, ::1] data = self.data
         cdef DTYPE_t[::1] f = self.feat
         cdef DTYPE_t max_impurity_improvement = 0
@@ -736,42 +824,74 @@ cdef class Impurity:
 
         return max_impurity_improvement
 
-    cdef inline void update_numeric_stats(Impurity self, SIZE_t sample_idx) nogil:
-        cdef SIZE_t var, i
-        cdef DTYPE_t y
-        for i in range(self.n_num_vars):
-            y = self.data[sample_idx, self.numeric_vars[i]]
-            self.sums_left[i] += y
-            self.sums_right[i] = self.sums_total[i] - self.sums_left[i]
-            self.sq_sums_left[i] += y * y
-            self.sq_sums_right[i] = self.sq_sums_total[i] - self.sq_sums_left[i]
-
-
     cdef inline void update_numeric_stats_with_dependencies(Impurity self,
                                                             SIZE_t sample_idx,
                                                             SIZE_t[::1] dependent_columns) nogil:
+        """
+        Update the stats of all dependent numeric variables of a variable (numeric of symbolic)
+        :param sample_idx: the index of the samples to retrieve the values from
+        :param dependent_columns: the indices of the dependent symbolic variables
+        """
+
+        # initialize helper variables
         cdef SIZE_t var, i, dep_var
         cdef DTYPE_t y
 
+        # for every dependent variable
         for i in range(dependent_columns.shape[0]):
+
+            # get the index of the dependent variable
             dep_var = dependent_columns[i]
+
+            # -1 marks the end of a dependency column, so end the method here
             if dep_var == -1:
                 return
+
+            # get the value of the variable at sample
             y = self.data[sample_idx, self.numeric_vars[dep_var]]
+
+            # update stats left and right of the value
             self.sums_left[dep_var] += y
             self.sums_right[dep_var] = self.sums_total[dep_var] - self.sums_left[dep_var]
             self.sq_sums_left[dep_var] += y * y
             self.sq_sums_right[dep_var] = self.sq_sums_total[dep_var] - self.sq_sums_left[dep_var]
 
+    cdef inline void update_symbolic_stats_with_dependencies(Impurity self,
+                                                             SIZE_t sample_idx,
+                                                             SIZE_t[::1] dependent_columns) nogil:
+        """
+        Update the stats of all dependent symbolic variables of a variable (numeric of symbolic)
+        :param sample_idx: the index of the samples to retrieve the values from
+        :param dependent_columns: the indices of the dependent symbolic variables
+        """
 
-    cdef inline void update_symbolic_stats(Impurity self, SIZE_t sample_idx) nogil:
-        cdef SIZE_t i, j, validx
-        for i in range(self.n_sym_vars):
-            validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[i]]
-            self.symbols_left[validx, i] += 1
-            self.symbols_right[validx, i] -= 1  # self.symbols_total[validx, i] - self.symbols_left[validx, i]
+        # initialize helper variables
+        cdef SIZE_t i, j, validx, dep_var
+
+        # for dependent every variable
+        for i in range(dependent_columns.shape[0]):
+
+            # get the index of the dependent variable
+            dep_var = dependent_columns[i]
+
+            # -1 marks the end of a dependency column, so end the method here
+            if dep_var == -1:
+                return
+
+            # get the value of the variable at sample
+            validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[dep_var]]
+
+            # update the histogram on the left split
+            self.symbols_left[validx, dep_var] += 1
+
+            # update the histogram on the right split
+            self.symbols_right[validx, dep_var] = (self.symbols_total[validx, dep_var] -
+                                                   self.symbols_left[validx, dep_var])
 
     def to_string(self):
+        """
+        :return: a table-like string describing the targets and features of this impurity
+        """
         return tabulate.tabulate(zip(['# symbolic variables',
                                       'symbolic variables',
                                       '# numeric variables',
@@ -789,15 +909,3 @@ cdef class Impurity:
                                       len(self.numeric_features),
                                       ','.join(mapstr(self.numeric_features))]))
 
-    cdef inline void update_symbolic_stats_with_dependencies(Impurity self,
-                                                             SIZE_t sample_idx,
-                                                             SIZE_t[::1] dependent_columns) nogil:
-        cdef SIZE_t i, j, validx, dep_var
-        for i in range(dependent_columns.shape[0]):
-            dep_var = dependent_columns[i]
-            if dep_var == -1:
-                return
-            validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[dep_var]]
-            self.symbols_left[validx, dep_var] += 1
-            self.symbols_right[validx, dep_var] = (self.symbols_total[validx, dep_var] -
-                                                   self.symbols_left[validx, dep_var])
