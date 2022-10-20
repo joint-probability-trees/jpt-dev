@@ -17,6 +17,7 @@ from dnutils import mapstr
 
 from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort
 
+# variables declaring that at num_samples[0] are the number of samples left of the split and vice versa
 cdef int LEFT = 0
 cdef int RIGHT = 1
 
@@ -35,8 +36,8 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
    :param variances_total: The variances before the split
    :param variances_left: The variances of the left side of the split
    :param variances_right: The variances of the right side of the split
-   :param samples_left: The samples of the left side of the split
-   :param samples_right: The samples of the right side of the split
+   :param samples_left: The amount of samples on the left side of the split
+   :param samples_right: The amount of samples on the right side of the split
    :return: double describing the relative variance improvement
    """
     # result[:] = variances_total
@@ -692,11 +693,21 @@ cdef class Impurity:
         :return: 
         """
 
+        # copy data
         cdef DTYPE_t[:, ::1] data = self.data
+
+        # copy features
         cdef DTYPE_t[::1] f = self.feat
+
+        # initialize max impurity improvement of this variable
         cdef DTYPE_t max_impurity_improvement = 0
+
+        # copy start and end index
         cdef SIZE_t start = self.start, end = self.end
+
+        # calculate number of samples
         cdef SIZE_t n_samples = end - start
+
         # --------------------------------------------------------------------------------------------------------------
         # TODO: Check if sorting really needs a copy of the feature data
         cdef int i, j
@@ -704,27 +715,41 @@ cdef class Impurity:
             f[j] = data[index_buffer[j], var_idx]
         sort(&f[0], &index_buffer[0], n_samples)
         # --------------------------------------------------------------------------------------------------------------
+
+        # description if this variable is numeric
         cdef int numeric = not symbolic
+
+        # if this variable only contains the same values return 0
         cdef int is_constant = self.col_is_constant(start, end, var_idx)
         if is_constant == 1:
             return 0
+
+        # if there was a NaN or infinity, return -1
         elif is_constant == -1:
             return -1
 
-        # Prepare the stats
+        # Prepare the numeric stats
         if self.has_numeric_vars():
             self.sums_left[...] = 0
             self.sums_right[...] = self.sums_total
             self.sq_sums_left[...] = 0
             self.sq_sums_right[...] = self.sq_sums_total
 
+        # prepare the symbolic stats
         if self.has_symbolic_vars():
             self.symbols_left[...] = 0
             self.symbols_right[...] = self.symbols_total[...]
 
+        # reset number of samples left and right of the split
         self.num_samples[:] = 0
+
+        # counter for number of samples left and right of the split
         cdef SIZE_t samples_left, samples_right
+
+        # initialize impurity improvement
         cdef DTYPE_t impurity_improvement = 0.
+
+        # initialize current impurity improvement
         cdef DTYPE_t tmp_impurity_impr
 
         cdef SIZE_t VAL_IDX
@@ -732,36 +757,45 @@ cdef class Impurity:
         cdef int last_iter
         cdef DTYPE_t min_samples
 
+        # for every split position as index
         for split_pos in range(n_samples):
+
+            # get the index of the sample considered for the current split
             sample_idx = index_buffer[split_pos]
+
+            # get if this is the last iteration
             last_iter = (symbolic and split_pos == n_samples - 1
                          or numeric and split_pos == n_samples - 2)
 
+            # if this variable is numeric
             if numeric:
+                # track number of samples left and right of the split
                 self.num_samples[LEFT] += 1
                 self.num_samples[RIGHT] = <SIZE_t> n_samples - split_pos - 1
                 samples_left = self.num_samples[LEFT]
                 samples_right = self.num_samples[RIGHT]
+
+            # if it is symbolic
             else:
+
+                # get the symolbic value
                 VAL_IDX = <SIZE_t> data[sample_idx, var_idx]
+
+                # track number of samples left and right of the split
                 self.num_samples[LEFT] += 1
                 self.num_samples[RIGHT] = n_samples - self.num_samples[LEFT]
                 samples_left = self.num_samples[LEFT]
                 samples_right = n_samples - samples_left
 
-            # This part below got changed to only update stats on dependent stuff.
-
-            # Compute the numeric impurity by variance approximation
+            # Compute the numeric impurity (variance)
             if self.has_numeric_vars():
                 self.update_numeric_stats_with_dependencies(sample_idx,
                                                             self.numeric_dependency_matrix[var_idx, :])
-                #self.update_numeric_stats(sample_idx)
 
-            # Compute the symbolic impurity by the Gini index
+            # Compute the symbolic impurity (Gini index)
             if self.has_symbolic_vars():
                 self.update_symbolic_stats_with_dependencies(sample_idx,
                                                              self.symbolic_dependency_matrix[var_idx, :])
-                #self.update_symbolic_stats(sample_idx)
 
             # Skip calculation for identical values (i.e. until next 'real' splitpoint is reached:
             # for skipping, the sample must not be the last one (1) and consequtive values must be equal (2)
@@ -769,30 +803,51 @@ cdef class Impurity:
                 if data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]:
                     continue
 
+            # reset impurity improvement
             impurity_improvement = 0.
 
+            # if numeric targets exist
             if self.has_numeric_vars():
+
+                # if there is more than one sample on the left side if the split
                 if samples_left > 1:
+                    # calculate variance of left split
                     variances(self.sq_sums_left, self.sums_left, samples_left, result=self.variances_left)
                 else:
+                    # reset variances left of the split
                     self.variances_left[:] = 0
 
+                # if the variable considered for the split is numeric
                 if numeric:
+
+                    # if there is more than one sample on the right side if the split
                     if samples_right > 1:
+                        # calculate variance of right split
                         variances(self.sq_sums_right, self.sums_right, samples_right, result=self.variances_right)
                     else:
+                        # if there is only one sample reset the variances
                         self.variances_right[:] = 0
+
+                    # compute the variance improvement for this split
                     impurity_improvement += compute_var_improvements(variances_total,
                                                                      self.variances_left,
                                                                      self.variances_right,
                                                                      samples_left,
                                                                      samples_right) * self.w_numeric
+
+                # if the variable is symbolic
                 else:
+                    # TODO IDK
                     impurity_improvement += (mean(self.variances_total) - mean(self.variances_left)) / mean(self.variances_total)
                     impurity_improvement *= <DTYPE_t> samples_left / <DTYPE_t> n_samples * self.w_numeric
 
+            # if symbolic targets exist
             if self.has_symbolic_vars():
+
+                # if total gini impurity is not 0
                 if gini_total:
+
+                    # update gini impurity left and right of the split
                     self.gini_impurity(self.symbols_left, samples_left, self.gini_left)
                     self.gini_impurity(self.symbols_right, samples_right, self.gini_right)
                     impurity_improvement += ((gini_total -
@@ -800,7 +855,10 @@ cdef class Impurity:
                                               mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> n_samples)) / gini_total
                                               * (1 - self.w_numeric))
 
+            # if this variable is symbolic
             if symbolic:
+
+                # if symbolic targets exist
                 if self.has_symbolic_vars():
                     self.symbols_left[...] = 0
                     self.symbols_right[...] =  self.symbols_total[...]
@@ -808,17 +866,21 @@ cdef class Impurity:
                     self.gini_improvements[...] = 0
                     self.num_samples[...] = 0
 
+                # if numeric targets exist
                 if self.has_numeric_vars():
                     self.sums_left[...] = 0
                     self.sq_sums_left[...] = 0
 
+            # check if this split is legal according to self.min_samples_leaf
             if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
                 impurity_improvement = 0.
 
+            # check if this split is improves the impurity by the minimal required amount
             if impurity_improvement > max_impurity_improvement:
                 max_impurity_improvement = impurity_improvement
                 best_split_pos[0] = split_pos
 
+            # break on the last iteration since the "real" last iteration is not needed
             if last_iter:
                 break
 
@@ -829,6 +891,7 @@ cdef class Impurity:
                                                             SIZE_t[::1] dependent_columns) nogil:
         """
         Update the stats of all dependent numeric variables of a variable (numeric of symbolic)
+        The sample is considered left of the split and the stats are updated that way.
         :param sample_idx: the index of the samples to retrieve the values from
         :param dependent_columns: the indices of the dependent symbolic variables
         """
@@ -861,6 +924,7 @@ cdef class Impurity:
                                                              SIZE_t[::1] dependent_columns) nogil:
         """
         Update the stats of all dependent symbolic variables of a variable (numeric of symbolic)
+        The sample is considered left of the split and the stats are updated that way.
         :param sample_idx: the index of the samples to retrieve the values from
         :param dependent_columns: the indices of the dependent symbolic variables
         """
