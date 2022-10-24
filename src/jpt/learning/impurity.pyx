@@ -176,6 +176,79 @@ cdef inline void bincount(DTYPE_t[:, ::1] data,
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+cdef inline void standardize(DTYPE_t[:, ::1] data,
+                             DTYPE_t[::1] sums,
+                             DTYPE_t[::1] variances,
+                             DTYPE_t[:, ::1] result) nogil:
+    """
+    Standardize ``data`` with respect to mean and variance.
+    :param data: the original data
+    :param sums: the sums of each column of the data
+    :param variances: the variances of each column of the data
+    :param result: the result to write into
+    """
+
+    # initialize indices
+    cdef SIZE_t row_index
+    cdef SIZE_t column_index
+
+    # initialize statistics
+    cdef DTYPE_t num_samples
+    cdef DTYPE_t mean
+    cdef DTYPE_t variance
+    cdef DTYPE_t datapoint
+
+    # get number of samples
+    num_samples = <DTYPE_t> len(data)
+
+    # for every column
+    for column_index in range(0, result.shape[1]):
+
+        # calculate mean
+        mean = sums[column_index] / num_samples
+
+        # get variance
+        variance = variances[column_index]
+
+        # for every row
+        for row_index in range(0, result.shape[0]):
+
+            # get datapoint
+            datapoint = data[row_index, column_index]
+
+            # standardize data
+            result[row_index, column_index] = (datapoint - mean) / variance
+
+cdef inline void pca(DTYPE_t[:, ::1] data, DTYPE_t[:, ::1] result):
+     """
+     Compute PCA on a normalized dataset
+     :param data: the data to decompose
+     :param result: the result to write in
+     """
+     # initialize covariance
+     cdef DTYPE_t[:, ::1] covariance
+
+     # initialize eigenvectors
+     cdef DTYPE_t[:, ::1] eigenvectors
+
+     # initialize eigenvalues
+     cdef DTYPE_t[::1] eigenvalues
+
+     # initialize diagonal of eigenvalues
+     cdef DTYPE_t[::1] diagonal
+
+     print(data.base)
+     print(data.base.mean(axis=0))
+     exit()
+     # compute covariance
+     covariance = np.dot(data.T, data)
+     print(covariance.base)
+     exit()
+     eigenvalues, eigenvectors = np.linalg.eig(covariance)
+
+     diagonal = np.diag(eigenvectors)
+
+     result = np.dot(diagonal, eigenvalues)
 
 cdef class Impurity:
     """
@@ -972,4 +1045,209 @@ cdef class Impurity:
                                       ','.join(mapstr(self.symbolic_features)),
                                       len(self.numeric_features),
                                       ','.join(mapstr(self.numeric_features))]))
+
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+cdef class PCAImpurity(Impurity):
+    """
+    Class to implement fast impurity and PCA calculations on splits.
+
+    Note:
+        A general name convention is, that left and right refer to sides of a split made on a sorted array
+        On this array with a split value of 104.25
+        -----------------------------------------
+        | 1  |  3 |  8.5 | 200  | 210  |  210.5 |
+        ----------------------------------------
+        left would be considered as 1,3,8.5 and right would be considered as 200,210,210.5
+
+
+        Whenever an index is considered as invalid or not initialized '-1' is used.
+    """
+
+    # the indices of all numeric variables (features and targets) in self.data
+    cdef SIZE_t[::1] numeric_indices
+
+    # the additional pca matrix calculating holding the current most informative linear relationship
+    cdef DTYPE_t[:, ::1] pca_matrix
+
+    # array holding the pca transformed copy of the original numeric data
+    cdef DTYPE_t[:, ::1] pca_data
+
+    def __init__(self, tree):
+        super(PCAImpurity, self).__init__(tree)
+
+        # initialize pca as identity matrix
+        self.pca_matrix = np.identity(self.n_num_vars_total)
+
+        # initialize pca data
+        self.pca_data = None
+
+        # get numeric indices
+        self.numeric_indices = np.array([i for i,v in enumerate(tree.variables) if v.numeric])
+
+    cpdef void setup(PCAImpurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices) except +:
+        """
+        Set data and indices, update features and index_buffer
+
+        :param data: the data to set
+        :param indices: the indices to set
+        """
+        self.data = data
+        self.feat = np.ndarray(shape=data.shape[0], dtype=np.float64)
+        self.indices = indices
+        self.index_buffer = np.ndarray(shape=indices.shape[0], dtype=np.int64)
+        self.pca_data = np.ndarray(shape=(data.shape[0], self.n_num_vars_total), dtype=np.float64)
+
+    cpdef DTYPE_t compute_best_split(self, SIZE_t start, SIZE_t end) except -1:
+        """
+        Calculate the best split on all variables.
+
+
+        Note:
+        Computation uses the impurity proxy from sklearn: ::
+
+            var = \sum_i^n (y_i - y_bar) ** 2
+            = (\sum_i^n y_i ** 2) - n_samples * y_bar ** 2
+
+        See also: 'https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/
+                   sklearn/tree/_criterion.pyx#L683'
+
+        :param start:  the start index used in ``self.indices``
+        :param end: the end index in ``self.indices``
+        :return: The best impurity improvement as a float
+        """
+
+        # initialize best variable index
+        cdef int best_var = -1
+
+        # take over parameters
+        self.start = start
+        self.end = end
+
+        # setup data for pca processing
+        # TODO i think the pca_data needs to be constructed w. r. t. the selected indices ???
+        print(self.indices[self.start:self.end].base)
+        self.pca_data = self.data.copy()
+        exit()
+
+        # calculate number of samples
+        cdef int n_samples = end - start
+
+        # initialize impurity and gini index
+        cdef np.float64_t impurity_total = 0
+        cdef np.float64_t gini_total = 0
+
+        # if numeric targets exist
+        if self.has_numeric_vars():
+
+            # reset the variances
+            self.variances_total[:] = 0
+
+            # calculate square sums of all current data
+            sq_sum_at(self.data,
+                      self.indices[self.start:self.end],
+                      self.numeric_vars,
+                      result=self.sq_sums_total)
+
+            # calculate ordinary sums of all current data
+            sum_at(self.data,
+                   self.indices[self.start:self.end],
+                   self.numeric_vars,
+                   result=self.sums_total)
+
+            # calculate variances from square and ordinary sums of all current data
+            variances(self.sq_sums_total,
+                      self.sums_total,
+                      n_samples,
+                      result=self.variances_total)
+
+            # standardize data
+            standardize(self.pca_data, self.sums_total, self.variances_total, self.pca_data)
+
+            # TODO somehow standardization is not working
+            exit()
+
+            # sanity check to see if the variances "make sense"
+            if not self.check_max_variances(self.variances_total):
+                return 0
+
+        # if symbolic targets exist
+        if self.has_symbolic_vars():
+
+            # compute histogram of all current data
+            bincount(self.data,
+                     self.indices[self.start:self.end],
+                     self.symbolic_vars,
+                     result=self.symbols_total)
+
+            # calculate gini impurity of histogram
+            self.gini_impurity(self.symbols_total, n_samples, self.gini_impurities)
+
+            # save total gini impurity as mean of all symbolic dimensions impurities
+            gini_total = mean(self.gini_impurities)
+        else:
+            gini_total = 0
+
+        # int describing if the current variable is symbolic or not
+        cdef int symbolic = 0
+
+        # variable for tracking the index of symbolic variables
+        cdef int symbolic_idx = -1
+
+        cdef DTYPE_t impurity_improvement
+        cdef int variable
+
+        cdef SIZE_t split_pos
+        self.index_buffer[:n_samples] = self.indices[self.start:self.end]
+
+        # reset best impurity improvement
+        self.max_impurity_improvement = 0
+
+        # for every feature
+        for variable in self.features:
+
+            # check if this variable is symbolic or not
+            symbolic = variable in self.symbolic_features
+
+            # increase symbolic index tracking by one if variable is symbolic
+            symbolic_idx += symbolic
+
+            # initialize split position
+            split_pos = -1
+
+            # evaluate the current variable
+            impurity_improvement = self.evaluate_variable(variable,
+                                                          symbolic,
+                                                          symbolic_idx,
+                                                          self.variances_total if self.has_numeric_vars() else None,
+                                                          gini_total,
+                                                          self.index_buffer,
+                                                          &split_pos)
+
+            # if the best impurity improvement of this variable is better than the current best
+            if impurity_improvement > self.max_impurity_improvement:
+                # update current best impurity
+                self.max_impurity_improvement = impurity_improvement
+
+                # update index of best variable
+                self.best_var = variable
+
+                # update the position of the split
+                self.best_split_pos = split_pos
+
+                # TODO IDK
+                self.indices[self.start:self.end] = self.index_buffer[:n_samples]
+
+        # if max impurity improvement has been updated at least once and the best variable is symbolic
+        if self.max_impurity_improvement and self.best_var in self.symbolic_features:
+            # TODO IDK
+            self.move_best_values_to_front(self.best_var,
+                                           self.data[self.indices[start + self.best_split_pos],
+                                                     self.best_var],
+                                           &self.best_split_pos)
+
+        # return the best improvement value
+        return self.max_impurity_improvement
+
 

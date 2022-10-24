@@ -4,10 +4,23 @@ from typing import List, Dict, Tuple
 
 import dnutils
 
+from itertools import zip_longest
+
 import jpt.trees
-from jpt.variables import VariableMap, Variable
+from jpt.variables import VariableMap, Variable, NumericVariable, SymbolicVariable
 import numpy as np
 import pandas as pd
+
+try:
+    from .base.quantiles import __module__
+    from .base.intervals import __module__
+    from .learning.impurity import __module__
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+finally:
+    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
+    from .learning.impurity import PCAImpurity
 
 
 class PCANode(jpt.trees.Node):
@@ -64,7 +77,7 @@ class PCALeaf(PCANode):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class PCAJPT:
+class PCAJPT(jpt.trees.JPT):
     """
     This class represents an extension to JPTs where the PCA is applied before each split in training
     and Leafs therefore obtain an additional rotation matrix.
@@ -72,12 +85,8 @@ class PCAJPT:
 
     logger = dnutils.getlogger('/pcajpt', level=dnutils.INFO)
 
-    def __init__(self,
-                 variables: List[Variable],
-                 targets: List[Variable] or None = None,
-                 min_samples_leaf: float = .01,
-                 min_impurity_improvement: float or None = None,
-                 max_depth: int or float = float("infinity")) -> None:
+    def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
+                 max_leaves=None, max_depth=None, variable_dependencies=None) -> None:
         """
         Create a PCAJPT
 
@@ -87,45 +96,12 @@ class PCAJPT:
         :param min_impurity_improvement: The minimal amount of information gain needed to accept a split
         :param max_depth: The maximum depth of the tree.
         """
+        super(PCAJPT, self).__init__(variables, targets, min_samples_leaf, min_impurity_improvement, max_leaves,
+                                     max_depth, variable_dependencies)
 
-        self._variables = tuple(variables)
-        self._targets = targets
-        self.max_depth = max_depth
-
-        self.varnames: OrderedDict[str, Variable] = OrderedDict((var.name, var) for var in self._variables)
-        self._targets = [self.varnames[v] if type(v) is str else v for v in targets] if targets is not None else None
-        self.leaves: Dict[int, PCALeaf] = {}
-        self.innernodes: Dict[int, PCADecisionNode] = {}
-        self.allnodes: ChainMap[int, PCANode] = ChainMap(self.innernodes, self.leaves)
-        self.priors = {}
-
-        self._min_samples_leaf = min_samples_leaf
-        self.min_impurity_improvement = min_impurity_improvement or None
-
-        # a map saving the minimal distances to prevent infinite high likelihoods
-        self.minimal_distances: VariableMap = VariableMap({var: 1. for var in self.numeric_variables}.items())
-
-        self._numsamples = 0
-        self.root: PCADecisionNode or None = None
-        self.c45queue: deque = deque()
-        self._node_counter = 0
-        self.indices = None
-        self.impurity = None
-
-    @property
-    def variables(self) -> Tuple[Variable]:
-        return self._variables
-
-    @property
-    def targets(self) -> List[Variable]:
-        return self._targets
-
-    def _reset(self) -> None:
-        self.innernodes.clear()
-        self.leaves.clear()
-        self.priors.clear()
-        self.root = None
-        self.c45queue.clear()
+        # dont use targets yet, it is unsure what the correct design for that would be
+        if self.targets is not None:
+            raise ValueError("Targets are not yet allowed for PCA trees.")
 
     def _preprocess_data(self, data: np.ndarray or pd.DataFrame) -> np.ndarray:
         """
@@ -145,7 +121,7 @@ class PCAJPT:
 
             # Check if the order of columns in the data frame is the same
             # as the order of the variables.
-            if not all(c == v for c, v in dnutils.zip_longest(data.columns, self.varnames)):
+            if not all(c == v for c, v in zip_longest(data.columns, self.varnames)):
                 raise ValueError('Columns in DataFrame must coincide with variable order: %s' %
                                  ', '.join(dnutils.mapstr(self.varnames)))
             transformations = {v: self.varnames[v].domain.values.transformer() for v in data.columns}
@@ -210,7 +186,7 @@ class PCAJPT:
             min_samples_leaf = self._min_samples_leaf
 
         # Initialize the impurity calculation
-        self.impurity = Impurity(self)
+        self.impurity = PCAImpurity(self)
         self.impurity.setup(_data, self.indices)
         self.impurity.min_samples_leaf = min_samples_leaf
 
