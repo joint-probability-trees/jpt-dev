@@ -24,7 +24,6 @@ cdef int RIGHT = 1
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
 cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
                                    DTYPE_t[::1] variances_left,
                                    DTYPE_t[::1] variances_right,
@@ -179,11 +178,11 @@ cdef inline void bincount(DTYPE_t[:, ::1] data,
 cdef inline void standardize(DTYPE_t[:, ::1] data,
                              DTYPE_t[::1] sums,
                              DTYPE_t[::1] variances,
-                             DTYPE_t[:, ::1] result) nogil:
+                             DTYPE_t[:, ::1] result):
     """
     Standardize ``data`` with respect to mean and variance.
     :param data: the original data
-    :param sums: the sums of each column of the data
+    :param sums: the sums of each column of the data (not divided by the number of samples)
     :param variances: the variances of each column of the data
     :param result: the result to write into
     """
@@ -196,6 +195,7 @@ cdef inline void standardize(DTYPE_t[:, ::1] data,
     cdef DTYPE_t num_samples
     cdef DTYPE_t mean
     cdef DTYPE_t variance
+    cdef DTYPE_t standard_deviation
     cdef DTYPE_t datapoint
 
     # get number of samples
@@ -210,6 +210,8 @@ cdef inline void standardize(DTYPE_t[:, ::1] data,
         # get variance
         variance = variances[column_index]
 
+        standard_deviation = (variance**0.5)
+
         # for every row
         for row_index in range(0, result.shape[0]):
 
@@ -217,38 +219,50 @@ cdef inline void standardize(DTYPE_t[:, ::1] data,
             datapoint = data[row_index, column_index]
 
             # standardize data
-            result[row_index, column_index] = (datapoint - mean) / variance
+            result[row_index, column_index] = (datapoint - mean) / standard_deviation
 
-cdef inline void pca(DTYPE_t[:, ::1] data, DTYPE_t[:, ::1] result):
-     """
-     Compute PCA on a normalized dataset
-     :param data: the data to decompose
-     :param result: the result to write in
-     """
-     # initialize covariance
-     cdef DTYPE_t[:, ::1] covariance
 
-     # initialize eigenvectors
-     cdef DTYPE_t[:, ::1] eigenvectors
+cdef inline void pca(DTYPE_t[:, ::1] data,  DTYPE_t[::1] eigenvalues_result, DTYPE_t[:, ::1] eigenvectors_result):
+    """
+    Compute PCA on a normalized dataset
+    :param data: the data to decompose
+    :param eigenvalues_result: the result to write the eigenvalues in
+    :param eigenvectors_result: the result to write the eigenvectors in
+    """
+    # initialize covariance
+    cdef DTYPE_t[:, ::1] covariance
+    covariance = np.ndarray((data.shape[1], data.shape[1]), order="C")
 
-     # initialize eigenvalues
-     cdef DTYPE_t[::1] eigenvalues
+    # initialize eigenvalues
+    cdef DTYPE_t[:] eigenvalues
+    eigenvalues = np.ndarray(data.shape[1])
 
-     # initialize diagonal of eigenvalues
-     cdef DTYPE_t[::1] diagonal
+    # initialize eigenvectors
+    cdef DTYPE_t[:, :] eigenvectors
+    eigenvectors = np.ndarray((data.shape[1], data.shape[1]))
 
-     print(data.base)
-     print(data.base.mean(axis=0))
-     exit()
-     # compute covariance
-     covariance = np.dot(data.T, data)
-     print(covariance.base)
-     exit()
-     eigenvalues, eigenvectors = np.linalg.eig(covariance)
 
-     diagonal = np.diag(eigenvectors)
+    # initialize diagonal of eigenvalues
+    cdef DTYPE_t[::1] diagonal
+    diagonal = np.ndarray(data.shape[1], order="C")
 
-     result = np.dot(diagonal, eigenvalues)
+    # compute covariance (seems to work)
+    covariance = np.cov(data.T)
+
+    # calculate eigenvalues and eigenvectors
+    eigenvalues, eigenvectors = np.linalg.eig(covariance)
+
+    # copy eigenvalues to result as c contiguous array
+    cdef SIZE_t index
+    for index in range(len(eigenvalues)):
+        eigenvalues_result[index] = eigenvalues[index]
+
+    # copy eigenvectors to result as c contiguous array
+    cdef SIZE_t row_index
+    cdef SIZE_t column_index
+    for row_index in range(eigenvectors.shape[0]):
+        for column_index in range(eigenvectors.shape[1]):
+            eigenvectors_result[row_index, column_index] = eigenvectors[row_index, column_index]
 
 cdef class Impurity:
     """
@@ -1071,8 +1085,14 @@ cdef class PCAImpurity(Impurity):
     # the additional pca matrix calculating holding the current most informative linear relationship
     cdef DTYPE_t[:, ::1] pca_matrix
 
-    # array holding the pca transformed copy of the original numeric data
+    # array holding the pca transformed and standardized copy of the original numeric data
     cdef DTYPE_t[:, ::1] pca_data
+
+    # array holding eigenvalues
+    cdef DTYPE_t[::1] eigenvalues
+
+    # array holding eigenvectors
+    cdef DTYPE_t[:, ::1] eigenvectors
 
     def __init__(self, tree):
         super(PCAImpurity, self).__init__(tree)
@@ -1086,6 +1106,9 @@ cdef class PCAImpurity(Impurity):
         # get numeric indices
         self.numeric_indices = np.array([i for i,v in enumerate(tree.variables) if v.numeric])
 
+        self.eigenvalues = np.ndarray(shape=(self.n_num_vars_total,), order="C")
+        self.eigenvectors = np.ndarray(shape=(self.n_num_vars_total, self.n_num_vars_total), order="C")
+
     cpdef void setup(PCAImpurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices) except +:
         """
         Set data and indices, update features and index_buffer
@@ -1097,7 +1120,29 @@ cdef class PCAImpurity(Impurity):
         self.feat = np.ndarray(shape=data.shape[0], dtype=np.float64)
         self.indices = indices
         self.index_buffer = np.ndarray(shape=indices.shape[0], dtype=np.int64)
-        self.pca_data = np.ndarray(shape=(data.shape[0], self.n_num_vars_total), dtype=np.float64)
+        self.pca_data = np.ndarray(shape=(data.shape[0], self.n_num_vars_total), dtype=np.float64,
+                                   order="C")
+
+    cdef inline void setup_pca_data(PCAImpurity self) nogil:
+        """
+        Copy the data that will be used for the PCA into self.pca_data
+        """
+
+        # initialize indices
+        cdef SIZE_t column_index_data
+        cdef SIZE_t row_index_data
+        cdef SIZE_t column_index_pca
+        cdef SIZE_t row_index_pca
+        cdef SIZE_t[::1] row_indices
+
+        row_indices = self.indices[self.start:self.end]
+
+        for row_index_pca in range(0, len(row_indices)):
+            for column_index_pca in range(0, len(self.numeric_indices)):
+                row_index_data = row_indices[row_index_pca]
+                column_index_data = self.numeric_indices[column_index_pca]
+                self.pca_data[row_index_pca, column_index_pca] = self.data[row_index_data, column_index_data]
+
 
     cpdef DTYPE_t compute_best_split(self, SIZE_t start, SIZE_t end) except -1:
         """
@@ -1125,18 +1170,15 @@ cdef class PCAImpurity(Impurity):
         self.start = start
         self.end = end
 
-        # setup data for pca processing
-        # TODO i think the pca_data needs to be constructed w. r. t. the selected indices ???
-        print(self.indices[self.start:self.end].base)
-        self.pca_data = self.data.copy()
-        exit()
-
         # calculate number of samples
         cdef int n_samples = end - start
 
         # initialize impurity and gini index
         cdef np.float64_t impurity_total = 0
         cdef np.float64_t gini_total = 0
+
+        # indices to later copy back from self.pca_data to self.data
+        cdef SIZE_t row_index_pca, column_index_pca, row_index_data, column_index_data
 
         # if numeric targets exist
         if self.has_numeric_vars():
@@ -1162,15 +1204,47 @@ cdef class PCAImpurity(Impurity):
                       n_samples,
                       result=self.variances_total)
 
+            #----------------------------------------------------------------------------------
+            #--------------------------------PCA Calculations ---------------------------------
+            #----------------------------------------------------------------------------------
+
+            # setup data for pca processing
+            self.setup_pca_data()
+
             # standardize data
             standardize(self.pca_data, self.sums_total, self.variances_total, self.pca_data)
 
-            # TODO somehow standardization is not working
-            exit()
+            # calculate pca and save eigenvalues and vectors
+            pca(self.pca_data, self.eigenvalues, self.eigenvectors)
 
-            # sanity check to see if the variances "make sense"
-            if not self.check_max_variances(self.variances_total):
-                return 0
+            # transform numeric data (mean is now 0)
+            self.pca_data = np.dot(self.pca_data, self.eigenvectors)
+
+            # reset sums to 0
+            self.sums_total[...] = 0.
+
+            # recalculate square sums
+            sq_sum_at(self.pca_data,
+                      np.arange(self.pca_data.shape[0]),
+                      np.arange(self.pca_data.shape[1]),
+                      result=self.sq_sums_total)
+
+            # recalculate variances
+            variances(self.sq_sums_total,
+                      self.sums_total,
+                      n_samples,
+                      result=self.variances_total)
+
+            # rewrite the results into self.data
+            for row_index_pca in range(0, self.pca_data.shape[0]):
+                row_index_data = row_index_pca + self.start
+                for column_index_pca in range(0, self.pca_data.shape[1]):
+                    column_index_data = self.numeric_indices[column_index_pca]
+                    self.data[row_index_data, column_index_data] = self.pca_data[row_index_pca, column_index_pca]
+
+            #----------------------------------------------------------------------------------
+            #--------------------------- End of PCA Calculations ------------------------------
+            #----------------------------------------------------------------------------------
 
         # if symbolic targets exist
         if self.has_symbolic_vars():

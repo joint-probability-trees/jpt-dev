@@ -240,9 +240,8 @@ class PCAJPT(jpt.trees.JPT):
         split_var_idx = split_pos = -1
         split_var = None
         impurity = self.impurity
-
         max_gain = impurity.compute_best_split(start, end)
-
+        exit()
         if max_gain < 0:
             raise ValueError('Something went wrong!')
 
