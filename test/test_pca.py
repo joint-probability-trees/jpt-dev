@@ -2,6 +2,7 @@ import unittest
 import sklearn.datasets
 import jpt.pca_trees
 import jpt.variables
+import dnutils
 
 
 class TestPCAJPT(unittest.TestCase):
@@ -20,7 +21,7 @@ class TestPCAJPT(unittest.TestCase):
         variables = jpt.variables.infer_from_dataframe(df, scale_numeric_types=False)
 
         model = jpt.pca_trees.PCAJPT(variables, min_samples_leaf=0.2)
-
+        jpt.pca_trees.PCAJPT.logger.level = dnutils.DEBUG
         model.fit(df)
 
 

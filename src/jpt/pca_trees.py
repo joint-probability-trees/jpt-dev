@@ -1,6 +1,6 @@
 import datetime
 from collections import OrderedDict, ChainMap, deque
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 
 import dnutils
 
@@ -23,45 +23,90 @@ finally:
     from .learning.impurity import PCAImpurity
 
 
-class PCANode(jpt.trees.Node):
+# ----------------------------------------------------------------------------------------------------------------------
+
+class PCADecisionNode(jpt.trees.Node):
     """
-    Superclass for Nodes in a PCAJPT
+    Represents an inner (decision) node of the the :class:`jpt.trees.Tree`.
     """
 
-    def __init__(self, idx, parent):
-        """
+    def __init__(self, idx: int, variables: List[Variable], parent: 'jpt.trees.DecisionNode' = None):
+        '''
         :param idx:             the identifier of a node
         :type idx:              int
-        :param parent:          the parent node
-        :type parent:           jpt.learning.trees.Node
-        """
-        super(PCANode, self).__init__(idx, parent)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-class PCADecisionNode(PCANode):
-    """
-    Decision Node in a PCAJPT where linear combinations of all variables are considered instead of just one variable
-    """
-
-    def __init__(self, idx: int, parent: PCANode, variables: List[Variable], weights: np.array = None):
-        super(PCADecisionNode, self).__init__(idx, parent)
-
-        # this is a list of all variables used for the split.
-        self.variables: List[Variable] = variables
-
-        # weights are the factors of the linear combination of numeric variables
-        self.weights = weights or np.ones((len([variable for variable in self.variables if variable.numeric])))
-
+        :param variable:   the split feature name
+        :type variable:    jpt.variables.Variable
+        '''
         self._splits = None
+        self.variables = variables
+        super().__init__(idx, parent=parent)
+        self.children: None or List[jpt.trees.Node] = None
+        self.weights: None or np.ndarray = None
 
-        self.children: List[PCANode] or None = None
+    def __eq__(self, o) -> bool:
+        return (type(self) is type(o) and
+                self.idx == o.idx and
+                (self.parent.idx
+                 if self.parent is not None else None) == (o.parent.idx if o.parent is not None else None) and
+                [n.idx for n in self.children] == [n.idx for n in o.children] and
+                self.splits == o.splits and
+                self.variables == o.variables and
+                self.samples == o.samples and
+                self.weights == o.weights)
+
+    def to_json(self) -> Dict[str, Any]:
+        return {'idx': self.idx,
+                'parent': self.parent.idx if self.parent else None,
+                'splits': [s.to_json() if isinstance(s, ContinuousSet) else list(s) for s in self.splits],
+                'variable': [variable.name for variable in self.variables],
+                '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
+                'children': [node.idx for node in self.children],
+                'samples': self.samples,
+                'child_idx': self.parent.children.index(self) if self.parent is not None else None}
+
+    @property
+    def splits(self) -> List:
+        return self._splits
+
+    @splits.setter
+    def splits(self, splits):
+        if self.children is not None:
+            raise ValueError('Children already set: %s' % self.children)
+        self._splits = splits
+        self.children = [None] * len(self._splits)
+
+    def set_child(self, idx: int, node: jpt.trees.Node) -> None:
+        self.children[idx] = node
+        node._path = list(self._path)
+        node._path.append((self.variable, self.splits[idx]))
+
+    def str_edge(self, idx) -> str:
+        return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
+                                 self.variable.domain.labels[self.splits[idx].upper],
+                                 self.splits[idx].left,
+                                 self.splits[idx].right))
+
+    @property
+    def str_node(self) -> str:
+        return self.variable.name
+
+    def recursive_children(self):
+        return self.children + [item for sublist in
+                                [child.recursive_children() for child in self.children] for item in sublist]
+
+    def __str__(self) -> str:
+        return (f'<DecisionNode #{self.idx} '
+                f'{self.variable.name} = [%s]' % '; '.join(self.str_edge(i) for i in range(len(self.splits))) +
+                f'; parent-#: {self.parent.idx if self.parent is not None else None}'
+                f'; #children: {len(self.children)}>')
+
+    def __repr__(self) -> str:
+        return f'Node<{self.idx}> object at {hex(id(self))}'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class PCALeaf(PCANode):
+class PCALeaf(jpt.trees.Leaf):
     def __init__(self, idx: int, parent: PCANode or None = None, prior: float or None = None):
         super(PCALeaf, self).__init__(idx, parent)
 
@@ -241,14 +286,9 @@ class PCAJPT(jpt.trees.JPT):
         split_var = None
         impurity = self.impurity
         max_gain = impurity.compute_best_split(start, end)
-        exit()
-        if max_gain < 0:
-            raise ValueError('Something went wrong!')
 
-        self.logger.debug('Data range: %d-%d,' % (start, end),
-                          'split var:', split_var,
-                          ', split_pos:', split_pos,
-                          ', gain:', max_gain)
+        if max_gain < 0:
+            raise ValueError('Something went wrong! max_gain should at least be 0 but was %s' % max_gain)
 
         if max_gain:
             split_pos = impurity.best_split_pos
@@ -272,13 +312,18 @@ class PCAJPT(jpt.trees.JPT):
 
         # TODO creating PCADecisionNode is complex now and not as easy
         else:  # -------------------------------------------------------------------------------------------------------
+
+            print(split_var)
             node = PCADecisionNode(idx=len(self.allnodes),
                                 variable=split_var,
                                 parent=parent)
+
+            # copy number of samples
             node.samples = n_samples
             self.innernodes[node.idx] = node
 
 
+            # create symbolic decision node
             if split_var.symbolic:  # ----------------------------------------------------------------------------------
                 split_value = int(data[self.indices[start + split_pos], split_var_idx])
                 splits = [{split_value},

@@ -1094,6 +1094,12 @@ cdef class PCAImpurity(Impurity):
     # array holding eigenvectors
     cdef DTYPE_t[:, ::1] eigenvectors
 
+    # the variances before standardization so the inverse can be calculated later
+    cdef DTYPE_t[::1] pre_transformations_variances
+
+    # the expectations before standardization so the inverse can be calculated later
+    cdef DTYPE_t[::1] pre_transformation_expectations
+
     def __init__(self, tree):
         super(PCAImpurity, self).__init__(tree)
 
@@ -1106,8 +1112,14 @@ cdef class PCAImpurity(Impurity):
         # get numeric indices
         self.numeric_indices = np.array([i for i,v in enumerate(tree.variables) if v.numeric])
 
+        # initialize eigenvalues and eigenvectors
         self.eigenvalues = np.ndarray(shape=(self.n_num_vars_total,), order="C")
         self.eigenvectors = np.ndarray(shape=(self.n_num_vars_total, self.n_num_vars_total), order="C")
+
+        # initialize pre transformation expectation and variance
+        self.pre_transformation_expectations = np.ndarray((self.n_num_vars_total,), order="C")
+        self.pre_transformations_variances = np.ndarray((self.n_num_vars_total,), order="C")
+
 
     cpdef void setup(PCAImpurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices) except +:
         """
@@ -1178,7 +1190,7 @@ cdef class PCAImpurity(Impurity):
         cdef np.float64_t gini_total = 0
 
         # indices to later copy back from self.pca_data to self.data
-        cdef SIZE_t row_index_pca, column_index_pca, row_index_data, column_index_data
+        cdef SIZE_t row_index_pca, column_index_pca, row_index_data, column_index_data, index_expectation
 
         # if numeric targets exist
         if self.has_numeric_vars():
@@ -1210,6 +1222,14 @@ cdef class PCAImpurity(Impurity):
 
             # setup data for pca processing
             self.setup_pca_data()
+
+            # copy variances
+            self.pre_transformations_variances = self.variances_total
+            self.pre_transformation_expectations = self.sums_total
+
+            # transform pre_transformation_expectations to real expectations
+            for index_expectation in range(self.n_num_vars_total):
+                self.pre_transformation_expectations[index_expectation] /= n_samples
 
             # standardize data
             standardize(self.pca_data, self.sums_total, self.variances_total, self.pca_data)
