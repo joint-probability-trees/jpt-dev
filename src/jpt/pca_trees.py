@@ -30,18 +30,27 @@ class PCADecisionNode(jpt.trees.Node):
     Represents an inner (decision) node of the the :class:`jpt.trees.Tree`.
     """
 
-    def __init__(self, idx: int, variables: List[Variable], parent: 'jpt.trees.DecisionNode' = None):
-        '''
+    def __init__(self, idx: int,
+                 variables: List[jpt.variables.Variable],
+                 weights: np.ndarray,
+                 split_value: float,
+                 parent: jpt.trees.DecisionNode = None,):
+        """
+        Create a PCA Decision Node
+
         :param idx:             the identifier of a node
-        :type idx:              int
-        :param variable:   the split feature name
-        :type variable:    jpt.variables.Variable
-        '''
-        self._splits = None
-        self.variables = variables
+        :param variables:       the numeric variables involved
+        """
         super().__init__(idx, parent=parent)
-        self.children: None or List[jpt.trees.Node] = None
-        self.weights: None or np.ndarray = None
+        # set variable coefficient map
+        self.variables: VariableMap = jpt.variables.VariableMap(zip(variables, weights))
+
+        # set splits
+        self._splits = [ContinuousSet(np.NINF, split_value, 0, 1),
+                        ContinuousSet(split_value, np.PINF, 0, 1)]
+
+        # initialize children
+        self.children: List[jpt.trees.Node or None] = [None, None]
 
     def __eq__(self, o) -> bool:
         return (type(self) is type(o) and
@@ -51,14 +60,13 @@ class PCADecisionNode(jpt.trees.Node):
                 [n.idx for n in self.children] == [n.idx for n in o.children] and
                 self.splits == o.splits and
                 self.variables == o.variables and
-                self.samples == o.samples and
-                self.weights == o.weights)
+                self.samples == o.samples)
 
     def to_json(self) -> Dict[str, Any]:
         return {'idx': self.idx,
                 'parent': self.parent.idx if self.parent else None,
                 'splits': [s.to_json() if isinstance(s, ContinuousSet) else list(s) for s in self.splits],
-                'variable': [variable.name for variable in self.variables],
+                'variables': self.variables.to_json(),
                 '_path': [(var.name, split.to_json() if var.numeric else list(split)) for var, split in self._path],
                 'children': [node.idx for node in self.children],
                 'samples': self.samples,
@@ -68,27 +76,14 @@ class PCADecisionNode(jpt.trees.Node):
     def splits(self) -> List:
         return self._splits
 
-    @splits.setter
-    def splits(self, splits):
-        if self.children is not None:
-            raise ValueError('Children already set: %s' % self.children)
-        self._splits = splits
-        self.children = [None] * len(self._splits)
-
     def set_child(self, idx: int, node: jpt.trees.Node) -> None:
         self.children[idx] = node
         node._path = list(self._path)
-        node._path.append((self.variable, self.splits[idx]))
-
-    def str_edge(self, idx) -> str:
-        return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
-                                 self.variable.domain.labels[self.splits[idx].upper],
-                                 self.splits[idx].left,
-                                 self.splits[idx].right))
+        node._path.append((self.variables, self.splits[idx]))
 
     @property
     def str_node(self) -> str:
-        return self.variable.name
+        return str([variable.name for variable in self.variables.keys()])
 
     def recursive_children(self):
         return self.children + [item for sublist in
@@ -96,9 +91,14 @@ class PCADecisionNode(jpt.trees.Node):
 
     def __str__(self) -> str:
         return (f'<DecisionNode #{self.idx} '
-                f'{self.variable.name} = [%s]' % '; '.join(self.str_edge(i) for i in range(len(self.splits))) +
-                f'; parent-#: {self.parent.idx if self.parent is not None else None}'
+                "PCA Numeric node" +
+                f'; parent-#: {None if self.parent is None else self.parent.idx}'
                 f'; #children: {len(self.children)}>')
+
+    def string_criterion(self) -> str:
+        result = " + ".join(["%s%s" % (value, variable.name) for variable, value in self.variables.items()])
+        result += " <= %s" % self._splits[0].upper
+        return result
 
     def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
@@ -107,7 +107,7 @@ class PCADecisionNode(jpt.trees.Node):
 # ----------------------------------------------------------------------------------------------------------------------
 
 class PCALeaf(jpt.trees.Leaf):
-    def __init__(self, idx: int, parent: PCANode or None = None, prior: float or None = None):
+    def __init__(self, idx: int, parent: jpt.trees.Node or None = None, prior: float or None = None):
         super(PCALeaf, self).__init__(idx, parent)
 
         # variable map with distributions
@@ -144,7 +144,7 @@ class PCAJPT(jpt.trees.JPT):
         super(PCAJPT, self).__init__(variables, targets, min_samples_leaf, min_impurity_improvement, max_leaves,
                                      max_depth, variable_dependencies)
 
-        # dont use targets yet, it is unsure what the correct design for that would be
+        # don't use targets yet, it is unsure what the correct design for that would be
         if self.targets is not None:
             raise ValueError("Targets are not yet allowed for PCA trees.")
 
@@ -258,7 +258,6 @@ class PCAJPT(jpt.trees.JPT):
 
         # ----------------------------------------------------------------------------------------------------------
         # Print the statistics
-
         PCAJPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
         # if logger.level >= 20:
         PCAJPT.logger.debug(self)
@@ -279,6 +278,7 @@ class PCAJPT(jpt.trees.JPT):
         :param child_idx:   the index of the child in the current iteration.
         :param depth:       the depth of the tree in the current recursion level.
         """
+        print("starting c45 step with", start, end, parent, child_idx, depth)
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = self.min_impurity_improvement or 0
         n_samples = end - start
@@ -296,6 +296,9 @@ class PCAJPT(jpt.trees.JPT):
             split_var = self.variables[split_var_idx]
 
         if max_gain <= min_impurity_improvement or depth >= self.max_depth:  # -----------------------------------------
+
+            print("creating leaf")
+            exit()
             leaf = node = PCALeaf(idx=len(self.allnodes), parent=parent)
 
             if parent is not None:
@@ -310,39 +313,61 @@ class PCAJPT(jpt.trees.JPT):
 
             self.leaves[leaf.idx] = leaf
 
-        # TODO creating PCADecisionNode is complex now and not as easy
         else:  # -------------------------------------------------------------------------------------------------------
-
-            print(split_var)
-            node = PCADecisionNode(idx=len(self.allnodes),
-                                variable=split_var,
-                                parent=parent)
-
-            # copy number of samples
-            node.samples = n_samples
-            self.innernodes[node.idx] = node
-
-
             # create symbolic decision node
             if split_var.symbolic:  # ----------------------------------------------------------------------------------
+
+                node = jpt.trees.DecisionNode(idx=len(self.allnodes),
+                                              variable=split_var,
+                                              parent=parent)
+
+                # create symbolic decision
                 split_value = int(data[self.indices[start + split_pos], split_var_idx])
-                splits = [{split_value},
-                          set(split_var.domain.values.values()) - {split_value}]
+                node.splits = [{split_value}, set(split_var.domain.values.values()) - {split_value}]
 
             elif split_var.numeric:  # ---------------------------------------------------------------------------------
+                n = len(self.numeric_variables)
+
+                rotation_origin_eigen = impurity.eigenvectors.copy()
+
+                transformation_origin_eigen = np.identity(n + 1)
+                transformation_origin_eigen[:-1, :-1] = rotation_origin_eigen
 
                 split_value = (data[self.indices[start + split_pos], split_var_idx] +
                                data[self.indices[start + split_pos + 1], split_var_idx]) / 2
-                splits = [Interval(np.NINF, split_value, EXC, EXC),
-                          Interval(split_value, np.PINF, INC, EXC)]
+
+                transformation_eigen_split = np.identity(n+1)
+                transformation_eigen_split[split_var_idx, -1] = split_value
+
+                transformation_origin_split = np.dot(transformation_origin_eigen, transformation_eigen_split)
+
+                normal_split = np.zeros(n+1)
+                normal_split[split_var_idx] = 1
+                origin_split = np.zeros(n+1)
+                origin_split[-1] = 1
+                normal_origin = np.dot(transformation_origin_split, normal_split)
+                origin_origin = np.dot(transformation_origin_split, origin_split)
+
+                transformed_split_value = np.dot(-normal_origin, origin_origin)
+
+                # create numeric decision node
+                node = PCADecisionNode(idx=len(self.allnodes),
+                                       variables=self.numeric_variables,
+                                       weights=normal_origin,
+                                       split_value=transformed_split_value,
+                                       parent=parent)
 
             else:  # ---------------------------------------------------------------------------------------------------
                 raise TypeError('Unknown variable type: %s.' % type(split_var).__name__)
 
+            # set number of samples
+            node.samples = n_samples
+
+            # save node to tree
+            self.innernodes[node.idx] = node
+
             self.c45queue.append((data, start, start + split_pos + 1, node, 0, depth + 1))
             self.c45queue.append((data, start + split_pos + 1, end, node, 1, depth + 1))
-
-            node.splits = splits
 
         PCAJPT.logger.debug('Created', str(node))
 
@@ -351,3 +376,4 @@ class PCAJPT(jpt.trees.JPT):
 
         if self.root is None:
             self.root = node
+        print("finished c45 step with", start, end, parent, child_idx, depth)

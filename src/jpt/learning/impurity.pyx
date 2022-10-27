@@ -229,6 +229,7 @@ cdef inline void pca(DTYPE_t[:, ::1] data,  DTYPE_t[::1] eigenvalues_result, DTY
     :param eigenvalues_result: the result to write the eigenvalues in
     :param eigenvectors_result: the result to write the eigenvectors in
     """
+
     # initialize covariance
     cdef DTYPE_t[:, ::1] covariance
     covariance = np.ndarray((data.shape[1], data.shape[1]), order="C")
@@ -240,11 +241,6 @@ cdef inline void pca(DTYPE_t[:, ::1] data,  DTYPE_t[::1] eigenvalues_result, DTY
     # initialize eigenvectors
     cdef DTYPE_t[:, :] eigenvectors
     eigenvectors = np.ndarray((data.shape[1], data.shape[1]))
-
-
-    # initialize diagonal of eigenvalues
-    cdef DTYPE_t[::1] diagonal
-    diagonal = np.ndarray(data.shape[1], order="C")
 
     # compute covariance (seems to work)
     covariance = np.cov(data.T)
@@ -263,6 +259,7 @@ cdef inline void pca(DTYPE_t[:, ::1] data,  DTYPE_t[::1] eigenvalues_result, DTY
     for row_index in range(eigenvectors.shape[0]):
         for column_index in range(eigenvectors.shape[1]):
             eigenvectors_result[row_index, column_index] = eigenvectors[row_index, column_index]
+
 
 cdef class Impurity:
     """
@@ -1089,16 +1086,16 @@ cdef class PCAImpurity(Impurity):
     cdef DTYPE_t[:, ::1] pca_data
 
     # array holding eigenvalues
-    cdef DTYPE_t[::1] eigenvalues
+    cdef readonly DTYPE_t[::1] eigenvalues
 
     # array holding eigenvectors
-    cdef DTYPE_t[:, ::1] eigenvectors
+    cdef readonly DTYPE_t[:, ::1] eigenvectors
 
     # the variances before standardization so the inverse can be calculated later
-    cdef DTYPE_t[::1] pre_transformations_variances
+    cdef readonly DTYPE_t[::1] pre_transformations_variances
 
     # the expectations before standardization so the inverse can be calculated later
-    cdef DTYPE_t[::1] pre_transformation_expectations
+    cdef readonly DTYPE_t[::1] pre_transformation_expectations
 
     def __init__(self, tree):
         super(PCAImpurity, self).__init__(tree)
@@ -1174,7 +1171,6 @@ cdef class PCAImpurity(Impurity):
         :param end: the end index in ``self.indices``
         :return: The best impurity improvement as a float
         """
-
         # initialize best variable index
         cdef int best_var = -1
 
@@ -1194,7 +1190,7 @@ cdef class PCAImpurity(Impurity):
 
         # if numeric targets exist
         if self.has_numeric_vars():
-
+            print("setting up numeric structures")
             # reset the variances
             self.variances_total[:] = 0
 
@@ -1219,7 +1215,7 @@ cdef class PCAImpurity(Impurity):
             #----------------------------------------------------------------------------------
             #--------------------------------PCA Calculations ---------------------------------
             #----------------------------------------------------------------------------------
-
+            print("setting up pca structures")
             # setup data for pca processing
             self.setup_pca_data()
 
@@ -1230,16 +1226,16 @@ cdef class PCAImpurity(Impurity):
             # transform pre_transformation_expectations to real expectations
             for index_expectation in range(self.n_num_vars_total):
                 self.pre_transformation_expectations[index_expectation] /= n_samples
-
+            print("standardize data")
             # standardize data
             standardize(self.pca_data, self.sums_total, self.variances_total, self.pca_data)
-
+            print("calculate pca")
             # calculate pca and save eigenvalues and vectors
             pca(self.pca_data, self.eigenvalues, self.eigenvectors)
-
+            print("apply pca")
             # transform numeric data (mean is now 0)
             self.pca_data = np.dot(self.pca_data, self.eigenvectors)
-
+            print("recalculate stats")
             # reset sums to 0
             self.sums_total[...] = 0.
 
@@ -1249,12 +1245,14 @@ cdef class PCAImpurity(Impurity):
                       np.arange(self.pca_data.shape[1]),
                       result=self.sq_sums_total)
 
+
             # recalculate variances
             variances(self.sq_sums_total,
                       self.sums_total,
                       n_samples,
                       result=self.variances_total)
 
+            print("rewrite the results into self.data")
             # rewrite the results into self.data
             for row_index_pca in range(0, self.pca_data.shape[0]):
                 row_index_data = row_index_pca + self.start
@@ -1268,7 +1266,7 @@ cdef class PCAImpurity(Impurity):
 
         # if symbolic targets exist
         if self.has_symbolic_vars():
-
+            print("symbolic stuff")
             # compute histogram of all current data
             bincount(self.data,
                      self.indices[self.start:self.end],
@@ -1300,7 +1298,7 @@ cdef class PCAImpurity(Impurity):
 
         # for every feature
         for variable in self.features:
-
+            print("evaluating variable", variable)
             # check if this variable is symbolic or not
             symbolic = variable in self.symbolic_features
 
@@ -1333,6 +1331,7 @@ cdef class PCAImpurity(Impurity):
                 # TODO IDK
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
 
+        print("checking validity of split")
         # if max impurity improvement has been updated at least once and the best variable is symbolic
         if self.max_impurity_improvement and self.best_var in self.symbolic_features:
             # TODO IDK
@@ -1341,6 +1340,7 @@ cdef class PCAImpurity(Impurity):
                                                      self.best_var],
                                            &self.best_split_pos)
 
+        print("all done")
         # return the best improvement value
         return self.max_impurity_improvement
 
