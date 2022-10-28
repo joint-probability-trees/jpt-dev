@@ -22,7 +22,12 @@ class TestPCAJPT(unittest.TestCase):
 
         model = jpt.pca_trees.PCAJPT(variables, min_samples_leaf=0.2)
         jpt.pca_trees.PCAJPT.logger.level = dnutils.DEBUG
-        model.fit(df)
+        model = model.fit(df)
+        print("Done fitting")
+        print("-------------------------------------------------------------------")
+        print("model", model)
+        print("---------------------------------------------------")
+        print("finished test")
 
 
 if __name__ == '__main__':

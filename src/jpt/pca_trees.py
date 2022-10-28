@@ -90,13 +90,15 @@ class PCADecisionNode(jpt.trees.Node):
                                 [child.recursive_children() for child in self.children] for item in sublist]
 
     def __str__(self) -> str:
-        return (f'<DecisionNode #{self.idx} '
-                "PCA Numeric node" +
-                f'; parent-#: {None if self.parent is None else self.parent.idx}'
-                f'; #children: {len(self.children)}>')
+        additional_format = "+\n      |"
+        return "<PCADecisionNode #%s> \n" \
+               "Criterion:\n      | %s \n" \
+               "parent-#%s\n" \
+               "#children: %s" % (self.idx, self.string_criterion().replace('+', additional_format),
+                               None if self.parent is None else self.parent.idx, len([c for c in self.children if c]))
 
     def string_criterion(self) -> str:
-        result = " + ".join(["%s%s" % (value, variable.name) for variable, value in self.variables.items()])
+        result = " + ".join(["%s * %s" % (value, variable.name) for variable, value in self.variables.items()])
         result += " <= %s" % self._splits[0].upper
         return result
 
@@ -106,18 +108,21 @@ class PCADecisionNode(jpt.trees.Node):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class PCALeaf(jpt.trees.Leaf):
-    def __init__(self, idx: int, parent: jpt.trees.Node or None = None, prior: float or None = None):
+class PCALeaf(jpt.trees.Node):
+    def __init__(self, idx: int,
+                 parent: jpt.trees.Node,
+                 prior: float,
+                 rotation_matrix: np.ndarray):
         super(PCALeaf, self).__init__(idx, parent)
 
-        # variable map with distributions
-        self.distributions = VariableMap()
-
         # pca matrix of this leaf
-        self.rotation_matrix: np.array or None = None
+        self.rotation_matrix: np.array = rotation_matrix
 
         # prior probability of this leaf
         self.prior = prior
+
+        # variable map with distributions
+        self.distributions = VariableMap()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -251,16 +256,17 @@ class PCAJPT(jpt.trees.JPT):
                                                             ', '.join(
                                                                 dnutils.mapstr(
                                                                     set(self.variables) - set(self.targets)))))
-        # build up tree
+        # build up tree)
         self.c45queue.append((_data, 0, _data.shape[0], None, None, 0))
         while self.c45queue:
-            self.c45(*self.c45queue.popleft())
+            params = self.c45queue.popleft()
+            self.c45(*params)
 
         # ----------------------------------------------------------------------------------------------------------
         # Print the statistics
         PCAJPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
-        # if logger.level >= 20:
         PCAJPT.logger.debug(self)
+        print(self)
         return self
 
     fit = learn
@@ -298,20 +304,19 @@ class PCAJPT(jpt.trees.JPT):
         if max_gain <= min_impurity_improvement or depth >= self.max_depth:  # -----------------------------------------
 
             print("creating leaf")
-            exit()
-            leaf = node = PCALeaf(idx=len(self.allnodes), parent=parent)
+            leaf = node = PCALeaf(idx=len(self.allnodes),
+                                  parent=parent,
+                                  prior=n_samples / data.shape[0],
+                                  rotation_matrix=impurity.eigenvectors.copy())
 
-            if parent is not None:
-                parent.set_child(child_idx, leaf)
-
-            for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.distribution().fit(data=data,
-                                                             rows=self.indices[start:end],
-                                                             col=i)
-            leaf.prior = n_samples / data.shape[0]
+            # for i, v in enumerate(self.variables):
+            #     leaf.distributions[v] = v.distribution().fit(data=impurity.pca_data,
+            #                                                  rows=self.indices[start:end],
+            #                                                  col=i)
             leaf.samples = n_samples
 
             self.leaves[leaf.idx] = leaf
+            print("done creating leaf")
 
         else:  # -------------------------------------------------------------------------------------------------------
             # create symbolic decision node
@@ -363,6 +368,9 @@ class PCAJPT(jpt.trees.JPT):
             # set number of samples
             node.samples = n_samples
 
+            if parent is not None:
+                parent.set_child(child_idx, node)
+
             # save node to tree
             self.innernodes[node.idx] = node
 
@@ -370,10 +378,13 @@ class PCAJPT(jpt.trees.JPT):
             self.c45queue.append((data, start + split_pos + 1, end, node, 1, depth + 1))
 
         PCAJPT.logger.debug('Created', str(node))
+        print("Created", str(node))
 
         if parent is not None:
+            print("Setting child")
             parent.set_child(child_idx, node)
-
+            print("------------------------------------------------------------")
         if self.root is None:
             self.root = node
         print("finished c45 step with", start, end, parent, child_idx, depth)
+        print("Length of queue", len(self.c45queue))

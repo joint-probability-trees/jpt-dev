@@ -1083,7 +1083,7 @@ cdef class PCAImpurity(Impurity):
     cdef DTYPE_t[:, ::1] pca_matrix
 
     # array holding the pca transformed and standardized copy of the original numeric data
-    cdef DTYPE_t[:, ::1] pca_data
+    cdef readonly DTYPE_t[:, ::1] pca_data
 
     # array holding eigenvalues
     cdef readonly DTYPE_t[::1] eigenvalues
@@ -1187,25 +1187,26 @@ cdef class PCAImpurity(Impurity):
 
         # indices to later copy back from self.pca_data to self.data
         cdef SIZE_t row_index_pca, column_index_pca, row_index_data, column_index_data, index_expectation
+        row_index_pca = column_index_pca = row_index_data = column_index_data = index_expectation = -1
 
         # if numeric targets exist
         if self.has_numeric_vars():
             print("setting up numeric structures")
             # reset the variances
             self.variances_total[:] = 0
-
+            print("calculate square sums of all current data")
             # calculate square sums of all current data
             sq_sum_at(self.data,
                       self.indices[self.start:self.end],
                       self.numeric_vars,
                       result=self.sq_sums_total)
-
+            print("calculate ordinary sums of all current data")
             # calculate ordinary sums of all current data
             sum_at(self.data,
                    self.indices[self.start:self.end],
                    self.numeric_vars,
                    result=self.sums_total)
-
+            print("calculate variances from square and ordinary sums of all current data")
             # calculate variances from square and ordinary sums of all current data
             variances(self.sq_sums_total,
                       self.sums_total,
@@ -1266,16 +1267,18 @@ cdef class PCAImpurity(Impurity):
 
         # if symbolic targets exist
         if self.has_symbolic_vars():
-            print("symbolic stuff")
+            print("compute histogram of all current data")
             # compute histogram of all current data
             bincount(self.data,
                      self.indices[self.start:self.end],
                      self.symbolic_vars,
                      result=self.symbols_total)
 
+            print("calculate gini impurity of histogram")
             # calculate gini impurity of histogram
             self.gini_impurity(self.symbols_total, n_samples, self.gini_impurities)
 
+            print("save total gini impurity as mean of all symbolic dimensions impurities")
             # save total gini impurity as mean of all symbolic dimensions impurities
             gini_total = mean(self.gini_impurities)
         else:
