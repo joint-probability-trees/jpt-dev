@@ -6,6 +6,7 @@ import dnutils
 
 
 class TestPCAJPT(unittest.TestCase):
+
     def test_pca_tree_iris(self):
 
         dataset = sklearn.datasets.load_iris(as_frame=True)
@@ -23,11 +24,7 @@ class TestPCAJPT(unittest.TestCase):
         model = jpt.pca_trees.PCAJPT(variables, min_samples_leaf=0.2)
         jpt.pca_trees.PCAJPT.logger.level = dnutils.DEBUG
         model = model.fit(df)
-        print("Done fitting")
-        print("-------------------------------------------------------------------")
-        print("model", model)
-        print("---------------------------------------------------")
-        print("finished test")
+        model.plot()
 
 
 if __name__ == '__main__':

@@ -6,6 +6,8 @@ import dnutils
 
 from itertools import zip_longest
 
+from sklearn.decomposition import PCA
+
 import jpt.trees
 from jpt.variables import VariableMap, Variable, NumericVariable, SymbolicVariable
 import numpy as np
@@ -20,8 +22,7 @@ except ModuleNotFoundError:
     pyximport.install()
 finally:
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
-    from .learning.impurity import PCAImpurity
-
+    from .learning.impurity import PCAImpurity, Impurity
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -112,11 +113,11 @@ class PCALeaf(jpt.trees.Node):
     def __init__(self, idx: int,
                  parent: jpt.trees.Node,
                  prior: float,
-                 rotation_matrix: np.ndarray):
+                 decomposer: PCA):
         super(PCALeaf, self).__init__(idx, parent)
 
         # pca matrix of this leaf
-        self.rotation_matrix: np.array = rotation_matrix
+        self.decomposer: PCA = decomposer
 
         # prior probability of this leaf
         self.prior = prior
@@ -236,7 +237,7 @@ class PCAJPT(jpt.trees.JPT):
             min_samples_leaf = self._min_samples_leaf
 
         # Initialize the impurity calculation
-        self.impurity = PCAImpurity(self)
+        self.impurity = Impurity(self)
         self.impurity.setup(_data, self.indices)
         self.impurity.min_samples_leaf = min_samples_leaf
 
@@ -266,7 +267,6 @@ class PCAJPT(jpt.trees.JPT):
         # Print the statistics
         PCAJPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
         PCAJPT.logger.debug(self)
-        print(self)
         return self
 
     fit = learn
@@ -285,6 +285,29 @@ class PCAJPT(jpt.trees.JPT):
         :param depth:       the depth of the tree in the current recursion level.
         """
         print("starting c45 step with", start, end, parent, child_idx, depth)
+        original_data = data.copy()
+
+        # --------------------------------------------------------------------------------------------------------------
+        # get indices of numeric variables
+        numeric_indices = [idx for idx, variable in enumerate(self.variables) if variable.numeric]
+
+        # if more than one exists
+        if len(numeric_indices) > 1:
+            # get rows of the current iteration
+            rows = data[self.indices[start:end]]
+
+            # get relevant columns
+            pca_data = rows[:, numeric_indices]
+
+            # create a full decomposer
+            decomposer = PCA(len(numeric_indices))
+
+            # calculate transforms and transform the data
+            pca_data = decomposer.fit_transform(pca_data)
+
+            # rewrite data
+            data[self.indices[start:end], numeric_indices] = pca_data
+
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = self.min_impurity_improvement or 0
         n_samples = end - start
@@ -307,7 +330,7 @@ class PCAJPT(jpt.trees.JPT):
             leaf = node = PCALeaf(idx=len(self.allnodes),
                                   parent=parent,
                                   prior=n_samples / data.shape[0],
-                                  rotation_matrix=impurity.eigenvectors.copy())
+                                  decomposer=decomposer)
 
             # for i, v in enumerate(self.variables):
             #     leaf.distributions[v] = v.distribution().fit(data=impurity.pca_data,
@@ -333,7 +356,7 @@ class PCAJPT(jpt.trees.JPT):
             elif split_var.numeric:  # ---------------------------------------------------------------------------------
                 n = len(self.numeric_variables)
 
-                rotation_origin_eigen = impurity.eigenvectors.copy()
+                rotation_origin_eigen = decomposer.components_
 
                 transformation_origin_eigen = np.identity(n + 1)
                 transformation_origin_eigen[:-1, :-1] = rotation_origin_eigen
@@ -374,8 +397,8 @@ class PCAJPT(jpt.trees.JPT):
             # save node to tree
             self.innernodes[node.idx] = node
 
-            self.c45queue.append((data, start, start + split_pos + 1, node, 0, depth + 1))
-            self.c45queue.append((data, start + split_pos + 1, end, node, 1, depth + 1))
+            self.c45queue.append((original_data, start, start + split_pos + 1, node, 0, depth + 1))
+            self.c45queue.append((original_data, start + split_pos + 1, end, node, 1, depth + 1))
 
         PCAJPT.logger.debug('Created', str(node))
         print("Created", str(node))

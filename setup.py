@@ -61,6 +61,7 @@ def requirements():
 #     sys.stderr.write(s.decode())
 
 import numpy
+import cysignals
 from Cython.Build import cythonize
 
 
@@ -132,5 +133,6 @@ setup(
     ext_modules=compiled,
     zip_safe=False,
     version=__version__,
+    setup_requires=["cysignals"],
     install_requires=requirements(),
 )

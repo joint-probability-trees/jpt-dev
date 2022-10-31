@@ -5,14 +5,14 @@
 # cython: wraparound=False
 # cython: boundscheck=False
 # cython: nonecheck=False
-
+# distutils: language = c++
 __module__ = 'impurity.pyx'
 
 import numpy as np
 cimport numpy as np
 import tabulate
 from libc.stdio cimport printf
-
+from cysignals.signals cimport sig_on, sig_off
 from dnutils import mapstr
 
 from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort
@@ -1171,6 +1171,7 @@ cdef class PCAImpurity(Impurity):
         :param end: the end index in ``self.indices``
         :return: The best impurity improvement as a float
         """
+        sig_on()
         # initialize best variable index
         cdef int best_var = -1
 
@@ -1231,6 +1232,10 @@ cdef class PCAImpurity(Impurity):
             # standardize data
             standardize(self.pca_data, self.sums_total, self.variances_total, self.pca_data)
             print("calculate pca")
+            print(self.pca_data)
+            print(self.sums_total)
+            print(self.variances_total)
+
             # calculate pca and save eigenvalues and vectors
             pca(self.pca_data, self.eigenvalues, self.eigenvectors)
             print("apply pca")
@@ -1343,6 +1348,7 @@ cdef class PCAImpurity(Impurity):
                                                      self.best_var],
                                            &self.best_split_pos)
 
+        sig_off()
         print("all done")
         # return the best improvement value
         return self.max_impurity_improvement
