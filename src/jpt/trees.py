@@ -1631,7 +1631,6 @@ class JPT:
         # nodes representing a path from a leaf to the root
         return paths
 
-
     def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.
 
