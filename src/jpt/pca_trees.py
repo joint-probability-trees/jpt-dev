@@ -41,6 +41,7 @@ class PCADecisionNode(jpt.trees.Node):
                  variables: List[jpt.variables.Variable],
                  weights: np.ndarray,
                  split_value: float,
+                 numeric_indices: np.ndarray,
                  parent: jpt.trees.DecisionNode = None,):
         """
         Create a PCA Decision Node
@@ -59,6 +60,7 @@ class PCADecisionNode(jpt.trees.Node):
         # initialize children
         self.children: List[jpt.trees.Node or None] = [None, None]
         self._path = []
+        self.numeric_indices = numeric_indices
 
     def __eq__(self, o) -> bool:
         return (type(self) is type(o) and
@@ -132,10 +134,12 @@ class PCADecisionNode(jpt.trees.Node):
 
 class PCALeaf(jpt.trees.Node):
     def __init__(self, idx: int,
-                 parent: jpt.trees.Node,
                  prior: float,
                  scaler: StandardScaler,
-                 decomposer: PCA):
+                 decomposer: PCA,
+                 numeric_indices: np.ndarray,
+                 parent: jpt.trees.Node):
+
         super(PCALeaf, self).__init__(idx, parent)
 
         # standard scaler of this leaf
@@ -152,6 +156,8 @@ class PCALeaf(jpt.trees.Node):
 
         self._path = []
 
+        self.numeric_indices = numeric_indices
+
     @property
     def str_node(self) -> str:
         return ""
@@ -165,11 +171,81 @@ class PCALeaf(jpt.trees.Node):
         res = VariableMap()
         for var, vals in self._path:
             if isinstance(var, VariableMap):
+                # TODO find suitable representation
                 pass
             elif isinstance(var, Variable):
                 res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
         return res
 
+    def transform(self, data: np.ndarray) -> np.ndarray:
+        """
+        Forward transform the data such that it can be used for querying.
+
+        :param data: The data to transform
+        :return: The transformed data
+        """
+        return self.decomposer.transform(self.scaler.transform(data))
+
+    def inverse_transform(self, data: np.ndarray) -> np.ndarray:
+        """
+        Backward transform the data such that it can be used for external representation.
+
+        :param data: The data to inverse transform
+        :return: The inverse transformed data
+        """
+        return self.scaler.inverse_transform(self.decomposer.inverse_transform(data))
+
+    def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
+            -> np.ndarray:
+        """
+        Calculate the probability of a (partial) query. Exploits the independence assumption
+        :param queries: A VariableMap that maps to singular values (numeric or symbolic)
+            or ranges (continuous set, set)
+        :type queries: VariableMap
+        :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
+            if a durac impulse is used to model the variable.
+        :type dirac_scaling: float
+        :param min_distances: A dict mapping the variables to the minimal distances between the observations.
+            This can be useful to use the same likelihood parameters for different test sets for example in cross
+            validation processes.
+        :type min_distances: A VariableMap from numeric variables to floats or None
+        """
+
+        # create result vector
+        result = np.ones(len(queries))
+
+        queries[:, self.numeric_indices] = self.transform(queries[:, self.numeric_indices])
+
+        # for each idx, variable and distribution
+        for idx, (variable, distribution) in enumerate(self.distributions.items()):
+
+            # if the variable is symbolic
+            if isinstance(variable, SymbolicVariable):
+
+                # multiply by probability
+                probs = distribution._params[queries[:, idx].astype(int)]
+
+            # if the variable is numeric
+            elif isinstance(variable, NumericVariable):
+
+                # get the likelihoods
+                probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C').astype(float)))
+
+                if min_distances:
+                    # replace them with dirac scaling if they are infinite
+                    probs[(probs == float("inf")).nonzero()] = dirac_scaling / min_distances[variable]
+
+                # if no distances are provided replace infinite values with 1.
+                else:
+                    probs[(probs == float("inf")).nonzero()] = 1.
+
+            # multiply results
+            result *= probs
+
+        return result
+
+    def expectation(self, evidence=None, as_vector=True):
+        evidence = evidence or VariableMap()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -380,7 +456,8 @@ class PCAJPT(jpt.trees.JPT):
                                   parent=parent,
                                   prior=n_samples / data.shape[0],
                                   scaler=scaler,
-                                  decomposer=decomposer)
+                                  decomposer=decomposer,
+                                  numeric_indices=self.numeric_indices)
 
             # fit distributions
             for i, v in enumerate(self.variables):
@@ -447,13 +524,14 @@ class PCAJPT(jpt.trees.JPT):
                 data_origin_of_split = scaler.inverse_transform(standardized_origin_of_split[:-1].reshape(1, -1))[0]
 
                 # transform the split value back to data coordinates
-                data_split_value = float(np.dot(-data_normal_of_split.T, data_origin_of_split))
+                data_split_value = float(np.dot(data_normal_of_split.T, data_origin_of_split))
 
                 # create numeric decision node
                 node = PCADecisionNode(idx=len(self.allnodes),
                                        variables=self.numeric_variables,
                                        weights=data_normal_of_split,
                                        split_value=data_split_value,
+                                       numeric_indices=self.numeric_indices,
                                        parent=parent)
 
             else:  # ---------------------------------------------------------------------------------------------------
@@ -479,6 +557,33 @@ class PCAJPT(jpt.trees.JPT):
 
         if self.root is None:
             self.root = node
+
+    def likelihood(self, queries: np.ndarray, dirac_scaling=2., min_distances=None) -> np.ndarray:
+        """Get the probabilities of a list of worlds. The worlds must be fully assigned with
+        single numbers (no intervals).
+
+        :param queries: An array containing the worlds. The shape is (x, len(variables)).
+        :type queries: np.array
+        :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
+            if a durac impulse is used to model the variable.
+        :type dirac_scaling: float
+        :param min_distances: A dict mapping the variables to the minimal distances between the observations.
+            This can be useful to use the same likelihood parameters for different test sets for example in cross
+            validation processes.
+        :type min_distances: Dict[Variable, float]
+        Returns: An np.array with shape (x, ) containing the probabilities.
+
+        """
+
+        # initialize probabilities
+        probabilities = np.zeros(len(queries))
+
+        # for all leaves
+        for leaf in self.leaves.values():
+            leaf_probabilities = leaf.parallel_likelihood(queries, dirac_scaling, self.minimal_distances)
+            probabilities = probabilities + leaf_probabilities
+        return probabilities
+
 
     def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.
