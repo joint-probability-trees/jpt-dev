@@ -89,13 +89,20 @@ cdef class QuantileDistribution:
                                    SIZE_t col,
                                    DTYPE_t leftmost=np.nan,
                                    DTYPE_t rightmost=np.nan):
-        '''
+        """
         Fit the quantile distribution to the rows ``rows`` and column ``col`` of the
         data array ``data``.
         
         ``leftmost`` and ``rightmost`` can be optional "imaginary" points on the leftmost or
         rightmost side, respectively.
-        '''
+        
+        :param data: 
+        :param rows: 
+        :param col: 
+        :param leftmost: 
+        :param rightmost: 
+        :return: 
+        """
         if rows is None:
             rows = np.arange(data.shape[0], dtype=np.int64)
 
@@ -147,8 +154,9 @@ cdef class QuantileDistribution:
                 self._cdf.functions.append(LinearFunction.from_points(tuple(left), tuple(right)))
                 self._cdf.intervals[-1].upper = left[0]
                 self._cdf.intervals.append(ContinuousSet(left[0], right[0], 1, 2))
+            self._cdf.intervals[-1].right = 1
             self._cdf.functions.append(ConstantFunction(1))
-            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
+            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, EXC, EXC))
         else:
             x = data_buffer[0, :]
             y = data_buffer[1, :]

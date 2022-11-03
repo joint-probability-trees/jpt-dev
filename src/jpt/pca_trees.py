@@ -1,6 +1,7 @@
 import datetime
-from collections import OrderedDict, ChainMap, deque
-from typing import List, Dict, Tuple, Any
+import numbers
+from collections import OrderedDict, ChainMap, deque, defaultdict
+from typing import List, Dict, Tuple, Any, Union
 
 import dnutils
 import os
@@ -17,11 +18,13 @@ from jpt.variables import VariableMap, Variable, NumericVariable, SymbolicVariab
 import numpy as np
 import pandas as pd
 from graphviz import Digraph
+from jpt.distributions.univariate import Numeric
 
 try:
-    from .base.quantiles import __module__
+    from .distributions.quantile.quantiles import __module__
     from .base.intervals import __module__
     from .learning.impurity import __module__
+    from .base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
@@ -29,6 +32,11 @@ finally:
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import PCAImpurity, Impurity
     from .base.constants import plotstyle, orange, green, SYMBOL
+    from .base.functions import LinearFunction, PiecewiseFunction
+    from .base.errors import Unsatisfiability
+    from .distributions.quantile.quantiles import QuantileDistribution
+    from .base.utils import format_path, normalized
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -133,11 +141,18 @@ class PCADecisionNode(jpt.trees.Node):
 # ----------------------------------------------------------------------------------------------------------------------
 
 class PCALeaf(jpt.trees.Node):
+    """
+    Represent a Leaf in a PCAJPT.
+    A leaf in a PCAJPT consists of distributions for every variable. Furthermore, the numeric variables are represented
+    as linear dependent. They are represented as independent in "eigen" coordinates. Therefore, for inference, one has
+    to transform queries into the eigen space and answer them there. Be aware that the "eigen" coordinate system is
+    constructed from the standardized "data" coordinate system, hence a StandardScaler also exists.
+    """
     def __init__(self, idx: int,
                  prior: float,
                  scaler: StandardScaler,
                  decomposer: PCA,
-                 numeric_indices: np.ndarray,
+                 numeric_indices: List[int],
                  parent: jpt.trees.Node):
 
         super(PCALeaf, self).__init__(idx, parent)
@@ -158,6 +173,45 @@ class PCALeaf(jpt.trees.Node):
 
         self.numeric_indices = numeric_indices
 
+        self.numeric_domains_: VariableMap or None = None
+
+    @property
+    def numeric_domains(self) -> VariableMap:
+        """
+        Get the minimum and maximum values of the numeric variables of this leaf in the "data" coordinates.
+
+        :return: VariableMap that maps every numeric variable to a ContinuousSet
+        """
+
+        # if it already has been calculated return it
+        if self.numeric_domains_ is not None:
+            return self.numeric_domains_
+
+        # initialize matrix to hold ranges in "eigen" coordinates
+        ranges = np.ndarray((2, len(self.numeric_indices)))
+
+        # for every numeric variable and their distribution and their index
+        for idx, (variable, distribution) in enumerate([(variable, distribution) for variable, distribution
+                                                        in self.distributions.items() if variable.numeric]):
+            domain = distribution.domain()
+            ranges[:, idx] = [domain.lower, domain.upper]
+
+        ranges = self.inverse_transform(ranges)
+        result = dict()
+
+        # rewrite the transformed ranges to the resulting map
+        for idx, range_ in enumerate(ranges.T):
+
+            # get the corresponding numeric variable
+            variable = list(self.distributions.keys())[self.numeric_indices[idx]]
+
+            # use min/max here since the transformation can invert axis without semantics
+            result[variable] = ContinuousSet(min(range_), max(range_))
+
+        # construct VariableMap
+        self.numeric_domains_ = VariableMap(result.items())
+        return self.numeric_domains_
+
     @property
     def str_node(self) -> str:
         return ""
@@ -177,6 +231,47 @@ class PCALeaf(jpt.trees.Node):
                 res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
         return res
 
+    def transform_variable_map(self, query: VariableMap) -> VariableMap:
+        """
+        Transform all numeric values inside ``query`` to the internal representation of this leaf.
+        For every numeric variable that is not in query the min/nax domains are entered.
+        :param query: the query to transform
+        :return: the transformed VariableMap
+        """
+
+        # initialize result
+        result = dict()
+
+        # initialize ranges where the first row represents the lower bound in eigen space and the second one the upper
+        ranges = np.ndarray((2, len(self.numeric_indices)))
+
+        # for every numeric variable and their index
+        for idx, variable in enumerate(self.distributions.keys()):
+            result[variable] = query.get(variable)
+
+            # if it is numeric
+            if variable.numeric:
+
+                # get the value range for the transformation
+                restriction = query[variable] if variable in query.keys() else self.numeric_domains[variable]
+
+                # write to transformation matrix
+                ranges[:, self.numeric_indices.index(idx)] = np.array([restriction.lower, restriction.upper])
+
+        # transform to "eigen" space
+        ranges = self.transform(ranges)
+
+        # rewrite the transformed ranges to the resulting map
+        for idx, range_ in enumerate(ranges.T):
+
+            # get the corresponding numeric variable
+            variable = list(self.distributions.keys())[self.numeric_indices[idx]]
+
+            # use min/max here since the transformation can invert axis without semantics
+            result[variable] = ContinuousSet(min(range_), max(range_))
+
+        return VariableMap(result.items())
+
     def transform(self, data: np.ndarray) -> np.ndarray:
         """
         Forward transform the data such that it can be used for querying.
@@ -194,6 +289,151 @@ class PCALeaf(jpt.trees.Node):
         :return: The inverse transformed data
         """
         return self.scaler.inverse_transform(self.decomposer.inverse_transform(data))
+
+    def posterior(self, variables: List[Variable] or None = None, evidence: VariableMap = VariableMap()) -> VariableMap:
+        """
+        Return the independent distributions in "data" space.
+        :param variables: the variables to calculate the posterior over
+        :param evidence: the preprocessed evidence in "data" space
+        :return: A VariableMap assigning each variable to their distribution
+        """
+
+        # initialize variables
+        variables = variables or list(self.distributions.keys())
+
+        # transform query to eigen space
+        evidence_ = self.transform_variable_map(evidence)
+
+        result = dict()
+
+        # for every variable and its distribution
+        for idx, (variable, distribution) in enumerate(self.distributions.items()):
+
+            if variable not in variables:
+                continue
+
+            # just copy symbolic variables since they are not distorted by the PCA
+            if variable.symbolic:
+                result[variable] = self.distributions[variable].crop(evidence_[variable])
+
+            # if the variable is numeric (it gets complicated)
+            if variable.numeric:
+
+                distribution = distribution.crop(evidence_[variable])
+
+                # get the index for the transformation via pca
+                numeric_index = self.numeric_indices.index(idx)
+
+                # get all points that need to be inverse transformed in "eigen" coordinates
+                points_on_axis = [interval.upper for interval in distribution.cdf.intervals[:-1]]
+
+                # construct the whole matrix in "eigen" coordinates
+                points = np.zeros((len(points_on_axis), len(self.numeric_indices)))
+                points[:, numeric_index] = points_on_axis
+
+                # get the axis of the variable in "data" coordinates
+                points_on_data_axis = np.concatenate((np.sort(self.inverse_transform(points)[:, numeric_index]),
+                                                     [np.PINF]))
+
+                # list that holds the functions for the posterior distribution
+                posterior_functions = [LinearFunction(0, 0)]
+                posterior_intervals = [ContinuousSet(np.NINF, points_on_data_axis[0], 2, 2)]
+
+                # for every idx, interval and function in eigen coordinates
+                for function_idx, (interval, function) in enumerate(list(distribution.cdf.iter())[1:-1]):
+
+                    # construct next interval in "data" coordinates
+                    posterior_interval = ContinuousSet(points_on_data_axis[function_idx],
+                                                       points_on_data_axis[function_idx + 1])
+                    posterior_intervals.append(posterior_interval)
+
+                    # construct the function in "data" coordinates
+                    previous_prob = posterior_functions[-1].eval(posterior_intervals[-1].upper)
+                    next_prob = function.eval(interval.upper)
+
+                    # apply slope formula
+                    m = (next_prob - previous_prob) / posterior_interval.range()
+
+                    # calculate intersection with the y-axis as c = f(x) - mx
+                    c = previous_prob - (m * posterior_interval.lower)
+
+                    posterior_functions.append(LinearFunction(m, c))
+
+                # construct posterior piecewise function
+                posterior_piecewise_function = PiecewiseFunction()
+                posterior_piecewise_function.functions = posterior_functions
+                posterior_piecewise_function.intervals = posterior_intervals
+
+                # convert to distribution TODO something isn't right here
+                resulting_distribution = Numeric()
+                resulting_distribution.set(QuantileDistribution.from_cdf(posterior_piecewise_function))
+
+                result[variable] = resulting_distribution
+
+        return VariableMap(result.items())
+
+    def probability(self, query: VariableMap, dirac_scaling: float = 2., min_distances: VariableMap = None) -> float:
+        """
+        Calculate the probability of a (partial) query. Exploits the independence assumptions in eigen coordinates
+        :param query: A preprocessed VariableMap that maps to singular values (numeric or symbolic)
+            or ranges (continuous set, set)
+        :type query: VariableMap
+        :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
+            if a durac impulse is used to model the variable.
+        :type dirac_scaling: float
+        :param min_distances: A dict mapping the variables to the minimal distances between the observations.
+            This can be useful to use the same likelihood parameters for different test sets for example in cross
+            validation processes.
+        :type min_distances: A VariableMap from numeric variables to floats or None
+        """
+
+        # initialize result
+        result = 1.
+
+        # transform query to eigen space
+        query_ = self.transform_variable_map(query)
+
+        # for every variable and its value
+        for variable, value in query_.items():
+
+            # if it is numeric
+            if variable.numeric:
+
+                # if it is a single value
+                if value.lower == value.upper:
+
+                    # get the likelihood
+                    likelihood = self.distributions[variable].pdf(value.upper)
+
+                    # if it is infinity and no handling is provided replace it with 1.
+                    if likelihood == float("inf") and not min_distances:
+                        result *= 1
+
+                    # if it is infinite and a handling is provided, replace with dirac_scaling/min_distance
+                    elif likelihood == float("inf") and min_distances:
+                        min_distance = min_distances[variable]
+                        min_distance = 1 if min_distance == 0 else min_distance
+                        result *= dirac_scaling / min_distance
+
+                    # if the likelihood is finite just multiply it
+                    else:
+                        result *= likelihood
+
+                # handle ordinary probability queries
+                else:
+                    result *= self.distributions[variable]._p(value)
+
+            # handle symbolic variable
+            if variable.symbolic:
+
+                # force the evidence to be a set
+                if not isinstance(value, set):
+                    value = set([value])
+
+                # return false if the evidence is impossible in this leaf
+                result *= self.distributions[variable]._p(value)
+
+        return result
 
     def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
             -> np.ndarray:
@@ -214,7 +454,8 @@ class PCALeaf(jpt.trees.Node):
         # create result vector
         result = np.ones(len(queries))
 
-        queries[:, self.numeric_indices] = self.transform(queries[:, self.numeric_indices])
+        queries_ = queries.copy()
+        queries_[:, self.numeric_indices] = self.transform(queries_[:, self.numeric_indices])
 
         # for each idx, variable and distribution
         for idx, (variable, distribution) in enumerate(self.distributions.items()):
@@ -223,17 +464,22 @@ class PCALeaf(jpt.trees.Node):
             if isinstance(variable, SymbolicVariable):
 
                 # multiply by probability
-                probs = distribution._params[queries[:, idx].astype(int)]
+                probs = distribution._params[queries_[:, idx].astype(int)]
 
             # if the variable is numeric
             elif isinstance(variable, NumericVariable):
 
                 # get the likelihoods
-                probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C').astype(float)))
+                probs = np.asarray(distribution.pdf.multi_eval(queries_[:, idx].copy(order='C').astype(float)))
 
                 if min_distances:
+
+                    # check if the minimal distance is 0 and replace it with one if so
+                    min_distance = min_distances[variable]
+                    min_distance = 1 if min_distance == 0 else min_distance
+
                     # replace them with dirac scaling if they are infinite
-                    probs[(probs == float("inf")).nonzero()] = dirac_scaling / min_distances[variable]
+                    probs[(probs == float("inf")).nonzero()] = dirac_scaling / min_distance
 
                 # if no distances are provided replace infinite values with 1.
                 else:
@@ -244,8 +490,39 @@ class PCALeaf(jpt.trees.Node):
 
         return result
 
-    def expectation(self, evidence=None, as_vector=True):
-        evidence = evidence or VariableMap()
+    def expectation(self, evidence=VariableMap()) -> VariableMap:
+        """
+        Calculate the expectation of numeric variables and mpe of symbolic variables
+        :param evidence: the preprocessed evidence to apply before calculating the expectation
+        :return: the expectation as VariableMap
+        """
+        # initialize result
+        result = dict()
+
+        # if no evidence is provided the calculation can be shortcut without transformation
+        if len(evidence) == 0:
+
+            # for every variable
+            for idx, (variable, distribution) in enumerate(self.distributions.items()):
+
+                # if it is symbolic, write the expectation directly
+                if variable.symbolic:
+                    result[variable] = distribution.expectation()
+
+                # if it is numeric, get the mean from the scaler (avoids matrix multiplication)
+                else:
+                    result[variable] = self.scaler.mean_[self.numeric_indices[idx]]
+
+            return VariableMap(result.items())
+
+        transformed_evidence = self.transform_variable_map(evidence)
+
+        for variable, distribution in self.distributions.items():
+            if variable in evidence.items():
+                distribution = distribution.crop(transformed_evidence[variable])
+                result[variable] = distribution.expectation()
+
+        return VariableMap(result)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -281,6 +558,12 @@ class PCAJPT(jpt.trees.JPT):
         # don't use targets yet, it is unsure what the correct design for that would be
         if self.targets is not None:
             raise ValueError("Targets are not yet allowed for PCA trees.")
+
+        # for syntax highlighting, update the types of the structures
+        self.leaves: Dict[int, PCALeaf] = {}
+        self.innernodes: Dict[int, PCADecisionNode] = {}
+        self.allnodes: ChainMap[int, jpt.trees.Node] = ChainMap(self.innernodes, self.leaves)
+
 
     def _preprocess_data(self, data: np.ndarray or pd.DataFrame) -> np.ndarray:
         """
@@ -504,7 +787,8 @@ class PCAJPT(jpt.trees.JPT):
                 eigen_transformation_split[split_dimension, -1] = split_value
 
                 # calculate transformation matrix from split space to standardized space
-                standardized_transformation_split = np.dot(standardized_transformation_eigen, eigen_transformation_split)
+                standardized_transformation_split = np.dot(standardized_transformation_eigen,
+                                                           eigen_transformation_split)
 
                 # create the normal vector of the splitting plane in split coordinates
                 split_normal_of_split = np.zeros(n+1)
@@ -563,14 +847,11 @@ class PCAJPT(jpt.trees.JPT):
         single numbers (no intervals).
 
         :param queries: An array containing the worlds. The shape is (x, len(variables)).
-        :type queries: np.array
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
-        :type dirac_scaling: float
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
-        :type min_distances: Dict[Variable, float]
         Returns: An np.array with shape (x, ) containing the probabilities.
 
         """
@@ -580,10 +861,85 @@ class PCAJPT(jpt.trees.JPT):
 
         # for all leaves
         for leaf in self.leaves.values():
-            leaf_probabilities = leaf.parallel_likelihood(queries, dirac_scaling, self.minimal_distances)
+
+            # calculate probability in "product node"
+            leaf_probabilities = leaf.prior * leaf.parallel_likelihood(queries, dirac_scaling, self.minimal_distances)
+
+            # apply "sum node"
             probabilities = probabilities + leaf_probabilities
+
         return probabilities
 
+    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True) \
+            -> jpt.trees.ExpectationResult:
+        """
+        Compute the expected value of all ``variables``. If no ``variables`` are passed,
+        it defaults to all variables not passed as ``evidence``.
+
+        :param variables:
+        :param evidence:
+        :param confidence_level:
+        :param fail_on_unsatisfiability:
+        :return:
+        """
+        raise NotImplementedError()
+
+    def posterior(self,
+                  variables: List[Union[Variable, str]] = None,
+                  evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = VariableMap(),
+                  fail_on_unsatisfiability: bool = True,
+                  report_inconsistencies: bool = False) -> jpt.trees.PosteriorResult or None:
+        """
+        Compute the posterior over all ``variables`` independently.
+        Be aware that the distributions are not actually independent.
+        :param variables: the variables to calculate the posterior on.
+        :param evidence: the evidence
+        :param fail_on_unsatisfiability: Rather to raise an Exception if P(Evidence) = 0 or not
+        :param report_inconsistencies:
+        :return: jpt.trees.PosteriorResult
+        """
+        variables = variables or self.variables
+        evidence = self._preprocess_query(evidence)
+        distributions = defaultdict(list)
+        weights = []
+
+        for leaf in self.leaves.values():
+
+            # calculate probability of evidence
+            probability = leaf.probability(evidence)
+
+            # if this leaf is impossible skip it
+            if probability == 0.:
+                continue
+
+            # append probability to priors
+            weights.append(leaf.probability(evidence) * leaf.prior)
+
+            # calculate posteriors
+            posteriors = leaf.posterior(variables, evidence)
+
+            # append posteriors
+            for variable in variables:
+                distributions[variable].append(posteriors[variable])
+
+        try:
+            weights = normalized(weights)
+        except ValueError:
+            if fail_on_unsatisfiability:
+                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence))
+            return None
+
+        # initialize result
+        result = dict()
+
+        # merge distributions
+        for variable in variables:
+            result[variable] = Numeric.merge(distributions[variable], weights=weights)
+
+        # construct posterior result
+        posterior_result = jpt.trees.PosteriorResult(variables, evidence)
+        posterior_result.result = VariableMap(result.items())
+        return posterior_result
 
     def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.
@@ -667,7 +1023,7 @@ class PCAJPT(jpt.trees.JPT):
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>"  if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" }=' + (f'{html.escape(str(exp))!s}' if v.symbolic else f'{exp:.2f}') for v, exp in n.expectation().items()])}</TD>
                                 </TR>
                                 <TR>
                                     <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>

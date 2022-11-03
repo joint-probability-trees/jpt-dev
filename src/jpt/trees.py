@@ -1421,7 +1421,7 @@ class JPT:
             if variable.numeric:
                 samples = np.unique(_data[:, idx])
                 distances = np.diff(samples)
-                self.minimal_distances[variable] = min(distances) if len(distances) > 0 else 2.
+                self.minimal_distances[variable] = min(distances) if len(distances) > 0 else 0.
 
         if _data.shape[0] < 1:
             raise ValueError('No data for learning.')

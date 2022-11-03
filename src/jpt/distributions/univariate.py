@@ -38,7 +38,7 @@ except ModuleNotFoundError:
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
-    from ..base.functions import LinearFunction
+    from ..base.functions import LinearFunction, PiecewiseFunction
     from .quantile.quantiles import QuantileDistribution
 
 
@@ -708,6 +708,12 @@ class Numeric(Distribution):
     @classmethod
     def type_from_json(cls, data):
         return cls
+
+    def domain(self) -> ContinuousSet:
+        """
+        :return: the minimum and maximum possible values of this distribution as ContinuousSet
+        """
+        return ContinuousSet(self.cdf.intervals[0].upper, self.cdf.intervals[-1].lower, 1, 1)
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''

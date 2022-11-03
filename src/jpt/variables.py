@@ -388,7 +388,7 @@ class VariableMap:
     supports accessing the image set both by the variable object instance itself _and_ its name.
     '''
 
-    def __init__(self, data: List[Tuple] = None):
+    def __init__(self, data: Iterator[Tuple] or None = None):
         '''
         ``data`` may be an iterable of (variable, value) pairs.
         '''
@@ -467,13 +467,13 @@ class VariableMap:
             return default
         return self[key]
 
-    def keys(self) -> Iterator[str]:
+    def keys(self) -> Iterator[Variable]:
         yield from (self._variables[name] for name in self._map.keys())
 
     def values(self) -> Iterator[Any]:
         yield from self._map.values()
 
-    def items(self) -> Iterator[Tuple]:
+    def items(self) -> Iterator[Tuple[Variable, Any]]:
         yield from ((self._variables[name], value) for name, value in self._map.items())
 
     def to_json(self) -> Dict[str, Any]:
