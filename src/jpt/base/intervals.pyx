@@ -915,7 +915,7 @@ cdef class ContinuousSet(NumberSet):
 
     def range(self):
         """
-        :return: The range of this interval as lower - upper.
+        :return: The range of this interval as upper - lower.
         """
         return self.upper - self.lower
 

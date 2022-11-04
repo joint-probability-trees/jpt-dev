@@ -11,6 +11,8 @@ import numpy as np
 import plotly.graph_objects as go
 import jpt.distributions
 import matplotlib.pyplot as plt
+from jpt.base.utils import list2interval
+
 
 def plot_numeric_pdf(distribution: jpt.distributions.univariate.Numeric, padding=0.1):
     x = []
@@ -44,21 +46,21 @@ class TestPCAJPTiris(unittest.TestCase):
 
         model = jpt.pca_trees.PCAJPT(variables, min_samples_leaf=0.2)
         model = model.fit(df)
-        # model.plot(plotvars=model.variables)
 
 
 class TestPCAJPT2D(unittest.TestCase):
 
     def setUp(self) -> None:
-        self.distribution_1 = numpy.random.uniform([1, 1], [2, 2], (100, 2)).astype(np.float32)
-        distribution_2 = numpy.random.uniform([6, 7], [8, 9], (120, 2)).astype(np.float32)
+        self.distribution_1 = numpy.random.uniform([1, 1], [2, 2], (1000, 2)).astype(np.float32)
+        distribution_2 = numpy.random.uniform([6, 7], [8, 9], (1200, 2)).astype(np.float32)
         rotation = np.array([[0.239746, 1.],
                              [0., 0.320312]])
         self.distribution_2 = distribution_2.dot(rotation) + [3, 0]
 
         self.data = np.concatenate((self.distribution_1, self.distribution_2))
 
-        variables = [jpt.variables.NumericVariable("X"), jpt.variables.NumericVariable("Y")]
+        variables = [jpt.variables.NumericVariable("X", precision=0.001),
+                     jpt.variables.NumericVariable("Y", precision=0.001)]
 
         self.model = jpt.pca_trees.PCAJPT(variables, min_samples_leaf=0.3)
 
@@ -108,31 +110,99 @@ class TestPCAJPT2D(unittest.TestCase):
         # todo ask daniel how to solve that problem on the quantile distribution level
         print(sum(np.log(likelihood)))
 
-    def test_expectation_leaf_no_evidence(self):
-        """Test expectation function in each leaf"""
+    def test_expectation_variance_leaf_no_evidence(self):
+        """Test expectation function and variance in each leaf"""
 
         mean_1 = self.distribution_1.mean(axis=0).reshape(1, -1)
         mean_2 = self.distribution_2.mean(axis=0).reshape(1, -1)
         means = np.concatenate((mean_1, mean_2))
 
+        var_1 = self.distribution_1.var(axis=0).reshape(1, -1)
+        var_2 = self.distribution_2.var(axis=0).reshape(1, -1)
+        vars = np.concatenate((var_1, var_2))
+
         for leaf in self.model.leaves.values():
             expectation = leaf.expectation()
             for idx, (variable, value) in enumerate(expectation.items()):
                 closer_mean = means[np.argmin(np.abs(means[:, idx] - value)), idx]
-                self.assertAlmostEqual(closer_mean, value)
+                self.assertAlmostEqual(closer_mean, value, places=5)
+                self.assertAlmostEqual(vars[np.argmin(np.abs(means[:, idx] - value)), idx], leaf.scaler.var_[idx],
+                                       places=5)
 
     def test_transforms(self):
-        leaf = self.model.leaves[1]
-        data_ = leaf.inverse_transform(leaf.transform(self.data.copy()))
-        self.assertAlmostEqual(0., np.sum(self.data-data_))
+        """Check that transform and inverse transform are indeed inverse of each other"""
+        for leaf in self.model.leaves.values():
+            data_ = leaf.inverse_transform(leaf.transform(self.data.copy()))
+            self.assertAlmostEqual(0., np.sum(np.abs(self.data-data_)))
+
+    def test_numeric_domains(self):
+
+        # get mean from data
+        mean_1 = self.distribution_1.mean(axis=0).reshape(1, -1)
+        mean_2 = self.distribution_2.mean(axis=0).reshape(1, -1)
+        means = np.concatenate((mean_1, mean_2))
+
+        # get min max from data
+        min_1 = self.distribution_1.min(axis=0).reshape(1, -1)
+        max_1 = self.distribution_1.max(axis=0).reshape(1, -1)
+        min_2 = self.distribution_2.min(axis=0).reshape(1, -1)
+        max_2 = self.distribution_2.max(axis=0).reshape(1, -1)
+
+        mins = np.concatenate((min_1, min_2))
+        maxs = np.concatenate((max_1, max_2))
+
+        # construct min max queries
+        e_1 = jpt.variables.VariableMap()
+
+        e_1[self.model.varnames["X"]] = list2interval([min_1[0][0], max_1[0][0]])
+        e_1[self.model.varnames["Y"]] = list2interval([min_1[0][1], max_1[0][1]])
+
+        e_2 = jpt.variables.VariableMap()
+        e_2[self.model.varnames["X"]] = list2interval([min_2[0][0], max_2[0][0]])
+        e_2[self.model.varnames["Y"]] = list2interval([min_2[0][1], max_2[0][1]])
+
+        evidences = [e_1, e_2]
+
+        for leaf in self.model.leaves.values():
+            cluster_idx = np.argmin(np.sum(np.abs(means.T - [leaf.scaler.mean_, leaf.scaler.mean_]), axis=0))
+
+            corresponding_ranges = np.array([mins[cluster_idx], maxs[cluster_idx]])
+            transformed_ranges = leaf.transform(corresponding_ranges)
+            print(transformed_ranges)
+            exit()
+            transformed_evidence = leaf.transform_variable_map(evidences[cluster_idx])
+
+            for idx, variable in enumerate(leaf.distributions.keys()):
+
+                leaf.distributions[variable].plot()
+                plt.show()
+
+                # test transformed domains in eigen coordinates
+
+                # print(leaf.numeric_domains[variable], list2interval([mins[cluster_idx, idx], maxs[cluster_idx, idx]]))
+                self.assertAlmostEqual(leaf.numeric_domains[variable].lower, mins[cluster_idx, idx], delta=0.2)
+                self.assertAlmostEqual(leaf.numeric_domains[variable].upper, maxs[cluster_idx, idx], delta=0.2)
+
+    def test_transform_variable_map(self):
+        evidence = jpt.variables.VariableMap()
+        evidence[self.model.varnames["X"]] = list2interval([0, 3])
+        evidence[self.model.varnames["Y"]] = list2interval([0, 1])
+
+        for leaf in self.model.leaves.values():
+            e_ = leaf.transform_variable_map(evidence)
+            print(e_)
 
     def test_posterior(self):
         evidence = jpt.variables.VariableMap()
-        evidence[self.model.varnames["X"]] = [0, 10]
+        evidence[self.model.varnames["X"]] = list2interval([1, 2])
+        evidence[self.model.varnames["Y"]] = list2interval([1, 2])
         posterior = self.model.posterior(evidence=evidence)
         for v, d in posterior.result.items():
-            d.plot()
-            plt.show()
+            print(v, evidence[v])
+            print(d.p(evidence[v]))
+            # d.plot()
+            # plt.show()
+        # px.scatter(x=self.data[:, 0], y=self.data[:, 1]).show()
 
     def test_expectation_tree_no_evidence(self):
         pass

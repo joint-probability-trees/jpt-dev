@@ -197,11 +197,13 @@ class PCALeaf(jpt.trees.Node):
             ranges[:, idx] = [domain.lower, domain.upper]
 
         ranges = self.inverse_transform(ranges)
+
+        # initialize result
         result = dict()
 
         # rewrite the transformed ranges to the resulting map
         for idx, range_ in enumerate(ranges.T):
-
+            print(idx, range_)
             # get the corresponding numeric variable
             variable = list(self.distributions.keys())[self.numeric_indices[idx]]
 
@@ -266,7 +268,7 @@ class PCALeaf(jpt.trees.Node):
 
             # get the corresponding numeric variable
             variable = list(self.distributions.keys())[self.numeric_indices[idx]]
-
+            print(idx, range_)
             # use min/max here since the transformation can invert axis without semantics
             result[variable] = ContinuousSet(min(range_), max(range_))
 
@@ -302,7 +304,7 @@ class PCALeaf(jpt.trees.Node):
         variables = variables or list(self.distributions.keys())
 
         # transform query to eigen space
-        evidence_ = self.transform_variable_map(evidence)
+        evidence_ = self.transform_variable_map(evidence.copy())
 
         result = dict()
 
@@ -319,6 +321,7 @@ class PCALeaf(jpt.trees.Node):
             # if the variable is numeric (it gets complicated)
             if variable.numeric:
 
+                print(evidence_)
                 distribution = distribution.crop(evidence_[variable])
 
                 # get the index for the transformation via pca
@@ -345,7 +348,6 @@ class PCALeaf(jpt.trees.Node):
                     # construct next interval in "data" coordinates
                     posterior_interval = ContinuousSet(points_on_data_axis[function_idx],
                                                        points_on_data_axis[function_idx + 1])
-                    posterior_intervals.append(posterior_interval)
 
                     # construct the function in "data" coordinates
                     previous_prob = posterior_functions[-1].eval(posterior_intervals[-1].upper)
@@ -357,17 +359,18 @@ class PCALeaf(jpt.trees.Node):
                     # calculate intersection with the y-axis as c = f(x) - mx
                     c = previous_prob - (m * posterior_interval.lower)
 
+                    # append new function and intervals
                     posterior_functions.append(LinearFunction(m, c))
+                    posterior_intervals.append(posterior_interval)
 
                 # construct posterior piecewise function
                 posterior_piecewise_function = PiecewiseFunction()
                 posterior_piecewise_function.functions = posterior_functions
                 posterior_piecewise_function.intervals = posterior_intervals
 
-                # convert to distribution TODO something isn't right here
+                # convert to distribution
                 resulting_distribution = Numeric()
                 resulting_distribution.set(QuantileDistribution.from_cdf(posterior_piecewise_function))
-
                 result[variable] = resulting_distribution
 
         return VariableMap(result.items())
