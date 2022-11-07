@@ -3,6 +3,7 @@ from matplotlib import pyplot as plt
 
 import unittest
 import numpy as np
+import numpy.random
 
 from jpt.base.errors import Unsatisfiability
 
@@ -118,6 +119,30 @@ class TestCaseMerge(unittest.TestCase):
         result.functions.append(ConstantFunction(1))
 
         self.assertEqual(result, merged.cdf)
+
+    def test_likelihood_of_fit(self):
+
+        # sample from uniform distribution from [0,1] (likelihood for every sample should be around 1)
+        data1 = numpy.random.uniform(0, 1, (1000, ))
+        data1 = np.sort(data1).reshape(-1, 1)
+
+        # create quantile distribution
+        q1 = QuantileDistribution()
+        q1.fit(data1, rows=np.array(range(1000)), col=0)
+
+        # compute likelihood of quantile distributions
+        likelihoods = np.array(q1.pdf.multi_eval(data1[:, 0]))
+
+        print(likelihoods > 0)
+        print(q1.cdf.intervals[-2].right)
+        # no likelihood should be 0
+        self.assertTrue(all(likelihoods > 0))
+
+        # start of function should be minimum of data
+        self.assertEqual(q1.pdf.intervals[0].upper, data1[0])
+
+        # end of function should be maximum of data
+        self.assertEqual(q1.pdf.intervals[-1].lower, data1[-1])
 
 
 class TestCasePPFTransform(unittest.TestCase):
