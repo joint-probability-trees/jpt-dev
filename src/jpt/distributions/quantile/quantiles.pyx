@@ -150,10 +150,11 @@ cdef class QuantileDistribution:
 
             # overwrite right most interval by an interval with an including right border
             self._cdf.intervals[-1] = ContinuousSet(self._cdf.intervals[-1].lower,
-                                                    self._cdf.intervals[-1].upper, INC, INC)
+                                                    np.nextafter(self._cdf.intervals[-1].upper,
+                                                                 self._cdf.intervals[-1].upper + 1), INC, EXC)
 
             self._cdf.functions.append(ConstantFunction(1))
-            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, EXC, EXC))
+            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
         else:
             x = data_buffer[0, :]
             y = data_buffer[1, :]
