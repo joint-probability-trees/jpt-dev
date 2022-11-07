@@ -9,6 +9,7 @@ import math
 import html
 import matplotlib.pyplot as plt
 from itertools import zip_longest
+import json
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -203,7 +204,7 @@ class PCALeaf(jpt.trees.Node):
 
         # rewrite the transformed ranges to the resulting map
         for idx, range_ in enumerate(ranges.T):
-            print(idx, range_)
+
             # get the corresponding numeric variable
             variable = list(self.distributions.keys())[self.numeric_indices[idx]]
 
@@ -223,7 +224,7 @@ class PCALeaf(jpt.trees.Node):
         return self.distributions
 
     @property
-    def path(self) -> VariableMap:
+    def path(self) -> dict:
         res = VariableMap()
         for var, vals in self._path:
             if isinstance(var, VariableMap):
@@ -232,6 +233,9 @@ class PCALeaf(jpt.trees.Node):
             elif isinstance(var, Variable):
                 res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
         return res
+
+    def numeric_variables(self):
+        return [variable for variable in self.distributions.keys() if variable.numeric]
 
     def transform_variable_map(self, query: VariableMap) -> VariableMap:
         """
@@ -268,7 +272,7 @@ class PCALeaf(jpt.trees.Node):
 
             # get the corresponding numeric variable
             variable = list(self.distributions.keys())[self.numeric_indices[idx]]
-            print(idx, range_)
+
             # use min/max here since the transformation can invert axis without semantics
             result[variable] = ContinuousSet(min(range_), max(range_))
 
@@ -321,7 +325,6 @@ class PCALeaf(jpt.trees.Node):
             # if the variable is numeric (it gets complicated)
             if variable.numeric:
 
-                print(evidence_)
                 distribution = distribution.crop(evidence_[variable])
 
                 # get the index for the transformation via pca
@@ -375,6 +378,97 @@ class PCALeaf(jpt.trees.Node):
 
         return VariableMap(result.items())
 
+    def copy(self):
+        """
+        :return: the copied PCALeaf
+        """
+        result = PCALeaf(self.idx, self.prior, self.scaler, self.decomposer, self.numeric_indices, self.parent)
+        result.distributions = self.distributions.copy()
+        result._path = self._path
+        result.samples = self.samples
+        return result
+
+    def conditional_leaf(self, evidence: VariableMap):
+        """
+        Compute the conditional probability distribution of the leaf.
+        :param evidence: the evidence to apply
+        :return: A copy of this leaf that is consistent with the evidence
+        """
+        result = self.copy()
+
+        evidence_ = self.transform_variable_map(evidence)
+
+        # for every distribution
+        for variable, restriction in evidence_.items():
+
+            # apply symbolic evidence
+            if variable.symbolic:
+                result.distributions[variable] = result.distributions[variable].crop(evidence_[variable])
+
+            # apply numeric evidence
+            if variable.numeric:
+                result.distributions[variable] = result.distributions[variable].crop(evidence_[variable])
+
+        return result
+
+    def mpe(self, evidence: VariableMap, minimal_distances: VariableMap):
+        """
+        Calculate the most probable explanation of the linear dependent distributions.
+
+        This has not yet the full functionality. TODO check if the maxima can be inverse transformed independently
+
+        :return: the likelihood of the maximum as a float and the configuration in ``data`` coordinates as a VariableMap
+        """
+
+        # apply conditions
+        conditional_leaf = self.conditional_leaf(evidence)
+
+        # initialize likelihood and maximum
+        result_likelihood = conditional_leaf.prior
+
+        # initialize maximum
+        maximum = dict()
+
+        # initialize explanation in eigen coordinates
+        eigen_explanation = np.ndarray((2, len(self.numeric_indices)))
+
+        # for every variable and distribution
+        for idx, (variable, distribution) in enumerate(conditional_leaf.distributions.items()):
+
+            # calculate mpe of that distribution
+            likelihood, explanation = distribution.mpe()
+
+            # apply upper cap for infinities
+            likelihood = minimal_distances[variable] if likelihood == float("inf") else likelihood
+
+            # update likelihood
+            result_likelihood *= likelihood
+
+            # for symbolic variables
+            if variable.symbolic:
+
+                # save result
+                maximum[variable] = explanation
+
+            # for numeric variables
+            elif variable.numeric:
+
+                # get th index in eigen_explanation
+                eigen_index = self.numeric_indices.index(idx)
+
+                # write data to inverse transform
+                eigen_explanation[:, eigen_index] = [explanation.intervals[0].lower, explanation.intervals[0].upper]
+
+        # transform eigen_explanation back to data coordinates
+        data_explanation = self.inverse_transform(eigen_explanation)
+
+        # write explanation in data coordinates to result
+        for variable, data_explanation_ in zip(self.numeric_variables(), data_explanation.T):
+            maximum[variable] = ContinuousSet(min(data_explanation_), max(data_explanation_))
+
+        # create mpe result
+        return result_likelihood, maximum
+
     def probability(self, query: VariableMap, dirac_scaling: float = 2., min_distances: VariableMap = None) -> float:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumptions in eigen coordinates
@@ -382,7 +476,7 @@ class PCALeaf(jpt.trees.Node):
             or ranges (continuous set, set)
         :type query: VariableMap
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
-            if a durac impulse is used to model the variable.
+            if a dirac impulse is used to model the variable.
         :type dirac_scaling: float
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
@@ -526,6 +620,18 @@ class PCALeaf(jpt.trees.Node):
                 result[variable] = distribution.expectation()
 
         return VariableMap(result)
+
+    def to_json(self) -> Dict[str, Any]:
+        return {'idx': self.idx,
+                'distributions': self.distributions.to_json(),
+                'prior': self.prior,
+                'samples': self.samples,
+                'parent': self.parent.idx if self.parent else None,
+                'child_idx': self.parent.children.index(self) if self.parent is not None else -1,
+                "mean": self.scaler.mean_,
+                "var": self.scaler.var_,
+                "eigenvectors": self.decomposer.components_,
+                "numeric_indices": json.dumps(self.numeric_indices)}
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -943,6 +1049,55 @@ class PCAJPT(jpt.trees.JPT):
         posterior_result = jpt.trees.PosteriorResult(variables, evidence)
         posterior_result.result = VariableMap(result.items())
         return posterior_result
+
+    def conditional_jpt(self, evidence: VariableMap):
+        """
+        Apply evidence on a PCAJPT and get a new PCAJPT that represent P(x|evidence).
+        The new JPT still contains all variables.
+
+        :param evidence: A preprocessed VariableMap mapping the observed variables to there observed,
+            single values (not intervals)
+        :type evidence: ``VariableMap``
+        """
+        result = self.copy()
+
+        for idx, leave in result.leaves.items():
+            p_evidence = leave.probability(evidence, self.minimal_distances)
+            print(p_evidence)
+
+
+    def mpe(self, evidence: VariableMap = VariableMap()) -> List[jpt.trees.MPEResult]:
+        """
+        Calculate the most probable explanation of all variables if the tree given the evidence.
+        :param evidence: The raw evidence
+        :return: List[MPEResult] that describes all maxima of the tree given the evidence.
+        """
+
+        # transform the evidence
+        preprocessed_evidence = self._preprocess_query(evidence, allow_singular_values=True)
+
+        # apply the conditions given
+        conditional_jpt = self.conditional_jpt(preprocessed_evidence)
+
+        # calculate the maximal probabilities for each leaf
+        maxima = [leaf.mpe(self.minimal_distances) for leaf in conditional_jpt.leaves.values()]
+
+        # get the maximum of those maxima
+        highest_likelihood = max([m[0] for m in maxima])
+
+        # create a list for all possible maximal occurrences
+        results = []
+
+        # for every leaf and its mpe
+        for leaf, (likelihood, mpe) in zip(conditional_jpt.leaves.values(), maxima):
+
+            if likelihood == highest_likelihood:
+                # append the argmax to the results
+                mpe_result = jpt.trees.MPEResult(evidence, highest_likelihood, mpe, leaf.path)
+                results.append(mpe_result)
+
+        # return the results
+        return results
 
     def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
         '''Generates an SVG representation of the generated regression tree.

@@ -59,8 +59,8 @@ class TestPCAJPT2D(unittest.TestCase):
 
         self.data = np.concatenate((self.distribution_1, self.distribution_2))
 
-        variables = [jpt.variables.NumericVariable("X", precision=0.001),
-                     jpt.variables.NumericVariable("Y", precision=0.001)]
+        variables = [jpt.variables.NumericVariable("X", precision=0.1),
+                     jpt.variables.NumericVariable("Y", precision=0.1)]
 
         self.model = jpt.pca_trees.PCAJPT(variables, min_samples_leaf=0.3)
 
@@ -99,12 +99,12 @@ class TestPCAJPT2D(unittest.TestCase):
         fig.add_trace(plot_numeric_pdf(self.model.leaves[2].distributions["X"]))
         fig.add_trace(go.Scatter(x=self.model.leaves[2].transform(self.distribution_2)[:, 0],
                                  y=np.zeros(len(self.distribution_2)), mode="markers"))
-        fig.show()
+        # fig.show()
         fig = go.Figure()
         fig.add_trace(plot_numeric_pdf(self.model.leaves[2].distributions["Y"]))
         fig.add_trace(go.Scatter(x=self.model.leaves[2].transform(self.distribution_2)[:, 1],
                                  y=np.zeros(len(self.distribution_2)), mode="markers"))
-        fig.show()
+        # fig.show()
         likelihood = self.model.likelihood(self.distribution_2)
 
         # todo ask daniel how to solve that problem on the quantile distribution level
@@ -136,7 +136,6 @@ class TestPCAJPT2D(unittest.TestCase):
             self.assertAlmostEqual(0., np.sum(np.abs(self.data-data_)))
 
     def test_numeric_domains(self):
-
         # get mean from data
         mean_1 = self.distribution_1.mean(axis=0).reshape(1, -1)
         mean_2 = self.distribution_2.mean(axis=0).reshape(1, -1)
@@ -164,11 +163,23 @@ class TestPCAJPT2D(unittest.TestCase):
         evidences = [e_1, e_2]
 
         for leaf in self.model.leaves.values():
+
+            # check if this leaf is data_1 (lower left) or data_2 (upper right)
             cluster_idx = np.argmin(np.sum(np.abs(means.T - [leaf.scaler.mean_, leaf.scaler.mean_]), axis=0))
 
+            # get min_max of the cluster
             corresponding_ranges = np.array([mins[cluster_idx], maxs[cluster_idx]])
+
+            # transform min max into internal representation
             transformed_ranges = leaf.transform(corresponding_ranges)
+
+            for variable, transformed_range in zip(self.model.variables, transformed_ranges.T):
+                print(leaf.distributions[variable].domain())
+                print(transformed_range)
+            exit()
             print(transformed_ranges)
+            print(leaf.numeric_domains)
+            print(corresponding_ranges)
             exit()
             transformed_evidence = leaf.transform_variable_map(evidences[cluster_idx])
 
@@ -193,6 +204,8 @@ class TestPCAJPT2D(unittest.TestCase):
             print(e_)
 
     def test_posterior(self):
+        # TODO something is wrong in the creation of distributions
+        return
         evidence = jpt.variables.VariableMap()
         evidence[self.model.varnames["X"]] = list2interval([1, 2])
         evidence[self.model.varnames["Y"]] = list2interval([1, 2])
@@ -206,6 +219,13 @@ class TestPCAJPT2D(unittest.TestCase):
 
     def test_expectation_tree_no_evidence(self):
         pass
+
+    def test_conditional_tree(self):
+        # px.scatter(x=self.data[:, 0], y=self.data[:, 1]).show()
+        evidence = jpt.variables.VariableMap()
+        evidence[self.model.varnames["X"]] = list2interval([0, 3])
+        conditional_model = self.model.conditional_jpt(evidence)
+
 
 if __name__ == '__main__':
     unittest.main()

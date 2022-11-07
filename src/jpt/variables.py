@@ -496,3 +496,6 @@ class VariableMap:
 
     def __repr__(self):
         return '<VariableMap {%s}>' % ','.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()])
+
+    def copy(self):
+        return VariableMap.from_json(self.to_json())
