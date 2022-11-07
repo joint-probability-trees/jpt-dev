@@ -147,8 +147,13 @@ cdef class QuantileDistribution:
                 self._cdf.functions.append(LinearFunction.from_points(tuple(left), tuple(right)))
                 self._cdf.intervals[-1].upper = left[0]
                 self._cdf.intervals.append(ContinuousSet(left[0], right[0], 1, 2))
+
+            # overwrite right most interval by an interval with an including right border
+            self._cdf.intervals[-1] = ContinuousSet(self._cdf.intervals[-1].lower,
+                                                    self._cdf.intervals[-1].upper, INC, INC)
+
             self._cdf.functions.append(ConstantFunction(1))
-            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
+            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, EXC, EXC))
         else:
             x = data_buffer[0, :]
             y = data_buffer[1, :]
