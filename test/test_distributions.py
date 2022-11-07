@@ -198,8 +198,8 @@ class NumericTest(TestCase):
     def test_fit(self):
         d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         self.assertEqual(d.cdf, PiecewiseFunction.from_dict({']-∞,0.0[': 0,
-                                                             '[0.0,1.0[': '1x',
-                                                             '[1.0,∞[': 1}))
+                                                             '[0.0,1.0000000000000002[': '1x',
+                                                             '[1.0000000000000002,∞[': 1}))
 
     def test_distribution_serialization(self):
         d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
@@ -232,7 +232,7 @@ class NumericTest(TestCase):
         data2 = np.array([DistGauss.values[l] for l in np.linspace(.5, 1.5, 20)]).reshape(-1, 1)
         dist1 = DistGauss().fit(data1, col=0)
         dist2 = DistGauss().fit(data2, col=0)
-        self.assertEqual(0.25, dist1.kl_divergence(dist2))
+        self.assertEqual(np.nextafter(0.25, 1), dist1.kl_divergence(dist2))
 
     def test_kldiv_inequality_extreme(self):
         DistGauss = self.DistGauss

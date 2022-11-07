@@ -28,8 +28,8 @@ class TestCaseMerge(unittest.TestCase):
         q.fit(data, np.array([0, 1]), 0)
         self.assertEqual(PiecewiseFunction.from_dict({
             ']-∞,1.000[': '0.0',
-            '[1.000,2.000[': '1.000x - 1.000',
-            '[2.000,∞[': '1.0',
+            '[1.0,2.0000000000000004[': '1.000x - 1.000',
+            '[2.0000000000000004,∞[': '1.0',
             }), q.cdf)  # add assertion here
 
     def test_quantile_dist_jump(self):
@@ -133,16 +133,14 @@ class TestCaseMerge(unittest.TestCase):
         # compute likelihood of quantile distributions
         likelihoods = np.array(q1.pdf.multi_eval(data1[:, 0]))
 
-        print(likelihoods > 0)
-        print(q1.cdf.intervals[-2].right)
         # no likelihood should be 0
         self.assertTrue(all(likelihoods > 0))
 
         # start of function should be minimum of data
-        self.assertEqual(q1.pdf.intervals[0].upper, data1[0])
+        self.assertEqual(data1[0], q1.pdf.intervals[1].lowermost())
 
         # end of function should be maximum of data
-        self.assertEqual(q1.pdf.intervals[-1].lower, data1[-1])
+        self.assertEqual(data1[-1], q1.pdf.intervals[-2].uppermost())
 
 
 class TestCasePPFTransform(unittest.TestCase):

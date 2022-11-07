@@ -1,3 +1,5 @@
+import unittest
+
 import os
 import sys
 from unittest import TestCase
@@ -11,6 +13,7 @@ except ModuleNotFoundError:
 
 
 # noinspection PyMethodMayBeStatic
+@unittest.skip
 class ExamplesTestRun(TestCase):
 
     def test_regression(self):
