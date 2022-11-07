@@ -354,7 +354,6 @@ cdef class Impurity:
                      self.indices[self.start:self.end],
                      self.symbolic_vars,
                      result=self.symbols_total)
-
             self.gini_impurity(self.symbols_total, n_samples, self.gini_impurities)
             gini_total = mean(self.gini_impurities)
         else:
@@ -373,13 +372,15 @@ cdef class Impurity:
             symbolic = variable in self.symbolic_features
             symbolic_idx += symbolic
             split_pos = -1
-            impurity_improvement = self.evaluate_variable(variable,
-                                                          symbolic,
-                                                          symbolic_idx,
-                                                          self.variances_total if self.has_numeric_vars() else None,
-                                                          gini_total,
-                                                          self.index_buffer,
-                                                          &split_pos)
+            impurity_improvement = self.evaluate_variable(
+                variable,
+                symbolic,
+                symbolic_idx,
+                self.variances_total if self.has_numeric_vars() else None,
+                gini_total,
+                self.index_buffer,
+                &split_pos
+            )
 
             if impurity_improvement > self.max_impurity_improvement:
                 self.max_impurity_improvement = impurity_improvement
@@ -388,10 +389,12 @@ cdef class Impurity:
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
 
         if self.max_impurity_improvement and self.best_var in self.symbolic_features:
-            self.move_best_values_to_front(self.best_var,
-                                           self.data[self.indices[start + self.best_split_pos],
-                                                     self.best_var],
-                                           &self.best_split_pos)
+            self.move_best_values_to_front(
+                self.best_var,
+                self.data[self.indices[start + self.best_split_pos],
+                          self.best_var],
+                &self.best_split_pos
+            )
 
         return self.max_impurity_improvement
 
@@ -491,11 +494,9 @@ cdef class Impurity:
 
             # Skip calculation for identical values (i.e. until next 'real' split point is reached:
             # for skipping, the sample must not be the last one (1) and consecutive values must be equal (2)
-            subsequent_equal = data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]
-            if subsequent_equal:
-                if numeric and last_iter:
-                    break
-                if not last_iter:
+            if numeric or not last_iter and symbolic:
+                subsequent_equal = data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]
+                if subsequent_equal and not last_iter:
                     continue
 
             impurity_improvement = 0.
