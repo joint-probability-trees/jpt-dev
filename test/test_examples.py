@@ -13,7 +13,6 @@ except ModuleNotFoundError:
 
 
 # noinspection PyMethodMayBeStatic
-@unittest.skip
 class ExamplesTestRun(TestCase):
 
     def test_regression(self):
