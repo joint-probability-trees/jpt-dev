@@ -12,6 +12,8 @@ import numpy as np
 cimport numpy as np
 import tabulate
 from libc.stdio cimport printf
+from libc.math cimport isinf, isnan
+
 from dnutils import mapstr
 
 from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort
@@ -569,7 +571,11 @@ cdef class Impurity:
             result[i] -= 1
             result[i] /= 1. / (<DTYPE_t> self.symbols[i]) - 1.
 
-    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil except -1:
+    cpdef SIZE_t _col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col):
+        '''For testing only.'''
+        return self.col_is_constant(start, end, col)
+
+    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil:
         """
         Check if a column in self.data is a constant, i.e. only contains the same value in every row.
         The column is only evaluated between start and end
@@ -578,17 +584,20 @@ cdef class Impurity:
         :param col: the index of the column
         :return: 1 if it is constant, 0 else 
         """
-        cdef DTYPE_t v_ = nan, v
+        cdef DTYPE_t v_ = nan
+        cdef DTYPE_t v
         cdef SIZE_t i
         if end - start <= 1:
             return True
         for i in range(start, end):
             v = self.data[self.indices[i], col]
-            if v != v:
+            if isinf(v) or isnan(v):
                 return -1
-            if v_ == v: continue
+            if v_ == v:
+                continue
             if v_ != v:
-                if v_ != v_: v_ = v  # NB: x != x is True iff x is NaN or inf
+                if isinf(v_) or isnan(v_):
+                    v_ = v
                 else: return False
         return True
 
@@ -698,13 +707,15 @@ cdef class Impurity:
             split_pos = -1
 
             # evaluate the current variable
-            impurity_improvement = self.evaluate_variable(variable,
-                                                          symbolic,
-                                                          symbolic_idx,
-                                                          self.variances_total if self.has_numeric_vars() else None,
-                                                          gini_total,
-                                                          self.index_buffer,
-                                                          &split_pos)
+            impurity_improvement = self.evaluate_variable(
+                variable,
+                symbolic,
+                symbolic_idx,
+                self.variances_total if self.has_numeric_vars() else None,
+                gini_total,
+                self.index_buffer,
+                &split_pos
+            )
 
             # if the best impurity improvement of this variable is better than the current best
             if impurity_improvement > self.max_impurity_improvement:
@@ -725,10 +736,12 @@ cdef class Impurity:
         if self.max_impurity_improvement and self.best_var in self.symbolic_features:
 
             # TODO IDK
-            self.move_best_values_to_front(self.best_var,
-                                           self.data[self.indices[start + self.best_split_pos],
-                                                     self.best_var],
-                                           &self.best_split_pos)
+            self.move_best_values_to_front(
+                self.best_var,
+                self.data[self.indices[start + self.best_split_pos],
+                          self.best_var],
+                &self.best_split_pos
+            )
 
         # return the best improvement value
         return self.max_impurity_improvement
@@ -840,6 +853,8 @@ cdef class Impurity:
         cdef int last_iter
         cdef DTYPE_t min_samples
 
+        cdef int subsequent_equal
+
         # for every split position as index
         for split_pos in range(n_samples):
 
@@ -880,10 +895,11 @@ cdef class Impurity:
                 self.update_symbolic_stats_with_dependencies(sample_idx,
                                                              self.symbolic_dependency_matrix[var_idx, :])
 
-            # Skip calculation for identical values (i.e. until next 'real' splitpoint is reached:
-            # for skipping, the sample must not be the last one (1) and consequtive values must be equal (2)
-            if not last_iter:
-                if data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]:
+            # Skip calculation for identical values (i.e. until next 'real' split point is reached:
+            # for skipping, the sample must not be the last one (1) and consecutive values must be equal (2)
+            if numeric or not last_iter and symbolic:
+                subsequent_equal = data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]
+                if subsequent_equal and not last_iter:
                     continue
 
             # reset impurity improvement

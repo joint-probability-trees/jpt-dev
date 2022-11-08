@@ -1,19 +1,11 @@
-import statistics
 
-import pandas as pd
-from ddt import ddt, data
 from matplotlib import pyplot as plt
-from pandas import DataFrame
-from scipy.stats import norm
 
 import unittest
 import numpy as np
+import numpy.random
 
 from jpt.base.errors import Unsatisfiability
-
-from jpt.distributions import Numeric, Gaussian, SymbolicType
-from jpt.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
 
 try:
     from jpt.base.intervals import __module__
@@ -36,8 +28,8 @@ class TestCaseMerge(unittest.TestCase):
         q.fit(data, np.array([0, 1]), 0)
         self.assertEqual(PiecewiseFunction.from_dict({
             ']-∞,1.000[': '0.0',
-            '[1.000,2.000[': '1.000x - 1.000',
-            '[2.000,∞[': '1.0',
+            '[1.0,2.0000000000000004[': '1.000x - 1.000',
+            '[2.0000000000000004,∞[': '1.0',
             }), q.cdf)  # add assertion here
 
     def test_quantile_dist_jump(self):
@@ -127,6 +119,28 @@ class TestCaseMerge(unittest.TestCase):
         result.functions.append(ConstantFunction(1))
 
         self.assertEqual(result, merged.cdf)
+
+    def test_likelihood_of_fit(self):
+
+        # sample from uniform distribution from [0,1] (likelihood for every sample should be around 1)
+        data1 = numpy.random.uniform(0, 1, (1000, ))
+        data1 = np.sort(data1).reshape(-1, 1)
+
+        # create quantile distribution
+        q1 = QuantileDistribution()
+        q1.fit(data1, rows=np.array(range(1000)), col=0)
+
+        # compute likelihood of quantile distributions
+        likelihoods = np.array(q1.pdf.multi_eval(data1[:, 0]))
+
+        # no likelihood should be 0
+        self.assertTrue(all(likelihoods > 0))
+
+        # start of function should be minimum of data
+        self.assertEqual(data1[0], q1.pdf.intervals[1].lowermost())
+
+        # end of function should be maximum of data
+        self.assertEqual(data1[-1], q1.pdf.intervals[-2].uppermost())
 
 
 class TestCasePPFTransform(unittest.TestCase):
@@ -303,350 +317,3 @@ class TestCaseQuantileCrop(unittest.TestCase):
         plt.legend()
         plt.title(f'{self._testMethodName} - cropping {self.interval}')
         plt.show()
-
-
-class TestCasePosteriorNumeric(unittest.TestCase):
-
-    varx = None
-    vary = None
-    jpt = None
-    df = None
-
-    @classmethod
-    def f(cls, x):
-        """The function to predict."""
-        # return x * np.sin(x)
-        return x
-
-    @classmethod
-    def setUpClass(cls):
-        SAMPLES = 200
-        gauss1 = Gaussian([-.25, -.25], [[.2, -.07], [-.07, .1]])
-        gauss2 = Gaussian([.5, 1], [[.2, .07], [.07, .05]])
-        gauss1_data = gauss1.sample(SAMPLES)
-        gauss2_data = gauss2.sample(SAMPLES)
-        data = np.vstack([gauss1_data, gauss2_data])
-
-        cls.df = DataFrame({'X': data[:, 0], 'Y': data[:, 1], 'Color': ['R'] * SAMPLES + ['B'] * SAMPLES})
-
-        cls.varx = NumericVariable('X', Numeric, precision=.1)
-        cls.vary = NumericVariable('Y', Numeric, precision=.1)
-        cls.varcolor = SymbolicVariable('Color', SymbolicType('ColorType', ['R', 'B']))
-
-        cls.jpt = JPT(variables=[cls.varx, cls.vary], min_samples_leaf=.01)
-        # cls.jpt = JPT(variables=[cls.varx, cls.vary, cls.varcolor], min_samples_leaf=.1)  # TODO use this once symbolic variables are considered in posterior
-        cls.jpt.learn(cls.df[['X', 'Y']])
-        # cls.jpt.learn(cls.df)  # TODO use this once symbolic variables are considered in posterior
-
-    def test_posterior_numeric_x_given_y_interval(self):
-        self.q = [self.varx]
-        self.e = {self.vary: ContinuousSet(1, 1.5)}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-
-    def test_posterior_numeric_y_given_x_interval(self):
-        self.q = [self.vary]
-        self.e = {self.varx: ContinuousSet(1, 2)}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-
-    def test_posterior_numeric_x_given_y_value(self):
-        self.q = [self.varx]
-        self.e = {self.vary: 0}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-
-    def plot(self):
-        print('Tearing down test method',
-              self._testMethodName,
-              'with calculated posterior',
-              f'Posterior P('
-              f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-
-        # Mesh the input space for evaluations of the real function, the prediction and its MSE
-        X = np.linspace(-2, 2, 100)
-        mean = statistics.mean(self.df['X'])
-        sd = statistics.stdev(self.df['X'])
-        meanr = statistics.mean(self.df[self.df['Color'] == 'R']['X'])
-        sdr = statistics.stdev(self.df[self.df['Color'] == 'R']['X'])
-        meanb = statistics.mean(self.df[self.df['Color'] == 'B']['X'])
-        sdb = statistics.stdev(self.df[self.df['Color'] == 'B']['X'])
-
-        xr = self.df[self.df['Color'] == 'R']['X']
-        xb = self.df[self.df['Color'] == 'B']['X']
-        yr = self.df[self.df['Color'] == 'R']['Y']
-        yb = self.df[self.df['Color'] == 'B']['Y']
-
-        # Plot the data, the pdfs of each dataset and of the datasets combined
-        plt.scatter(xr, yr, color='r', marker='.', label='Training data A')
-        plt.scatter(xb, yb, color='b', marker='.', label='Training data B')
-        plt.plot(sorted(self.df['X']), norm.pdf(sorted(self.df['X']), mean, sd), label='PDF of combined datasets')
-        plt.plot(sorted(xr), norm.pdf(sorted(xr), meanr, sdr), label='PDF of dataset A')
-        plt.plot(sorted(xb), norm.pdf(sorted(xb), meanb, sdb), label='PDF of dataset B')
-
-        # plot posterior
-        for var in self.q:
-            if var not in self.posterior:
-                continue
-            plt.plot(X, self.posterior[var].cdf.multi_eval(X), label=f'Posterior of combined datasets')
-
-        plt.xlabel('$x$')
-        plt.ylabel('$f(x)$')
-        plt.ylim(-2, 5)
-        plt.xlim(-2, 2)
-        plt.legend(loc='upper left')
-        plt.title(f'Posterior P('
-                  f'{",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-        plt.grid()
-        plt.show()
-
-
-class TestCasePosteriorSymbolic(unittest.TestCase):
-
-    data = None
-    variables = None
-    jpt = None
-
-    @classmethod
-    def setUpClass(cls):
-        f_csv = '../examples/data/restaurant.csv'
-        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, blur=.01)
-        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
-        # 1 Bar[BAR_TYPE(SYM)], BOOl
-        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
-        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
-        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
-        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
-        # 6 Rain[RAIN_TYPE(SYM)], BOOL
-        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
-        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
-        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0--10, 10--30, 30--60, >60
-        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL (typically target variable)
-
-        cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(columns=cls.data.values.T)
-
-    def test_posterior_symbolic_single_candidate_T(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[9]: '10--30', self.variables[8]: 'Thai'}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({True}, self.posterior[self.q[-1]].expectation())
-
-    def test_posterior_symbolic_single_candidatet_F(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[9]: '10--30', self.variables[8]: 'Italian'}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({False}, self.posterior[self.q[-1]].expectation())
-
-    def test_posterior_symbolic_evidence_not_in_path_T(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({True}, self.posterior[self.q[-1]].expectation())
-
-    def test_posterior_symbolic_evidence_not_in_path_F(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({False}, self.posterior[self.q[-1]].expectation())
-
-    def test_posterior_symbolic_unsatisfiable(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[9]: '10--30', self.variables[1]: True, self.variables[8]: 'French'}
-        self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
-
-
-class TestCasePosteriorSymbolicAndNumeric(unittest.TestCase):
-
-    data = None
-    variables = None
-    jpt = None
-
-    @classmethod
-    def setUpClass(cls):
-        f_csv = '../examples/data/restaurant-mixed.csv'
-        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=False, precision=.01, blur=.01)
-        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
-        # 1 Bar[BAR_TYPE(SYM)], BOOl
-        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
-        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
-        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
-        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
-        # 6 Rain[RAIN_TYPE(SYM)], BOOL
-        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
-        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
-        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
-        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
-        import logging
-        cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        JPT.logger.setLevel(logging.DEBUG)
-        cls.jpt.learn(columns=cls.data.values.T)
-        # cls.jpt.plot(plotvars=['Food', 'WaitEstimate'], title='Restaurant-Mixed',
-        #              filename='Restaurant-Mixed',
-        #              directory=tempfile.gettempdir(),
-        #              view=True)
-
-    def test_posterior_mixed_single_candidate_T(self):
-        self.q = ['WillWait']
-        self.e = {'WaitEstimate': [0, 0], 'Food': 'Thai'}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({True, False}, self.posterior.distributions[self.q[-1]].expectation())
-
-    def test_posterior_mixed_single_candidatet_F(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Italian'}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({False}, self.posterior.distributions[self.q[-1]].expectation())
-
-    def test_posterior_mixed_evidence_not_in_path_T(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({True}, self.posterior.distributions[self.q[-1]].expectation())
-
-    def test_posterior_mixed_evidence_not_in_path_F(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({False}, self.posterior.distributions[self.q[-1]].expectation())
-
-    def test_posterior_mixed_unsatisfiable(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
-        self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
-
-    def test_posterior_mixed_numeric_query(self):
-        self.q = [self.variables[9]]
-        self.e = {self.variables[8]: 'Burger', self.variables[0]: False}
-        self.posterior = self.jpt.posterior(self.q, self.e)
-
-        # Mesh the input space for evaluations of the real function, the prediction and its MSE
-        xr = self.data[(self.data['Food'] == 'Burger') & (self.data['Alternatives'] == False)]['WaitEstimate']
-
-        # Plot the data, the pdfs of each dataset and of the datasets combined
-        plt.scatter(self.data['WaitEstimate'], [0]*len(self.data), color='b', marker='*', label='All training data')
-        plt.scatter(xr, [0]*len(xr), color='r', marker='.', label='Filtered training data')
-
-    def plot(self):
-        print('Tearing down test method',
-              self._testMethodName,
-              'with calculated posterior',
-              f'Posterior P('
-              f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-        # plot posterior
-        X = np.linspace(-5, 65, 100)
-        for var in self.q:
-            if var not in self.posterior.distributions: continue
-            plt.plot(X,
-                     self.posterior.distributions[var].cdf.multi_eval(np.array([var.domain.values[x] for x in X])),
-                     label=f'Posterior of dataset')
-
-        plt.xlabel('$WaitEstimate [min]$')
-        plt.ylabel('$f(x)$')
-        plt.ylim(-2, 2)
-        plt.xlim(-5, 65)
-        plt.legend(loc='upper left')
-        plt.title(f'Posterior P('
-                  f'{",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'
-                  .replace('$', r'\$'))
-        plt.grid()
-        plt.show()
-
-
-class TestCaseExpectation(unittest.TestCase):
-
-    jpt = None
-    data = None
-    variables = None
-
-    @classmethod
-    def setUpClass(cls):
-        f_csv = '../examples/data/restaurant-mixed.csv'
-        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, blur=.01)
-        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
-        # 1 Bar[BAR_TYPE(SYM)], BOOl
-        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
-        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
-        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
-        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
-        # 6 Rain[RAIN_TYPE(SYM)], BOOL
-        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
-        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
-        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
-        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
-
-        cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(columns=cls.data.values.T)
-        # cls.jpt.plot(#plotvars=['WaitEstimate'],
-        #              title='Restaurant-Mixed',
-        #              filename='Restaurant-Mixed',
-        #              directory=tempfile.gettempdir(),
-        #              view=False)
-
-    def test_expectation_mixed_single_candidate_T(self):
-        self.q = ['WillWait', 'Friday']
-        self.e = {'WaitEstimate': [10, 30],
-                  'Food': 'Thai'}
-        self.expectation = self.jpt.expectation(self.q, self.e)
-        self.assertEqual([True, False], [e.result for e in self.expectation.values()])
-
-    def test_expectation_mixed_unsatisfiable(self):
-        self.q = ['WillWait']
-        self.e = {'WaitEstimate': [70, 80],
-                  'Bar': True,
-                  'Food': 'French'}
-        self.assertRaises(Unsatisfiability, self.jpt.expectation, self.q, self.e)
-
-
-class TestCaseInference(unittest.TestCase):
-
-    jpt = None
-    data = None
-    variables = None
-
-    @classmethod
-    def setUpClass(cls):
-        f_csv = '../examples/data/restaurant-mixed.csv'
-        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data,
-                                             scale_numeric_types=True,
-                                             precision=.01,
-                                             blur=.01)
-        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
-        # 1 Bar[BAR_TYPE(SYM)], BOOl
-        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
-        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
-        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
-        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
-        # 6 Rain[RAIN_TYPE(SYM)], BOOL
-        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
-        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
-        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
-        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
-
-        cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(columns=cls.data.values.T)
-        # cls.jpt.plot(title='Restaurant-Mixed',
-        #              filename='Restaurant-Mixed',
-        #              directory=tempfile.gettempdir(),
-        #              view=False)
-
-    def test_inference_mixed_single_candidate_T(self):
-        self.q = {'WillWait': True}
-        self.e = {'WaitEstimate': [0, 10], 'Food': 'Thai'}
-        inference = self.jpt.infer(self.q, self.e)
-        self.assertEqual(2 / 3, inference.result)
-
-    def test_inference_mixed_neu(self):
-        self.q = [self.variables[-1]]
-        self.e = {self.variables[-1]: True}
-        posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({True}, posterior.distributions['WillWait'].expectation())
-
-    # def tearDown(self):
-    #     print('Tearing down test method',
-    #           self._testMethodName,
-    #           'with calculated posterior',
-    #           f'Posterior P(' +
-    #           f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k}={v}" for k, v in self.e.items()])})')
-

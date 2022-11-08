@@ -14,7 +14,7 @@ import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 from itertools import zip_longest
-from typing import Dict, List, Tuple, Any, Union
+from typing import Dict, List, Tuple, Any, Union, Iterable
 
 import numpy as np
 import numpy.lib.stride_tricks
@@ -29,7 +29,7 @@ import jpt.variables
 from .base.utils import prod
 from .base.errors import Unsatisfiability
 
-from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable
+from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable, VariableAssignment
 from .distributions import Distribution
 
 from .base.utils import list2interval, format_path, normalized
@@ -453,6 +453,7 @@ class Leaf(Node):
         super().__init__(idx, parent=parent)
         self.distributions = VariableMap()
         self.prior = prior
+        self.s_indices = []
 
     @property
     def str_node(self) -> str:
@@ -488,6 +489,7 @@ class Leaf(Node):
                 'distributions': self.distributions.to_json(),
                 'prior': self.prior,
                 'samples': self.samples,
+                's_indices': [int(i) for i in self.s_indices],
                 'parent': ifnone(self.parent, None, attrgetter('idx')),
                 'child_idx': self.parent.children.index(self) if self.parent is not None else -1}
 
@@ -500,6 +502,8 @@ class Leaf(Node):
             leaf.parent.set_child(data['child_idx'], leaf)
         leaf.prior = data['prior']
         leaf.samples = data['samples']
+        if 's_indices' in data:
+            leaf.s_indices = np.array(data['s_indices'])
         tree.leaves[leaf.idx] = leaf
         return leaf
 
@@ -687,11 +691,11 @@ class JPT:
         self.priors = {}
 
         self._min_samples_leaf = min_samples_leaf
+        self._keep_samples = False
         self.min_impurity_improvement = ifnone(min_impurity_improvement, 0)
 
         # a map saving the minimal distances to prevent infinite high likelihoods
         self.minimal_distances: VariableMap = VariableMap({var: 1. for var in self.numeric_variables}.items())
-
         self._numsamples = 0
         self.root = None
         self.c45queue = deque()
@@ -976,7 +980,7 @@ class JPT:
                   report_inconsistencies: bool = False) -> PosteriorResult:
         '''
 
-        :param variables:        the query variables of the posterior to be computed
+        :param variables:   the query variables of the posterior to be computed
         :param evidence:    the evidence given for the posterior to be computed
         :param fail_on_unsatisfiability: wether or not an ``Unsatisfiability`` error is raised if the
                                          likelihood of the evidence is 0.
@@ -1061,10 +1065,10 @@ class JPT:
         return result
 
     def expectation(self,
-                    variables=None,
-                    evidence=None,
-                    confidence_level=None,
-                    fail_on_unsatisfiability=True) -> ExpectationResult:
+                    variables: Iterable[Variable] = None,
+                    evidence: VariableAssignment = None,
+                    confidence_level: float = None,
+                    fail_on_unsatisfiability: bool = True) -> ExpectationResult:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -1216,8 +1220,7 @@ class JPT:
                     else:
                         query_[var] = ContinuousSet(val, val)
                 elif isinstance(arg, ContinuousSet):
-                    query_[var] = ContinuousSet(var.domain.values[arg.lower],
-                                                var.domain.values[arg.upper], arg.left, arg.right)
+                    query_[var] = var.domain.label2value(arg)
                 elif isinstance(arg, RealSet):
                     query_[var] = RealSet([ContinuousSet(var.domain.labels[i.lower],
                                                          var.domain.labels[i.upper],
@@ -1294,6 +1297,8 @@ class JPT:
                                                              col=i)
             leaf.prior = n_samples / data.shape[0]
             leaf.samples = n_samples
+            if self._keep_samples:
+                leaf.s_indices = self.indices[start:end]
 
             self.leaves[leaf.idx] = leaf
 
@@ -1403,7 +1408,7 @@ class JPT:
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
-    def learn(self, data=None, rows=None, columns=None) -> 'JPT':
+    def learn(self, data=None, rows=None, columns=None, keep_samples=False) -> 'JPT':
         '''Fits the ``data`` into a regression tree.
 
         :param data:    The training examples (assumed in row-shape)
@@ -1412,6 +1417,9 @@ class JPT:
         :type rows:     [[str or float or bool]]; (according to `self.variables`)
         :param columns: The training examples (assumed in row-shape)
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
+        :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
+                        purposes only. Default is false.
+        :type keep_samples:  bool
         '''
         # ----------------------------------------------------------------------------------------------------------
         # Check and prepare the data
@@ -1455,6 +1463,8 @@ class JPT:
             min_samples_leaf = max(1, int(self._min_samples_leaf * len(_data)))
         else:
             min_samples_leaf = self._min_samples_leaf
+
+        self._keep_samples = keep_samples
 
         # Initialize the impurity calculation
         self.impurity = Impurity(self)

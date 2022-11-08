@@ -4,9 +4,9 @@ from unittest import TestCase
 import numpy as np
 import pandas as pd
 
-from jpt.distributions import SymbolicType, Bool
+from jpt.distributions import SymbolicType, Bool, Numeric
 from jpt.trees import JPT
-from jpt.variables import SymbolicVariable
+from jpt.variables import SymbolicVariable, NumericVariable
 
 try:
     from jpt.learning.impurity import __module__
@@ -61,4 +61,18 @@ class ImpurityTest(TestCase):
         self.assertEqual({0, 2, 5, 7}, set(impurity.indices[:4]))
         self.assertEqual({1, 3, 4, 8, 9, 11}, set(impurity.indices[4:10]))
         self.assertEqual({6, 10}, set(impurity.indices[10:]))
+
+    def test_col_is_constant(self):
+        jpt = JPT(variables=[NumericVariable('x1', domain=Numeric), NumericVariable('x2', domain=Numeric)])
+        impurity = Impurity(jpt)
+        impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
+
+        data = np.array([[1, 0, np.nan], [1, 1, 0]], dtype=np.float64)
+        impurity.setup(data, np.array(list(range(data.shape[0]))))
+        self.assertTrue(impurity._col_is_constant(0, 2, 0))
+        self.assertFalse(impurity._col_is_constant(0, 2, 1))
+        self.assertEqual(-1, impurity._col_is_constant(0, 2, 2))
+        self.assertTrue(impurity._col_is_constant(1, 2, 0))
+        self.assertTrue(impurity._col_is_constant(1, 2, 1))
+        self.assertTrue(impurity._col_is_constant(1, 2, 2))
 

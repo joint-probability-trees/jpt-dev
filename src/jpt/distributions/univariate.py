@@ -38,7 +38,7 @@ except ModuleNotFoundError:
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
-    from ..base.functions import LinearFunction, PiecewiseFunction
+    from ..base.functions import LinearFunction, PiecewiseFunction, ConstantFunction
     from .quantile.quantiles import QuantileDistribution
 
 
@@ -505,23 +505,27 @@ class Numeric(Distribution):
 
     # noinspection DuplicatedCode
     @classmethod
-    def value2label(cls, value: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+    def value2label(cls, value: Union[numbers.Real, NumberSet]) -> Union[numbers.Real, NumberSet]:
         if isinstance(value, ContinuousSet):
             return ContinuousSet(cls.labels[value.lower], cls.labels[value.upper], value.left, value.right)
+        elif isinstance(value, RealSet):
+            return RealSet([cls.value2label(i) for i in value.intervals])
         elif isinstance(value, numbers.Real):
             return cls.labels[value]
         else:
-            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(value).__name__)
+            raise TypeError('Expected float or NumberSet type, got %s.' % type(value).__name__)
 
     # noinspection DuplicatedCode
     @classmethod
-    def label2value(cls, label: Union[numbers.Real, ContinuousSet]) -> Union[numbers.Real, ContinuousSet]:
+    def label2value(cls, label: Union[numbers.Real, NumberSet]) -> Union[numbers.Real, NumberSet]:
         if isinstance(label, ContinuousSet):
             return ContinuousSet(cls.values[label.lower], cls.values[label.upper], label.left, label.right)
+        elif isinstance(label, RealSet):
+            return RealSet([cls.label2value(i) for i in label.intervals])
         elif isinstance(label, numbers.Real):
             return cls.values[label]
         else:
-            raise TypeError('Expected float or ContinuousSet type, got %s.' % type(label).__name__)
+            raise TypeError('Expected float or NumberSet type, got %s.' % type(label).__name__)
 
     @classmethod
     def equiv(cls, other):
@@ -595,24 +599,25 @@ class Numeric(Distribution):
         return self
 
     def _p(self, value: Union[numbers.Number, NumberSet]) -> numbers.Real:
-        if isinstance(value, numbers.Number) and np.isinf(self.pdf.eval(value)):
-            return 0
+        if isinstance(value, numbers.Number):
+            value = ContinuousSet(value, value)
         elif isinstance(value, RealSet):
             return sum(self._p(i) for i in value.intervals)
-        elif value.lower == value.upper and not value.isempty() and np.isinf(self.pdf.eval(value.lower)):
-            return 1
-        return ((self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
-                (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
+        probspace = self.pdf.gt(0)
+        if probspace.isdisjoint(value):
+            return 0
+        probmass = ((self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
+                    (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
+        if not probmass:
+            return probspace in value
+        return probmass
 
     def p(self, labels: Union[numbers.Number, NumberSet]) -> numbers.Real:
         if not isinstance(labels, (NumberSet, numbers.Number)):
             raise TypeError('Argument must be numbers.Number or '
                             'jpt.base.intervals.NumberSet (got %s).' % type(labels))
         if isinstance(labels, ContinuousSet):
-            return self._p(ContinuousSet(self.values[labels.lower],
-                                         self.values[labels.upper],
-                                         labels.left,
-                                         labels.right))
+            return self._p(self.label2value(labels))
         elif isinstance(labels, RealSet):
             self._p(RealSet([ContinuousSet(self.values[i.lower],
                                            self.values[i.upper],
@@ -744,28 +749,44 @@ class Numeric(Distribution):
         ax.set_title(f'{title or f"CDF of {self._cl}"}')
         ax.set_xlabel(xlabel)
         ax.set_ylabel('%')
-        std = ifnot(np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
-                    self.cdf.intervals[1].upper - self.cdf.intervals[1].lower) * 2
-        bounds = np.array([self.cdf.intervals[0].upper - std / 2] +
-                          [v.upper for v in self.cdf.intervals[:-2]] +
-                          [self.cdf.intervals[-1].lower] +
-                          [self.cdf.intervals[-1].lower + std / 2])
+        ax.set_ylim(-.1, 1.1)
 
-        bounds_ = np.array([self.labels[b] for b in bounds])
-        ax.plot(bounds_,
-                np.asarray(self.cdf.multi_eval(bounds)),
+        if len(self.cdf.intervals) == 2:
+            std = abs(self.cdf.intervals[0].upper) * .1
+        else:
+            std = ifnot(np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
+                        self.cdf.intervals[1].upper - self.cdf.intervals[1].lower) * 2
+
+        # add horizontal line before first interval of distribution
+        X = np.array([self.cdf.intervals[0].upper - std])
+
+        for i, f in zip(self.cdf.intervals[:-1], self.cdf.functions[:-1]):
+            if isinstance(f, ConstantFunction):
+                X = np.append(X, [np.nextafter(i.upper, i.upper - 1), i.upper])
+            else:
+                X = np.append(X, i.upper)
+
+        # add horizontal line after last interval of distribution
+        X = np.append(X, self.cdf.intervals[-1].lower + std)
+        X_ = np.array([self.labels[x] for x in X])
+        Y = np.array(self.cdf.multi_eval(X))
+        ax.plot(X_,
+                Y,
                 color='cornflowerblue',
                 linestyle='dashed',
                 label='Piecewise linear CDF from bounds',
                 linewidth=2,
                 markersize=12)
 
-        ax.scatter(bounds_[1:-1],
-                   np.asarray(self.cdf.multi_eval(bounds[1:-1])),
+        bounds = np.array([i.upper for i in self.cdf.intervals[:-1]])
+        bounds_ = np.array([self.labels[b] for b in bounds])
+        ax.scatter(bounds_,
+                   np.asarray(self.cdf.multi_eval(bounds)),
                    color='orange',
                    marker='o',
                    label='Piecewise Function limits')
-        ax.legend()  # do we need a legend with only one plotted line?
+
+        ax.legend(loc='upper left', prop={'size': 8})  # do we need a legend with only one plotted line?
         fig.tight_layout()
 
         save_plot(fig, directory, fname or self.__class__.__name__, fmt='pdf' if pdf else 'svg')

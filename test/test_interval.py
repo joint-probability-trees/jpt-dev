@@ -102,10 +102,16 @@ class IntervalTest(unittest.TestCase):
         ('[0,2]', '[0,1]', True),
         ('[0,2]', '[1,2[', True),
         ('[0,2]', '[0,1[', True),
+        (ContinuousSet(0, np.nextafter(0, 1), INC, EXC), '[0,0]', True),
+        ('[0,0]', ContinuousSet(0, np.nextafter(0, 1), INC, EXC), True),
     )
     @unpack
     def test_interval_containment(self, i1, i2, o):
-        self.assertEqual(o, ContinuousSet.parse(i1).contains_interval(ContinuousSet.parse(i2)))
+        if type(i1) is str:
+            i1 = ContinuousSet.parse(i1)
+        if type(i2) is str:
+            i2 = ContinuousSet.parse(i2)
+        self.assertEqual(o, i1.contains_interval(i2))
 
     @data(
         ('[0, 2]', '[.5, 1.5]', True),
