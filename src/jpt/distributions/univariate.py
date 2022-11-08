@@ -587,11 +587,10 @@ class Numeric(Distribution):
         return _max, RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
                               if function.value == _max])
 
-    def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Numeric':
+    def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None,
+            leftmost=np.nan, rightmost=np.nan) -> 'Numeric':
         self._quantile = QuantileDistribution(epsilon=self.precision)
-        self._quantile.fit(data,
-                           rows=rows,
-                           col=col)
+        self._quantile.fit(data, rows=rows, col=col, leftmost=leftmost, rightmost=rightmost)
         return self
 
     def set(self, params: QuantileDistribution) -> 'Numeric':

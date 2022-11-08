@@ -1068,7 +1068,7 @@ class JPT:
                     variables: Iterable[Variable] = None,
                     evidence: VariableAssignment = None,
                     confidence_level: float = None,
-                    fail_on_unsatisfiability: bool = True) -> ExpectationResult:
+                    fail_on_unsatisfiability: bool = True) -> VariableMap or None:
         '''
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.

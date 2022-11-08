@@ -331,15 +331,24 @@ class PCALeaf(jpt.trees.Node):
                 numeric_index = self.numeric_indices.index(idx)
 
                 # get all points that need to be inverse transformed in "eigen" coordinates
-                points_on_axis = [interval.upper for interval in distribution.cdf.intervals[:-1]]
+                points_on_eigen_axis = [interval.upper for interval in distribution.cdf.intervals[:-1]]
 
                 # construct the whole matrix in "eigen" coordinates
-                points = np.zeros((len(points_on_axis), len(self.numeric_indices)))
-                points[:, numeric_index] = points_on_axis
+                points = np.zeros((len(points_on_eigen_axis), len(self.numeric_indices)))
+                points[:, numeric_index] = points_on_eigen_axis
 
                 # get the axis of the variable in "data" coordinates
                 points_on_data_axis = np.concatenate((np.sort(self.inverse_transform(points)[:, numeric_index]),
                                                      [np.PINF]))
+
+                print(variable.name)
+                print(points)
+                print(points_on_data_axis)
+                print(distribution.domain())
+                print(evidence_[variable])
+                print(evidence[variable])
+                print("eigen coordinates", points_on_eigen_axis)
+                print("------------------------------------------------------------------")
 
                 # list that holds the functions for the posterior distribution
                 posterior_functions = [LinearFunction(0, 0)]
@@ -365,6 +374,15 @@ class PCALeaf(jpt.trees.Node):
                     # append new function and intervals
                     posterior_functions.append(LinearFunction(m, c))
                     posterior_intervals.append(posterior_interval)
+
+                # modify last possible interval
+                posterior_intervals[-1] = ContinuousSet(posterior_intervals[-1].lower,
+                                                        np.nextafter(posterior_intervals[-1].upper,
+                                                                     posterior_intervals[-1].upper + 1), INC, EXC)
+
+                # add final interval and function
+                posterior_functions.append(LinearFunction(0, 1))
+                posterior_intervals.append(ContinuousSet(posterior_intervals[-1].upper, np.PINF))
 
                 # construct posterior piecewise function
                 posterior_piecewise_function = PiecewiseFunction()
@@ -567,7 +585,7 @@ class PCALeaf(jpt.trees.Node):
             elif isinstance(variable, NumericVariable):
 
                 # get the likelihoods
-                probs = np.asarray(distribution.pdf.multi_eval(queries_[:, idx].copy(order='C').astype(float)))
+                probs = np.asarray(distribution.pdf.multi_eval(np.ascontiguousarray(queries_[:, idx])))
 
                 if min_distances:
 
@@ -853,9 +871,20 @@ class PCAJPT(jpt.trees.JPT):
 
             # fit distributions
             for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.distribution().fit(data=data,
-                                                             rows=self.indices[start:end],
-                                                             col=i)
+
+                # this is a workaround due to a precision bug in transforms
+                if v.numeric:
+                    distribution_data = leaf.transform(original_data[np.ix_(self.indices[start:end],
+                                                                            self.numeric_indices)])
+
+                    leaf.distributions[v] = v.distribution().fit(data=distribution_data,
+                                                                 rows=np.array(range(len(distribution_data))),
+                                                                 col=leaf.numeric_indices.index(i))
+                else:
+                    leaf.distributions[v] = v.distribution().fit(data=data,
+                                                                 rows=self.indices[start:end],
+                                                                 col=i)
+
             leaf.samples = n_samples
 
             self.leaves[leaf.idx] = leaf
@@ -979,19 +1008,84 @@ class PCAJPT(jpt.trees.JPT):
 
         return probabilities
 
-    def expectation(self, variables=None, evidence=None, confidence_level=None, fail_on_unsatisfiability=True) \
-            -> jpt.trees.ExpectationResult:
+    def infer(self,
+              query: Union[Dict[Union[Variable, str], Any], VariableMap],
+              evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = None,
+              fail_on_unsatisfiability: bool = True) -> jpt.trees.Result:
+
+        # preprocess variable maps
+        query_ = self._preprocess_query(query)
+        evidence_ = self._preprocess_query(evidence)
+
+        # create (Q,E)
+        query_and_evidence = VariableMap()
+        for variable, restriction in query_.items():
+            if variable in evidence_.keys():
+                query_and_evidence = restriction.union(evidence_[variable])
+            else:
+                query_and_evidence[variable] = restriction
+
+        # initialize result
+        result = jpt.trees.Result(query, evidence)
+
+        p_q = 0.
+        p_e = 0.
+
+        for leaf in self.leaves.values():
+            p_e += leaf.probability(evidence_) * leaf.prior
+
+        # handle impossible evidence
+        if p_e == 0.:
+            if fail_on_unsatisfiability:
+                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence))
+            return None
+
+        # set probability
+        result.result = p_q/p_e
+
+        return result
+
+
+    def expectation(self,
+                    variables: List[Union[Variable, str]] = None,
+                    evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = VariableMap(),
+                    confidence_level: float = 0.95,
+                    fail_on_unsatisfiability: bool = True) \
+            -> VariableMap or None:
         """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
 
-        :param variables:
-        :param evidence:
-        :param confidence_level:
-        :param fail_on_unsatisfiability:
-        :return:
+        :param variables: the variables to calculate the expectation on
+        :param evidence: the observation
+        :param confidence_level: the confidence levels for the resulting intervals
+        :param fail_on_unsatisfiability: rather to raise an exception if P(evidence) = 0 or not
+        :return: ExpectationResult
         """
-        raise NotImplementedError()
+
+        # initialize variables
+        variables = variables or self.variables
+
+        # calculate posteriors
+        posteriors = self.posterior(variables, evidence, fail_on_unsatisfiability)
+
+        if posteriors is None:
+            return None
+
+        final = VariableMap()
+        for var, dist in posteriors.distributions.items():
+            result = jpt.trees.ExpectationResult(var, posteriors._evidence, confidence_level)
+            result._res = dist._expectation()
+            result.candidates.extend(posteriors.candidates)
+            result.weights = posteriors.weights
+            result.candidate_dists = posteriors.candidate_dists[var]
+            result.distribution = dist
+            if var.numeric:
+                exp_quantile = dist.cdf.eval(result._res)
+                result._lower = dist.ppf.eval((1 - confidence_level) / 2)
+                result._upper = dist.ppf.eval(1 - (1 - confidence_level) / 2)
+            final[var] = result
+        return final
 
     def posterior(self,
                   variables: List[Union[Variable, str]] = None,
@@ -1047,7 +1141,7 @@ class PCAJPT(jpt.trees.JPT):
 
         # construct posterior result
         posterior_result = jpt.trees.PosteriorResult(variables, evidence)
-        posterior_result.result = VariableMap(result.items())
+        posterior_result.distributions = VariableMap(result.items())
         return posterior_result
 
     def conditional_jpt(self, evidence: VariableMap):

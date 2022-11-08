@@ -161,7 +161,7 @@ cdef class QuantileDistribution:
                                                                  self._cdf.intervals[-1].upper + 1), INC, EXC)
 
             self._cdf.functions.append(ConstantFunction(1))
-            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, EXC, EXC))
+            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
         else:
             x = data_buffer[0, :]
             y = data_buffer[1, :]
