@@ -15,7 +15,7 @@ from jpt.base.utils import list2interval
 from jpt.distributions.quantile.quantiles import QuantileDistribution
 
 
-def plot_numeric_pdf(distribution: jpt.distributions.univariate.Numeric, padding=0.1):
+def plot_numeric_pdf(distribution: jpt.distributions.univariate.Numeric, padding=0.1, name="PDF", transpose=False):
     x = []
     y = []
     for interval, function in zip(distribution.pdf.intervals[1:-1], distribution.pdf.functions[1:-1]):
@@ -25,7 +25,11 @@ def plot_numeric_pdf(distribution: jpt.distributions.univariate.Numeric, padding
     range = x[-1] - x[0]
     x = [x[0] - (range * padding), x[0], x[0]] + x + [x[-1], x[-1], x[-1] + (range * padding)]
     y = [0, 0, None] + y + [None, 0, 0]
-    trace = go.Scatter(x=x, y=y, name="PDF")
+
+    if not transpose:
+        trace = go.Scatter(x=x, y=y, name=name)
+    else:
+        trace = go.Scatter(x=y, y=x, name=name)
     return trace
 
 
@@ -52,6 +56,7 @@ class TestPCAJPTiris(unittest.TestCase):
 class TestPCAJPT2D(unittest.TestCase):
 
     def setUp(self) -> None:
+        numpy.random.seed(42)
         self.distribution_1 = numpy.random.uniform([1, 1], [2, 2], (100, 2)).astype(np.float64)
         distribution_2 = numpy.random.uniform([6, 7], [8, 9], (120, 2)).astype(np.float64)
         rotation = np.array([[0.239746, 1.],
@@ -67,10 +72,14 @@ class TestPCAJPT2D(unittest.TestCase):
 
         self.model.fit(self.data)
 
+
     def test_separating_line(self):
         """
         This test case has to be verified visually, by confirming that the drawn line looks distances maximizing.
         """
+
+        show = False
+
         def eval_(x):
             return (self.model.root.splits[0].upper - self.model.root.variables["X"] * x) / \
                    self.model.root.variables["Y"]
@@ -81,6 +90,7 @@ class TestPCAJPT2D(unittest.TestCase):
         ps = np.concatenate((p1, p2),)
 
         fig = go.Figure()
+        fig.update_layout(title="Visualization of PCAJPTs")
 
         # plot data
         fig.add_trace(go.Scatter(x=self.data[:, 0], y=self.data[:, 1], mode="markers", name="Ground Truth"))
@@ -88,12 +98,38 @@ class TestPCAJPT2D(unittest.TestCase):
         # plot separating plane
         fig.add_trace(go.Scatter(x=ps[:, 0], y=ps[:, 1], name="Separating Plane"))
 
-        coordinate_frame = np.array([[0, 1], [0, 0], [1, 0]])
         for leaf in self.model.leaves.values():
-            transformed_coordinate_frame = leaf.inverse_transform(coordinate_frame)
-            fig.add_trace(go.Scatter(x=transformed_coordinate_frame[:, 0], y=transformed_coordinate_frame[:, 1],
-                                     mode="lines+markers", name="Principal Components of Leaf %s" % leaf.idx))
-        # fig.show()
+            x_axis_coordinates_eigen = [[leaf.numeric_domains_eigen["X"].lower, 0],
+                                        [leaf.numeric_domains_eigen["X"].upper, 0]]
+            x_axis_coordinates_data = leaf.inverse_transform(x_axis_coordinates_eigen)
+
+            fig.add_trace(go.Scatter(x=x_axis_coordinates_data[:, 0], y=x_axis_coordinates_data[:, 1],
+                                     mode="lines+markers", name="Principal Component 1 of Leaf %s" % leaf.idx))
+
+            y_axis_coordinates_eigen = [[0, leaf.numeric_domains_eigen["Y"].lower],
+                                        [0, leaf.numeric_domains_eigen["Y"].upper]]
+            y_axis_coordinates_data = leaf.inverse_transform(y_axis_coordinates_eigen)
+
+            fig.add_trace(go.Scatter(x=y_axis_coordinates_data[:, 0], y=y_axis_coordinates_data[:, 1],
+                                     mode="lines+markers", name="Principal Component 2 of Leaf %s" % leaf.idx))
+
+            likelihoods = leaf.parallel_likelihood(self.data)
+            corresponding_data = self.data[likelihoods > 0]
+            corresponding_data_eigen = leaf.transform(corresponding_data)
+            leaf_figure = go.Figure()
+            leaf_figure.update_layout(title="Leaf %s" % leaf.idx)
+            leaf_figure.add_trace(go.Scatter(x=corresponding_data_eigen[:, 0], y=corresponding_data_eigen[:, 1],
+                                             mode="markers", name="Ground Truth"))
+            leaf_figure.add_trace(plot_numeric_pdf(leaf.distributions["X"], name="PDF of X"))
+            leaf_figure.add_trace(plot_numeric_pdf(leaf.distributions["Y"], name="PDF of Y", transpose=True))
+
+            if show:
+                leaf_figure.show()
+
+        if show:
+            fig.show()
+
+        self.model.plot(plotvars=self.model.variables)
 
     def test_likelihood(self):
         """Check that the likelihood of each datapoint is > 0"""
@@ -174,6 +210,19 @@ class TestPCAJPT2D(unittest.TestCase):
         evidence[self.model.varnames["X"]] = list2interval([0, 3])
         conditional_model = self.model.conditional_jpt(evidence)
 
+    def test_infer(self):
+        evidence = jpt.variables.VariableMap()
+        evidence[self.model.varnames["X"]] = list2interval([1, 2])
+        evidence[self.model.varnames["Y"]] = list2interval([1, 2])
+
+        # check base case
+        # self.assertEqual(self.model.infer().result, 1.)
+
+        # check with evidence
+        # self.assertEqual(self.model.infer(evidence=evidence).result, 1.)
+        print("mins", self.distribution_1.min(axis=0))
+        print("maxs", self.distribution_1.max(axis=0))
+        print(self.model.infer(evidence).result)
 
 if __name__ == '__main__':
     unittest.main()

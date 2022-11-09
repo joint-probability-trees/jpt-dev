@@ -174,10 +174,34 @@ class PCALeaf(jpt.trees.Node):
 
         self.numeric_indices = numeric_indices
 
-        self.numeric_domains_: VariableMap or None = None
+        self.numeric_domains_data_: VariableMap or None = None
+        self.numeric_domains_eigen_: VariableMap or None = None
 
     @property
-    def numeric_domains(self) -> VariableMap:
+    def numeric_domains_eigen(self) -> VariableMap:
+        """
+        Get the minimum and maximum values of the numeric variables of this leaf in the "eigen" coordinates.
+
+        :return: VariableMap that maps every numeric variable to a ContinuousSet
+        """
+
+        # if it already has been calculated return it
+        if self.numeric_domains_eigen_ is not None:
+            return self.numeric_domains_eigen_
+
+        # initialize numeric domains in eigen coordinates
+        self.numeric_domains_eigen_ = VariableMap()
+
+        # for every numeric variable
+        for variable in self.numeric_variables():
+
+            # set the domain
+            self.numeric_domains_eigen_[variable] = self.distributions[variable].domain()
+
+        return self.numeric_domains_eigen_
+
+    @property
+    def numeric_domains_data(self) -> VariableMap:
         """
         Get the minimum and maximum values of the numeric variables of this leaf in the "data" coordinates.
 
@@ -185,35 +209,29 @@ class PCALeaf(jpt.trees.Node):
         """
 
         # if it already has been calculated return it
-        if self.numeric_domains_ is not None:
-            return self.numeric_domains_
+        if self.numeric_domains_data_ is not None:
+            return self.numeric_domains_data_
 
         # initialize matrix to hold ranges in "eigen" coordinates
         ranges = np.ndarray((2, len(self.numeric_indices)))
 
-        # for every numeric variable and their distribution and their index
-        for idx, (variable, distribution) in enumerate([(variable, distribution) for variable, distribution
-                                                        in self.distributions.items() if variable.numeric]):
-            domain = distribution.domain()
+        # for every numeric variable and its index
+        for idx, domain in enumerate(self.numeric_domains_eigen.values()):
+
+            # write the domain into the ranges array
             ranges[:, idx] = [domain.lower, domain.upper]
 
+        # transform ranges from eigen to data coordinates
         ranges = self.inverse_transform(ranges)
 
-        # initialize result
-        result = dict()
+        # initialize numeric domain in data coordinate
+        self.numeric_domains_data_ = VariableMap()
 
         # rewrite the transformed ranges to the resulting map
-        for idx, range_ in enumerate(ranges.T):
+        for variable, range_ in zip(self.numeric_variables(), ranges.T):
+            self.numeric_domains_data_[variable] = ContinuousSet(min(range_), max(range_))
 
-            # get the corresponding numeric variable
-            variable = list(self.distributions.keys())[self.numeric_indices[idx]]
-
-            # use min/max here since the transformation can invert axis without semantics
-            result[variable] = ContinuousSet(min(range_), max(range_))
-
-        # construct VariableMap
-        self.numeric_domains_ = VariableMap(result.items())
-        return self.numeric_domains_
+        return self.numeric_domains_data_
 
     @property
     def str_node(self) -> str:
@@ -259,7 +277,7 @@ class PCALeaf(jpt.trees.Node):
             if variable.numeric:
 
                 # get the value range for the transformation
-                restriction = query[variable] if variable in query.keys() else self.numeric_domains[variable]
+                restriction = query[variable] if variable in query.keys() else self.numeric_domains_data[variable]
 
                 # write to transformation matrix
                 ranges[:, self.numeric_indices.index(idx)] = np.array([restriction.lower, restriction.upper])
@@ -1009,8 +1027,8 @@ class PCAJPT(jpt.trees.JPT):
         return probabilities
 
     def infer(self,
-              query: Union[Dict[Union[Variable, str], Any], VariableMap],
-              evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = None,
+              query: Union[Dict[Union[Variable, str], Any], VariableMap] = VariableMap(),
+              evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = VariableMap(),
               fail_on_unsatisfiability: bool = True) -> jpt.trees.Result:
 
         # preprocess variable maps
@@ -1019,20 +1037,55 @@ class PCAJPT(jpt.trees.JPT):
 
         # create (Q,E)
         query_and_evidence = VariableMap()
-        for variable, restriction in query_.items():
+
+        # for every variable in the union of query and evidence variables
+        for variable in set(query_.keys()).union(set(evidence_.keys())):
+
+            # initialize restriction
+            restriction = None
+
+            # get restriction from query if possible
+            if variable in query_.keys():
+                restriction = query_[variable]
+
+            # check if variable is in evidence
             if variable in evidence_.keys():
-                query_and_evidence = restriction.union(evidence_[variable])
-            else:
-                query_and_evidence[variable] = restriction
+
+                # if restriction was not in query, set it
+                if restriction is None:
+                    restriction = evidence_[variable]
+
+                # else join them
+                else:
+                    restriction = restriction.intersection(evidence_[variable])
+
+            # set restriction
+            query_and_evidence[variable] = restriction
 
         # initialize result
         result = jpt.trees.Result(query, evidence)
 
+        # initialize probabilities
         p_q = 0.
         p_e = 0.
 
+        # for every leaf
         for leaf in self.leaves.values():
+
+            # sum up probabilities
             p_e += leaf.probability(evidence_) * leaf.prior
+            p_q += leaf.probability(query_and_evidence) * leaf.prior
+            print("E (data)", evidence_)
+            print("Q,E (data)", query_and_evidence)
+            print("numeric domains (data)", leaf.numeric_domains_data)
+
+            print("E (eigen)", leaf.transform_variable_map(evidence_))
+            print("Q,E (eigen)", leaf.transform_variable_map(query_and_evidence))
+            print("numeric domains (eigen)", leaf.numeric_domains_eigen)
+
+            print("p_e", leaf.probability(evidence_))
+            print("p_q", leaf.probability(query_and_evidence))
+            print("-------------------------------------------------------------")
 
         # handle impossible evidence
         if p_e == 0.:
@@ -1040,11 +1093,10 @@ class PCAJPT(jpt.trees.JPT):
                 raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence))
             return None
 
-        # set probability
+        # calculate conditional probability
         result.result = p_q/p_e
 
         return result
-
 
     def expectation(self,
                     variables: List[Union[Variable, str]] = None,
