@@ -8,6 +8,9 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 __module__ = 'cutils.pyx'
+import numpy as np
+cimport numpy as np
+nan = np.nan
 
 
 cdef class ConfInterval:

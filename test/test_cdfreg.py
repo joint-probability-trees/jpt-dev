@@ -1,19 +1,11 @@
-import statistics
 
-import pandas as pd
-from ddt import ddt, data
 from matplotlib import pyplot as plt
-from pandas import DataFrame
-from scipy.stats import norm
 
 import unittest
 import numpy as np
+import numpy.random
 
 from jpt.base.errors import Unsatisfiability
-
-from jpt.distributions import Numeric, Gaussian, SymbolicType
-from jpt.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable, infer_from_dataframe
 
 try:
     from jpt.base.intervals import __module__
@@ -36,8 +28,8 @@ class TestCaseMerge(unittest.TestCase):
         q.fit(data, np.array([0, 1]), 0)
         self.assertEqual(PiecewiseFunction.from_dict({
             ']-∞,1.000[': '0.0',
-            '[1.000,2.000[': '1.000x - 1.000',
-            '[2.000,∞[': '1.0',
+            '[1.0,2.0000000000000004[': '1.000x - 1.000',
+            '[2.0000000000000004,∞[': '1.0',
             }), q.cdf)  # add assertion here
 
     def test_quantile_dist_jump(self):
@@ -127,6 +119,28 @@ class TestCaseMerge(unittest.TestCase):
         result.functions.append(ConstantFunction(1))
 
         self.assertEqual(result, merged.cdf)
+
+    def test_likelihood_of_fit(self):
+
+        # sample from uniform distribution from [0,1] (likelihood for every sample should be around 1)
+        data1 = numpy.random.uniform(0, 1, (1000, ))
+        data1 = np.sort(data1).reshape(-1, 1)
+
+        # create quantile distribution
+        q1 = QuantileDistribution()
+        q1.fit(data1, rows=np.array(range(1000)), col=0)
+
+        # compute likelihood of quantile distributions
+        likelihoods = np.array(q1.pdf.multi_eval(data1[:, 0]))
+
+        # no likelihood should be 0
+        self.assertTrue(all(likelihoods > 0))
+
+        # start of function should be minimum of data
+        self.assertEqual(data1[0], q1.pdf.intervals[1].lowermost())
+
+        # end of function should be maximum of data
+        self.assertEqual(data1[-1], q1.pdf.intervals[-2].uppermost())
 
 
 class TestCasePPFTransform(unittest.TestCase):

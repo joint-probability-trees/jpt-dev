@@ -239,6 +239,8 @@ cdef class RealSet(NumberSet):
         :param other: The other interval
         :return: bool
         """
+        if isinstance(other, RealSet):
+            return all([self.contains_interval(i) for i in other.intervals])
         cdef ContinuousSet s
         for s in self.intervals:
             if s.contains_interval(other):
@@ -479,8 +481,8 @@ cdef class ContinuousSet(NumberSet):
                                                                                 interval))
 
         try:
-            interval.lower = np.float64(tokens.group('lval'))
-            interval.upper = np.float64(tokens.group('rval'))
+            interval.lower = <DTYPE_t> float(tokens.group('lval'))
+            interval.upper = <DTYPE_t> float(tokens.group('rval'))
 
         except:
             traceback.print_exc()
@@ -665,7 +667,7 @@ cdef class ContinuousSet(NumberSet):
         return self.intersects(ContinuousSet(value, value))
 
     cpdef inline np.int32_t contains_interval(ContinuousSet self,
-                                              ContinuousSet other,
+                                              NumberSet other,
                                               int proper_containment=False):
         """
         Checks if ``other`` lies in interval.
@@ -676,7 +678,9 @@ cdef class ContinuousSet(NumberSet):
         non-contiguous intervals.
         :return: True if the other interval is contained, else False
         """
-        if self.lower > other.lower or self.upper < other.upper:
+        if isinstance(other, RealSet):
+            return all([self.contains_interval(i, proper_containment=proper_containment) for i in other.intervals])
+        if self.lowermost() > other.lowermost() or self.uppermost() < other.uppermost():
             return False
         if self.lower == other.lower:
             if self.left == _EXC and other.left == _INC:
@@ -893,6 +897,8 @@ cdef class ContinuousSet(NumberSet):
         try:
             if isinstance(x, ContinuousSet):
                 return self.contains_interval(x)
+            elif isinstance(x, RealSet):
+                return all([self.contains_interval(i) for i in x.intervals])
             else:
                 return self.contains_value(x)
         except TypeError:
