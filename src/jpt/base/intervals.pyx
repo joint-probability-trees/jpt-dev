@@ -233,7 +233,7 @@ cdef class RealSet(NumberSet):
                 return True
         return False
 
-    cpdef inline np.int32_t contains_interval(RealSet self, ContinuousSet other):
+    cpdef inline np.int32_t contains_interval(RealSet self, NumberSet other):
         """
         Checks if ``value`` lies in interval
         :param other: The other interval
