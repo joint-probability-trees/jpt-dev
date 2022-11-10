@@ -42,7 +42,7 @@ cdef class RealSet(NumberSet):
 
     cpdef inline np.int32_t contains_value(RealSet self, DTYPE_t value)
 
-    cpdef inline np.int32_t contains_interval(RealSet self, ContinuousSet other)
+    cpdef inline np.int32_t contains_interval(RealSet self, NumberSet other)
 
     cpdef inline np.int32_t isempty(RealSet self)
 
@@ -93,7 +93,7 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef inline np.int32_t contains_value(ContinuousSet self, DTYPE_t value)
 
-    cpdef inline np.int32_t contains_interval(ContinuousSet self, ContinuousSet other, int proper_containment=*)
+    cpdef inline np.int32_t contains_interval(ContinuousSet self, NumberSet other, int proper_containment=*)
 
     cpdef inline np.int32_t contiguous(ContinuousSet self, ContinuousSet other)
 

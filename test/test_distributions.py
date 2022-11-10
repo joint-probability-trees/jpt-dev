@@ -9,14 +9,14 @@ from jpt.distributions.utils import OrderedDictProxy, DataScaler
 try:
     from jpt.base.functions import __module__
     from jpt.distributions.quantile.quantiles import __module__
-    from jpt.base.intervals import __module__
+    from jpt.base.intervals import __module__, R
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from jpt.base.functions import PiecewiseFunction, LinearFunction
     from jpt.distributions.quantile.quantiles import QuantileDistribution
-    from jpt.base.intervals import ContinuousSet, EXC, INC
+    from jpt.base.intervals import ContinuousSet, EXC, INC, RealSet
 
 
 from jpt.base.errors import Unsatisfiability
@@ -198,8 +198,8 @@ class NumericTest(TestCase):
     def test_fit(self):
         d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         self.assertEqual(d.cdf, PiecewiseFunction.from_dict({']-∞,0.0[': 0,
-                                                             '[0.0,1.0[': '1x',
-                                                             '[1.0,∞[': 1}))
+                                                             '[0.0,1.0000000000000002[': '1x',
+                                                             '[1.0000000000000002,∞[': 1}))
 
     def test_distribution_serialization(self):
         d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
@@ -232,7 +232,7 @@ class NumericTest(TestCase):
         data2 = np.array([DistGauss.values[l] for l in np.linspace(.5, 1.5, 20)]).reshape(-1, 1)
         dist1 = DistGauss().fit(data1, col=0)
         dist2 = DistGauss().fit(data2, col=0)
-        self.assertEqual(0.25, dist1.kl_divergence(dist2))
+        self.assertEqual(np.nextafter(0.25, 1), dist1.kl_divergence(dist2))
 
     def test_kldiv_inequality_extreme(self):
         DistGauss = self.DistGauss
@@ -253,14 +253,36 @@ class NumericTest(TestCase):
         self.assertEqual(0, DistGauss.value2label(DistGauss.label2value(0)))
         self.assertEqual(ContinuousSet(0, 1),
                          DistGauss.value2label(DistGauss.label2value(ContinuousSet(0, 1))))
+        self.assertEqual(RealSet(['[0, 1]', '[2,3]']),
+                         DistGauss.value2label(DistGauss.label2value(RealSet(['[0, 1]', '[2,3]']))))
 
-    def test_label_inference(self):
+    def _test_label_inference(self):
         return
         raise NotImplementedError()
 
-    def test_value_inference(self):
-        return
-        raise NotImplementedError()
+    def test_value_inference_normal(self):
+        '''Inference under "normal" circumstances.'''
+        dist = Numeric().set(params=QuantileDistribution.from_cdf(PiecewiseFunction.from_dict(
+            {']-inf,0[': 0,
+             '[0,1[': LinearFunction(1, 0),
+             '[1,inf[': 1}
+        )))
+        self.assertEqual(0, dist._p(-1))
+        self.assertEqual(0, dist._p(.5))
+        self.assertEqual(0, dist._p(2))
+        self.assertEqual(1, dist._p(R))
+        self.assertEqual(.5, dist._p(ContinuousSet.parse('[0,.5]')))
+
+    def test_value_inference_sinularity(self):
+        '''PDF has a singularity like a Dirac impulse function.'''
+        dist = Numeric().set(params=QuantileDistribution.from_cdf(PiecewiseFunction.from_dict(
+            {']-inf,0.0[': 0,
+             '[0.0,inf[': 1}
+        )))
+        self.assertEqual(0, dist._p(ContinuousSet.parse(']-inf,0[')))
+        self.assertEqual(1, dist._p(ContinuousSet.parse('[0,inf[')))
+        self.assertEqual(1, dist._p(0))
+
 
 
 # ----------------------------------------------------------------------------------------------------------------------
