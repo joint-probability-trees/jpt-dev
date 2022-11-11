@@ -1,5 +1,0 @@
-<map id="inheritancefd4c2aea02" name="inheritancefd4c2aea02">
-<area shape="rect" id="node1" href="#jpt.learning.distributions.Bool" target="_top" title="Wrapper class for Boolean domains and distributions." alt="" coords="300,5,372,31"/>
-<area shape="rect" id="node2" href="#jpt.learning.distributions.Multinomial" target="_top" title="Abstract supertype of all symbolic domains and distributions." alt="" coords="152,5,252,31"/>
-<area shape="rect" id="node3" href="#jpt.learning.distributions.Distribution" target="_top" title="Abstract supertype of all domains and distributions" alt="" coords="5,5,104,31"/>
-</map>

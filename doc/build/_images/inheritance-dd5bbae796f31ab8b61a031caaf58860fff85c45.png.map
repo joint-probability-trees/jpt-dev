@@ -1,4 +1,0 @@
-<map id="inheritanceed2c334999" name="inheritanceed2c334999">
-<area shape="rect" id="node1" href="#jpt.trees.DecisionNode" target="_top" title="Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`." alt="" coords="125,5,237,31"/>
-<area shape="rect" id="node2" href="#jpt.trees.Node" target="_top" title="Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`." alt="" coords="5,5,77,31"/>
-</map>
