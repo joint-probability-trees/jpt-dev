@@ -1549,6 +1549,8 @@ class JPT:
         Returns: An np.array with shape (x, ) containing the probabilities.
 
         """
+
+        queries = self._preprocess_data(queries)
         # create minimal distances for each numeric variable such a senseful metric can be computed if not provided
         if min_distances is None:
             min_distances: Dict[Variable, float] = dict()
@@ -1558,6 +1560,7 @@ class JPT:
                     distances = np.diff(samples)
                     min_distances[variable] = min(distances) if len(distances) > 0 else dirac_scaling
 
+        """
         for idx, variable in enumerate(self.variables):
             # convert the symbolic columns to the representation used in jpts
             if variable.symbolic:
@@ -1567,6 +1570,7 @@ class JPT:
             # scale numeric variables if needed
             elif variable.numeric and issubclass(variable.domain, ScaledNumeric):
                 queries[:, idx] = variable.domain.scaler.transform(queries[:, idx])
+        """
 
         # initialize probabilities
         probabilities = np.zeros(len(queries))

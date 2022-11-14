@@ -5,7 +5,7 @@ from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error
 
 import dnutils
-from jpt.base.utils import tojson
+from jpt.base.utils import to_json
 
 UNKNOWN_FLOAT32 = 1e7
 logger = dnutils.getlogger(name='ExampleLogger', level=dnutils.ERROR)
@@ -20,7 +20,7 @@ class Feature:
         self.description = description
 
     def tojson(self):
-        return tojson({'name': self.name, 'value': self.value, 'description': self.description})
+        return to_json({'name': self.name, 'value': self.value, 'description': self.description})
 
     def __repr__(self):
         return str(self)
@@ -37,7 +37,7 @@ class NumericFeature(Feature):
         self.unit = unit
 
     def tojson(self):
-        return tojson({'name': self.name, 'value': self.value, 'description': self.description, 'unit': self.unit})
+        return to_json({'name': self.name, 'value': self.value, 'description': self.description, 'unit': self.unit})
 
     def __str__(self):
         return '{}({}, name={}, unit={})'.format(type(self).__name__, self.value, self.name, self.unit)

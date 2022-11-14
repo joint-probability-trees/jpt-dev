@@ -7,7 +7,8 @@ Welcome to the documentation of Joint Probability Trees!
 
     introduction
     examples
-    references
+    faq
+    resources
 
 Indices and tables
 ==================
