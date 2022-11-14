@@ -1,6 +1,6 @@
 sphinx
-sphinxcontrib-bibtex<2.0.0
-sphinx_bootstrap_theme
+sphinxcontrib-bibtex
 sphinx-paramlinks
 sphinx-numfig
 sphinx-autoapi
+sphinx-rtd-theme

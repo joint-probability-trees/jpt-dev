@@ -1,12 +1,20 @@
-Introduction
-============
+Getting Started
+===============
 
-YEET
+Overview
+********
+The JPT package brings reliable, expressive, efficient and interpretable joint probability distributions to everyone.
 
-Motivation
-**********
+Supported types of inference are:
+    - Full evidence queries
+    - Marginal queries
+    - Conditional queries
+    - Expectations
+    - Most probable explanations
+    - Confidence intervals
 
 Installation
 ************
 
-python setup.py install
+Install the package with ``pip install jpt`` or clone the repository and install with
+``python setup.py install``.
