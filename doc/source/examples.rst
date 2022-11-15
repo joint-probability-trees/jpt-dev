@@ -8,3 +8,4 @@ This section provides example usages of JPTs to get you started easily.
     :caption: Examples:
 
     notebooks/tutorial_mnist
+    notebooks/tutorial_regression

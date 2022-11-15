@@ -9,6 +9,7 @@ Welcome to the documentation of Joint Probability Trees!
     examples
     faq
     resources
+    autoapi/index
 
 
 Indices and tables
