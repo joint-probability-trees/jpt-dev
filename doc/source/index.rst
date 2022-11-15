@@ -10,6 +10,7 @@ Welcome to the documentation of Joint Probability Trees!
     faq
     resources
 
+
 Indices and tables
 ==================
 
