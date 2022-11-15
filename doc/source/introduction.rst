@@ -16,5 +16,13 @@ Supported types of inference are:
 Installation
 ************
 
-Install the package with ``pip install jpt`` or clone the repository and install with
-``python setup.py install``.
+Install the package with
+
+``pip install jpt``
+
+or clone the repository and install with
+
+``python setup.py install``
+
+Currently the package is only supported and tested for Ubuntu 18+, but *theoretically* it should be working
+for other operating systems too.
