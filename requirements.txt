@@ -8,3 +8,6 @@ dateparser
 arff
 tqdm
 tabulate
+cython
+sphinx
+nbsphinx

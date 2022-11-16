@@ -18,7 +18,7 @@ Installation
 
 Install the package with
 
-``pip install jpt``
+``pip install pyjpt``
 
 or clone the repository and install with
 
