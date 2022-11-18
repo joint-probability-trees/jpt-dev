@@ -41,11 +41,12 @@ class SequentialJPT:
             data_indices += [idx + timestep * len(self.template_tree.variables) for idx in target_indices]
 
         # create expanded tree
-        expanded_template_tree = jpt.trees.JPT(expanded_variables,
-                                               expanded_variables[len(self.template_tree.variables):],
-                                               self.template_tree.min_samples_leaf,
-                                               self.template_tree.min_impurity_improvement,
-                                               self.template_tree.max_leaves, self.template_tree.max_depth)
+        expanded_template_tree = jpt.trees.JPT(variables=expanded_variables,
+                                               targets=expanded_variables[len(self.template_tree.variables):],
+                                               min_samples_leaf=self.template_tree.min_samples_leaf,
+                                               min_impurity_improvement=self.template_tree.min_impurity_improvement,
+                                               max_leaves=self.template_tree.max_leaves,
+                                               max_depth=self.template_tree.max_depth)
 
         # initialize data
         data = None
