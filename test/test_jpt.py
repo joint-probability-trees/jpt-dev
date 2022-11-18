@@ -137,7 +137,6 @@ class JPTTest(TestCase):
         marginals = cjpt.independent_marginals()
         self.assertEqual(marginals["Arson"].p(evidence["Arson"]), 1.)
 
-
 class TestCasePosteriorNumeric(TestCase):
 
     varx = None
@@ -498,3 +497,49 @@ class TestCaseInference(TestCase):
     #           f'Posterior P(' +
     #           f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k}={v}" for k, v in self.e.items()])})')
 
+
+class TestJPTFeaturesTargets(TestCase):
+    jpt = None
+    data = None
+    variables = None
+
+    @classmethod
+    def setUpClass(cls):
+        f_csv = '../examples/data/restaurant-mixed.csv'
+        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
+        cls.variables = infer_from_dataframe(cls.data,
+                                             scale_numeric_types=True,
+                                             precision=.01,
+                                             blur=.01)
+        # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
+        # 1 Bar[BAR_TYPE(SYM)], BOOl
+        # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
+        # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
+        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
+        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
+        # 6 Rain[RAIN_TYPE(SYM)], BOOL
+        # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
+        # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
+        # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
+        # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
+
+    def test_no_features_no_targets(self):
+        model = JPT(variables=self.variables, min_samples_leaf=1)
+        self.assertEqual(list(model.variables), model.features)
+        self.assertEqual(list(model.variables), model.targets)
+
+    def test_no_features_targets(self):
+        model = JPT(variables=self.variables, targets=["WillWait"], min_samples_leaf=1)
+        self.assertEqual([model.varnames["WillWait"]], model.targets)
+        self.assertEqual([v for n, v in model.varnames.items() if v not in model.targets], model.features)
+
+    def test_features_no_targets(self):
+        model = JPT(variables=self.variables, features=["Price"], min_samples_leaf=1)
+        self.assertEqual(list(model.variables), model.targets)
+        self.assertEqual([model.varnames["Price"]], model.features)
+
+    def test_features_targets(self):
+        model = JPT(variables=self.variables, features=["Price", "Food"], targets=["Price", "WillWait"],
+                    min_samples_leaf=1)
+        self.assertEqual([model.varnames["Price"], model.varnames["WillWait"]], model.targets)
+        self.assertEqual([model.varnames["Price"], model.varnames["Food"]], model.features)

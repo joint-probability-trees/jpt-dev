@@ -197,7 +197,7 @@ cdef class Impurity:
     # the raw 'read-only' data
     cdef DTYPE_t [:, ::1] data
 
-    # the indices of the sorted datapoints used for TODO
+    # the indices of the datapoints used for sorting, indexing and buffering current samples
     cdef readonly SIZE_t [::1] indices, index_buffer
 
     # the features to split on
@@ -310,12 +310,12 @@ cdef class Impurity:
 
         # initialize array of indices of the numeric targets
         self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables)
-                                      if v.numeric and (tree.targets is None or v in tree.targets)],
+                                      if v.numeric and v in tree.targets],
                                      dtype=np.int64)
 
         # initialize array of indices of the symbolic targets
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
-                                       if v.symbolic and (tree.targets is None or v in tree.targets)],
+                                       if v.symbolic and v in tree.targets],
                                       dtype=np.int64)
 
         # get the number of symbolic targets
@@ -341,12 +341,13 @@ cdef class Impurity:
 
         # get the indices of numeric features
         self.numeric_features = np.array([i for i, v in enumerate(tree.variables)
-                                         if v.numeric and (tree.targets is None or v not in tree.targets)],
+                                         if v.numeric and v in tree.features],
                                          dtype=np.int64)
         # get the indices of symbolic features
         self.symbolic_features = np.array([i for i, v in enumerate(tree.variables)
-                                          if v.symbolic and (tree.targets is None or v not in tree.targets)],
+                                          if v.symbolic and v in tree.features],
                                          dtype=np.int64)
+
         # construct all feature indices
         self.features = np.concatenate((self.numeric_features, self.symbolic_features))
 

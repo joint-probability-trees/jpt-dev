@@ -4,3 +4,4 @@ sphinx-paramlinks
 sphinx-numfig
 sphinx-autoapi
 sphinx-rtd-theme
+nbsphinx
