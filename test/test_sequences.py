@@ -38,5 +38,23 @@ class SequenceTest(unittest.TestCase):
             self.assertEqual(sum(l.prior for l in tree.leaves.values()), 1.)
 
 
+class SequenceTestFglib(unittest.TestCase):
+
+    def setUp(self) -> None:
+        self.g = UniformSeries()
+        self.data = np.expand_dims(self.g.sample(np.arange(np.pi / 2, 10000, np.pi)), -1).reshape(-1, 1)
+        self.variables = [jpt.variables.NumericVariable("X", precision=0.1)]
+
+    def test_learning(self):
+        template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
+        sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
+        sequence_tree.fit([self.data, self.data])
+
+        evidences = [{}, jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()), {}]
+
+        sequence_tree.posterior(evidences)
+
+
+
 if __name__ == '__main__':
     unittest.main()
