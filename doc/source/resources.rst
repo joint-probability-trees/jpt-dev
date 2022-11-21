@@ -7,9 +7,9 @@ also linked here.
 **Learning Resources**
 
 - Joint Probability Trees
-- Computational Probabilistic Framework :cite:p: `ProbCirc20`.
+- Computational Probabilistic Framework :cite:`ProbCirc20`.
 - CART Learning
 
 
 .. bibliography::
-    :all:
+    :cited:
