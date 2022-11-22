@@ -1,6 +1,6 @@
 dnutils
 graphviz
-scipy
+scipy==1.8.0
 numpy
 matplotlib
 pandas
@@ -9,3 +9,5 @@ arff
 tqdm
 tabulate
 cython
+fglib
+factorgraph
