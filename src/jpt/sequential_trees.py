@@ -1,9 +1,10 @@
+from builtins import dict
 from typing import List
 
 import numpy as np
 import numpy.lib.stride_tricks
-import fglib
-from fglib import graphs, nodes, rv
+
+from fglib import graphs, nodes, rv, inference
 import factorgraph
 import jpt.trees
 
@@ -217,7 +218,7 @@ class SequentialJPT:
 
             # create a factor from it
             current_factor = nodes.FNode("P(%s)" % str(fg_variable), rv.Discrete(prior, fg_variable))
-            factor_graph.add_node(current_factor)
+            factor_graph.set_node(current_factor)
             factor_graph.set_edge(fg_variable, current_factor)
 
         return factor_graph, altered_jpts
@@ -240,27 +241,25 @@ class SequentialJPT:
         :param evidence:
         :return:
         """
-        import matplotlib.pyplot as plt
-        import networkx as nx
+        from fglib import utils
         # preprocess evidence
         evidence = self.preprocess_sequence_map(evidence)
 
         # ground factor graph
         factor_graph, altered_jpts = self.ground_fglib(evidence)
-        nx.draw(factor_graph, with_labels=True)
-        plt.show()
-        print(factor_graph)
-        exit()
+
         # create result list
         result = []
 
-        # Run (loopy) belief propagation (LBP)
-        iters, converged = factor_graph.lbp(max_iters=100, progress=True)
-        latent_distribution = factor_graph.rv_marginals()
+        # Run belief propagation
+        latent_distribution = []
+        for v_node in factor_graph.get_vnodes():
+            belief = inference.belief_propagation(graph=factor_graph, query_node=v_node)
+            latent_distribution.append(belief)
 
         # transform trees
-        for ((name, distribution), tree) in zip(sorted(latent_distribution, key=lambda x: x[0].name), altered_jpts):
-            prior = dict(zip(self.template_tree.leaves.keys(), distribution))
+        for distribution, tree in zip(latent_distribution, altered_jpts):
+            prior = dict(zip(self.template_tree.leaves.keys(), distribution.pmf))
             adjusted_tree = tree.multiply_by_leaf_prior(prior)
             result.append(adjusted_tree)
 
@@ -293,6 +292,30 @@ class SequentialJPT:
             result.append(adjusted_tree)
 
         return result
+
+    def expectation(self,
+                    variables: List[List[jpt.variables.Variable]],
+                    evidence: List[jpt.variables.VariableAssignment],
+                    confidence_level: float = None,
+                    fail_on_unsatisfiability: bool = True) -> List[jpt.variables.VariableMap]:
+        """
+        :param variables:
+        :param evidence:
+        :param confidence_level:
+        :param fail_on_unsatisfiability:
+        :return:
+        """
+        posteriors = self.posterior(evidence=evidence)
+
+        final = []
+        for idx, dist in enumerate(posteriors):
+            final.append(dist.expectation(variables=variables[idx],
+                                          evidence=evidence[idx],
+                                          confidence_level=confidence_level,
+                                          fail_on_unsatisfiability=fail_on_unsatisfiability))
+
+        return final
+
 
     def to_json(self):
         return {"template_tree": self.template_tree.to_json(),

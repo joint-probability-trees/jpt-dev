@@ -41,6 +41,7 @@ class SequenceTest(unittest.TestCase):
 class SequenceTestFglib(unittest.TestCase):
 
     def setUp(self) -> None:
+        np.random.seed(1234)
         self.g = UniformSeries()
         self.data = np.expand_dims(self.g.sample(np.arange(np.pi / 2, 10000, np.pi)), -1).reshape(-1, 1)
         self.variables = [jpt.variables.NumericVariable("X", precision=0.1)]
@@ -52,7 +53,23 @@ class SequenceTestFglib(unittest.TestCase):
 
         evidences = [{}, jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()), {}]
 
-        sequence_tree.posterior(evidences)
+        result = sequence_tree.posterior(evidences)
+
+        for idx, tree in enumerate(result):
+            expectation = tree.expectation(["X"])
+            if idx % 2 == 0:
+                self.assertAlmostEqual(expectation["X"]._res, -1., delta=0.001)
+            else:
+                self.assertAlmostEqual(expectation["X"]._res, 1., delta=0.001)
+
+    def test_expectation(self):
+        template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
+        sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
+        sequence_tree.fit([self.data, self.data])
+
+        evidences = [{}, jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()), {}]
+
+        result = sequence_tree.expectation(variables=self.variables, evidence=evidences)
 
 
 
