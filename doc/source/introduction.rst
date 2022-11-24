@@ -54,7 +54,22 @@ Understanding basic concepts of probabilistic inference is the key to smart prob
 This chapter will go through all types of probabilistic inference that are possible in JPTs.
 JPTs are a special form of probabilistic circuits (PCs) therefore we will refer to the definitions
 from :cite:`ProbCirc20`.
+Mathematically speaking, JPTs are a shallow, deterministic probabilistic circuit.
+A JPT defines a tree like computational graph. The tree consists of deterministic sum nodes all the way down to the
+leaves. In the leaves fully factorizing product nodes are used.
+The sum nodes are decision nodes like in decision trees. They contain one variable and a split value, where all
+datapoints are divided into two subsets, one subset that satisfies the condition and one subset that satisfies
+its negation.
+The product nodes fully factorize the problem into independent distributions. They consist of a set of distributions
+and a prior (mixing coefficient). The factors are represented by quantile distributions.
 
+The joint probability distribution of a JPT is given by
+
+.. math::
+
+    P(X=x)=\sum_{\lambda\in\Lambda}P{L=\lambda}\prod_iP(X_i=x_i | L=\lambda).
+
+.. image:: _static/img/gaussian-jpt.png
 
 Full evidence query
 *******************
