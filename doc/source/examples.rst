@@ -9,3 +9,4 @@ This section provides example usages of JPTs to get you started easily.
 
     notebooks/tutorial_mnist
     notebooks/tutorial_regression
+    notebooks/tutorial_iris
