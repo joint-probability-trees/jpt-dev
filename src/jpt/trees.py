@@ -372,6 +372,9 @@ class Node:
     def format_path(self):
         return format_path(self.path)
 
+    def number_of_parameters(self) -> int:
+        raise NotImplementedError()
+
     def __str__(self) -> str:
         return f'Node<{self.idx}>'
 
@@ -523,6 +526,14 @@ class DecisionNode(Node):
 
     def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
+
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in this decision node.
+                 2 are parameters necessary since it the variable and its splitting value
+                 are sufficient to describe this computation unit.
+        """
+        return 2
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -764,6 +775,14 @@ class Leaf(Node):
 
         # create mpe result
         return result_likelihood, maximum
+
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in this decision node.
+                Leafs require 1 + the sum of all distributions parameters. The 1 extra parameter
+                represents the prior.
+        """
+        return 1 + sum([distribution.number_of_parameters() for distribution in self.distributions.values()])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -2150,4 +2169,8 @@ class JPT:
                         distribution._quantile.cdf.insert_convex_fragment_right(interval, function_value)
                         distribution._quantile.cdf.normalize()
 
-
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in the entire tree
+        """
+        return sum([node.number_of_parameters() for node in self.leaves.values()])

@@ -137,6 +137,12 @@ class JPTTest(TestCase):
         marginals = cjpt.independent_marginals()
         self.assertEqual(marginals["Arson"].p(evidence["Arson"]), 1.)
 
+    def test_parameter_count(self):
+        var = NumericVariable('X')
+        jpt = JPT([var], min_samples_leaf=.1)
+        jpt.learn(self.data.reshape(-1, 1))
+        self.assertEqual(126, jpt.number_of_parameters())
+
 class TestCasePosteriorNumeric(TestCase):
 
     varx = None
@@ -289,6 +295,9 @@ class TestCasePosteriorSymbolic(TestCase):
         self.e = {self.variables[9]: '10--30', self.variables[1]: True, self.variables[8]: 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
+    def test_parameter_count(self):
+        self.assertEqual(144, self.jpt.number_of_parameters())
+
 
 # noinspection PyPep8Naming
 class TestCasePosteriorSymbolicAndNumeric(TestCase):
@@ -354,6 +363,9 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
+
+    def test_parameter_count(self):
+        self.assertEqual(264, self.jpt.number_of_parameters())
 
     def test_posterior_mixed_numeric_query(self):
         self.q = [self.variables[9]]

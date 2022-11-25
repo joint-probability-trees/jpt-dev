@@ -424,6 +424,9 @@ class Distribution:
     def kl_divergence(self, other: 'Distribution'):
         raise NotImplementedError()
 
+    def number_of_parameters(self) -> int:
+        raise NotImplementedError()
+
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the distribution.
 
@@ -552,6 +555,16 @@ class Numeric(Distribution):
 
     def sample_one(self):
         raise NotImplemented()
+
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in this decision node.
+                 1 if this is a dirac impulse, number of intervals times two else
+        """
+        if self.is_dirac_impulse():
+            return 1
+        else:
+            return len(self.cdf.intervals) * 2
 
     def _expectation(self) -> numbers.Real:
         e = 0
@@ -1076,6 +1089,21 @@ class Multinomial(Distribution):
     @classmethod
     def from_json(cls, data):
         return cls(**data['settings']).set(data['params'])
+
+    def is_dirac_impulse(self):
+        for p in self._params:
+            if p == 1:
+                return True
+        return False
+
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in this decision node.
+                 1 if this is a dirac impulse, number of parameters else
+        """
+        if self.is_dirac_impulse():
+            return 1
+        return len(self._params)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.

@@ -96,6 +96,7 @@ or its logarithm
     log(\mathcal{L}(\mathcal{D}|\theta)) = \sum_{d \in \mathcal{D}} log(P(\mathcal{X}=d)).
 
 The EVI query of a JPT can be used with the likelihood function :py:mod:`jpt.trees.JPT.likelihood`.
+Details on how to use the likelihood function are found in :doc:`notebooks/tutorial_iris`.
 
 Marginal Query
 **************
@@ -140,6 +141,15 @@ To return the full conditional distribution with all its dependencies see `Condi
 Posterior distributions are especially useful for calculating moments of random variables and to visualize the
 uncertainty within the answer.
 This is implemented in :py:mod:`jpt.trees.JPT.posterior`.
+Detailed examples for posteriors can be found in :doc:`notebooks/tutorial_regression`.
+
+Moments
+*******
+
+Calculating the moments of variables can be done via :py:mod:`jpt.trees.JPT.expectation` for the first order moment
+and for any other moment the resulting distributions from :py:mod:`jpt.trees.JPT.posterior` have to be used.
+Detailed examples for expectations can be found in :doc:`notebooks/tutorial_regression`.
+
 
 Most Probable Explanation
 *************************
@@ -163,6 +173,7 @@ Multiple results are returned since the functional form of JPTs allows multiple 
 intervals. In the resulting list of MPEResults of the :py:mod:`jpt.trees.JPT.mpe` the dimensions
 in the MPEResults are independent of each other. Therefore any combination of maxima within one MPEResult is a correct
 maximum. However the maxima in different MPEResults cannot be mixed since they are structurally different.
+Detailed examples for MPE inference can be found in :doc:`notebooks/tutorial_mnist`.
 
 Conditional Distribution
 ************************
@@ -188,7 +199,3 @@ sets:
     be either a ContinuousSet or RealSet. A ContinuousSet is a simple interval with lower and upper bound.
     A RealSet is a set of intervals in the same sense as for discrete variables. Those sets are interpreted as
     the statement: the value of variables x A or B or C for a something like set("A", "B", "C")
-
-
-
-
