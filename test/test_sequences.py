@@ -63,14 +63,42 @@ class SequenceTestFglib(unittest.TestCase):
                 self.assertAlmostEqual(expectation["X"]._res, 1., delta=0.001)
 
     def test_expectation(self):
+        sequential_variables = [[jpt.variables.NumericVariable("X", precision=0.1)],
+                                [jpt.variables.NumericVariable("X", precision=0.1)],
+                                [jpt.variables.NumericVariable("X", precision=0.1)]]
+        template_tree = jpt.trees.JPT(sequential_variables[0], min_samples_leaf=2500)
+        sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
+        sequence_tree.fit([self.data, self.data])
+
+        evidences = [{}, {"X": [0.95, 1.05]}, {}]
+
+        result = sequence_tree.expectation(variables=sequential_variables, evidence=evidences)
+
+        for idx, expectation_result in enumerate(result):
+            expectation = expectation_result["X"]
+            if idx % 2 == 0:
+                self.assertAlmostEqual(expectation._res, -1, delta=0.001)
+            else:
+                self.assertAlmostEqual(expectation._res, 1, delta=0.001)
+
+    def test_likelihood(self):
         template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
         sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
         sequence_tree.fit([self.data, self.data])
 
         evidences = [{}, jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()), {}]
 
-        result = sequence_tree.expectation(variables=self.variables, evidence=evidences)
+        """
+        print("------------")
+        print(self.data.shape)
+        print(template_tree.encode(samples=self.data))
+        print()
+        print(sequence_tree.template_tree.leaves[1].parallel_likelihood())
+        print(self.variables)
+        print("------------")
 
+        result = sequence_tree.likelihood()
+        """
 
 
 if __name__ == '__main__':

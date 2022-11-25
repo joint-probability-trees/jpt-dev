@@ -169,7 +169,7 @@ class SequentialJPT:
 
         return factor_graph, altered_jpts
 
-    def ground_fglib(self, evidence: List[jpt.variables.VariableMap]) -> (factorgraph.Graph, List[jpt.trees.JPT]):
+    def ground_fglib(self, evidence: List[jpt.variables.VariableMap]) -> (graphs.FactorGraph, List[jpt.trees.JPT]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
         one variable for each timestep, one prior node as factor for each timestep and one factor node for each
         transition.
@@ -316,6 +316,8 @@ class SequentialJPT:
 
         return final
 
+    def likelihood(self):
+        raise NotImplementedError("Not yet implemented")
 
     def to_json(self):
         return {"template_tree": self.template_tree.to_json(),
