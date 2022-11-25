@@ -67,7 +67,9 @@ The joint probability distribution of a JPT is given by
 
 .. math::
 
-    P(X=x)=\sum_{\lambda\in\Lambda}P{L=\lambda}\prod_iP(X_i=x_i | L=\lambda).
+    P(X=x)=\sum_{\lambda\in\Lambda}P(L=\lambda)\prod_iP(X_i=x_i | L=\lambda).
+
+where :math:`P(\Lambda)` is the set of all leaves.
 
 .. image:: _static/img/gaussian-jpt.png
 
