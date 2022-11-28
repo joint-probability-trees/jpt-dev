@@ -281,7 +281,7 @@ cdef class Impurity:
     # the raw 'read-only' data
     cdef DTYPE_t [:, ::1] data
 
-    # the indices of the sorted datapoints used for TODO
+    # the indices of the datapoints used for sorting, indexing and buffering current samples
     cdef readonly SIZE_t [::1] indices, index_buffer
 
     # the features to split on
@@ -394,12 +394,12 @@ cdef class Impurity:
 
         # initialize array of indices of the numeric targets
         self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables)
-                                      if v.numeric and (tree.targets is None or v in tree.targets)],
+                                      if v.numeric and v in tree.targets],
                                      dtype=np.int64)
 
         # initialize array of indices of the symbolic targets
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
-                                       if v.symbolic and (tree.targets is None or v in tree.targets)],
+                                       if v.symbolic and v in tree.targets],
                                       dtype=np.int64)
 
         # get the number of symbolic targets
@@ -425,12 +425,13 @@ cdef class Impurity:
 
         # get the indices of numeric features
         self.numeric_features = np.array([i for i, v in enumerate(tree.variables)
-                                         if v.numeric and (tree.targets is None or v not in tree.targets)],
+                                         if v.numeric and v in tree.features],
                                          dtype=np.int64)
         # get the indices of symbolic features
         self.symbolic_features = np.array([i for i, v in enumerate(tree.variables)
-                                          if v.symbolic and (tree.targets is None or v not in tree.targets)],
+                                          if v.symbolic and v in tree.features],
                                          dtype=np.int64)
+
         # construct all feature indices
         self.features = np.concatenate((self.numeric_features, self.symbolic_features))
 
@@ -729,13 +730,13 @@ cdef class Impurity:
                 # update the position of the split
                 self.best_split_pos = split_pos
 
-                # TODO IDK
+                # write back the sorted indices of the best split variable
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
 
         # if max impurity improvement has been updated at least once and the best variable is symbolic
         if self.max_impurity_improvement and self.best_var in self.symbolic_features:
 
-            # TODO IDK
+            # Rearrange indices to contiguous subsets
             self.move_best_values_to_front(
                 self.best_var,
                 self.data[self.indices[start + self.best_split_pos],
@@ -748,7 +749,9 @@ cdef class Impurity:
 
     cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos):  #nogil
         """
-        TODO IDK
+        Move all indices of data points with the specified value from ``split_pos`` on to the
+        front of the index array.
+        
         :param var_idx: 
         :param value: 
         :param split_pos: pointer to position of the split
@@ -776,8 +779,6 @@ cdef class Impurity:
         """
         Evaluate a variable w. r. t. its possible slit. Calculate the best split on this variable
         and the corresponding impurity.
-        
-        TODO Document source code
         
         :param var_idx: the index of the variable in self.data
         :param symbolic: 1 if the variable is symbolic, 0 if numeric

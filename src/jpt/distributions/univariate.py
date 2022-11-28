@@ -58,12 +58,12 @@ DISCRETE = 'discrete'
 # TODO: In order to keep the code consistent, this class should inherit from 'Distribution'
 
 class Gaussian(Gaussian_):
-    '''Extension of :class:`dnutils.stats.Gaussian`'''
+    """Extension of :class:`dnutils.stats.Gaussian`"""
 
     PRECISION = 1e-15
 
     def __init__(self, mean=None, cov=None, data=None, weights=None):
-        '''Creates a new Gaussian distribution.
+        """Creates a new Gaussian distribution.
 
         :param mean:    the mean of the Gaussian
         :type mean:     float if multivariate else [float] if multivariate
@@ -74,7 +74,7 @@ class Gaussian(Gaussian_):
         :type data:     [[float]]
         :param weights:  **[optional]** weights for the data points. The weight do not need to be normalized.
         :type weights:  [float]
-        '''
+        """
         self._sum_w = 0  # ifnot(weights, 0, sum)
         self._sum_w_sq = 0  # 1 / self._sum_w ** 2 * sum([w ** 2 for w in weights]) if weights else 0
         super().__init__(mean=mean, cov=cov, keepsamples=False)
@@ -105,13 +105,13 @@ class Gaussian(Gaussian_):
         return np.sqrt(self.var)
 
     def deviation(self, x):
-        '''
+        """
         Computes the deviation of ``x`` in multiples of the standard deviation.
 
         :param x:
         :type x:
         :returns:
-        '''
+        """
         if isinstance(x, numbers.Number):
             raise TypeError('Argument must be a vector, got a scalar: %s' % x)
         return (np.array(x) - np.array(self._mean)) / self.std
@@ -189,7 +189,7 @@ class Gaussian(Gaussian_):
         return (other.mean == self.mean and other.cov == self.cov) if other is not None else False
 
     def linreg(self):
-        '''
+        """
         Compute a 4-tuple ``<m, b, rss, noise>`` of a linear regression represented by this Gaussian.
 
         :return:    ``m`` - the slope of the line
@@ -202,7 +202,7 @@ class Gaussian(Gaussian_):
             - https://milnepublishing.geneseo.edu/natural-resources-biometrics/chapter/chapter-7-correlation-and-simple-linear-regression/
             - https://en.wikipedia.org/wiki/Residual_sum_of_squares
             - https://en.wikipedia.org/wiki/Explained_sum_of_squares
-        '''
+        """
         if self.dim != 2:
             raise ValueError('This operation is only supported for 2-dimensional Gaussians.')
         if self.numsamples < 2:
@@ -274,11 +274,12 @@ class Gaussian(Gaussian_):
             stop(f'newmean {self._mean} newcov\n{np.array(self._cov)}')
 
     def retract(self, x, w=1):
-        '''Retract the a data point `x` with eight `w` from the Gaussian distribution.
+        """
+        Retract the data point `x` with weight `w` from the Gaussian distribution.
 
         In case the data points are being kept in the distribution, it must actually exist and have the right
         weight associated. Otherwise, a ValueError will be raised.
-        '''
+        """
         if not hasattr(x, '__len__'):
             x = [x]
         if self._mean is None or self._cov is None or not self.numsamples:
@@ -423,6 +424,9 @@ class Distribution:
     def kl_divergence(self, other: 'Distribution'):
         raise NotImplementedError()
 
+    def number_of_parameters(self) -> int:
+        raise NotImplementedError()
+
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
         '''Generates a plot of the distribution.
 
@@ -551,6 +555,16 @@ class Numeric(Distribution):
 
     def sample_one(self):
         raise NotImplemented()
+
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in this decision node.
+                 1 if this is a dirac impulse, number of intervals times two else
+        """
+        if self.is_dirac_impulse():
+            return 1
+        else:
+            return len(self.cdf.intervals) * 2
 
     def _expectation(self) -> numbers.Real:
         e = 0
@@ -1080,6 +1094,21 @@ class Multinomial(Distribution):
     @classmethod
     def from_json(cls, data):
         return cls(**data['settings']).set(data['params'])
+
+    def is_dirac_impulse(self):
+        for p in self._params:
+            if p == 1:
+                return True
+        return False
+
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in this decision node.
+                 1 if this is a dirac impulse, number of parameters else
+        """
+        if self.is_dirac_impulse():
+            return 1
+        return len(self._params)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.

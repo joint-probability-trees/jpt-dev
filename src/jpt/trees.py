@@ -14,7 +14,7 @@ import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
 import datetime
 from itertools import zip_longest
-from typing import Dict, List, Tuple, Any, Union, Iterable
+from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator
 
 import numpy as np
 import numpy.lib.stride_tricks
@@ -53,15 +53,25 @@ style.use(plotstyle)
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Global constants
-
 DISCRIMINATIVE = 'discriminative'
 GENERATIVE = 'generative'
 # ----------------------------------------------------------------------------------------------------------------------
 
 
 class Result:
+    """
+    Base class for Results returned from a JPT
+    """
 
     def __init__(self, query, evidence, res=None, cand=None, w=None):
+        """
+        Create a result
+        :param query: the query that was posed to the model
+        :param evidence: the evidence provided to the model
+        :param res: the result of the query
+        :param cand: all candidate distributions
+        :param w: the weights of the distributions
+        """
         self.query = query
         self._evidence = evidence
         self._res = ifnone(res, [])
@@ -104,10 +114,17 @@ class Result:
         self._w = w
 
     def format_result(self):
+        """
+        :return: pretty string summarizing this result
+        """
         return ('P(%s%s) = %.3f%%' % (format_path(self.query),
                                       (' | %s' % format_path(self._evidence)) if self.evidence else '',
                                       self.result * 100))
-    def explain(self):
+
+    def explain(self) -> str:
+        """
+        :return: the explanation on how to get to this result as string
+        """
         result = self.format_result()
         result += '\n'
         for weight, leaf in sorted(zip(self.weights, self.candidates),
@@ -124,8 +141,22 @@ class Result:
 # ----------------------------------------------------------------------------------------------------------------------
 
 class ExpectationResult(Result):
+    """
+    Class for results of the Expectation queries.
+    """
 
     def __init__(self, query, evidence, theta, lower=None, upper=None, res=None, cand=None, w=None):
+        """
+        Create an ExpectationResult
+        :param query: the query that was posed to the model
+        :param evidence: the evidence provided to the model
+        :param theta: the confidence level
+        :param lower: the lower bound of the confidence level
+        :param upper: the upper bound of the confidence level
+        :param res: the result of the query
+        :param cand: all candidate distributions
+        :param w: the weights of the distributions
+        """
         super().__init__(query, evidence, res=res, cand=cand, w=w)
         self.theta = theta
         self._lower = lower
@@ -180,8 +211,18 @@ class ExpectationResult(Result):
 # ----------------------------------------------------------------------------------------------------------------------
 
 class MPEResult(Result):
+    """Class for results of the MPE query"""
+    def __init__(self, evidence, res, maximum: VariableMap, path: VariableMap = VariableMap(), cand=None, w=None):
+        """
+        Create an MPEResult
 
-    def __init__(self, evidence, res, maximum, path=dict(), cand=None, w=None):
+        :param evidence: the evidence provided to the model
+        :param res: the likelihood of this maximum
+        :param maximum: the mpe of each variable
+        :param path: the path to the leaf that describes this maximum
+        :param cand: all candidate distributions
+        :param w: the weights of the distributions
+        """
         super().__init__(None, evidence, res=res, cand=cand, w=w)
         self.maximum = maximum
         self.path = path
@@ -193,11 +234,20 @@ class MPEResult(Result):
 # ----------------------------------------------------------------------------------------------------------------------
 
 class PosteriorResult(Result):
+    """
+    Class for results of the Posterior inference.
+    """
 
     def __init__(self, query, evidence, dists=None, cand=None, w=None):
-        super().__init__(query, evidence, res=None, cand=cand)
+        """
+        Create a PosteriorResult
+        :param query: the query that was posed to the model
+        :param evidence: the evidence provided to the model
+        :param cand: all candidate distributions
+        :param w: the weights of the distributions
+        """
+        super().__init__(query, evidence, res=None, cand=cand, w=w)
         self.distributions: Dict[Variable, Distribution] = dists
-
 
     def format_result(self):
         return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query]),
@@ -209,7 +259,11 @@ class PosteriorResult(Result):
         return self.distributions[item]
 
     def impurity(self, variables: None or List[Variable] = None):
-        """Calculate the impurity (sum over variances and ginis) of the result of this query for the given variables.
+        """
+        Calculate the impurity (sum over variances and gini indices)
+        of the result of this query for the given variables.
+
+        :param variables: List of variables to calculate impurity on.
         """
         # use all variables if none are given
 
@@ -244,17 +298,16 @@ class PosteriorResult(Result):
 # ----------------------------------------------------------------------------------------------------------------------
 
 class Node:
-    '''
+    """
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
-    '''
+    """
 
-    def __init__(self, idx: int, parent: Union[None, 'DecisionNode'] = None) -> None:
-        '''
-        :param idx:             the identifier of a node
-        :type idx:              int
-        :param parent:          the parent node
-        :type parent:           jpt.learning.trees.Node
-        '''
+    def __init__(self, idx: int, parent: None or 'DecisionNode' = None) -> None:
+        """
+        Create a Node
+        :param idx: the identifier of a node
+        :param parent: the parent of this node
+        """
         self.idx = idx
         self.parent: DecisionNode = parent
         self.samples = 0.
@@ -262,6 +315,9 @@ class Node:
 
     @property
     def path(self) -> VariableMap:
+        """
+        :return: the path of this Node as VariableMap
+        """
         res = VariableMap()
         for var, vals in self._path:
             res[var] = res.get(var, set(range(var.domain.n_values)) if var.symbolic else R).intersection(vals)
@@ -273,7 +329,7 @@ class Node:
 
         :param evidence: A VariableMap that maps to singular values (numeric or symbolic)
             or ranges (continuous set, set)
-        :type evidence: VariableMap
+        :return: bool
         """
 
         # for every variable and its assignment
@@ -316,21 +372,27 @@ class Node:
     def format_path(self):
         return format_path(self.path)
 
+    def number_of_parameters(self) -> int:
+        raise NotImplementedError()
+
     def __str__(self) -> str:
         return f'Node<{self.idx}>'
 
     def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
 
-    def depth(self):
+    def depth(self) -> int:
+        """
+        :return: the depth of this node
+        """
         return len(self._path)
 
     def contains(self, samples: np.ndarray, variable_index_map: VariableMap) -> np.array:
-        """ Check if this node contains the given samples in parallel.
-
-        @param samples: The samples to check
-        @param variable_index_map: A VariableMap mapping to the indices in 'samples'
-        @return numpy array with 0s and 1s
+        """
+        Check if this node contains the given samples in parallel.
+        :param samples: The samples to check
+        :param variable_index_map: A VariableMap mapping to the indices in 'samples'
+        :return: numpy array with 0s and 1s
         """
         result = np.ones(len(samples))
         for variable, restriction in self.path.items():
@@ -346,17 +408,18 @@ class Node:
 # ----------------------------------------------------------------------------------------------------------------------
 
 class DecisionNode(Node):
-    '''
+    """
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
-    '''
+    """
 
-    def __init__(self, idx: int, variable: Variable, parent: 'DecisionNode' = None):
-        '''
-        :param idx:             the identifier of a node
-        :type idx:              int
-        :param variable:   the split feature name
-        :type variable:    jpt.variables.Variable
-        '''
+    def __init__(self, idx: int, variable: Variable, parent: 'DecisionNode' or None = None):
+        """
+        Create a DecisionNode
+
+        :param idx: The identifier of a node
+        :param variable: The split variable
+        :param parent: The parent of this node
+        """
         self._splits = None
         self.variable = variable
         super().__init__(idx, parent=parent)
@@ -373,6 +436,9 @@ class DecisionNode(Node):
                 self.samples == o.samples)
 
     def to_json(self) -> Dict[str, Any]:
+        """
+        :return: The DecisionNode as a json serializable dict.
+        """
         return {'idx': self.idx,
                 'parent': ifnone(self.parent, None, attrgetter('idx')),
                 'splits': [s.to_json() if isinstance(s, ContinuousSet) else list(s) for s in self.splits],
@@ -383,15 +449,21 @@ class DecisionNode(Node):
                 'child_idx': self.parent.children.index(self) if self.parent is not None else None}
 
     @staticmethod
-    def from_json(jpt: 'JPT', data: Dict[str, Any]) -> 'DecisionNode':
-        node = DecisionNode(idx=data['idx'], variable=jpt.varnames[data['variable']])
+    def from_json(tree: 'JPT', data: Dict[str, Any]) -> 'DecisionNode':
+        """
+        Construct a Decision node from a json dict.
+        :param tree: The tree to mount the node in
+        :param data: The data describing the members of the node
+        :return: the constructed and mounted DecisionNode
+        """
+        node = DecisionNode(idx=data['idx'], variable=tree.varnames[data['variable']])
         node.splits = [Interval.from_json(s) if node.variable.numeric else set(s) for s in data['splits']]
         node.children = [None] * len(node.splits)
-        node.parent = ifnone(data['parent'], None, jpt.innernodes.get)
+        node.parent = ifnone(data['parent'], None, tree.innernodes.get)
         node.samples = data['samples']
         if node.parent is not None:
             node.parent.set_child(data['child_idx'], node)
-        jpt.innernodes[node.idx] = node
+        tree.innernodes[node.idx] = node
         return node
 
     @property
@@ -406,11 +478,22 @@ class DecisionNode(Node):
         self.children = [None] * len(self._splits)
 
     def set_child(self, idx: int, node: Node) -> None:
+        """
+        Set the child at ``index`` of this Node. Also extend the path of the child node with this
+        nodes' path.
+        :param idx: the idx of the child (0 for left, 1 for right)
+        :param node: The child
+        """
         self.children[idx] = node
         node._path = list(self._path)
         node._path.append((self.variable, self.splits[idx]))
 
     def str_edge(self, idx) -> str:
+        """
+        Convert the edge to child at ``idx`` to a string.
+        :param idx: The index of the child
+        :return: str
+        """
         if self.variable.numeric:
             return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
                                      self.variable.domain.labels[self.splits[idx].upper],
@@ -429,6 +512,9 @@ class DecisionNode(Node):
         return self.variable.name
 
     def recursive_children(self):
+        """
+        :return: All children of this node
+        """
         return self.children + [item for sublist in
                                 [child.recursive_children() for child in self.children] for item in sublist]
 
@@ -441,15 +527,29 @@ class DecisionNode(Node):
     def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
 
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in this decision node.
+                 2 are parameters necessary since it the variable and its splitting value
+                 are sufficient to describe this computation unit.
+        """
+        return 2
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 class Leaf(Node):
-    '''
-    Represents a leaf node of the :class:`jpt.learning.trees.Tree`.
-    '''
+    """
+    Represents a leaf node of the :class:`jpt.trees.Tree`.
+    """
 
-    def __init__(self, idx: int, parent: Node or None = None, prior=None):
+    def __init__(self, idx: int, parent: DecisionNode or None = None, prior: float or None = None):
+        """
+        Construct a Leaf
+        :param idx: the index of this leaf
+        :param parent: the parent of this leaf
+        :param prior: the prior of this leaf (relative number of samples in this leaf)
+        """
         super().__init__(idx, parent=parent)
         self.distributions = VariableMap()
         self.prior = prior
@@ -460,7 +560,11 @@ class Leaf(Node):
         return ""
 
     def applies(self, query: VariableMap) -> bool:
-        '''Checks whether this leaf is consistent with the given ``query``.'''
+        """
+        Checks whether this leaf is consistent with the given ``query``.
+        :param query: the query to check
+        :return: bool
+        """
         path = self.path
         for var in set(query.keys()).intersection(set(path.keys())):
             if path.get(var).isdisjoint(query.get(var)):
@@ -472,6 +576,9 @@ class Leaf(Node):
         return self.distributions
 
     def recursive_children(self):
+        """
+        :return: All children of this node
+        """
         return []
 
     def __str__(self) -> str:
@@ -485,6 +592,9 @@ class Leaf(Node):
         return hash((type(self), ((k.name, v) for k, v in self.distributions.items()), self.prior))
 
     def to_json(self) -> Dict[str, Any]:
+        """
+        :return: The DecisionNode as a json serializable dict.
+        """
         return {'idx': self.idx,
                 'distributions': self.distributions.to_json(),
                 'prior': self.prior,
@@ -495,6 +605,12 @@ class Leaf(Node):
 
     @staticmethod
     def from_json(tree: 'JPT', data: Dict[str, Any]) -> 'Leaf':
+        """
+        Construct a Decision node from a json dict.
+        :param tree: The tree to mount the node in
+        :param data: The data describing the members of the node
+        :return: the constructed and mounted DecisionNode
+        """
         leaf = Leaf(idx=data['idx'], prior=data['prior'], parent=tree.innernodes.get(data['parent']))
         leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'], Distribution)
         leaf._path = []
@@ -519,13 +635,18 @@ class Leaf(Node):
         """
         Check if the node is consistent with the variable assignments in evidence.
 
-        :param evidence: A VariableMap that maps to singular values (numeric or symbolic)
+        :param evidence: A preprocessed VariableMap that maps to singular values (numeric or symbolic)
             or ranges (continuous set, set)
-        :type evidence: VariableMap
         """
         return self.probability(evidence) > 0.
 
     def path_consistent_with(self, evidence: VariableMap) -> bool:
+        """
+        Check if the path of this node is consistent with the variable assignments in evidence.
+
+        :param evidence: A preprocessed VariableMap that maps to singular values (numeric or symbolic)
+            or ranges (continuous set, set)
+        """
         return super(Leaf, self).consistent_with(evidence)
 
     def probability(self, query: VariableMap, dirac_scaling: float = 2.,  min_distances: VariableMap = None) -> float:
@@ -655,36 +776,66 @@ class Leaf(Node):
         # create mpe result
         return result_likelihood, maximum
 
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in this decision node.
+                Leafs require 1 + the sum of all distributions parameters. The 1 extra parameter
+                represents the prior.
+        """
+        return 1 + sum([distribution.number_of_parameters() for distribution in self.distributions.values()])
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 class JPT:
     """
-    Joint Probability Trees.
+    Implementation Joint Probability Trees (JPTs).
     """
 
     logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
 
-    def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
-                 max_leaves=None, max_depth=None, variable_dependencies=None) -> None:
-        '''Implementation of Joint Probability Tree (JPT) learning. We store multiple distributions
-        induced by its training samples in the nodes so we can later make statements
-        about the confidence of the prediction.
-        has children :class:`~jpt.learning.trees.Node`.
-
-        :param variables:           the variable declarations of the data being processed by this tree
-        :type variables:            [jpt.variables.Variable]
-        :param min_samples_leaf:    the minimum number of samples required to generate a leaf node
-        :type min_samples_leaf:     int or float
-        :param variable_dependencies: A dict that maps every variable to a list of variables that are 
-                                        directly dependent to that variable.
-        :type variable_dependencies: None or Dict from variable to list of variables 
-        '''
+    def __init__(self,
+                 variables: List[Variable],
+                 targets: List[str or Variable] = [],
+                 features: List[str or Variable] = [],
+                 min_samples_leaf: float or int = .01,
+                 min_impurity_improvement: float or None = None,
+                 max_leaves: int or None = None,
+                 max_depth: int or None = None,
+                 variable_dependencies: Dict[Variable, List[Variable]] or None = None) -> None:
+        """
+        Create a JPT.
+        :param variables: The variables that will be represented this model
+        :param targets: The variables where the information gain will be computed on
+        :param features: The variables where the splits will be chosen from
+        :param min_samples_leaf: If an integer is provided it is the minimal number of samples required to form a leaf,
+        if a float is provided it will be the minimal percentage of samples that is required to form a leaf
+        :param min_impurity_improvement: The minimal amount of information gain to justify a split
+        :param max_leaves: The maximum number of leaves (deprecated)
+        :param max_depth: The maximum depth the tree may have
+        :param variable_dependencies: A dictionary mapping variables to a list of dependent variables. Having this
+        sparse may speed up training a lot.
+        """
 
         self._variables = tuple(variables)
-        self._targets = targets
         self.varnames: OrderedDict[str, Variable] = OrderedDict((var.name, var) for var in self._variables)
-        self._targets = [self.varnames[v] if type(v) is str else v for v in targets] if targets is not None else None
+        # self._targets = None if not targets \
+            # else [self.varnames[v] if type(v) is str else v for v in targets]
+        self._targets = list(self.variables) if len(targets) == 0 \
+            else [self.varnames[v] if type(v) is str else v for v in targets]
+
+        # handle features such that only specifying targets is enough
+        if len(targets) == 0:
+            if len(features) == 0:
+                self._features = list(self.variables)
+            else:
+                self._features = [self.varnames[v] if type(v) is str else v for v in features]
+        else:
+            if len(features) == 0:
+                self._features = [v for v in self.variables if v not in self.targets]
+            else:
+                self._features = [self.varnames[v] if type(v) is str else v for v in features]
+
         self.leaves: Dict[int, Leaf] = {}
         self.innernodes: Dict[int, DecisionNode] = {}
         self.allnodes: ChainMap[int, Node] = ChainMap(self.innernodes, self.leaves)
@@ -772,6 +923,7 @@ class JPT:
             self.symbolic_dependency_matrix[key_, 0:len(symbolic_dependencies)] = symbolic_dependencies
 
     def _reset(self) -> None:
+        """ Delete all parameters of this model (not the hyperparameters)"""
         self.innernodes.clear()
         self.leaves.clear()
         self.priors.clear()
@@ -788,7 +940,7 @@ class JPT:
 
     @property
     def features(self) -> List[Variable]:
-        return [var for var in self.variables if var not in self.targets]
+        return self._features
 
     @property
     def numeric_variables(self) -> List[Variable]:
@@ -815,8 +967,10 @@ class JPT:
         return [var for var in self.features if isinstance(var, SymbolicVariable)]
 
     def to_json(self) -> Dict:
+        """Convert the tree to a json dictionary that can be serialized. """
         return {'variables': [v.to_json() for v in self.variables],
                 'targets': [v.name for v in self.targets] if self.targets else self.targets,
+                'features': [v.name for v in self.features],
                 'min_samples_leaf': self.min_samples_leaf,
                 'min_impurity_improvement': self.min_impurity_improvement,
                 'max_leaves': self.max_leaves,
@@ -832,9 +986,11 @@ class JPT:
 
     @staticmethod
     def from_json(data: Dict[str, Any]):
+        """ Construct a tree from a json dict."""
         variables = OrderedDict([(d['name'], Variable.from_json(d)) for d in data['variables']])
         jpt = JPT(variables=list(variables.values()),
-                  targets=[variables[v] for v in data['targets']] if data.get('targets') else None,
+                  targets=[variables[v] for v in data['targets']] if data.get('targets') else [],
+                  features=[variables[v] for v in data['features']] if data.get('features') else [],
                   min_samples_leaf=data['min_samples_leaf'],
                   min_impurity_improvement=data['min_impurity_improvement'],
                   max_leaves=data['max_leaves'],
@@ -871,8 +1027,13 @@ class JPT:
                 self.max_depth == o.max_depth and
                 self.max_leaves == o.max_leaves)
 
-    def encode(self, samples) -> np.array:
-        """ Return a list of leaf indices that describe in what leaf the sample would land """
+    def encode(self, samples: np.ndarray) -> np.array:
+        """
+        Get the leaf index that describes the partition of each sample. Only works for fully initialized samples, i. e.
+        a matrix of arbitrary many rows but #variables many columns.
+        :param samples: the samples to evaluate
+        :return: A 1D numpy array of integers containing the leaf index of every sample.
+        """
         result = np.zeros(len(samples))
         variable_index_map = VariableMap([(variable, idx) for (idx, variable) in enumerate(self.variables)])
         samples = self._preprocess_data(samples)
@@ -882,6 +1043,11 @@ class JPT:
         return result
 
     def pdf(self, values: VariableMap) -> float:
+        """
+        Get the likelihood of one world
+        :param values: A VariableMap mapping some variables to one value.
+        :return: The likelihood as float
+        """
         values_ = VariableMap([(var, ContinuousSet(val, val)) for var, val in values.items()])
         pdf = 0
         for leaf in self.apply(values_):
@@ -974,21 +1140,23 @@ class JPT:
 
     # noinspection PyProtectedMember
     def posterior(self,
-                  variables: List[Union[Variable, str]] = None,
-                  evidence: Union[Dict[Union[Variable, str], Any], VariableMap] = None,
+                  variables: List[Variable or str] = None,
+                  evidence: Dict[Union[Variable, str], Any] or VariableMap = None,
                   fail_on_unsatisfiability: bool = True,
                   report_inconsistencies: bool = False) -> PosteriorResult:
-        '''
+        """
+        Compute the posterior distribution of every variable in ``variables``. The result contains independent
+        distributions. Be aware that they might not actually be independent.
 
-        :param variables:   the query variables of the posterior to be computed
-        :param evidence:    the evidence given for the posterior to be computed
-        :param fail_on_unsatisfiability: wether or not an ``Unsatisfiability`` error is raised if the
+        :param variables: The query variables of the posterior to be computed
+        :param evidence: The evidence given for the posterior to be computed
+        :param fail_on_unsatisfiability: Rather or not an ``Unsatisfiability`` error is raised if the
                                          likelihood of the evidence is 0.
-        :param report_inconsistencies:   in case of an ``Unsatisfiability`` error, the exception raise
+        :param report_inconsistencies:   In case of an ``Unsatisfiability`` error, the exception raise
                                          will contain information about the variable assignments that
-                                         provoked the inconsistency.
-        :return:            jpt.trees.InferenceResult containing distributions, candidates and weights
-        '''
+                                         caused the inconsistency.
+        :return: jpt.trees.PosteriorResult containing distributions, candidates and weights
+        """
         variables = ifnone(variables, self.variables)
         evidence_ = ifnone(evidence, {}, self._preprocess_query)
         result = PosteriorResult(variables, evidence_)
@@ -1069,10 +1237,17 @@ class JPT:
                     evidence: VariableAssignment = None,
                     confidence_level: float = None,
                     fail_on_unsatisfiability: bool = True) -> VariableMap or None:
-        '''
+        """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
-        '''
+        :param variables: The variables to compute the expectation distributions on
+        :param evidence: The raw evidence applied to the tree
+        :param confidence_level: The level of confidence that surrounds the expectation
+        :param fail_on_unsatisfiability: Rather or not an ``Unsatisfiability`` error is raised if the
+                                         likelihood of the evidence is 0.
+        :return: jpt.trees.PosteriorResult containing distributions, can
+        :return: jpt.trees.ExpectationResult
+        """
         variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
                            set(self.variables) - set(evidence))
 
@@ -1105,7 +1280,7 @@ class JPT:
     def mpe(self, evidence: VariableMap = VariableMap()) -> List[MPEResult]:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
-        :param evidence: The raw evidence
+        :param evidence: The raw evidence that is applied to the tree
         :return: List[MPEResult] that describes all maxima of the tree given the evidence.
         """
 
@@ -1136,9 +1311,11 @@ class JPT:
         return results
 
     def independent_marginals(self, evidence: VariableMap = VariableMap()) -> VariableMap:
-        """ Get the marginal distribution of every variable given the evidence.
-        @param evidence: The evidence
-        @return: VariableMap that maps to every distribution
+        """
+        Get the marginal distribution of every variable given the evidence.
+        Deprecated
+        :param evidence: The evidence
+        :return: VariableMap that maps to every distribution
         """
 
         # preprocess the evidence
@@ -1170,18 +1347,17 @@ class JPT:
                           remove_none: bool = True,
                           skip_unknown_variables: bool = False,
                           allow_singular_values: bool = False) -> VariableMap:
-        '''
-        Transform a query entered by a user into an internal representation
-        that can be further processed.
-
+        """
+        Transform a query entered by a user into an internal representation that can be further processed.
+        :param query: the raw query
+        :param remove_none: Rather to remove None entries or not
         :param skip_unknown_variables:  skip preprocessing for variable that does not exist in tree (may happen in
                                         multiple reverse tree inference). If False, an exception is raised;
                                         default: False
-        :type skip_unknown_variables: bool
-        :param allow_singular_values: Allow singular values, such that they are transformed to the daomin
-            specification of numeric variables but not transformed to intervals.
-        :type allow_singular_values: bool
-        '''
+        :param allow_singular_values: Allow singular values, such that they are transformed to the daomain
+            specification of numeric variables but not transformed to intervals via the PPF.
+        :return: the preprocessed VariableMap
+        """
         # Transform lists into a numeric interval:
         query_ = VariableMap()
         # parameter of the respective variable:
@@ -1237,7 +1413,12 @@ class JPT:
         JPT.logger.debug('Original :', pprint.pformat(query), '\nProcessed:', pprint.pformat(query_))
         return query_
 
-    def apply(self, query):
+    def apply(self, query: VariableMap) -> Iterator[Leaf]:
+        """
+        Iterator that yields leaves that are consistent with ``query``.
+        :param query: the preprocessed query
+        :return:
+        """
         # if the sample doesn't match the features of the tree, there is no valid prediction possible
         if not set(query.keys()).issubset(set(self._variables)):
             raise TypeError(f'Invalid query. Query contains variables that are not '
@@ -1251,7 +1432,7 @@ class JPT:
         yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
 
     def c45(self, data, start, end, parent, child_idx, depth) -> None:
-        '''
+        """
         Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
         ``indices``. The created node is put as a child with index ``child_idx`` to the children of
         node ``parent``, if any.
@@ -1262,7 +1443,7 @@ class JPT:
         :param parent:      the parent node of the current iteration, initially ``None``.
         :param child_idx:   the index of the child in the current iteration.
         :param depth:       the depth of the tree in the current recursion level.
-        '''
+        """
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
         n_samples = end - start
@@ -1349,23 +1530,34 @@ class JPT:
                 f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n')
 
     def pfmt(self) -> str:
-        '''Return a pretty-format string representation of this JPT.'''
+        """
+        :return: a pretty-format string representation of this JPT.
+        """
         return self._pfmt(self.root, 0)
 
     def _pfmt(self, node, indent) -> str:
+        """
+        :param node: The starting node
+        :param indent: the indentation of each new level
+        :return: a pretty-format string representation of this JPT from node downward.
+        """
         return "{}{}\n{}".format(" " * indent,
                                  str(node),
                                  ''.join([self._pfmt(c, indent + 4) for c in node.children])
                                  if isinstance(node, DecisionNode) else '')
 
     def _preprocess_data(self, data=None, rows=None, columns=None) -> np.ndarray:
-        '''
+        """
         Transform the input data into an internal representation.
-        '''
+        :param data: The data to transform
+        :param rows: The indices of the rows that will be transformed
+        :param columns: The indices of the columns that will be transformed
+        :return: the preprocessed data
+        """
         if sum(d is not None for d in (data, rows, columns)) > 1:
             raise ValueError('Only either of the three is allowed.')
         elif sum(d is not None for d in (data, rows, columns)) < 1:
-            raise ValueError('No data pased.')
+            raise ValueError('No data passed.')
 
         JPT.logger.info('Preprocessing data...')
 
@@ -1409,8 +1601,8 @@ class JPT:
         return data_
 
     def learn(self, data=None, rows=None, columns=None, keep_samples=False) -> 'JPT':
-        '''Fits the ``data`` into a regression tree.
-
+        """
+        Fit the jpt to ``data``
         :param data:    The training examples (assumed in row-shape)
         :type data:     [[str or float or bool]]; (according to `self.variables`)
         :param rows:    The training examples (assumed in row-shape)
@@ -1419,8 +1611,8 @@ class JPT:
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
                         purposes only. Default is false.
-        :type keep_samples:  bool
-        '''
+        :return: the fitted model
+        """
         # ----------------------------------------------------------------------------------------------------------
         # Check and prepare the data
         _data = self._preprocess_data(data=data, rows=rows, columns=columns)
@@ -1538,47 +1730,37 @@ class JPT:
         single numbers (no intervals).
 
         :param queries: An array containing the worlds. The shape is (x, len(variables)).
-        :type queries: np.array
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
-        :type dirac_scaling: float
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
-        :type min_distances: Dict[Variable, float]
-        Returns: An np.array with shape (x, ) containing the probabilities.
-
+        :returns: An np.array with shape (x, ) containing the probabilities.
         """
-        # create minimal distances for each numeric variable such a senseful metric can be computed if not provided
+
+        # set min distances if not overwritten
         if min_distances is None:
-            min_distances: Dict[Variable, float] = dict()
-            for idx, variable in enumerate(self.variables):
-                if variable.numeric:
-                    samples = np.unique(queries[:, idx])
-                    distances = np.diff(samples)
-                    min_distances[variable] = min(distances) if len(distances) > 0 else dirac_scaling
+            min_distances = self.minimal_distances
 
-        for idx, variable in enumerate(self.variables):
-            # convert the symbolic columns to the representation used in jpts
-            if variable.symbolic:
-                for value, label in zip(variable.domain.values, variable.domain.labels):
-                    queries[queries[:, idx] == value, idx] = label
-
-            # scale numeric variables if needed
-            elif variable.numeric and issubclass(variable.domain, ScaledNumeric):
-                queries[:, idx] = variable.domain.scaler.transform(queries[:, idx])
+        # preprocess the queries
+        queries = self._preprocess_data(queries)
 
         # initialize probabilities
         probabilities = np.zeros(len(queries))
 
         # for all leaves
         for leaf in self.leaves.values():
+
+            # calculate likelihood
             leaf_probabilities = leaf.parallel_likelihood(queries, dirac_scaling, min_distances)
-            probabilities = probabilities + leaf_probabilities
+
+            # multiply likelihood by leaf prior
+            probabilities += (leaf.prior * leaf_probabilities)
+
         return probabilities
 
     def reverse(self, query, confidence=.05) -> List[Tuple[Dict, List[Node]]]:
-        '''Determines the leaf nodes that match query best and returns their respective paths to the root node.
+        """Determines the leaf nodes that match query best and returns their respective paths to the root node.
 
         :param query: a mapping from featurenames to either numeric value intervals or an iterable of categorical values
         :type query: dict
@@ -1586,7 +1768,7 @@ class JPT:
         :type confidence: float
         :returns: a mapping from probabilities to lists of matcalo.core.algorithms.JPT.Node (path to root)
         :rtype: dict
-        '''
+        """
         # if none of the target variables is present in the query, there is no match possible
         # only check variable names, because multiple trees can have the (semantically) same variable, which differs as
         # python object
@@ -1641,25 +1823,25 @@ class JPT:
         # nodes representing a path from a leaf to the root
         return paths
 
-    def plot(self, title=None, filename=None, directory='/tmp', plotvars=None, view=True, max_symb_values=10):
-        '''Generates an SVG representation of the generated regression tree.
+    def plot(self,
+             title: str = "unnamed",
+             filename: str or None = None,
+             directory: str = '/tmp',
+             plotvars: List[Variable] = [],
+             view: bool = True,
+             max_symb_values: int = 10):
+        """
+        Generates an SVG representation of the generated regression tree.
 
-        :param title:   (str) title of the plot
+        :param title: title of the plot
         :param filename: the name of the JPT (will also be used as filename; extension will be added automatically)
-        :type filename: str
         :param directory: the location to save the SVG file to
-        :type directory: str
         :param plotvars: the variables to be plotted in the graph
-        :type plotvars: <jpt.variables.Variable>
         :param view: whether the generated SVG file will be opened automatically
-        :type view: bool
-        :param max_symb_values: limit the maximum number of symbolic values to this number
-        '''
-        if plotvars is None:
-            plotvars = []
-        plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
+        :param max_symb_values: limit the maximum number of symbolic values that are plotted to this number
+        """
 
-        title = ifnone(title, 'unnamed')
+        plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
 
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -1762,22 +1944,23 @@ class JPT:
         dot = dot.unflatten(stagger=3)
         dot.render(view=view, cleanup=False)
 
-    def pickle(self, fpath) -> None:
-        '''Pickles the fitted regression tree to a file at the given location ``fpath``.
+    def pickle(self, fpath: str) -> None:
+        """
+        Pickles the fitted regression tree to a file at the given location ``fpath``.
 
         :param fpath: the location for the pickled file
-        :type fpath: str
-        '''
+        """
         with open(os.path.abspath(fpath), 'wb') as f:
             pickle.dump(self, f)
 
     @staticmethod
-    def load(fpath):
-        '''Loads the pickled regression tree from the file at the given location ``fpath``.
+    def load(fpath) -> 'JPT':
+        """
+        Loads the pickled regression tree from the file at the given location ``fpath``.
 
         :param fpath: the location of the pickled file
         :type fpath: str
-        '''
+        """
         with open(os.path.abspath(fpath), 'rb') as f:
             try:
                 JPT.logger.info(f'Loading JPT {os.path.abspath(fpath)}')
@@ -1787,24 +1970,26 @@ class JPT:
                 raise Exception(f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.')
 
     @staticmethod
-    def calcnorm(sigma, mu, intervals):
-        '''Computes the CDF for a multivariate normal distribution.
+    def calcnorm(sigma: float, mu: float, intervals):
+        """
+        Computes the CDF for a multivariate normal distribution.
 
         :param sigma: the standard deviation
         :param mu: the expected value
         :param intervals: the boundaries of the integral
-        :type sigma: float
-        :type mu: float
         :type intervals: list of matcalo.utils.utils.Interval
-        '''
+        :return:
+        """
         from scipy.stats import mvn
         return first(mvn.mvnun([x.lower for x in intervals], [x.upper for x in intervals], mu, sigma))
 
-    def copy(self):
-        """Return a new copy of this jpt where all references are the original tree are cut."""
+    def copy(self) -> 'JPT':
+        """
+        :return: a new copy of this jpt where all references are the original tree are cut.
+        """
         return JPT.from_json(self.to_json())
 
-    def conditional_jpt(self, evidence: VariableMap):
+    def conditional_jpt(self, evidence: VariableMap) -> 'JPT':
         """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
         The new JPT contains all variables that are not in the evidence and is a 
@@ -1891,13 +2076,13 @@ class JPT:
 
         return conditional_jpt
 
-    def multiply_by_leaf_prior(self, prior: Dict[int, float]):
+    def multiply_by_leaf_prior(self, prior: Dict[int, float]) -> 'JPT':
         """
         Multiply every leafs prior by the given priors. This serves as handling the factor message
         from factor nodes. Be vary since this method overwrites the JPT in-place.
 
-
         :param prior: The priors, a Dict mapping from leaf indices to float
+
         :return: self
         """
 
@@ -1907,18 +2092,21 @@ class JPT:
 
         return self
 
-    def normalize(self):
+    def normalize(self) -> 'JPT':
+        """
+        Normalize the tree s. t. the sum of all leaf priors is 1.
+        :return: self
+        """
         probability_mass = sum(leaf.prior for leaf in self.leaves.values())
         for idx, leaf in self.leaves.items():
             self.leaves[idx].prior /= probability_mass
         return self
 
     def save(self, file) -> None:
-        '''
+        """
         Write this JPT persistently to disk.
-
-        ``file`` can be either a string or file-like object.
-        '''
+        :param file: either a string or file-like object.
+        """
         if type(file) is str:
             with open(file, 'w+') as f:
                 json.dump(self.to_json(), f)
@@ -1926,10 +2114,12 @@ class JPT:
             json.dump(self.to_json(), file)
 
     @staticmethod
-    def load(file):
-        '''
+    def load(file) -> 'JPT':
+        """
         Load a JPT from disk.
-        '''
+        :param file: either a string or file-like object.
+        :return: the JPT described in ``file``
+        """
         if type(file) is str:
             with open(file, 'r') as f:
                 t = json.load(f)
@@ -1937,17 +2127,23 @@ class JPT:
             t = json.load(file)
         return JPT.from_json(t)
 
-    def depth(self):
-        """Calculate the maximal depth of a leaf in the current tree."""
+    def depth(self) -> int:
+        """
+        :return: the maximal depth of a leaf in the tree.
+        """
         return max([leaf.depth() for leaf in self.leaves.values()])
 
-    def total_samples(self):
-        """Calculate the total number of samples represented by this tree."""
+    def total_samples(self) -> int:
+        """
+        :return: the total number of samples represented by this tree.
+        """
         return sum(l.samples for l in self.leaves.values())
 
-    def postprocess_leaves(self):
-        """ Postprocess the tree such that every point in the convex hull has
-            a probability greater than 0. This only changes the numeric distributions. """
+    def postprocess_leaves(self) -> None:
+        """
+        Postprocess the tree such that every point in the convex hull has
+        a probability greater than 0. This only changes the numeric distributions.
+        """
 
         # get total number of samples and use 1/total as default value
         total_samples = self.total_samples()
@@ -1973,4 +2169,8 @@ class JPT:
                         distribution._quantile.cdf.insert_convex_fragment_right(interval, function_value)
                         distribution._quantile.cdf.normalize()
 
-
+    def number_of_parameters(self) -> int:
+        """
+        :return: The number of relevant parameters in the entire tree
+        """
+        return sum([node.number_of_parameters() for node in self.leaves.values()])

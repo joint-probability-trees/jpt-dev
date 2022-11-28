@@ -10,5 +10,5 @@
 build/**
 dist/**
 **/TEST/**
-doc/**
-**/doc/*
+doc/build/**
+doc/source/autoapi/**
