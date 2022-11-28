@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 from itertools import zip_longest
 import json
 
-from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 import jpt.trees
@@ -146,20 +145,15 @@ class PCALeaf(jpt.trees.Node):
     Represent a Leaf in a PCAJPT.
     A leaf in a PCAJPT consists of distributions for every variable. Furthermore, the numeric variables are represented
     as linear dependent. They are represented as independent in "eigen" coordinates. Therefore, for inference, one has
-    to transform queries into the eigen space and answer them there. Be aware that the "eigen" coordinate system is
-    constructed from the standardized "data" coordinate system, hence a StandardScaler also exists.
+    to transform queries into the eigen space and answer them there.
     """
     def __init__(self, idx: int,
                  prior: float,
-                 scaler: StandardScaler,
                  decomposer: PCA,
                  numeric_indices: List[int],
                  parent: jpt.trees.Node):
 
         super(PCALeaf, self).__init__(idx, parent)
-
-        # standard scaler of this leaf
-        self.scaler = scaler
 
         # pca of this leaf
         self.decomposer: PCA = decomposer
@@ -303,7 +297,7 @@ class PCALeaf(jpt.trees.Node):
         :param data: The data to transform
         :return: The transformed data
         """
-        return self.decomposer.transform(self.scaler.transform(data))
+        return self.decomposer.transform(data)
 
     def inverse_transform(self, data: np.ndarray) -> np.ndarray:
         """
@@ -312,7 +306,7 @@ class PCALeaf(jpt.trees.Node):
         :param data: The data to inverse transform
         :return: The inverse transformed data
         """
-        return self.scaler.inverse_transform(self.decomposer.inverse_transform(data))
+        return self.decomposer.inverse_transform(data)
 
     def posterior(self, variables: List[Variable] or None = None, evidence: VariableMap = VariableMap()) -> VariableMap:
         """
@@ -418,7 +412,7 @@ class PCALeaf(jpt.trees.Node):
         """
         :return: the copied PCALeaf
         """
-        result = PCALeaf(self.idx, self.prior, self.scaler, self.decomposer, self.numeric_indices, self.parent)
+        result = PCALeaf(self.idx, self.prior, self.decomposer, self.numeric_indices, self.parent)
         result.distributions = self.distributions.copy()
         result._path = self._path
         result.samples = self.samples
@@ -642,9 +636,9 @@ class PCALeaf(jpt.trees.Node):
                 if variable.symbolic:
                     result[variable] = distribution.expectation()
 
-                # if it is numeric, get the mean from the scaler (avoids matrix multiplication)
+                # if it is numeric, get the mean from the scaler (avoids matrix multiplication) TODO
                 else:
-                    result[variable] = self.scaler.mean_[self.numeric_indices[idx]]
+                    result[variable] = 0
 
             return VariableMap(result.items())
 
@@ -664,8 +658,6 @@ class PCALeaf(jpt.trees.Node):
                 'samples': self.samples,
                 'parent': self.parent.idx if self.parent else None,
                 'child_idx': self.parent.children.index(self) if self.parent is not None else -1,
-                "mean": self.scaler.mean_,
-                "var": self.scaler.var_,
                 "eigenvectors": self.decomposer.components_,
                 "numeric_indices": json.dumps(self.numeric_indices)}
 
@@ -680,8 +672,15 @@ class PCAJPT(jpt.trees.JPT):
 
     logger = dnutils.getlogger('/pcajpt', level=dnutils.INFO)
 
-    def __init__(self, variables, targets=None, min_samples_leaf=.01, min_impurity_improvement=None,
-                 max_leaves=None, max_depth=None, variable_dependencies=None) -> None:
+    def __init__(self,
+                 variables: List[Variable],
+                 targets: List[str or Variable] = [],
+                 features: List[str or Variable] = [],
+                 min_samples_leaf: float or int = .01,
+                 min_impurity_improvement: float or None = None,
+                 max_leaves: int or None = None,
+                 max_depth: int or None = None,
+                 variable_dependencies: Dict[Variable, List[Variable]] or None = None) -> None:
         """
         Create a PCAJPT
 
@@ -691,18 +690,14 @@ class PCAJPT(jpt.trees.JPT):
         :param min_impurity_improvement: The minimal amount of information gain needed to accept a split
         :param max_depth: The maximum depth of the tree.
         """
-        super(PCAJPT, self).__init__(variables, targets, min_samples_leaf, min_impurity_improvement, max_leaves,
-                                     max_depth, variable_dependencies)
+        super(PCAJPT, self).__init__(variables, targets, features, min_samples_leaf, min_impurity_improvement,
+                                     max_leaves, max_depth, variable_dependencies)
 
         # get numeric indices for pca transformations
         self.numeric_indices = [idx for idx, variable in enumerate(self.variables) if variable.numeric]
 
         if len(self.numeric_indices) <= 1:
             raise ValueError("PCAJPT does not work for 1 or less numeric variables.")
-
-        # don't use targets yet, it is unsure what the correct design for that would be
-        if self.targets is not None:
-            raise ValueError("Targets are not yet allowed for PCA trees.")
 
         # for syntax highlighting, update the types of the structures
         self.leaves: Dict[int, PCALeaf] = {}
@@ -847,14 +842,8 @@ class PCAJPT(jpt.trees.JPT):
         # get relevant data
         pca_data = data[np.ix_(self.indices[start:end], self.numeric_indices)]
 
-        # create scaler
-        scaler: StandardScaler = StandardScaler()
-
-        # transform data
-        pca_data = scaler.fit_transform(pca_data)
-
         # create a full decomposer
-        decomposer = PCA(len(self.numeric_indices))
+        decomposer = CorrelationPCA(len(self.numeric_indices))
 
         # calculate transforms and transform the data
         pca_data = decomposer.fit_transform(pca_data)
@@ -883,7 +872,6 @@ class PCAJPT(jpt.trees.JPT):
             leaf = node = PCALeaf(idx=len(self.allnodes),
                                   parent=parent,
                                   prior=n_samples / data.shape[0],
-                                  scaler=scaler,
                                   decomposer=decomposer,
                                   numeric_indices=self.numeric_indices)
 
@@ -927,12 +915,12 @@ class PCAJPT(jpt.trees.JPT):
                 # get the index of the splitting dimension if reduced to only numeric variables
                 split_dimension = [index for index in self.numeric_indices if index == split_var_idx][0]
 
-                # get the rotation matrix the rotates from the eigen axes to the standardized axes
-                standardized_rotation_eigen = decomposer.components_.T
+                # get the rotation matrix the rotates from the eigen axes to the data axes
+                data_rotation_eigen = decomposer.components_.T
 
-                # create transformation matrix from eigen coordinates to standardized coordinates
-                standardized_transformation_eigen = np.identity(n + 1)
-                standardized_transformation_eigen[:-1, :-1] = standardized_rotation_eigen
+                # create transformation matrix from eigen coordinates to data coordinates
+                data_transformation_eigen = np.identity(n + 1)
+                data_transformation_eigen[:-1, :-1] = data_rotation_eigen
 
                 # get the axis aligned split value in eigen coordinates
                 split_value = (data[self.indices[start + split_pos], split_var_idx] +
@@ -942,9 +930,8 @@ class PCAJPT(jpt.trees.JPT):
                 eigen_transformation_split = np.identity(n+1)
                 eigen_transformation_split[split_dimension, -1] = split_value
 
-                # calculate transformation matrix from split space to standardized space
-                standardized_transformation_split = np.dot(standardized_transformation_eigen,
-                                                           eigen_transformation_split)
+                # calculate transformation matrix from split space to data space
+                data_transformation_split = np.dot(data_transformation_eigen, eigen_transformation_split)
 
                 # create the normal vector of the splitting plane in split coordinates
                 split_normal_of_split = np.zeros(n+1)
@@ -954,14 +941,11 @@ class PCAJPT(jpt.trees.JPT):
                 split_origin_of_split = np.zeros(n+1)
                 split_origin_of_split[-1] = 1
 
-                # calculate the normal vector and origin of the splitting plane in standardized coordinates
-                standardized_normal_of_split = np.dot(standardized_transformation_split, split_normal_of_split)
-                standardized_origin_of_split = np.dot(standardized_transformation_split, split_origin_of_split)
+                # calculate the normal vector and origin of the splitting plane in data coordinates
+                data_normal_of_split = np.dot(data_transformation_split, split_normal_of_split)
+                data_origin_of_split = np.dot(data_transformation_split, split_origin_of_split)
 
-                # transform standardized normal vector to data normal vector of the splitting plane
-                data_normal_of_split = np.sqrt(scaler.var_) * standardized_normal_of_split[:-1]
-
-                data_origin_of_split = scaler.inverse_transform(standardized_origin_of_split[:-1].reshape(1, -1))[0]
+                data_origin_of_split[:-1] += decomposer.mean_
 
                 # transform the split value back to data coordinates
                 data_split_value = float(np.dot(data_normal_of_split.T, data_origin_of_split))
@@ -1365,3 +1349,23 @@ class PCAJPT(jpt.trees.JPT):
         # improve aspect ratio of graph having many leaves or disconnected nodes
         dot = dot.unflatten(stagger=3)
         dot.render(view=view, cleanup=False)
+
+
+class CorrelationPCA(PCA):
+    def __init__(self, n_components=None):
+        super(CorrelationPCA, self).__init__(n_components)
+
+    def fit(self, X, y=None):
+        self.mean_ = np.mean(X, axis=0)
+        X -= self.mean_
+        correlation_matrix = np.corrcoef(X.T)
+        values, vectors = np.linalg.eig(correlation_matrix)
+        self.components_ = vectors.T
+
+        return values, vectors
+
+    def fit_transform(self, X, y=None):
+        self.fit(X)
+        return self.transform(X)
+
+

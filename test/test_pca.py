@@ -72,13 +72,12 @@ class TestPCAJPT2D(unittest.TestCase):
 
         self.model.fit(self.data)
 
-
     def test_separating_line(self):
         """
         This test case has to be verified visually, by confirming that the drawn line looks distances maximizing.
         """
 
-        show = False
+        show = True
 
         def eval_(x):
             return (self.model.root.splits[0].upper - self.model.root.variables["X"] * x) / \
