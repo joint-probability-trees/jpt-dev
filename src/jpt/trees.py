@@ -1234,7 +1234,7 @@ class JPT:
 
     def expectation(self,
                     variables: Iterable[Variable] = None,
-                    evidence: VariableAssignment = None,
+                    evidence: VariableAssignment = VariableMap(),
                     confidence_level: float = None,
                     fail_on_unsatisfiability: bool = True) -> VariableMap or None:
         """

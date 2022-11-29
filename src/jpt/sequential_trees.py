@@ -1,8 +1,10 @@
+from builtins import dict
 from typing import List
 
 import numpy as np
 import numpy.lib.stride_tricks
-import fglib
+
+from fglib import graphs, nodes, rv, inference
 import factorgraph
 import jpt.trees
 
@@ -167,7 +169,7 @@ class SequentialJPT:
 
         return factor_graph, altered_jpts
 
-    def ground_fglib(self, evidence: List[jpt.variables.VariableMap]) -> (factorgraph.Graph, List[jpt.trees.JPT]):
+    def ground_fglib(self, evidence: List[jpt.variables.VariableMap]) -> (graphs.FactorGraph, List[jpt.trees.JPT]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
         one variable for each timestep, one prior node as factor for each timestep and one factor node for each
         transition.
@@ -176,25 +178,29 @@ class SequentialJPT:
         """
 
         # create factorgraph
-        factor_graph = fglib.graphs.FactorGraph()
+        factor_graph = graphs.FactorGraph()
 
         # add variable nodes for timesteps
         timesteps = ["t%s" % t for t in range(len(evidence))]
-        fg_variables = [fglib.rv.Discrete()]
+        fg_variables = [nodes.VNode(t, rv.Discrete) for t in timesteps]
+        factor_graph.set_nodes(fg_variables)
 
-        altered_jpts = []
+        fg_factors = []
 
         # for each transition
         for idx in range(len(evidence)-1):
 
-            # get the variable names
-            state_names = ["t%s" % idx, "t%s" % (idx+1)]
-
             # create factor with values from transition model
-            factor_graph.factor(state_names, potential=self.transition_model)
+            current_factor = nodes.FNode("P(%s,%s)" % ("t%s" % idx, "t%s" % (idx+1)),
+                                         rv.Discrete(self.transition_model, fg_variables[idx], fg_variables[idx+1]))
+            factor_graph.set_node(current_factor)
+            factor_graph.set_edge(fg_variables[idx], current_factor)
+            factor_graph.set_edge(fg_variables[idx+1], current_factor)
+
+        altered_jpts = []
 
         # create prior factors
-        for timestep, e in zip(timesteps, evidence):
+        for fg_variable, e in zip(fg_variables, evidence):
 
             # apply the evidence
             conditional_jpt = self.template_tree.conditional_jpt(e)
@@ -211,7 +217,9 @@ class SequentialJPT:
                     prior[idx] = conditional_jpt.leaves[leaf_idx].prior
 
             # create a factor from it
-            factor_graph.factor([timestep], potential=prior)
+            current_factor = nodes.FNode("P(%s)" % str(fg_variable), rv.Discrete(prior, fg_variable))
+            factor_graph.set_node(current_factor)
+            factor_graph.set_edge(fg_variable, current_factor)
 
         return factor_graph, altered_jpts
 
@@ -227,6 +235,35 @@ class SequentialJPT:
         @return: probability (float)
         """
         raise NotImplementedError("Not yet implemented")
+
+    def posterior(self, evidence: List[jpt.variables.VariableMap]) -> List[jpt.trees.JPT]:
+        """
+        :param evidence:
+        :return:
+        """
+        from fglib import utils
+        # preprocess evidence
+        evidence = self.preprocess_sequence_map(evidence)
+
+        # ground factor graph
+        factor_graph, altered_jpts = self.ground_fglib(evidence)
+
+        # create result list
+        result = []
+
+        # Run belief propagation
+        latent_distribution = []
+        for v_node in factor_graph.get_vnodes():
+            belief = inference.belief_propagation(graph=factor_graph, query_node=v_node)
+            latent_distribution.append(belief)
+
+        # transform trees
+        for distribution, tree in zip(latent_distribution, altered_jpts):
+            prior = dict(zip(self.template_tree.leaves.keys(), distribution.pmf))
+            adjusted_tree = tree.multiply_by_leaf_prior(prior)
+            result.append(adjusted_tree)
+
+        return result
 
     def independent_marginals(self, evidence: List[jpt.variables.VariableMap]) -> List[jpt.trees.JPT]:
         """ Return the independent marginal distributions of all variables in this sequence along all
@@ -255,6 +292,32 @@ class SequentialJPT:
             result.append(adjusted_tree)
 
         return result
+
+    def expectation(self,
+                    variables: List[List[jpt.variables.Variable]],
+                    evidence: List[jpt.variables.VariableAssignment],
+                    confidence_level: float = None,
+                    fail_on_unsatisfiability: bool = True) -> List[jpt.variables.VariableMap]:
+        """
+        :param variables:
+        :param evidence:
+        :param confidence_level:
+        :param fail_on_unsatisfiability:
+        :return:
+        """
+        posteriors = self.posterior(evidence=evidence)
+
+        final = []
+        for idx, dist in enumerate(posteriors):
+            final.append(dist.expectation(variables=variables[idx],
+                                          evidence=evidence[idx],
+                                          confidence_level=confidence_level,
+                                          fail_on_unsatisfiability=fail_on_unsatisfiability))
+
+        return final
+
+    def likelihood(self):
+        raise NotImplementedError("Not yet implemented")
 
     def to_json(self):
         return {"template_tree": self.template_tree.to_json(),
