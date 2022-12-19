@@ -21,7 +21,7 @@ finally:
 
 from jpt.base.errors import Unsatisfiability
 from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
-    Distribution
+    Distribution, ScaledNumeric
 
 
 class MultinomialTest(TestCase):
@@ -284,7 +284,6 @@ class NumericTest(TestCase):
         self.assertEqual(1, dist._p(0))
 
 
-
 # ----------------------------------------------------------------------------------------------------------------------
 
 class DataScalerTest(TestCase):
@@ -310,3 +309,12 @@ class DataScalerTest(TestCase):
         for x_, x in zip(data_, DataScalerTest.DATA):
             self.assertAlmostEqual(x, scaler.inverse_transform(x_), 5)
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class TypeGeneratorTest(TestCase):
+
+    def test_numeric_type(self):
+        self.assertRaises(ValueError, NumericType, 'BlaType', [None, 1, 2])
+        self.assertRaises(ValueError, NumericType, 'BlaType', [1, 2, float('inf')])
+        self.assertTrue(issubclass(NumericType('bla', [1, 2, 3, 4]), ScaledNumeric))

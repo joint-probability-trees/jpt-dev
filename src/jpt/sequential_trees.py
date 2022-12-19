@@ -4,6 +4,8 @@ import numpy as np
 import numpy.lib.stride_tricks
 import fglib
 import factorgraph
+from dnutils import out
+
 import jpt.trees
 
 
@@ -34,19 +36,23 @@ class SequentialJPT:
 
         # create variables for jointly modelled timesteps
         for timestep in range(1, timesteps):
-            expanded_variables += [self._shift_variable_to_timestep(self.template_tree.variables[idx], timestep) for idx
-                                   in target_indices]
+            expanded_variables += [
+                self._shift_variable_to_timestep(self.template_tree.variables[idx], timestep)
+                for idx in target_indices
+            ]
 
             # append targets to data index
             data_indices += [idx + timestep * len(self.template_tree.variables) for idx in target_indices]
 
         # create expanded tree
-        expanded_template_tree = jpt.trees.JPT(variables=expanded_variables,
-                                               targets=expanded_variables[len(self.template_tree.variables):],
-                                               min_samples_leaf=self.template_tree.min_samples_leaf,
-                                               min_impurity_improvement=self.template_tree.min_impurity_improvement,
-                                               max_leaves=self.template_tree.max_leaves,
-                                               max_depth=self.template_tree.max_depth)
+        expanded_template_tree = jpt.trees.JPT(
+            variables=expanded_variables,
+            targets=expanded_variables[len(self.template_tree.variables):],
+            min_samples_leaf=self.template_tree.min_samples_leaf,
+            min_impurity_improvement=self.template_tree.min_impurity_improvement,
+            max_leaves=self.template_tree.max_leaves,
+            max_depth=self.template_tree.max_depth
+        )
 
         # initialize data
         data = None
@@ -115,9 +121,15 @@ class SequentialJPT:
         variable_._name = "%s+%s" % (variable_.name, timestep)
         return variable_
 
-    def preprocess_sequence_map(self, evidence: List[jpt.variables.VariableMap]):
+    def preprocess_sequence_map(self,
+                                evidence: List[jpt.variables.VariableMap],
+                                allow_singular_values: bool = True):
         """ Preprocess a list of variable maps to be used in JPTs. """
-        return [self.template_tree._preprocess_query(e) for e in evidence]
+        return [
+            self.template_tree._preprocess_query(e,
+                                                 allow_singular_values=allow_singular_values)
+            for e in evidence
+        ]
 
     def ground(self, evidence: List[jpt.variables.VariableMap]) -> (factorgraph.Graph, List[jpt.trees.JPT]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
