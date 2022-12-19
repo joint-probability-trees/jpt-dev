@@ -319,7 +319,8 @@ def infer_from_dataframe(df,
                          max_std: float = None,
                          precision: float = None,
                          unique_domain_names: bool = False,
-                         excluded_columns: Dict[str, type] = None):
+                         excluded_columns: Dict[str, type] = None,
+                         remove_nan: bool = False):
     '''
     Creates the ``Variable`` instances from column types in a Pandas or Spark data frame.
 
@@ -347,8 +348,10 @@ def infer_from_dataframe(df,
 
     :param excluded_columns:     user-provided domains for specific columns
     :type excluded_columns:    ``Dict[str, type]``
-    '''
 
+    :param remove_nan:  skip all ``None`` or ``NaN`` or ``Inf`` values in the data to construct the
+                        numeric variable domains.
+    '''
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
         if dtype in (str, object, bool):
@@ -364,7 +367,13 @@ def infer_from_dataframe(df,
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
             elif scale_numeric_types:
-                dom = NumericType('%s%s_TYPE' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''), df[col].unique())
+                values = df[col]
+                if remove_nan:
+                    values = values[~values.isin([np.nan, np.inf])]
+                dom = NumericType(
+                    '%s%s_TYPE' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
+                    values.unique()
+                )
             else:
                 dom = Numeric
             var = NumericVariable(col,
