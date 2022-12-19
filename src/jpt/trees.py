@@ -495,10 +495,15 @@ class DecisionNode(Node):
         :return: str
         """
         if self.variable.numeric:
-            return str(ContinuousSet(self.variable.domain.labels[self.splits[idx].lower],
-                                     self.variable.domain.labels[self.splits[idx].upper],
-                                     self.splits[idx].left,
-                                     self.splits[idx].right))
+            return self.variable.str(
+                ContinuousSet(
+                    self.variable.domain.labels[self.splits[idx].lower],
+                    self.variable.domain.labels[self.splits[idx].upper],
+                    self.splits[idx].left,
+                    self.splits[idx].right
+                ),
+                fmt='logic'
+            )
         else:
             negate = len(self.splits[1]) > 1
             if negate:
@@ -968,36 +973,38 @@ class JPT:
 
     def to_json(self) -> Dict:
         """Convert the tree to a json dictionary that can be serialized. """
-        return {'variables': [v.to_json() for v in self.variables],
-                'targets': [v.name for v in self.targets] if self.targets else self.targets,
-                'features': [v.name for v in self.features],
-                'min_samples_leaf': self.min_samples_leaf,
-                'min_impurity_improvement': self.min_impurity_improvement,
-                'max_leaves': self.max_leaves,
-                'max_depth': self.max_depth,
-                'minimal_distances': self.minimal_distances.to_json(),
-                'variable_dependencies': {var.name: [v.name for v in deps]
-                                          for var, deps in self.variable_dependencies.items()},
-                'leaves': [l.to_json() for l in self.leaves.values()],
-                'innernodes': [n.to_json() for n in self.innernodes.values()],
-                'priors': {varname: p.to_json() for varname, p in self.priors.items()},
-                'root': ifnone(self.root, None, attrgetter('idx'))
-                }
+        return {
+            'variables': [v.to_json() for v in self.variables],
+            'targets': [v.name for v in self.targets] if self.targets else self.targets,
+            'features': [v.name for v in self.features],
+            'min_samples_leaf': self.min_samples_leaf,
+            'min_impurity_improvement': self.min_impurity_improvement,
+            'max_leaves': self.max_leaves,
+            'max_depth': self.max_depth,
+            'minimal_distances': self.minimal_distances.to_json(),
+            'variable_dependencies': {var.name: [v.name for v in deps]
+                                      for var, deps in self.variable_dependencies.items()},
+            'leaves': [l.to_json() for l in self.leaves.values()],
+            'innernodes': [n.to_json() for n in self.innernodes.values()],
+            'priors': {varname: p.to_json() for varname, p in self.priors.items()},
+            'root': ifnone(self.root, None, attrgetter('idx'))
+        }
 
     @staticmethod
     def from_json(data: Dict[str, Any]):
         """ Construct a tree from a json dict."""
         variables = OrderedDict([(d['name'], Variable.from_json(d)) for d in data['variables']])
-        jpt = JPT(variables=list(variables.values()),
-                  targets=[variables[v] for v in data['targets']] if data.get('targets') else [],
-                  features=[variables[v] for v in data['features']] if data.get('features') else [],
-                  min_samples_leaf=data['min_samples_leaf'],
-                  min_impurity_improvement=data['min_impurity_improvement'],
-                  max_leaves=data['max_leaves'],
-                  max_depth=data['max_depth'],
-                  variable_dependencies={variables[var]: [variables[v] for v in deps]
-                                         for var, deps in data['variable_dependencies'].items()}
-                  )
+        jpt = JPT(
+            variables=list(variables.values()),
+            targets=[variables[v] for v in data['targets']] if data.get('targets') else [],
+            features=[variables[v] for v in data['features']] if data.get('features') else [],
+            min_samples_leaf=data['min_samples_leaf'],
+            min_impurity_improvement=data['min_impurity_improvement'],
+            max_leaves=data['max_leaves'],
+            max_depth=data['max_depth'],
+            variable_dependencies={variables[var]: [variables[v] for v in deps]
+                                   for var, deps in data['variable_dependencies'].items()}
+        )
         jpt.minimal_distances = VariableMap.from_json(jpt.numeric_variables, data["minimal_distances"])
         for d in data['innernodes']:
             DecisionNode.from_json(jpt, d)
@@ -1158,7 +1165,7 @@ class JPT:
         :return: jpt.trees.PosteriorResult containing distributions, candidates and weights
         """
         variables = ifnone(variables, self.variables)
-        evidence_ = ifnone(evidence, {}, self._preprocess_query)
+        evidence_ = ifnone(evidence, VariableMap(), self._preprocess_query)
         result = PosteriorResult(variables, evidence_)
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
 
@@ -1249,7 +1256,7 @@ class JPT:
         :return: jpt.trees.ExpectationResult
         """
         variables = ifnone([v if isinstance(v, Variable) else self.varnames[v] for v in variables],
-                           set(self.variables) - set(evidence))
+                           set(self.variables) - set(evidence or {}))
 
         posteriors = self.posterior(variables,
                                     evidence,
@@ -1852,84 +1859,83 @@ class JPT:
 
         # create nodes
         sep = ",<BR/>"
-        for idx, n in self.allnodes.items():
+        for idx, n in self.leaves.items():
             imgs = ''
 
             # plot and save distributions for later use in tree plot
-            if isinstance(n, Leaf):
-                rc = math.ceil(math.sqrt(len(plotvars)))
-                img = ''
-                for i, pvar in enumerate(plotvars):
-                    img_name = html.escape(f'{pvar.name}-{n.idx}')
+            rc = math.ceil(math.sqrt(len(plotvars)))
+            img = ''
+            for i, pvar in enumerate(plotvars):
+                img_name = html.escape(f'{pvar.name}-{n.idx}')
 
-                    params = {} if pvar.numeric else {'horizontal': True,
-                                                      'max_values': max_symb_values}
+                params = {} if pvar.numeric else {'horizontal': True,
+                                                  'max_values': max_symb_values}
 
-                    n.distributions[pvar].plot(title=html.escape(pvar.name),
-                                               fname=img_name,
-                                               directory=directory,
-                                               view=False,
-                                               **params)
-                    img += (f'''{"<TR>" if i % rc == 0 else ""}
-                                        <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
-                                {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
-                                ''')
+                n.distributions[pvar].plot(title=html.escape(pvar.name),
+                                           fname=img_name,
+                                           directory=directory,
+                                           view=False,
+                                           **params)
+                img += (f'''{"<TR>" if i % rc == 0 else ""}
+                                    <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
+                            {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
+                            ''')
 
-                    # clear current figure to allow for other plots
-                    plt.clf()
+                # clear current figure to allow for other plots
+                plt.clf()
 
-                if plotvars:
-                    imgs = f'''
-                                <TR>
-                                    <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
-                                        <TABLE>
-                                            {img}
-                                        </TABLE>
-                                    </TD>
-                                </TR>
-                                '''
+            if plotvars:
+                imgs = f'''
+                            <TR>
+                                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
+                                    <TABLE>
+                                        {img}
+                                    </TABLE>
+                                </TD>
+                            </TR>
+                            '''
 
             land = '<BR/>\u2227 '
             element = ' \u2208 '
 
             # content for node labels
-            nodelabel = f'''<TR>
-                                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{"Leaf" if isinstance(n, Leaf) else "Node"} #{n.idx}</B><BR/>{html.escape(n.str_node)}</TD>
-                            </TR>'''
+            title = 'Leaf #%s' % n.idx
+            nodelabel = f'''
+            <TR>
+                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{title}</B><BR/>{html.escape(n.str_node)}</TD>
+            </TR>'''
 
-            if isinstance(n, Leaf):
-                nodelabel = f'''{nodelabel}{imgs}
-                                <TR>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{n.samples} ({n.prior * 100:.3f}%)</TD>
-                                </TR>
-                                <TR>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>"  if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
-                                </TR>
-                                <TR>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                    <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in n.path.items()])}</TD>
-                                </TR>
-                                '''
+            nodelabel = f'''{nodelabel}{imgs}
+                            <TR>
+                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
+                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{n.samples} ({n.prior * 100:.3f}%)</TD>
+                            </TR>
+                            <TR>
+                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
+                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>"  if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                            </TR>
+                            <TR>
+                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
+                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in n.path.items()])}</TD>
+                            </TR>
+                            '''
 
             # stitch together
             lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
                             {nodelabel}
                       </TABLE>>'''
 
-            if isinstance(n, Leaf):
-                dot.node(str(idx),
-                         label=lbl,
-                         shape='box',
-                         style='rounded,filled',
-                         fillcolor=green)
-            else:
-                dot.node(str(idx),
-                         label=lbl,
-                         shape='ellipse',
-                         style='rounded,filled',
-                         fillcolor=orange)
+            dot.node(str(idx),
+                     label=lbl,
+                     shape='box',
+                     style='rounded,filled',
+                     fillcolor=green)
+        for idx, node in self.innernodes.items():
+            dot.node(str(idx),
+                     label=node.str_node,
+                     shape='ellipse',
+                     style='rounded,filled',
+                     fillcolor=orange)
 
         # create edges
         for idx, n in self.innernodes.items():
@@ -2003,59 +2009,38 @@ class JPT:
         # the new jpt that acts as conditional joint probability distribution
         conditional_jpt: JPT = self.copy()
 
-        if len(evidence) == 0:
+        if not evidence:
             return conditional_jpt
 
-        unvisited_nodes = queue.Queue()
-        unvisited_nodes.put_nowait(conditional_jpt.allnodes[self.root.idx])
+        fringe = deque([conditional_jpt.root])
 
-        while not unvisited_nodes.empty():
-
+        while fringe:
             # get the next node to inspect
-            current_node: Node = unvisited_nodes.get_nowait()
+            node = fringe.popleft()
+            rm = False
 
-            # if it is a leaf skip this iteration
-            if isinstance(current_node, Leaf):
-                current_node: Leaf
-                probability = current_node.probability(evidence)
-                current_node.prior = probability
-                continue
-
-            # syntax highlighting
-            current_node: DecisionNode
-
-            # remember the indices of the nodes that need to get removed
-            invalid = []
-
-            # check if the children of the node need to be traversed
-            for idx, child in enumerate(current_node.children):
-
-                # traverse consistent children
-                if child.consistent_with(evidence):
-                    unvisited_nodes.put_nowait(child)
-
-                # mark invalid children for removal
+            if isinstance(node, DecisionNode):
+                if not node.children:
+                    del conditional_jpt.innernodes[node.idx]
+                    rm = True
                 else:
-                    invalid = [idx] + invalid
+                    fringe.extendleft(node.children)
+                    continue
+            else:
+                leaf: Leaf = node
+                if not leaf.applies(evidence) or not leaf.consistent_with(evidence):
+                    rm = True
+                    del conditional_jpt.leaves[node.idx]
 
-            # remove invalid children from the tree and the children list
-            for idx in invalid:
-                # get all the indices of the subtree members
-                removable_indices = [node.idx for node in
-                                     current_node.children[idx].recursive_children()] + \
-                                    [current_node.children[idx].idx]
+            if rm and node.parent is not None:
+                if node.parent.children:
+                    del node.parent.children[node.parent.children.index(node)]
+                if not node.parent.children:
+                    fringe.appendleft(node.parent)
 
-                # for all dead nodes 
-                for jdx in removable_indices:
-                    # if it is a leaf remove it from the leaves
-                    if isinstance(self.allnodes[jdx], Leaf):
-                        del conditional_jpt.leaves[jdx]
-                    # if it is an inner node remove it from the inner nodes
-                    else:
-                        del conditional_jpt.innernodes[jdx]
-
-                # remove it as child
-                del current_node.children[idx]
+            if rm and node is conditional_jpt.root:
+                conditional_jpt.root = None
+                return conditional_jpt
 
         # calculate remaining probability mass
         probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())

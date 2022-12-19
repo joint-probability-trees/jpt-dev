@@ -5,7 +5,7 @@ from itertools import tee
 from types import FunctionType
 from typing import Any, Iterable, List, Union, Set
 
-from jpt.base.utils import classproperty, save_plot, normalized, mapstr, setstr
+from jpt.base.utils import classproperty, save_plot, normalized, mapstr, setstr, none2nan
 from jpt.base.errors import Unsatisfiability
 
 import copy
@@ -1225,6 +1225,9 @@ def SymbolicType(name, labels):
 def NumericType(name, values):
     t = type(name, (ScaledNumeric,), {})
     if values is not None:
+        values = np.array(list(none2nan(values)))
+        if (~np.isfinite(values)).any():
+            raise ValueError('Values contain nan or inf.')
         t.scaler = DataScaler(values)
         t.values = DataScalerProxy(t.scaler, inverse=False)
         t.labels = DataScalerProxy(t.scaler, inverse=True)
