@@ -108,6 +108,14 @@ def prod(it: Iterable[numbers.Number]):
     return reduce(lambda x, y: x * y, it)
 
 
+def none2nan(it: Iterable[numbers.Number]):
+    '''
+    Return a copy of the passed iterable ``it``, in which all occurrence
+    of ``None`` have been replaced by ``np.nan``.
+    '''
+    return map(lambda x: ifnone(x, np.nan), it)
+
+
 def to_json(obj):
     '''
     Recursively generate a JSON representation of the object ``obj``.
