@@ -843,7 +843,6 @@ class JPT:
 
         self.leaves: Dict[int, Leaf] = {}
         self.innernodes: Dict[int, DecisionNode] = {}
-        self.allnodes: ChainMap[int, Node] = ChainMap(self.innernodes, self.leaves)
         self.priors = {}
 
         self._min_samples_leaf = min_samples_leaf
@@ -934,6 +933,10 @@ class JPT:
         self.priors.clear()
         self.root = None
         self.c45queue.clear()
+
+    @property
+    def allnodes(self):
+        return ChainMap(self.innernodes, self.leaves)
 
     @property
     def variables(self) -> Tuple[Variable]:
