@@ -143,6 +143,13 @@ class JPTTest(TestCase):
         jpt.learn(self.data.reshape(-1, 1))
         self.assertEqual(126, jpt.number_of_parameters())
 
+    def test_independence(self):
+        x = NumericVariable('X')
+        y = NumericVariable('Y')
+        jpt = JPT([x, y], min_samples_leaf=1, min_impurity_improvement=.01)
+        jpt.learn(np.array([ContinuousSet(0, 1).sample(10), ContinuousSet(0, 1).sample(10)]).T)
+
+
 class TestCasePosteriorNumeric(TestCase):
 
     varx = None
