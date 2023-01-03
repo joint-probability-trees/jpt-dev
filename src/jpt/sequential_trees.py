@@ -1,15 +1,20 @@
+import datetime
+from collections import ChainMap
 from typing import List
 
 import numpy as np
 import numpy.lib.stride_tricks
 import fglib
 import factorgraph
-from dnutils import out
+from dnutils import out, getlogger
 
 import jpt.trees
 
 
 class SequentialJPT:
+
+    logger = getlogger('/jpt/seq')
+
     def __init__(self, template_tree):
         self.template_tree: jpt.trees.JPT = template_tree
         self.transition_model: np.array or None = None
@@ -82,7 +87,6 @@ class SequentialJPT:
             leaf.distributions = jpt.variables.VariableMap([(v, d) for v, d in leaf.distributions.items()
                                                             if v.name in self.template_tree.varnames.keys()])
             self.template_tree.leaves[idx] = leaf
-
         transition_data = None
 
         for sequence in sequences:
@@ -111,7 +115,9 @@ class SequentialJPT:
 
         self.transition_model = values
 
-    def _shift_variable_to_timestep(self, variable: jpt.variables.Variable, timestep: int = 1) -> jpt.variables.Variable:
+    def _shift_variable_to_timestep(self,
+                                    variable: jpt.variables.Variable,
+                                    timestep: int = 1) -> jpt.variables.Variable:
         """ Create a new variable where the name is shifted by +n and the domain remains the same.
 
         @param variable: The variable to shift
@@ -158,10 +164,15 @@ class SequentialJPT:
             factor_graph.factor(state_names, potential=self.transition_model)
 
         # create prior factors
+        start = datetime.datetime.now()
         for timestep, e in zip(timesteps, evidence):
-
             # apply the evidence
             conditional_jpt = self.template_tree.conditional_jpt(e)
+            self.logger.debug(
+                'Conditional JPT from %s to %s nodes.' % (
+                    len(self.template_tree.allnodes), len(conditional_jpt.allnodes)
+                )
+            )
 
             # append altered jpt
             altered_jpts.append(conditional_jpt)
@@ -176,6 +187,11 @@ class SequentialJPT:
 
             # create a factor from it
             factor_graph.factor([timestep], potential=prior)
+        now = datetime.datetime.now()
+        self.logger.debug(
+            'Conditional jpt computation '
+            '(length %s) took %s.' % (len(evidence), now - start)
+        )
 
         return factor_graph, altered_jpts
 
@@ -249,16 +265,30 @@ class SequentialJPT:
         """
         # preprocess evidence
         evidence = self.preprocess_sequence_map(evidence)
+        self.logger.debug('Evidence sequence preproceessing finished.')
 
         # ground factor graph
+
+        start = datetime.datetime.now()
         factor_graph, altered_jpts = self.ground(evidence)
+        now = datetime.datetime.now()
+        self.logger.debug(
+            'Grounding of conditional JPT sequence '
+            '(length %s) took %s.' % (len(evidence), now - start)
+        )
 
         # create result list
         result = []
 
         # Run (loopy) belief propagation (LBP)
+        start = datetime.datetime.now()
         iters, converged = factor_graph.lbp(max_iters=100, progress=True)
         latent_distribution = factor_graph.rv_marginals()
+        now = datetime.datetime.now()
+        self.logger.debug(
+            'Leaf prior computations '
+            '(length %s) took %s.' % (len(evidence), now - start)
+        )
 
         # transform trees
         for ((name, distribution), tree) in zip(sorted(latent_distribution, key=lambda x: x[0].name), altered_jpts):
@@ -266,6 +296,7 @@ class SequentialJPT:
             adjusted_tree = tree.multiply_by_leaf_prior(prior)
             result.append(adjusted_tree)
 
+        self.logger.debug('Independent marginals computation finished.')
         return result
 
     def to_json(self):
