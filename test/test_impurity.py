@@ -76,3 +76,12 @@ class ImpurityTest(TestCase):
         self.assertTrue(impurity._col_is_constant(1, 2, 1))
         self.assertTrue(impurity._col_is_constant(1, 2, 2))
 
+    def test_has_numeric_vars(self):
+        jpt = JPT(variables=[NumericVariable('x1', domain=Numeric), NumericVariable('x2', domain=Numeric)])
+        impurity = Impurity(jpt)
+        self.assertTrue(impurity.has_numeric_vars_())
+        self.assertTrue(impurity.has_numeric_vars_(0))
+        jpt = JPT(variables=[NumericVariable('x1', domain=Numeric)])
+        impurity = Impurity(jpt)
+        self.assertTrue(impurity.has_numeric_vars_())
+        self.assertFalse(impurity.has_numeric_vars_(0))
