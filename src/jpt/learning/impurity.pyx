@@ -30,7 +30,8 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
                                    DTYPE_t[::1] variances_left,
                                    DTYPE_t[::1] variances_right,
                                    SIZE_t samples_left,
-                                   SIZE_t samples_right) nogil:
+                                   SIZE_t samples_right,
+                                   SIZE_t skip_idx=-1) nogil:
     """
     Compute the variance improvement of a split. 
     
@@ -39,24 +40,23 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
    :param variances_right: The variances of the right side of the split
    :param samples_left: The amount of samples on the left side of the split
    :param samples_right: The amount of samples on the right side of the split
+   :param skip_idx: Skip the variable with this index for the computation
+   
    :return: double describing the relative variance improvement
    """
     # result[:] = variances_total
     cdef SIZE_t i
-    cdef DTYPE_t result = mean(variances_total)
+    cdef DTYPE_t result = mean(variances_total, skip_idx)
     cdef DTYPE_t variances_new = 0
     cdef DTYPE_t n_samples = <DTYPE_t> samples_left + samples_right
 
     for i in range(variances_total.shape[0]):
+        if skip_idx == i:
+            continue
         variances_new += ((variances_left[i] * <DTYPE_t> samples_left
                            + variances_right[i] * <DTYPE_t> samples_right) / n_samples)
-    variances_new /= <DTYPE_t> variances_total.shape[0]
+    variances_new /= <DTYPE_t> variances_total.shape[0] - <DTYPE_t> (skip_idx >= 0)
     return (result - variances_new) / result
-    # for i in range(variances_total.shape[0]):
-    #     if variances_total[i]:
-    #         result[i] /= variances_total[i]
-    #     else:
-    #         result[i] = 0
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -437,11 +437,22 @@ cdef class Impurity:
         self.indices = indices
         self.index_buffer = np.ndarray(shape=indices.shape[0], dtype=np.int64)
 
-    cdef inline int has_numeric_vars(Impurity self) nogil:
+    cpdef int has_numeric_vars_(Impurity self, SIZE_t except_var=-1):
+        '''Python variant of ``has_numeric_vars()`` for testing purpose only.'''
+        return self.has_numeric_vars(except_var)
+
+    cdef inline int has_numeric_vars(Impurity self, SIZE_t except_var=-1) nogil:
         """
-        :return: number of numeric targets
+        :return: number of numeric targets, possibly reduced by 1 if ``except_var`` is
+        passed and the variable with that index is also numeric.
         """
-        return self.n_num_vars
+        cdef int offset = 0, i
+        if except_var >= 0:
+            for i in range(self.n_num_vars):
+                if self.numeric_vars[i] == except_var:
+                    offset = 1
+                    break
+        return self.n_num_vars - offset
 
     cdef inline int has_symbolic_vars(Impurity self) nogil:
         """
@@ -769,6 +780,12 @@ cdef class Impurity:
         cdef SIZE_t sample_idx
         cdef int last_iter
         cdef DTYPE_t min_samples
+        cdef SIZE_t num_var_idx
+        if self.has_numeric_vars(var_idx):
+            for i in range(self.n_num_vars):
+                if self.numeric_vars[i] == var_idx:
+                    num_var_idx = i
+                    break
 
         cdef int subsequent_equal
 
@@ -792,7 +809,6 @@ cdef class Impurity:
 
             # if it is symbolic
             else:
-
                 # get the symolbic value
                 VAL_IDX = <SIZE_t> data[sample_idx, var_idx]
 
@@ -823,7 +839,7 @@ cdef class Impurity:
             impurity_improvement = 0.
 
             # if numeric targets exist
-            if self.has_numeric_vars():
+            if self.has_numeric_vars(var_idx):
 
                 # if there is more than one sample on the left side if the split
                 if samples_left > 1:
@@ -849,7 +865,8 @@ cdef class Impurity:
                                                                      self.variances_left,
                                                                      self.variances_right,
                                                                      samples_left,
-                                                                     samples_right) * self.w_numeric
+                                                                     samples_right,
+                                                                     num_var_idx) * self.w_numeric
 
                 # if the variable is symbolic
                 else:
