@@ -35,15 +35,15 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
     """
     Compute the variance improvement of a split. 
     
-   :param variances_total: The variances before the split
-   :param variances_left: The variances of the left side of the split
-   :param variances_right: The variances of the right side of the split
-   :param samples_left: The amount of samples on the left side of the split
-   :param samples_right: The amount of samples on the right side of the split
-   :param skip_idx: Skip the variable with this index for the computation
-   
-   :return: double describing the relative variance improvement
-   """
+    :param variances_total: The variances before the split
+    :param variances_left: The variances of the left side of the split
+    :param variances_right: The variances of the right side of the split
+    :param samples_left: The amount of samples on the left side of the split
+    :param samples_right: The amount of samples on the right side of the split
+    :param skip_idx: Skip the variable with this index for the computation
+    
+    :return: double describing the relative variance improvement
+    """
     # result[:] = variances_total
     cdef SIZE_t i
     cdef DTYPE_t result = mean(variances_total, skip_idx)
