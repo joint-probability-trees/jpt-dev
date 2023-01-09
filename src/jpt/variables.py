@@ -297,16 +297,27 @@ class NumericVariable(Variable):
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes to represent symbolic variables
 
+INVERT_IMPURITY = 'invert_impurity'
+
 
 class SymbolicVariable(Variable):
     '''
     Represents a symbolic variable.
     '''
 
-    def __init__(self, name, domain, min_impurity_improvement: float = None):
+    SETTINGS = edict(Variable.SETTINGS) + {
+        INVERT_IMPURITY: False,
+    }
+
+    def __init__(self,
+                 name: str,
+                 domain: type,
+                 min_impurity_improvement: float = None,
+                 invert_impurity: bool = None):
         super().__init__(name,
                          domain,
-                         min_impurity_improvement=min_impurity_improvement)
+                         min_impurity_improvement=min_impurity_improvement,
+                         invert_impurity=invert_impurity)
 
     @staticmethod
     def from_json(data) -> Dict[str, Any]:
@@ -558,6 +569,12 @@ class VariableAssignment(VariableMap):
         super().__init__(data)
         if type(self) is VariableAssignment:
             raise TypeError('Abstract super class %s cannot be instantiated.' % type(self).__name__)
+
+    def scalar2sets(self):
+        copy = self.copy()
+        for var, val in copy.items():
+            copy[var] = var.assignment2set(val)
+        return copy
 
 
 # ----------------------------------------------------------------------------------------------------------------------

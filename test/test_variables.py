@@ -231,6 +231,14 @@ class VariableTest(TestCase):
         self.assertEqual('A ∈ [2.0,4.0]', A.str({(2, 3), (3, 4)}, fmt='set'))
 
 
+class SymbolicVariableTest(TestCase):
+
+    def test_impurity_inversion(self):
+        symbolicType = SymbolicType('BlaType', labels=['a', 'b', 'c'])
+        v = SymbolicVariable('var', domain=symbolicType, invert_impurity=True)
+        self.assertTrue(v.invert_impurity)
+
+
 class DuplicateDomainTest(TestCase):
     '''Test domain functionality of Variable classes.'''
 

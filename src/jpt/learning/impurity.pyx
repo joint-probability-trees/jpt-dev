@@ -240,6 +240,9 @@ cdef class Impurity:
     # float array of gini impurities right of the split
     cdef DTYPE_t[::1] gini_right
 
+    # int array for storing booleans of which gini impurities should be inverted
+    cdef SIZE_t[::1] invert_impurity
+
     # float arrays of all kinds of statistics left and right of a split
     cdef DTYPE_t[::1] variances_left, \
         variances_right, \
@@ -317,6 +320,11 @@ cdef class Impurity:
         self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
                                        if v.symbolic and v in tree.targets],
                                       dtype=np.int64)
+
+        # store impurity inversion
+        self.invert_impurity = np.array([v.invert_impurity for v in tree.variables
+                                         if v.symbolic and v in tree.targets],
+                                        dtype=np.int64)
 
         # get the number of symbolic targets
         self.n_sym_vars = len(self.symbolic_vars)
@@ -498,6 +506,8 @@ cdef class Impurity:
             result[i] /= <DTYPE_t> (n_samples * n_samples)
             result[i] -= 1
             result[i] /= 1. / (<DTYPE_t> self.symbols[i]) - 1.
+            if self.invert_impurity[i]:
+                result[i] = 1 - result[i]
 
     cpdef SIZE_t _col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col):
         '''For testing only.'''
