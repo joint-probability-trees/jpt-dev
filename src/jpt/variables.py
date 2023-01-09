@@ -147,6 +147,21 @@ class Variable:
     def copy(self):
         return Variable.from_json(self.to_json())
 
+    def assignment2set(self, assignment: Any):
+        '''
+        Return a canonical representation of the variable ``assignment`` as a set
+        in the corresponding type of set.
+
+        For a ``NumericVariable``, a scalar ``assignment`` will be converted to
+        a ``ContinuousSet`` instance, for a ``SymbolicVariable``, a single value will
+        be converted to a ``set`` collection.
+
+        If ``assignment`` is alreay in its canonical set representation, it
+        will not be modified and returned as passed.
+        '''
+        raise NotImplementedError()
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Numeric variables
 
@@ -272,6 +287,11 @@ class NumericVariable(Variable):
         else:
             raise ValueError('Unknown format for numeric variable: %s.' % fmt)
 
+    def assignment2set(self, assignment: Any):
+        if isinstance(assignment, numbers.Number):
+            return ContinuousSet(assignment)
+        return assignment
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes to represent symbolic variables
@@ -307,6 +327,11 @@ class SymbolicVariable(Variable):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         else:
             return '%s = %s' % (self.name, str(assignment))
+
+    def assignment2set(self, assignment: Any):
+        if not isinstance(assignment, set):
+            return {assignment}
+        return assignment
 
 
 # ----------------------------------------------------------------------------------------------------------------------
