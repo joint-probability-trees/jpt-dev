@@ -19,7 +19,7 @@ from jpt.base.errors import Unsatisfiability
 from jpt.base.intervals import ContinuousSet
 from jpt.distributions import Gaussian, Numeric
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable
+from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment
 
 
 class JPTTest(TestCase):
@@ -67,7 +67,6 @@ class JPTTest(TestCase):
     def learn(self):
         trees = []
         for _ in range(1000):
-            out(_)
             var = NumericVariable('X')
             jpt = JPT([var], min_samples_leaf=.1)
             jpt.learn(self.data.reshape(-1, 1))
@@ -148,6 +147,25 @@ class JPTTest(TestCase):
         y = NumericVariable('Y')
         jpt = JPT([x, y], min_samples_leaf=1, min_impurity_improvement=.01)
         jpt.learn(np.array([ContinuousSet(0, 1).sample(10), ContinuousSet(0, 1).sample(10)]).T)
+
+    def test_impurity_inversion(self):
+        df = pd.DataFrame.from_records([
+            ['a', 'c'],
+            ['a', 'd'],
+            ['a', 'c'],
+            ['b', 'd'],
+            ['b', 'c'],
+            ['b', 'd']
+        ], columns=['fst', 'snd'])
+        AT = SymbolicType('AType', labels=['a', 'b'])
+        BT = SymbolicType('BType', labels=['c', 'd'])
+        A = SymbolicVariable('fst', AT, invert_impurity=True)
+        B = SymbolicVariable('snd', BT)
+        jpt = JPT([A, B])
+        jpt.fit(df)
+        for leaf in jpt.leaves.values():
+            if leaf.applies(LabelAssignment([(B, 'c')])):
+                self.assertEqual(AT().set(params=[2 / 3, 1 / 3]), leaf.distributions['fst'])
 
 
 class TestCasePosteriorNumeric(TestCase):
@@ -498,8 +516,10 @@ class TestCaseInference(TestCase):
 
     def test_inference_mixed_single_candidate_T(self):
         self.q = {'WillWait': True}
-        self.e = {'WaitEstimate': [0, 10],
-                  'Food': 'Thai'}
+        self.e = {
+            'WaitEstimate': [0, 10],
+            'Food': 'Thai'
+        }
         inference = self.jpt.infer(self.q, self.e)
         self.assertAlmostEqual(.6, inference.result, places=10)
 
