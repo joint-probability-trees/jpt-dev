@@ -67,7 +67,8 @@ class Variable:
             if attr not in self.settings:
                 raise AttributeError('Unknown settings "%s": '
                                      'expected one of {%s}' % (attr, setstr(type(self).SETTINGS)))
-            self.settings[attr] = value
+            if value is not None:
+                self.settings[attr] = value
 
     def __getattr__(self, name):
         try:
