@@ -1044,7 +1044,7 @@ class Multinomial(Distribution):
     def set(self, params: Iterable[numbers.Real]) -> 'Multinomial':
         if len(self.values) != len(params):
             raise ValueError('Number of values and probabilities must coincide.')
-        self._params = np.array(params)
+        self._params = np.array(params, dtype=np.float64)
         return self
 
     def update(self, dist: 'Multinomial', weight: numbers.Real) -> 'Multinomial':
