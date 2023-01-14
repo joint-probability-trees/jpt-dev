@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from jpt.base.utils import mapstr
+from jpt.base.utils import mapstr, setstr_int
 
 
 class UtilsTest(TestCase):
@@ -11,3 +11,16 @@ class UtilsTest(TestCase):
         self.assertEqual(['0', '1', '...', '8', '9'], mapstr(l, limit=4))
         self.assertEqual(['0', '9'], mapstr([0, 9], limit=4))
         self.assertEqual(['0', '...'], mapstr([0, 9], limit=1))
+        self.assertEqual(['6', '7'], mapstr(['6', '7'], limit=2))
+
+    def test_setstr_int(self):
+        # Arrange
+        set_ = {0, 1, 2, 4, 6, 7, 9, 10, 11}
+
+        # Act
+        str_1 = setstr_int(set_)
+        str_2 = setstr_int(set_, sep_inner=', ')
+
+        # Assert
+        self.assertEqual('0...2, 4, 6, 7, 9...11', str_1)
+        self.assertEqual('0, ..., 2, 4, 6, 7, 9, ..., 11', str_2)
