@@ -69,7 +69,7 @@ class Conditional:
         return self.p[tuple(evidence)].sample_one()
 
 
-def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None):
+def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None, ellipse: str = '...'):
     '''
     Convert the sequence ``seq`` into a list of strings by applying ``str`` to each of its elements.
 
@@ -83,7 +83,7 @@ def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None):
     result = [fmt(e) for e in seq]
     if not limit or limit >= len(seq):
         return result
-    return result[:max(limit // 2, 1)] + ['...'] + result[len(result) - limit // 2:]
+    return result[:max(limit // 2, 1)] + [ellipse] + result[len(result) - limit // 2:]
 
 
 def setstr(seq: Iterable, fmt: Callable = None, limit: int = None, sep: str = ', '):
