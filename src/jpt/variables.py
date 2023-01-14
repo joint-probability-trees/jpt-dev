@@ -6,12 +6,12 @@ import math
 import numbers
 import uuid
 from collections import OrderedDict
-from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable
+from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable, Type
 
 import numpy as np
 from dnutils import first, edict
 
-from jpt.base.utils import mapstr, to_json, list2interval, setstr
+from jpt.base.utils import mapstr, to_json, list2interval, setstr, setstr_int
 from jpt.base.constants import SYMBOL
 
 from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType
@@ -98,7 +98,7 @@ class Variable:
         return self._domain(**{k: self.settings[k] for k in self._domain.SETTINGS})
 
     def __str__(self):
-        return f'{self.name}[{self.domain.__name__}(%s)]' % {0: 'SYM', 1: 'NUM'}[self.numeric]
+        return f'{self.name}[{self.domain.__name__}]'
 
     def __repr__(self):
         return str(self)
@@ -122,11 +122,10 @@ class Variable:
         return issubclass(self.domain, Numeric)
 
     def str(self, assignment, **kwargs) -> str:
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def to_json(self) -> Dict[str, Any]:
         return {'name': self.name,
-                'type': 'numeric' if self.numeric else 'symbolic',
                 'domain': None if self.domain is None else self.domain.to_json(),
                 'settings': self.settings}
 
@@ -136,6 +135,8 @@ class Variable:
             return NumericVariable.from_json(data)
         elif data['type'] == 'symbolic':
             return SymbolicVariable.from_json(data)
+        elif data['type'] == 'integer':
+            return IntegerVariable.from_json(data)
         else:
             raise TypeError('Unknown distribution type: %s' % data['type'])
 
@@ -184,12 +185,14 @@ class NumericVariable(Variable):
 
     def __init__(self,
                  name: str,
-                 domain=Numeric,
+                 domain: Type = Numeric,
                  min_impurity_improvement: float = None,
                  blur: float = None,
                  max_std: float = None,
                  precision: float = None):
-        settings = {Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement}
+        settings = {
+            Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement
+        }
         if blur is not None:
             settings[NumericVariable.BLUR] = blur
         if max_std is not None:
@@ -211,6 +214,11 @@ class NumericVariable(Variable):
                      self.blur,
                      self.max_std,
                      self.precision))
+
+    def to_json(self) -> Dict[str, Any]:
+        return edict(super().to_json()) + {
+            'type': 'numeric'
+        }
 
     @staticmethod
     def from_json(data: Dict[str, Any]) -> 'NumericVariable':
@@ -288,10 +296,65 @@ class NumericVariable(Variable):
         else:
             raise ValueError('Unknown format for numeric variable: %s.' % fmt)
 
-    def assignment2set(self, assignment: Any):
+    def assignment2set(self, assignment: Union[float, NumberSet]) -> NumberSet:
         if isinstance(assignment, numbers.Number):
             return ContinuousSet(assignment)
         return assignment
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class IntegerVariable(Variable):
+    '''
+    Represents an integer-valued variable.
+    '''
+
+    def __init__(self, name: str, domain: Type, min_impurity_improvement: float = None,):
+        settings = {
+            Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement
+        }
+        super().__init__(name, domain, **settings)
+
+    def str(self, assignment, **kwargs) -> str:
+        fmt = kwargs.get('fmt', 'set')
+        if type(assignment) is set:
+            if len(assignment) == 1:
+                return self.str(first(assignment), fmt=fmt)
+            elif fmt == 'set':
+                valstr = setstr_int(assignment)
+                return f'{self.name} {SYMBOL.IN} {{{valstr}}}'
+            elif fmt == 'logic':
+                return ' v '.join([self.str(a, fmt=fmt) for a in assignment])
+        if isinstance(assignment, numbers.Number):
+            return '%s = %s' % (self.name, self.domain.labels[assignment])
+        else:
+            return '%s = %s' % (self.name, str(assignment))
+
+    def assignment2set(self, assignment: Union[int, Set[int]]) -> Set[int]:
+        if isinstance(assignment, numbers.Integral):
+            return {assignment}
+        return assignment
+
+    def __hash__(self):
+        return hash((
+            IntegerVariable,
+            hashlib.md5(self.name.encode()).hexdigest(),
+            self.domain
+        ))
+
+    @staticmethod
+    def from_json(data: Dict[str, Any]) -> 'IntegerVariable':
+        domain = Distribution.type_from_json(data['domain'])
+        return IntegerVariable(
+            name=data['name'],
+            domain=domain,
+            min_impurity_improvement=data.get(Variable.MIN_IMPURITY_IMPROVEMENT)
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        return edict(super().to_json()) + {
+            'type': 'integer'
+        }
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -323,6 +386,11 @@ class SymbolicVariable(Variable):
     def from_json(data) -> Dict[str, Any]:
         domain = Distribution.type_from_json(data['domain'])
         return SymbolicVariable(name=data['name'], domain=domain)
+
+    def to_json(self) -> Dict[str, Any]:
+        return edict(super().to_json()) + {
+            'type': 'symbolic'
+        }
 
     def str(self, assignment: Union[set, numbers.Number], **kwargs) -> str:
         fmt = kwargs.get('fmt', 'set')

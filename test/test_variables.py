@@ -9,8 +9,9 @@ import pandas as pd
 from jpt import NumericType, SymbolicType
 from jpt.base.intervals import ContinuousSet
 from jpt.distributions import Bool, Numeric, Distribution
+from jpt.distributions.univariate import IntegerType
 from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable, infer_from_dataframe, \
-    LabelAssignment, ValueAssignment
+    LabelAssignment, ValueAssignment, IntegerVariable
 
 
 class VariableMapTest(TestCase):
@@ -231,6 +232,8 @@ class VariableTest(TestCase):
         self.assertEqual('A ∈ [2.0,4.0]', A.str({(2, 3), (3, 4)}, fmt='set'))
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class SymbolicVariableTest(TestCase):
 
     def test_impurity_inversion(self):
@@ -238,6 +241,30 @@ class SymbolicVariableTest(TestCase):
         v = SymbolicVariable('var', domain=symbolicType, invert_impurity=True)
         self.assertTrue(v.invert_impurity)
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class IntegerVariableTest(TestCase):
+
+    dice = IntegerType('Dice', lmin=1, lmax=6)
+
+    def test_hash(self):
+        toss1 = IntegerVariable('Toss', domain=self.dice)
+        toss2 = IntegerVariable('Toss', domain=self.dice)
+        baz = IntegerVariable('baz', domain=self.dice)
+        self.assertEqual(hash(toss1), hash(toss2))
+        self.assertNotEqual(hash(toss1), hash(baz))
+
+    def test_serialization(self):
+        toss = IntegerVariable('Toss', domain=self.dice)
+        self.assertEqual(toss, Variable.from_json(toss.to_json()))
+
+    def test_pickle(self):
+        toss = IntegerVariable('Toss', domain=self.dice)
+        self.assertEqual(toss, pickle.loads(pickle.dumps(toss)))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class DuplicateDomainTest(TestCase):
     '''Test domain functionality of Variable classes.'''
