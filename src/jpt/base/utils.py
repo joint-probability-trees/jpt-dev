@@ -81,7 +81,7 @@ def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None):
     '''
     fmt = ifnone(fmt, str)
     result = [fmt(e) for e in seq]
-    if not limit or limit > len(seq):
+    if not limit or limit >= len(seq):
         return result
     return result[:max(limit // 2, 1)] + ['...'] + result[len(result) - limit // 2:]
 
