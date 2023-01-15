@@ -5,6 +5,8 @@ from .univariate import (
     ScaledNumeric,
     SymbolicType,
     NumericType,
+    Integer,
+    IntegerType,
     Gaussian,
     Bool,
     Distribution

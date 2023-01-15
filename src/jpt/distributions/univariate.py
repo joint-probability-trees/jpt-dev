@@ -1145,7 +1145,7 @@ class Multinomial(Distribution):
         fig, ax = plt.subplots()
         ax.set_title(f'{title or f"Distribution of {self._cl}"}')
         if horizontal:
-            ax.barh(x, probs, xerr=err, color='cornflowerblue', label='%', align='center')
+            ax.barh(x, probs, xerr=err, color='cornflowerblue', label='P', align='center')
             ax.set_xlabel('%')
             ax.set_yticks(x)
             ax.set_yticklabels(vals)
@@ -1158,7 +1158,7 @@ class Multinomial(Distribution):
                          f'{p.get_width():.2f}',
                          fontsize=10, color='black', verticalalignment='center')
         else:
-            ax.bar(x, probs, yerr=err, color='cornflowerblue', label='%')
+            ax.bar(x, probs, yerr=err, color='cornflowerblue', label='P')
             ax.set_ylabel('%')
             ax.set_xticks(x)
             ax.set_xticklabels(vals)
@@ -1300,8 +1300,8 @@ class Integer(Distribution):
         else:
             return cls.values[label]
 
-    def sample(self, n):
-        return wsample(list(self.values), weights=self.probabilities, k=n)
+    def sample(self, n) -> np.ndarray:
+        return np.array(wsample(list(self.values), weights=self.probabilities, k=n), dtype=np.int64)
 
     def sample_one(self):
         return wchoice(list(self.values), weights=self.probabilities)
@@ -1327,6 +1327,14 @@ class Integer(Distribution):
 
     def _expectation(self) -> numbers.Real:
         return sum(p * v for p, v in zip(self.probabilities, self.labels))
+
+    def variance(self) -> numbers.Real:
+        e = self.expectation()
+        return sum((l - e) ** 2 * p for l, p in zip(self.labels.values(), self.probabilities))
+
+    def _variance(self) -> numbers.Real:
+        e = self._expectation()
+        return sum((v - e) ** 2 * p for v, p in zip(self.values.values(), self.probabilities))
 
     def mpe(self) -> Tuple[float, Set[int]]:
         p_max = max(self.probabilities)
@@ -1408,13 +1416,11 @@ class Integer(Distribution):
 
     def __str__(self):
         if self._p is None:
-            return f'{type(self).__qualname__}<p=n/a>'
-        return f'{self._cl}<p=[{";".join([f"{v}={p:.3f}" for v, p in zip(self.values, self.probabilities)])}]>'
+            return f'<{type(self).__qualname__} p=n/a>'
+        return f'<{self._cl} p=[{"; ".join([f"{v}: {p:.3f}" for v, p in zip(self.values, self.probabilities)])}]>'
 
     def __repr__(self):
-        if self._p is None:
-            return f'{self._cl}<p=n/a>'
-        return f'\n{self._cl}<p=[\n{sepcomma.join([f" {v}={p:.3}" for v, p in zip(self.values, self.probabilities)])}]>;'
+        return str(self)
 
     def sorted(self):
         return sorted([(p, l) for p, l in zip(self._params, self.labels.values())],
@@ -1480,8 +1486,8 @@ class Integer(Distribution):
         fig, ax = plt.subplots()
         ax.set_title(f'{title or f"Distribution of {self._cl}"}')
         if horizontal:
-            ax.barh(x, probs, xerr=err, color='cornflowerblue', label='%', align='center')
-            ax.set_xlabel('%')
+            ax.barh(x, probs, xerr=err, color='cornflowerblue', label='P', align='center')
+            ax.set_xlabel('P')
             ax.set_yticks(x)
             ax.set_yticklabels(vals)
             ax.invert_yaxis()
@@ -1493,8 +1499,8 @@ class Integer(Distribution):
                          f'{p.get_width():.2f}',
                          fontsize=10, color='black', verticalalignment='center')
         else:
-            ax.bar(x, probs, yerr=err, color='cornflowerblue', label='%')
-            ax.set_ylabel('%')
+            ax.bar(x, probs, yerr=err, color='cornflowerblue', label='P')
+            ax.set_ylabel('P')
             ax.set_xticks(x)
             ax.set_xticklabels(vals)
             ax.set_ylim(bottom=0., top=1.)
