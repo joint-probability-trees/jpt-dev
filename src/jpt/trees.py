@@ -488,29 +488,24 @@ class DecisionNode(Node):
         node._path = list(self._path)
         node._path.append((self.variable, self.splits[idx]))
 
-    def str_edge(self, idx) -> str:
+    def str_edge(self, idx_split: int) -> str:
         """
         Convert the edge to child at ``idx`` to a string.
-        :param idx: The index of the child
+        :param idx_split: The index of the child
         :return: str
         """
         if self.variable.numeric:
             return self.variable.str(
-                ContinuousSet(
-                    self.variable.domain.labels[self.splits[idx].lower],
-                    self.variable.domain.labels[self.splits[idx].upper],
-                    self.splits[idx].left,
-                    self.splits[idx].right
-                ),
+                self.splits[idx_split],
                 fmt='logic'
             )
         else:
             negate = len(self.splits[1]) > 1
             if negate:
                 label = self.variable.domain.labels[fst(self.splits[0])]
-                return '%s%s' % ('\u00AC' if idx > 0 else '', label)
+                return '%s%s' % ('\u00AC' if idx_split > 0 else '', label)
             else:
-                return str(self.variable.domain.labels[fst(self.splits[idx])])
+                return str(self.variable.domain.labels[fst(self.splits[idx_split])])
 
     @property
     def str_node(self) -> str:

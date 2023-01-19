@@ -242,7 +242,7 @@ class NumericVariable(Variable):
         return self.max_std_lbl
 
     # noinspection PyIncorrectDocstring
-    def str(self, assignment: Union[List, Set, numbers.Number], **kwargs) -> str:
+    def str(self, assignment: Union[List, Set, numbers.Number, NumberSet], **kwargs) -> str:
         '''
         Construct a pretty-formatted string representation of the respective
         variable assignment.
@@ -250,11 +250,9 @@ class NumericVariable(Variable):
         :param assignment:        the value(s) assigned to this variable.
         :param fmt:               ["set" | "logic"] use either set or logical notation.
         :param precision:         (int) the number of decimals to use for rounding.
-        :param convert_values:
         '''
         fmt = kwargs.get('fmt', 'set')
         precision = kwargs.get('precision', 3)
-        convert_values = kwargs.get('convert_values', True)
         lower = '%%.%df %%s ' % precision
         upper = ' %%s %%.%df' % precision
 
@@ -274,8 +272,6 @@ class NumericVariable(Variable):
             assignment = RealSet(intervals).simplify()
         if isinstance(assignment, ContinuousSet):
             assignment = RealSet([assignment])
-        if convert_values:
-            assignment = RealSet([self.domain.value2label(i) for i in assignment.intervals])
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
