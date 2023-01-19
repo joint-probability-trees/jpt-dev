@@ -44,19 +44,20 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
     
     :return: double describing the relative variance improvement
     """
-    # result[:] = variances_total
     cdef SIZE_t i
-    cdef DTYPE_t result = mean(variances_total, skip_idx)
-    cdef DTYPE_t variances_new = 0
+    cdef DTYPE_t variance_impr = 0
+    cdef DTYPE_t[::1] variances_old = variances_total
     cdef DTYPE_t n_samples = <DTYPE_t> samples_left + samples_right
+    cdef DTYPE_t divisor = <DTYPE_t> variances_old.shape[0] - <DTYPE_t> (skip_idx >= 0)
 
-    for i in range(variances_total.shape[0]):
+    for i in range(variances_old.shape[0]):
         if skip_idx == i:
             continue
-        variances_new += ((variances_left[i] * <DTYPE_t> samples_left
-                           + variances_right[i] * <DTYPE_t> samples_right) / n_samples)
-    variances_new /= <DTYPE_t> variances_total.shape[0] - <DTYPE_t> (skip_idx >= 0)
-    return (result - variances_new) / result
+        divisor = <DTYPE_t> i - (skip_idx >= 0)
+        variance_impr = variance_impr * <DTYPE_t> divisor + variances_old[i] - (
+            (variances_left[i] * <DTYPE_t> samples_left + variances_right[i] * <DTYPE_t> samples_right) / n_samples
+        ) / variances_old[i] / <DTYPE_t> (divisor + 1)
+    return variance_impr
 
 
 # ----------------------------------------------------------------------------------------------------------------------
