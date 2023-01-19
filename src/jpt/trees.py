@@ -1408,7 +1408,7 @@ class JPT:
                                                          i.left,
                                                          i.right) for i in arg.intervals])
                 else:
-                    raise TypeError()
+                    raise TypeError('Unknown type of variable value: %s' % type(arg).__name__)
             if var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
                 if type(arg) is not set:
