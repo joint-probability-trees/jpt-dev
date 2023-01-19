@@ -67,6 +67,9 @@ class DataScaler:
         scaler.scale = data['scale_'][0]
         return scaler
 
+    def __repr__(self):
+        return '<DataScaler mean=%s, scale=%s>' % (self.mean, self.scale)
+
 
 class Identity:
     '''
@@ -131,7 +134,7 @@ class DataScalerProxy:
         return R
 
     def __repr__(self):
-        return '<DataScalerProxy, mean=%f, var=%s>' % (self.datascaler.mean, self.datascaler.scale)
+        return '<DataScalerProxy, mean=%f, scale=%s>' % (self.datascaler.mean, self.datascaler.scale)
 
 
 class HashableOrderedDict(OrderedDict):
