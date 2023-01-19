@@ -5,11 +5,11 @@ import hashlib
 import math
 import numbers
 import uuid
-from collections import OrderedDict
+
 from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable, Type
 
 import numpy as np
-from dnutils import first, edict
+from dnutils import first, edict, ifnone
 
 from jpt.base.utils import mapstr, to_json, list2interval, setstr, setstr_int
 from jpt.base.constants import SYMBOL
@@ -125,9 +125,11 @@ class Variable:
         raise NotImplementedError()
 
     def to_json(self) -> Dict[str, Any]:
-        return {'name': self.name,
-                'domain': None if self.domain is None else self.domain.to_json(),
-                'settings': self.settings}
+        return {
+            'name': self.name,
+            'domain': None if self.domain is None else self.domain.to_json(),
+            'settings': self.settings
+        }
 
     @staticmethod
     def from_json(data: Dict[str, Any]) -> Union['NumericVariable', 'SymbolicVariable']:
@@ -495,19 +497,25 @@ class VariableMap:
     supports accessing the image set both by the variable object instance itself _and_ its name.
     '''
 
-    def __init__(self, data: List[Tuple] = None):
+    def __init__(self,
+                 data: List[Tuple] or Dict = None,
+                 variables: Iterable[Variable] = None):
         '''
         ``data`` may be an iterable of (variable, value) pairs.
         '''
         super().__init__()
-        self._variables = {}
-        self._map = OrderedDict()
+        self._variables = {v.name: v for v in ifnone(variables, ())}
+        self._map = {}
         if data:
-            for var, value in data:
+            if isinstance(data, dict):
+                tuples = data.items()
+            else:
+                tuples = data
+            for var, value in tuples:
                 self[var] = value
 
     @property
-    def map(self) -> OrderedDict:
+    def map(self) -> {}:
         return self._map
 
     def __getitem__(self, key: Union[str, Variable]) -> Any:
@@ -516,11 +524,18 @@ class VariableMap:
         return self._map.__getitem__(key)
 
     def __setitem__(self, variable: Union[str, Variable], value: Any) -> None:
+        if type(variable) is str:
+            if variable not in self._variables:
+                raise ValueError('Variable "%s" not available in this '
+                                 '%s object. Set "variables" in the constructor '
+                                 'or use a Variable object.')
+            variable = self._variables[variable]
         if not isinstance(variable, Variable):
             raise ValueError('Illegal argument value: '
                              'expected Variable, got %s.' % type(variable).__name__)
         self._map[variable.name] = value
-        self._variables[variable.name] = variable
+        if variable.name not in self._variables:
+            self._variables[variable.name] = variable
 
     def __delitem__(self, key: Union[str, Variable]) -> None:
         if isinstance(key, Variable):
@@ -593,9 +608,10 @@ class VariableMap:
 
     def copy(self, deep: bool = False) -> 'VariableMap':
         if not deep:
-            return type(self)([(var, val) for var, val in self.items()])
+            return type(self)([(var, val) for var, val in self.items()],
+                              variables=self._variables.values())
 
-        vmap = type(self)()
+        vmap = type(self)(variables=self._variables.values())
         for vname, value in self.items():
             if isinstance(value, (numbers.Number, str)):
                 vmap[vname] = value
@@ -604,7 +620,11 @@ class VariableMap:
         return vmap
 
     @classmethod
-    def from_json(cls, variables: Iterable[Variable], d: Dict[str, Any], typ=None, args=()) -> 'VariableMap':
+    def from_json(cls,
+                  variables: Iterable[Variable],
+                  d: Dict[str, Any],
+                  typ=None,
+                  args=()) -> 'VariableMap':
         vmap = cls()
         varbyname = {var.name: var for var in variables}
         for vname, value in d.items():
@@ -629,8 +649,10 @@ class VariableAssignment(VariableMap):
     that are supposed to be used instead.
     '''
 
-    def __init__(self, data: List[Tuple] = None):
-        super().__init__(data)
+    def __init__(self,
+                 data: List[Tuple] = None,
+                 variables: Iterable[Variable] = None):
+        super().__init__(data, variables=variables)
         if type(self) is VariableAssignment:
             raise TypeError('Abstract super class %s cannot be instantiated.' % type(self).__name__)
 

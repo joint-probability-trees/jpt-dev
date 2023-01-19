@@ -40,6 +40,21 @@ class VariableMapTest(TestCase):
         self.assertEqual('baz', varmap[C])
         self.assertEqual('baz', varmap['C'])
 
+    def test__set_and_get_with_variables(self):
+        varmap = VariableMap(variables=VariableMapTest.TEST_DATA)
+        varmap['A'] = 'foo'
+        varmap['B'] = 'bar'
+        varmap['C'] = 'baz'
+
+        self.assertEqual('foo', varmap[VariableMapTest.TEST_DATA[0]])
+        self.assertEqual('foo', varmap['A'])
+
+        self.assertEqual('bar', varmap[VariableMapTest.TEST_DATA[1]])
+        self.assertEqual('bar', varmap['B'])
+
+        self.assertEqual('baz', varmap[VariableMapTest.TEST_DATA[2]])
+        self.assertEqual('baz', varmap['C'])
+
     def test_raises(self):
         A, B, C = VariableMapTest.TEST_DATA
         varmap = VariableMap()
