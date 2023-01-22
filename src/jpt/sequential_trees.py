@@ -1,6 +1,5 @@
 import datetime
-from collections import ChainMap
-from typing import List
+from typing import List, Dict
 
 import numpy as np
 import numpy.lib.stride_tricks
@@ -8,15 +7,16 @@ import fglib
 import factorgraph
 from dnutils import out, getlogger
 
-import jpt.trees
+from jpt import JPT
+from jpt.variables import LabelAssignment, VariableAssignment, VariableMap, Variable
 
 
 class SequentialJPT:
 
     logger = getlogger('/jpt/seq')
 
-    def __init__(self, template_tree):
-        self.template_tree: jpt.trees.JPT = template_tree
+    def __init__(self, template_tree: JPT):
+        self.template_tree: JPT = template_tree
         self.transition_model: np.array or None = None
 
     def fit(self, sequences: List[np.ndarray], timesteps: int = 2):
@@ -50,7 +50,7 @@ class SequentialJPT:
             data_indices += [idx + timestep * len(self.template_tree.variables) for idx in target_indices]
 
         # create expanded tree
-        expanded_template_tree = jpt.trees.JPT(
+        expanded_template_tree = JPT(
             variables=expanded_variables,
             targets=expanded_variables[len(self.template_tree.variables):],
             min_samples_leaf=self.template_tree.min_samples_leaf,
@@ -84,8 +84,8 @@ class SequentialJPT:
         self.template_tree.root = expanded_template_tree.root
         self.template_tree.innernodes = expanded_template_tree.innernodes
         for idx, leaf in expanded_template_tree.leaves.items():
-            leaf.distributions = jpt.variables.VariableMap([(v, d) for v, d in leaf.distributions.items()
-                                                            if v.name in self.template_tree.varnames.keys()])
+            leaf.distributions = VariableMap([(v, d) for v, d in leaf.distributions.items()
+                                             if v.name in self.template_tree.varnames.keys()])
             self.template_tree.leaves[idx] = leaf
         transition_data = None
 
@@ -116,8 +116,8 @@ class SequentialJPT:
         self.transition_model = values
 
     def _shift_variable_to_timestep(self,
-                                    variable: jpt.variables.Variable,
-                                    timestep: int = 1) -> jpt.variables.Variable:
+                                    variable: Variable,
+                                    timestep: int = 1) -> Variable:
         """ Create a new variable where the name is shifted by +n and the domain remains the same.
 
         @param variable: The variable to shift
@@ -127,23 +127,30 @@ class SequentialJPT:
         variable_._name = "%s+%s" % (variable_.name, timestep)
         return variable_
 
-    def preprocess_sequence_map(self,
-                                evidence: List[jpt.variables.VariableMap],
-                                allow_singular_values: bool = True):
-        """ Preprocess a list of variable maps to be used in JPTs. """
-        return [
-            self.template_tree._preprocess_query(e,
-                                                 allow_singular_values=allow_singular_values)
-            for e in evidence
-        ]
+    # def preprocess_sequence_map(self,
+    #                             evidence: List[LabelAssignment],
+    #                             allow_singular_values: bool = True):
+    #     """ Preprocess a list of variable maps to be used in JPTs. """
+    #     return [
+    #         self.template_tree._preprocess_query(
+    #             e,
+    #             allow_singular_values=allow_singular_values
+    #         ) for e in evidence
+    #     ]
 
-    def ground(self, evidence: List[jpt.variables.VariableMap]) -> (factorgraph.Graph, List[jpt.trees.JPT]):
+    def ground(self, evidence: List[VariableAssignment]) -> (factorgraph.Graph, List[JPT]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
         one variable for each timestep, one prior node as factor for each timestep and one factor node for each
         transition.
 
         @param evidence: A list of VariableMaps that describe evidence in the given timesteps.
         """
+        evidence_ = []
+        for e in evidence:
+            if isinstance(e, LabelAssignment):
+                e = e.value_assignment()
+            evidence_.append(e)
+        evidence = evidence_
 
         # create factorgraph
         factor_graph = factorgraph.Graph()
@@ -167,6 +174,7 @@ class SequentialJPT:
         start = datetime.datetime.now()
         for timestep, e in zip(timesteps, evidence):
             # apply the evidence
+
             conditional_jpt = self.template_tree.conditional_jpt(e)
             self.logger.debug(
                 'Conditional JPT from %s to %s nodes.' % (
@@ -195,7 +203,7 @@ class SequentialJPT:
 
         return factor_graph, altered_jpts
 
-    def ground_fglib(self, evidence: List[jpt.variables.VariableMap]) -> (factorgraph.Graph, List[jpt.trees.JPT]):
+    def ground_fglib(self, evidence: List[VariableAssignment]) -> (factorgraph.Graph, List[JPT]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
         one variable for each timestep, one prior node as factor for each timestep and one factor node for each
         transition.
@@ -256,7 +264,7 @@ class SequentialJPT:
         """
         raise NotImplementedError("Not yet implemented")
 
-    def independent_marginals(self, evidence: List[jpt.variables.VariableMap]) -> List[jpt.trees.JPT]:
+    def independent_marginals(self, evidence: List[LabelAssignment or Dict]) -> List[JPT]:
         """ Return the independent marginal distributions of all variables in this sequence along all
         timesteps.
 
@@ -264,17 +272,23 @@ class SequentialJPT:
             of the whole sequence
         """
         # preprocess evidence
-        evidence = self.preprocess_sequence_map(evidence)
+        evidence_ = []
+        for e in evidence:
+            if e is None or isinstance(e, dict):
+                e = self.template_tree.bind(e, allow_singular_values=True)
+            if isinstance(e, LabelAssignment):
+                e = e.value_assignment()
+            evidence_.append(e)
+
         self.logger.debug('Evidence sequence preproceessing finished.')
 
         # ground factor graph
-
         start = datetime.datetime.now()
-        factor_graph, altered_jpts = self.ground(evidence)
+        factor_graph, altered_jpts = self.ground(evidence_)
         now = datetime.datetime.now()
         self.logger.debug(
             'Grounding of conditional JPT sequence '
-            '(length %s) took %s.' % (len(evidence), now - start)
+            '(length %s) took %s.' % (len(evidence_), now - start)
         )
 
         # create result list
@@ -287,7 +301,7 @@ class SequentialJPT:
         now = datetime.datetime.now()
         self.logger.debug(
             'Leaf prior computations '
-            '(length %s) took %s.' % (len(evidence), now - start)
+            '(length %s) took %s.' % (len(evidence_), now - start)
         )
 
         # transform trees
@@ -300,12 +314,14 @@ class SequentialJPT:
         return result
 
     def to_json(self):
-        return {"template_tree": self.template_tree.to_json(),
-                "transition_model": self.transition_model.tolist()}
+        return {
+            "template_tree": self.template_tree.to_json(),
+            "transition_model": self.transition_model.tolist()
+        }
 
     @staticmethod
     def from_json(data):
-        template_tree = jpt.trees.JPT.from_json(data["template_tree"])
+        template_tree = JPT.from_json(data["template_tree"])
         result = SequentialJPT(template_tree)
         result.transition_model = np.array(data["transition_model"])
         return result

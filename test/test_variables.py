@@ -290,15 +290,15 @@ class DuplicateDomainTest(TestCase):
                  SymbolicVariable('C', Bool)]
 
     data1 = {'A': ['one', 'two', 'three', 'four'],
-             'B': [68, 74, 77, 78],
-             'C': [84, 56, 73, 69],
-             'D': [78, 88, 82, 87]}
+             'B': [68., 74., 77., 78.],
+             'C': [84., 56., 73., 69.],
+             'D': [78., 88., 82., 87.]}
     DF1 = pd.DataFrame(data1)
 
     data2 = {'A': ['three', 'six', 'seven', 'four'],
-             'B': [5, 4, 3, 2],
-             'C': [9, 8, 5, 2],
-             'E': [7, 8, 5, 1]}
+             'B': [5., 4., 3., 2.],
+             'C': [9., 8., 5., 2.],
+             'E': [7., 8., 5., 1.]}
     DF2 = pd.DataFrame(data2)
 
     def test_duplicate_dom_symbolic_raise_err(self):
@@ -353,28 +353,29 @@ class DuplicateDomainTest(TestCase):
 
     def test_duplicate_dom_symbolic_excluded_columns(self):
         '''User-created type is used in infer_from_dataframe when setting excluded_columns.'''
-        atype = SymbolicType('A_TYPE', ['one', 'two', 'three', 'four'])
+        atype = SymbolicType('A_TYPE_S', ['one', 'two', 'three', 'four'])
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1, excluded_columns={'A': atype})
         self.assertEqual(atype, v1[0].domain)
         self.assertTrue(atype.equiv(v1[0].domain))
 
     def test_duplicate_dom_numeric_excluded_columns(self):
         '''User-created type is used in infer_from_dataframe when setting excluded_columns.'''
-        btype = NumericType('B_TYPE', np.array([68, 74, 77, 78]))
+        btype = NumericType('B_TYPE_N', np.array([68, 74, 77, 78], dtype=np.float64))
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1, excluded_columns={'B': btype})
         self.assertEqual(btype, v1[1].domain)
         self.assertTrue(btype.equiv(v1[1].domain))
 
     def test_duplicate_dom_symbolic_not_excluded_columns(self):
         '''User-created type is not used in infer_from_dataframe and therefore not equal but equivalent.'''
-        atype = SymbolicType('A_TYPE', ['one', 'two', 'three', 'four'])
+        atype = SymbolicType('A_TYPE_S', ['one', 'two', 'three', 'four'])
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1)
         self.assertNotEqual(atype, v1[0].domain)
         self.assertTrue(atype.equiv(Distribution.type_from_json(v1[0].domain.to_json())))
 
     def test_duplicate_dom_numeric_not_excluded_columns(self):
         '''User-created type is not used in infer_from_dataframe and therefore not equal but equivalent.'''
-        btype = NumericType('B_TYPE', np.array([68, 74, 77, 78]))
+        btype = NumericType('B_TYPE_N', np.array([68, 74, 77, 78], dtype=np.float64))
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1)
         self.assertNotEqual(btype, v1[1].domain)
+        print(btype, v1[1].domain)
         self.assertTrue(btype.equiv(Distribution.type_from_json(v1[1].domain.to_json())))

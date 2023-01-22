@@ -47,7 +47,7 @@ def main(visualize=True):
 
     # Construct the predictive model
     varx = NumericVariable('x', blur=.05)
-    vary = NumericVariable('y')
+    vary = NumericVariable('y', blur=.05)
 
     # For discrimintive learning, uncomment the following line:
     jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
@@ -55,15 +55,18 @@ def main(visualize=True):
     # jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
 
     jpt.learn(data=df)
-    # jpt.plot(view=visualize)
+    jpt.plot(view=visualize)
 
     # Apply the JPT model
     confidence = .95
-
-    my_predictions = [jpt.expectation([vary],
-                                      evidence={varx: x_},  #  [x_ - .5, x_ + .5]
-                                      confidence_level=confidence,
-                                      fail_on_unsatisfiability=False) for x_ in xx.ravel()]
+    my_predictions = [
+        jpt.expectation(
+            [vary],
+            evidence=jpt.bind(x=x_),
+            confidence_level=confidence,
+            fail_on_unsatisfiability=False
+        ) for x_ in xx.ravel()
+    ]
     y_pred_ = [(p[vary].result if p is not None else None) for p in my_predictions]
     y_lower_ = [(p[vary].lower if p is not None else None) for p in my_predictions]
     y_upper_ = [(p[vary].upper if p is not None else None) for p in my_predictions]

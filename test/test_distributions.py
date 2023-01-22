@@ -74,9 +74,9 @@ class MultinomialDistributionTest(TestCase):
         self.assertIsInstance(d1, DistABC)
         self.assertEqual(list(d1._params), probs)
 
-        d1.fit(MultinomialDistributionTest.DATA,
-               rows=np.array(list(range(MultinomialDistributionTest.DATA.shape[0] - 1)), dtype=np.int32),
-               col=1)
+        d1._fit(MultinomialDistributionTest.DATA,
+                rows=np.array(list(range(MultinomialDistributionTest.DATA.shape[0] - 1)), dtype=np.int32),
+                col=1)
 
         self.assertAlmostEqual(d1.p({'A'}), 5 / 10, 15)
         self.assertAlmostEqual(d1.p({'B'}), 3 / 10, 15)
@@ -151,9 +151,10 @@ class MultinomialDistributionTest(TestCase):
     def test_kldiv_type(self):
         DistABC = self.DistABC
         d1 = DistABC().set(params=[.5, .25, .25])
-        self.assertRaises(TypeError, d1.kl_divergence, Numeric().fit(np.array([[1], [2], [3]],
-                                                                              dtype=np.float64),
-                                                                     col=0))
+        self.assertRaises(
+            TypeError,
+            d1.kl_divergence,
+            Numeric()._fit(np.array([[1], [2], [3]], dtype=np.float64), col=0))
 
     def test_value_conversion(self):
         DistABC = self.DistABC
@@ -200,19 +201,21 @@ class NumericDistributionTest(TestCase):
         self.assertTrue(DistGauss.equiv(DistGauss.type_from_json(DistGauss.type_to_json())))
 
     def test_fit(self):
-        d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
-        self.assertEqual(d.cdf, PiecewiseFunction.from_dict({']-∞,0.0[': 0,
-                                                             '[0.0,1.0000000000000002[': '1x',
-                                                             '[1.0000000000000002,∞[': 1}))
+        d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
+        self.assertEqual(d.cdf, PiecewiseFunction.from_dict({
+            ']-∞,0.0[': 0,
+            '[0.0,1.0000000000000002[': '1x',
+            '[1.0000000000000002,∞[': 1
+        }))
 
     def test_distribution_serialization(self):
-        d = Numeric().fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
+        d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         self.assertEqual(d, Distribution.from_json(d.to_json()))
 
     def test_manipulation(self):
         DistGauss = self.DistGauss
         data = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
-        d = DistGauss().fit(data, col=0)
+        d = DistGauss()._fit(data, col=0)
         self.assertEqual(d.expectation(), .5)
 
         ground_truth = PiecewiseFunction.from_dict({ContinuousSet(np.NINF, DistGauss.values[.1], EXC, EXC): 0,
@@ -227,29 +230,29 @@ class NumericDistributionTest(TestCase):
     def test_kldiv_equality(self):
         DistGauss = self.DistGauss
         data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
-        dist1 = DistGauss().fit(data1, col=0)
+        dist1 = DistGauss()._fit(data1, col=0)
         self.assertEqual(0, dist1.kl_divergence(dist1))
 
     def test_kldiv_inequality(self):
         DistGauss = self.DistGauss
         data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
         data2 = np.array([DistGauss.values[l] for l in np.linspace(.5, 1.5, 20)]).reshape(-1, 1)
-        dist1 = DistGauss().fit(data1, col=0)
-        dist2 = DistGauss().fit(data2, col=0)
+        dist1 = DistGauss()._fit(data1, col=0)
+        dist2 = DistGauss()._fit(data2, col=0)
         self.assertEqual(np.nextafter(0.25, 1), dist1.kl_divergence(dist2))
 
     def test_kldiv_inequality_extreme(self):
         DistGauss = self.DistGauss
         data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
         data2 = np.array([DistGauss.values[l] for l in np.linspace(5, 10, 20)]).reshape(-1, 1)
-        dist1 = DistGauss().fit(data1, col=0)
-        dist2 = DistGauss().fit(data2, col=0)
+        dist1 = DistGauss()._fit(data1, col=0)
+        dist2 = DistGauss()._fit(data2, col=0)
         self.assertEqual(1, dist1.kl_divergence(dist2))
 
     def test_kldiv_type(self):
         DistGauss = self.DistGauss
         data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
-        d1 = DistGauss().fit(data1, col=0)
+        d1 = DistGauss()._fit(data1, col=0)
         self.assertRaises(TypeError, d1.kl_divergence, ...)
 
     def test_value_conversion(self):
@@ -334,7 +337,7 @@ class IntegerDistributionTest(TestCase):
         fair_dice.set([1 / 6] * 6)
 
         # Act
-        samples = fair_dice.sample(100)
+        samples = list(fair_dice.sample(100))
         sample = fair_dice.sample_one()
 
         # Assert

@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 
 from jpt.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, SymbolicVariable, VariableMap
+from jpt.variables import NumericVariable, SymbolicVariable
 
 
 def main(visualize=False):
@@ -38,12 +38,14 @@ def main(visualize=False):
     for var in variables:
         dependencies[var] = [v_ for v_ in variables]
 
-    tree = JPT(variables=variables, min_samples_leaf=100, variable_dependencies=dependencies)
+    tree = JPT(variables=variables, min_samples_leaf=100, dependencies=dependencies)
 
     tree.learn(data=df)
     # testing conditional jpts in a complex scenario
-    cjpt = tree.conditional_jpt(tree._preprocess_query(VariableMap({variables[0]: {"5", "6"},
-                                             variables[29]: 2.}.items())))
+    cjpt = tree.conditional_jpt(tree.bind(
+        digit={"5", "6"},
+        x_28=2.
+    ))
 
     leaves = list(tree.leaves.values())
     
@@ -67,6 +69,5 @@ def main(visualize=False):
     # tree.plot(plotvars=tree.variables, view=visualize)
 
 
-
 if __name__ == '__main__':
-    main()
+    main(visualize=True)

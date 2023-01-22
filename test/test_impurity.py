@@ -45,13 +45,16 @@ class ImpurityTest(TestCase):
         cls.variables = [cls.al, cls.ba, cls.fr, cls.hu, cls.pa, cls.pr, cls.ra, cls.re, cls.fo, cls.we, cls.wa]
 
     def test_symbolic(self):
-        jpt = JPT(variables=ImpurityTest.variables, targets=[ImpurityTest.wa])
+        jpt = JPT(
+            variables=ImpurityTest.variables,
+            targets=[ImpurityTest.wa]
+        )
 
         data = jpt._preprocess_data(ImpurityTest.data)
-
         impurity = Impurity(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
         impurity.setup(data, np.array(list(range(data.shape[0]))))
+        print('bla')
         impurity.compute_best_split(0, data.shape[0])
 
         self.assertNotEqual(impurity.best_var, -1)

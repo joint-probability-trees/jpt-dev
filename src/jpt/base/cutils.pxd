@@ -21,22 +21,19 @@ cdef DTYPE_t nan
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-cdef inline DTYPE_t mean(DTYPE_t[::1] arr, SIZE_t skipidx=-1) nogil:
+cdef inline DTYPE_t mean(DTYPE_t[::1] arr) nogil:
     """
     Arithmetic mean in the vector ``arr``.
     
     :param arr: the array to compute the mean on.
-    :param skipidx: skip the element at this index, if any is passed.
     
     :return: The mean as double
     """
     cdef DTYPE_t result = 0
     cdef int i
     for i in range(arr.shape[0]):
-        if i == skipidx:
-            continue
         result += arr[i]
-    return result / (<DTYPE_t> arr.shape[0] - (skipidx >= 0))
+    return result / (<DTYPE_t> arr.shape[0])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
