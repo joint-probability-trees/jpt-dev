@@ -14,7 +14,8 @@ from dnutils import first, edict, ifnone
 from jpt.base.utils import mapstr, to_json, list2interval, setstr, setstr_int
 from jpt.base.constants import SYMBOL
 
-from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType
+from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType, Integer, \
+    IntegerType
 
 try:
     from jpt.base.intervals import __module__
@@ -120,6 +121,10 @@ class Variable:
     @property
     def numeric(self) -> bool:
         return issubclass(self.domain, Numeric)
+
+    @property
+    def integer(self) -> bool:
+        return issubclass(self.domain, Integer)
 
     def str(self, assignment, **kwargs) -> str:
         raise NotImplementedError()
@@ -461,12 +466,15 @@ def infer_from_dataframe(df,
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
             else:
-                dom = SymbolicType('%s%s_TYPE' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''), labels=df[col].unique())
+                dom = SymbolicType(
+                    '%s%s_TYPE_S' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
+                    labels=df[col].unique()
+                )
             var = SymbolicVariable(col,
                                    dom,
                                    min_impurity_improvement=min_impurity_improvement)
 
-        elif dtype in (np.float64, np.int64, np.float32, np.int32):
+        elif dtype in (np.float64, np.float32):
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
             elif scale_numeric_types:
@@ -474,7 +482,7 @@ def infer_from_dataframe(df,
                 if remove_nan:
                     values = values[~values.isin([np.nan, np.inf])]
                 dom = NumericType(
-                    '%s%s_TYPE' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
+                    '%s%s_TYPE_N' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
                     values.unique()
                 )
             else:
@@ -485,6 +493,16 @@ def infer_from_dataframe(df,
                                   blur=blur,
                                   max_std=max_std,
                                   precision=precision)
+        elif dtype in (np.int32, np.int64):
+            if excluded_columns is not None and col in excluded_columns:
+                dom = excluded_columns[col]
+            else:
+                dom = IntegerType(
+                    '%s%s_TYPE_I' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
+                    lmin=df[col].min(),
+                    lmax=df[col].max()
+                )
+            var = IntegerVariable(col, dom)
         else:
             raise TypeError('Unknown column type:', col, '[%s]' % dtype)
         variables.append(var)
@@ -635,7 +653,7 @@ class VariableMap:
 
     def __repr__(self):
         return '<%s {%s}>' % (type(self).__name__,
-                              ','.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()]))
+                              ', '.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()]))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

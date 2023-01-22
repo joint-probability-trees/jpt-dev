@@ -385,11 +385,17 @@ class Distribution:
     def label2value(cls, label):
         raise NotImplementedError()
 
-    def sample(self, n):
+    def _sample(self, n: int) -> Iterable:
         raise NotImplementedError()
 
-    def sample_one(self):
+    def _sample_one(self):
         raise NotImplementedError()
+
+    def sample(self, n: int) -> Iterable:
+        yield from (self.value2label(v) for v in self._sample(n))
+
+    def sample_one(self) -> Any:
+        return self.value2label(self._sample_one())
 
     def p(self, value):
         raise NotImplementedError()
@@ -415,7 +421,16 @@ class Distribution:
     def update(self):
         raise NotImplementedError()
 
-    def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Distribution':
+    def fit(self,
+            data: np.ndarray,
+            rows: np.ndarray = None,
+            col: numbers.Integral = None) -> 'Distribution':
+        raise NotImplementedError()
+
+    def _fit(self,
+             data: np.ndarray,
+             rows: np.ndarray = None,
+             col: numbers.Integral = None) -> 'Distribution':
         raise NotImplementedError()
 
     def set(self, params: Any) -> 'Distribution':
@@ -550,10 +565,10 @@ class Numeric(Distribution):
     def ppf(self):
         return self._quantile.ppf
 
-    def sample(self, n):
+    def _sample(self, n):
         raise NotImplemented()
 
-    def sample_one(self):
+    def _sample_one(self):
         raise NotImplemented()
 
     def number_of_parameters(self) -> int:
@@ -601,7 +616,10 @@ class Numeric(Distribution):
         return _max, RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
                               if function.value == _max])
 
-    def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Numeric':
+    def _fit(self,
+             data: np.ndarray,
+             rows: np.ndarray = None,
+             col: numbers.Integral = None) -> 'Numeric':
         self._quantile = QuantileDistribution(epsilon=self.precision)
         self._quantile.fit(data,
                            rows=rows,
@@ -890,8 +908,8 @@ class Multinomial(Distribution):
         return self._params
 
     @classproperty
-    def n_values(self):
-        return len(self.values)
+    def n_values(cls):
+        return len(cls.values)
 
     def __contains__(self, item):
         return item in self.values
@@ -949,21 +967,13 @@ class Multinomial(Distribution):
         result._params[result.values[result.labels[value]]] = 1
         return result
 
-    def sample(self, n):
+    def _sample(self, n: int) -> Iterable[Any]:
         '''Returns ``n`` sample `values` according to their respective probability'''
         return wsample(list(self.values.values()), self._params, n)
 
-    def sample_one(self):
+    def _sample_one(self) -> Any:
         '''Returns one sample `value` according to its probability'''
         return wchoice(list(self.values.values()), self._params)
-
-    def sample_labels(self, n):
-        '''Returns ``n`` sample `labels` according to their respective probability'''
-        return [self.labels[i] for i in wsample(list(self.values.values()), self._params, n)]
-
-    def sample_one_label(self):
-        '''Returns one sample `label` according to its probability'''
-        return self.labels[wchoice(list(self.values.values()), self._params)]
 
     def _expectation(self):
         '''Returns the value with the highest probability for this variable'''
@@ -1033,7 +1043,10 @@ class Multinomial(Distribution):
             result._params = result._params / sum(result._params)
         return result
 
-    def fit(self, data: np.ndarray, rows: np.ndarray = None, col: numbers.Integral = None) -> 'Multinomial':
+    def _fit(self,
+             data: np.ndarray,
+             rows: np.ndarray = None,
+             col: numbers.Integral = None) -> 'Multinomial':
         self._params = np.zeros(shape=self.n_values, dtype=np.float64)
         n_samples = ifnone(rows, len(data), len)
         col = ifnone(col, 0)
@@ -1280,9 +1293,9 @@ class Integer(Distribution):
     def probabilities(self):
         return self._params
 
-    @property
-    def n_values(self):
-        return self.lmax - self.lmin + 1
+    @classproperty
+    def n_values(cls):
+        return cls.lmax - cls.lmin + 1
 
     # noinspection DuplicatedCode
     @classmethod
@@ -1300,11 +1313,11 @@ class Integer(Distribution):
         else:
             return cls.values[label]
 
-    def sample(self, n) -> np.ndarray:
-        return np.array(wsample(list(self.values), weights=self.probabilities, k=n), dtype=np.int64)
+    def _sample(self, n) -> Iterable:
+        return wsample(list(self.values.values()), weights=self.probabilities, k=n)
 
-    def sample_one(self):
-        return wchoice(list(self.values), weights=self.probabilities)
+    def _sample_one(self) -> int:
+        return wchoice(list(self.values.values()), weights=self.probabilities)
 
     def p(self, labels: Union[int, Iterable[int]]):
         if not isinstance(labels, Iterable):

@@ -17,9 +17,10 @@ from scipy.stats import norm
 from jpt import SymbolicType
 from jpt.base.errors import Unsatisfiability
 from jpt.base.intervals import ContinuousSet
-from jpt.distributions import Gaussian, Numeric
+from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment
+from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment, \
+    IntegerVariable
 
 
 class JPTTest(TestCase):
@@ -32,16 +33,18 @@ class JPTTest(TestCase):
         '''Serialization with complete hyperparameters without training'''
         x = NumericVariable('X')
         y = NumericVariable('Y')
-        variable_dependencies = VariableMap([(x, [x, y]), (y, [x])])
-        jpt = JPT(variables=[x, y],
-                  targets=[x, y],
-                  min_samples_leaf=.1,
-                  min_impurity_improvement=0.1,
-                  max_leaves=100,
-                  max_depth=10,
-                  variable_dependencies=variable_dependencies)
-
+        dependencies = VariableMap([(x, [x, y]), (y, [x])])
+        jpt = JPT(
+            variables=[x, y],
+            targets=[x, y],
+            min_samples_leaf=.1,
+            min_impurity_improvement=0.1,
+            max_leaves=100,
+            max_depth=10,
+            dependencies=dependencies
+        )
         jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
+
         self.assertEqual(jpt, jpt_)
 
     def test_serialization(self):
@@ -49,8 +52,6 @@ class JPTTest(TestCase):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
-
-        # pprint(jpt.to_json())
 
         self.assertIsNone(jpt.root.parent)
         jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
@@ -124,14 +125,13 @@ class JPTTest(TestCase):
         im = jpt.independent_marginals()
         self.assertEqual(len(im), len(jpt.variables))
 
-        evidence = {jpt.varnames["Hungry"]: {False}}
-        im = jpt.independent_marginals(VariableMap(evidence.items()))
+        evidence = jpt.bind(Hungry=False)
+        im = jpt.independent_marginals(evidence)
         self.assertEqual(len(im), len(jpt.variables))
 
     def test_conditional_jpt(self):
         jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'))
-        evidence = {jpt.varnames["Arson"]: [20, 30]}
-        evidence = jpt._preprocess_query(VariableMap(evidence.items()))
+        evidence = jpt.bind(Arson=[20, 30])
         cjpt = jpt.conditional_jpt(evidence)
         marginals = cjpt.independent_marginals()
         self.assertEqual(marginals["Arson"].p(evidence["Arson"]), 1.)
@@ -164,8 +164,28 @@ class JPTTest(TestCase):
         jpt = JPT([A, B])
         jpt.fit(df)
         for leaf in jpt.leaves.values():
-            if leaf.applies(LabelAssignment([(B, 'c')])):
+            if leaf.applies(jpt.bind(snd='c')):
                 self.assertEqual(AT().set(params=[2 / 3, 1 / 3]), leaf.distributions['fst'])
+
+    def test_bind(self):
+        # Arrange
+        n = NumericVariable('n')
+        s = SymbolicVariable('s', domain=Bool)
+        i = IntegerVariable('i', IntegerType('Die', 1, 6))
+        jpt = JPT(variables=[n, s, i])
+
+        # Act
+        bind1 = jpt.bind(n=1, s=True, i=3)
+        bind2 = jpt.bind({'n': 1, s: True, 'i': 3})
+
+        # Assert
+        self.assertEqual(bind1, bind2)
+        self.assertIsInstance(bind1, LabelAssignment)
+        truth = {n: ContinuousSet(1, 1), s: {True}, i: {3}}
+        for var, val in bind1.items():
+            self.assertEqual(truth[var], val)
+        for var, val in truth.items():
+            self.assertEqual(val, bind2[var])
 
 
 class TestCasePosteriorNumeric(TestCase):
@@ -489,16 +509,18 @@ class TestCaseInference(TestCase):
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant-mixed.csv'
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data,
-                                             scale_numeric_types=True,
-                                             precision=.01,
-                                             blur=.01)
+        cls.variables = infer_from_dataframe(
+            cls.data,
+            scale_numeric_types=False,
+            precision=.01,
+            blur=.01
+        )
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
         # 2 Friday[FRIDAY_TYPE(SYM)], BOOL
         # 3 Hungry[HUNGRY_TYPE(SYM)], BOOl
-        # 4 Patrons[PATRONS_TYPE(SYM)], None, Some, Full
-        # 5 Price[PRICE_TYPE(SYM)], $, $$, $$$
+        # 4 Patrons[PATRONS_TYPE(SYM)], 0, 1, 2
+        # 5 Price[PRICE_TYPE(SYM)], 1, 2, 3
         # 6 Rain[RAIN_TYPE(SYM)], BOOL
         # 7 Reservation[RESERVATION_TYPE(SYM)], BOOL
         # 8 Food[FOOD_TYPE(SYM)], French, Thai, Burger, Italian
@@ -509,18 +531,18 @@ class TestCaseInference(TestCase):
         cls.jpt.learn(columns=cls.data.values.T)
 
     def test_plot(self):
-        self.jpt.plot(title='Restaurant-Mixed',
-                      filename='Restaurant-Mixed',
-                      directory=tempfile.gettempdir(),
-                      view=False)
+        self.jpt.plot(
+            title='Restaurant-Mixed',
+            filename='Restaurant-Mixed',
+            directory=tempfile.gettempdir(),
+            view=False
+        )
 
     def test_inference_mixed_single_candidate_T(self):
-        self.q = {'WillWait': True}
-        self.e = {
-            'WaitEstimate': [0, 10],
-            'Food': 'Thai'
-        }
-        inference = self.jpt.infer(self.q, self.e)
+        q = self.jpt.bind(WillWait=True)
+        e = self.jpt.bind(WaitEstimate=[0, 10], Food='Thai')
+        inference = self.jpt.infer(q, e)
+        # print(self.jpt.conditional_jpt(e))
         self.assertAlmostEqual(.6, inference.result, places=10)
 
     def test_inference_mixed_neu(self):

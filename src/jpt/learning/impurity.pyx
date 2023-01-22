@@ -48,20 +48,21 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
     cdef DTYPE_t variance_impr = 0
     cdef DTYPE_t[::1] variances_old = variances_total
     cdef DTYPE_t n_samples = <DTYPE_t> samples_left + samples_right
-    cdef DTYPE_t divisor = <DTYPE_t> variances_old.shape[0] - <DTYPE_t> (skip_idx >= 0)
+    cdef DTYPE_t divisor = 0
 
     for i in range(variances_old.shape[0]):
         if skip_idx == i:
             continue
-        divisor = <DTYPE_t> i - (skip_idx >= 0)
-        variance_impr = variance_impr * <DTYPE_t> divisor + variances_old[i] - (
+        variance_impr = variance_impr * <DTYPE_t> divisor + ((variances_old[i] -
             (variances_left[i] * <DTYPE_t> samples_left + variances_right[i] * <DTYPE_t> samples_right) / n_samples
-        ) / variances_old[i] / <DTYPE_t> (divisor + 1)
+        ) / variances_old[i]) / <DTYPE_t> (divisor + 1)
+        divisor += 1
     return variance_impr
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# noinspection PyPep8Naming
 cdef inline void sum_at(DTYPE_t[:, ::1] M,
                         SIZE_t[::1] rows,
                         SIZE_t[::1] cols,
@@ -265,6 +266,8 @@ cdef class Impurity:
     # integer array containing all indices of features
     cdef SIZE_t[::1] features
 
+    cdef SIZE_t n_features
+
     # integer describing the best split position as index
     cdef readonly SIZE_t best_split_pos
 
@@ -276,9 +279,6 @@ cdef class Impurity:
 
     # percentage of numeric targets
     cdef DTYPE_t w_numeric
-
-    # 2D integer array describing all dependencies that are considered under all variables
-    cdef SIZE_t[:, ::1] dependency_matrix
 
     # 2D integer array describing all dependencies that are considered under numeric variables
     cdef SIZE_t[:, ::1] numeric_dependency_matrix
@@ -313,19 +313,22 @@ cdef class Impurity:
         self.max_impurity_improvement = 0
 
         # initialize array of indices of the numeric targets
-        self.numeric_vars = np.array([<int> i for i, v in enumerate(tree.variables)
-                                      if v.numeric and v in tree.targets],
-                                     dtype=np.int64)
+        self.numeric_vars = np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if (v.numeric or v.integer) and v in tree.targets
+        ], dtype=np.int64)
 
         # initialize array of indices of the symbolic targets
-        self.symbolic_vars = np.array([<int> i for i, v in enumerate(tree.variables)
-                                       if v.symbolic and v in tree.targets],
-                                      dtype=np.int64)
+        self.symbolic_vars = np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if v.symbolic and v in tree.targets
+        ], dtype=np.int64)
 
         # store impurity inversion
-        self.invert_impurity = np.array([v.invert_impurity for v in tree.variables
-                                         if v.symbolic and v in tree.targets],
-                                        dtype=np.int64)
+        self.invert_impurity = np.array([
+            v.invert_impurity for v in tree.variables
+            if v.symbolic and v in tree.targets
+        ], dtype=np.int64)
 
         # get the number of symbolic targets
         self.n_sym_vars = len(self.symbolic_vars)
@@ -349,46 +352,75 @@ cdef class Impurity:
         self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
 
         # get the indices of numeric features
-        self.numeric_features = np.array([i for i, v in enumerate(tree.variables)
-                                         if v.numeric and v in tree.features],
-                                         dtype=np.int64)
+        self.numeric_features = np.array([
+            i for i, v in enumerate(tree.variables)
+            if (v.numeric or v.integer) and v in tree.features
+        ], dtype=np.int64)
+
         # get the indices of symbolic features
-        self.symbolic_features = np.array([i for i, v in enumerate(tree.variables)
-                                          if v.symbolic and v in tree.features],
-                                         dtype=np.int64)
+        self.symbolic_features = np.array([
+            i for i, v in enumerate(tree.variables)
+            if v.symbolic and v in tree.features
+        ], dtype=np.int64)
 
         # construct all feature indices
         self.features = np.concatenate((self.numeric_features, self.symbolic_features))
+
+        self.n_features = self.features.shape[0]
 
         # if symbolic targets exist
         if self.n_sym_vars:
             # Thread-invariant buffers
 
             # get the size of each symbolic variables domain
-            self.symbols = np.array([v.domain.n_values for v in tree.variables if v.symbolic], dtype=np.int64)
+            self.symbols = np.array([
+                v.domain.n_values
+                for v in tree.variables if v.symbolic
+            ], dtype=np.int64)
 
             # get the maximum size of symbolic domains
             self.max_sym_domain = max(self.symbols)
 
             # initialize a 2D matrix of size (max_sym_domain, n_sym_vars) such that the histograms can be calculated
-            self.symbols_total = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
+            self.symbols_total = np.ndarray(
+                shape=(self.max_sym_domain, self.n_sym_vars),
+                dtype=np.int64
+            )
             
             # histograms for symbolic variables left and right of the splits
-            self.symbols_left = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
-            self.symbols_right = np.ndarray(shape=(self.max_sym_domain, self.n_sym_vars), dtype=np.int64)
+            self.symbols_left = np.ndarray(
+                shape=(self.max_sym_domain, self.n_sym_vars),
+                dtype=np.int64
+            )
+            self.symbols_right = np.ndarray(
+                shape=(self.max_sym_domain, self.n_sym_vars),
+                dtype=np.int64
+            )
 
             # Symbolic targets require a buffer for improvement calculation
             # initialize the gini improvement per symbolic target
-            self.gini_improvements = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
+            self.gini_improvements = np.ndarray(
+                shape=self.n_sym_vars,
+                dtype=np.float64
+            )
 
             # initialize the gini impurities per symbolic target
-            self.gini_impurities = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
+            self.gini_impurities = np.ndarray(
+                shape=self.n_sym_vars,
+                dtype=np.float64
+            )
 
             # initialize gini impurities of symbolic targets left of the split
-            self.gini_left = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
+            self.gini_left = np.ndarray(
+                shape=self.n_sym_vars,
+                dtype=np.float64
+            )
 
             # initialize gini impurities of symbolic targets right of the split
-            self.gini_right = np.ndarray(shape=self.n_sym_vars, dtype=np.float64)
+            self.gini_right = np.ndarray(
+                shape=self.n_sym_vars,
+                dtype=np.float64
+            )
 
         # initialize number of samples in left and right split
         self.num_samples = np.ndarray(shape=2, dtype=np.int64)  # max(max(self.symbols) if self.n_sym_vars else 2, 2)
@@ -402,7 +434,10 @@ cdef class Impurity:
             self.variances_total = np.ndarray(self.n_num_vars, dtype=np.float64)
 
             # calculate the prior variance of every variable
-            self.max_variances = np.array([v._max_std ** 2 for v in tree.variables if v.numeric], dtype=np.float64)
+            self.max_variances = np.array(
+                [v._max_std ** 2 for v in tree.variables if v.numeric],
+                dtype=np.float64
+            )
 
             # buffers for left and right splits, similar to symbolic stuff
             self.sums_left = np.ndarray(self.n_num_vars, dtype=np.float64)
@@ -416,10 +451,36 @@ cdef class Impurity:
         # calculate percentage of numeric targets
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
-        # copy the dependency structure
-        self.dependency_matrix = tree.dependency_matrix
-        self.numeric_dependency_matrix = tree.numeric_dependency_matrix
-        self.symbolic_dependency_matrix = tree.symbolic_dependency_matrix
+        # construct the dependency structure
+        cdef dict dependency_indices = {}
+        cdef int idx_var
+        cdef list idc_dep
+        cdef SIZE_t[::1] indices
+        # convert variable dependency structure to index dependency structure for easy interpretation in cython
+        for variable, dep_vars in tree.dependencies.items():
+            # get the index version of the dependent variables and store them
+            idx_var = tree.variables.index(variable)
+            idc_dep = [tree.variables.index(var) for var in dep_vars]
+            dependency_indices[idx_var] = idc_dep
+
+        cdef SIZE_t n = self.n_features
+        self.numeric_dependency_matrix = np.full(
+            (n, n),
+            -1,
+            dtype=np.int64,
+        )
+        self.symbolic_dependency_matrix = self.numeric_dependency_matrix.copy()
+        for idx_var in self.features:
+            indices = np.array([
+                i_num for i_num, i_var in enumerate(self.numeric_vars) if i_var in dependency_indices[idx_var]
+            ], dtype=np.int64)
+            if indices.shape[0]:
+                self.numeric_dependency_matrix[idx_var, :indices.shape[0]] = indices
+            indices = np.array([
+                i_sym for i_sym, i_var in enumerate(self.symbolic_vars) if i_var in dependency_indices[idx_var]
+            ], dtype=np.int64)
+            if indices.shape[0]:
+                self.symbolic_dependency_matrix[idx_var, :indices.shape[0]] = indices
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
         """
@@ -442,9 +503,15 @@ cdef class Impurity:
         :param indices: the indices to set
         """
         self.data = data
-        self.feat = np.ndarray(shape=data.shape[0], dtype=np.float64)
+        self.feat = np.ndarray(
+            shape=data.shape[0],
+            dtype=np.float64
+        )
         self.indices = indices
-        self.index_buffer = np.ndarray(shape=indices.shape[0], dtype=np.int64)
+        self.index_buffer = np.ndarray(
+            shape=indices.shape[0],
+            dtype=np.int64
+        )
 
     cpdef int has_numeric_vars_(Impurity self, SIZE_t except_var=-1):
         '''Python variant of ``has_numeric_vars()`` for testing purpose only.'''
@@ -481,7 +548,10 @@ cdef class Impurity:
         """
         return self.n_num_vars_total - self.n_num_vars
 
-    cdef inline void gini_impurity(Impurity self, SIZE_t[:, ::1] counts, SIZE_t n_samples, DTYPE_t[::1] result) nogil:
+    cdef inline void gini_impurity(Impurity self,
+                                   SIZE_t[:, ::1] counts,
+                                   SIZE_t n_samples,
+                                   DTYPE_t[::1] result) nogil:
         """
         Calculate gini impurity of histogram
         
@@ -713,7 +783,7 @@ cdef class Impurity:
                                    DTYPE_t[::1] variances_total,
                                    DTYPE_t gini_total,
                                    SIZE_t[::1] index_buffer,
-                                   SIZE_t* best_split_pos) nogil except -1:
+                                   SIZE_t* best_split_pos): # nogil except -1:
         """
         Evaluate a variable w. r. t. its possible slit. Calculate the best split on this variable
         and the corresponding impurity.
@@ -831,13 +901,17 @@ cdef class Impurity:
 
             # Compute the numeric impurity (variance)
             if self.has_numeric_vars():
-                self.update_numeric_stats_with_dependencies(sample_idx,
-                                                            self.numeric_dependency_matrix[var_idx, :])
+                self.update_numeric_stats_with_dependencies(
+                    sample_idx,
+                    self.numeric_dependency_matrix[var_idx, :]
+                )
 
             # Compute the symbolic impurity (Gini index)
             if self.has_symbolic_vars():
-                self.update_symbolic_stats_with_dependencies(sample_idx,
-                                                             self.symbolic_dependency_matrix[var_idx, :])
+                self.update_symbolic_stats_with_dependencies(
+                    sample_idx,
+                    self.symbolic_dependency_matrix[var_idx, :]
+                )
 
             # Skip calculation for identical values (i.e. until next 'real' split point is reached:
             # for skipping, the sample must not be the last one (1) and consecutive values must be equal (2)
@@ -855,7 +929,12 @@ cdef class Impurity:
                 # if there is more than one sample on the left side if the split
                 if samples_left > 1:
                     # calculate variance of left split
-                    variances(self.sq_sums_left, self.sums_left, samples_left, result=self.variances_left)
+                    variances(
+                        self.sq_sums_left,
+                        self.sums_left,
+                        samples_left,
+                        result=self.variances_left
+                    )
                 else:
                     # reset variances left of the split
                     self.variances_left[:] = 0
@@ -866,23 +945,30 @@ cdef class Impurity:
                     # if there is more than one sample on the right side if the split
                     if samples_right > 1:
                         # calculate variance of right split
-                        variances(self.sq_sums_right, self.sums_right, samples_right, result=self.variances_right)
+                        variances(
+                            self.sq_sums_right,
+                            self.sums_right,
+                            samples_right,
+                            result=self.variances_right
+                        )
                     else:
                         # if there is only one sample reset the variances
                         self.variances_right[:] = 0
 
                     # compute the variance improvement for this split
-                    impurity_improvement += compute_var_improvements(variances_total,
-                                                                     self.variances_left,
-                                                                     self.variances_right,
-                                                                     samples_left,
-                                                                     samples_right,
-                                                                     num_var_idx) * self.w_numeric
+                    impurity_improvement += compute_var_improvements(
+                        variances_total,
+                        self.variances_left,
+                        self.variances_right,
+                        samples_left,
+                        samples_right,
+                        num_var_idx
+                    ) * self.w_numeric
 
                 # if the variable is symbolic
                 else:
-                    # TODO IDK
-                    impurity_improvement += (mean(self.variances_total) - mean(self.variances_left)) / mean(self.variances_total)
+                    impurity_improvement += (mean(self.variances_total)
+                                             - mean(self.variances_left)) / mean(self.variances_total)
                     impurity_improvement *= <DTYPE_t> samples_left / <DTYPE_t> n_samples * self.w_numeric
 
             # if symbolic targets exist
@@ -894,10 +980,12 @@ cdef class Impurity:
                     # update gini impurity left and right of the split
                     self.gini_impurity(self.symbols_left, samples_left, self.gini_left)
                     self.gini_impurity(self.symbols_right, samples_right, self.gini_right)
-                    impurity_improvement += ((gini_total -
-                                              mean(self.gini_left) * (<DTYPE_t> samples_left / <DTYPE_t> n_samples) -
-                                              mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> n_samples)) / gini_total
-                                              * (1 - self.w_numeric))
+                    impurity_improvement += (
+                        (gini_total -
+                        mean(self.gini_left) * (<DTYPE_t> samples_left / <DTYPE_t> n_samples) -
+                        mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> n_samples)) / gini_total
+                        * (1 - self.w_numeric)
+                    )
 
             # if this variable is symbolic
             if symbolic:
@@ -975,7 +1063,6 @@ cdef class Impurity:
 
         # initialize helper variables
         cdef SIZE_t i, j, validx, dep_var
-
         # for dependent every variable
         for i in range(dependent_columns.shape[0]):
 
@@ -985,35 +1072,38 @@ cdef class Impurity:
             # -1 marks the end of a dependency column, so end the method here
             if dep_var == -1:
                 return
-
             # get the value of the variable at sample
             validx = <SIZE_t> self.data[sample_idx, self.symbolic_vars[dep_var]]
-
             # update the histogram on the left split
             self.symbols_left[validx, dep_var] += 1
 
             # update the histogram on the right split
-            self.symbols_right[validx, dep_var] = (self.symbols_total[validx, dep_var] -
-                                                   self.symbols_left[validx, dep_var])
+            self.symbols_right[validx, dep_var] = (
+                self.symbols_total[validx, dep_var] -
+                self.symbols_left[validx, dep_var]
+            )
 
     def to_string(self):
         """
         :return: a table-like string describing the targets and features of this impurity
         """
-        return tabulate.tabulate(zip(['# symbolic variables',
-                                      'symbolic variables',
-                                      '# numeric variables',
-                                      'numeric variables',
-                                      '# symbolic features',
-                                      'symbolic features',
-                                      '# numeric features',
-                                      'numeric features'],
-                                     [len(self.symbolic_vars),
-                                      ','.join(mapstr(self.symbolic_vars)),
-                                      len(self.numeric_vars),
-                                      ','.join(mapstr(self.numeric_vars)),
-                                      len(self.symbolic_features),
-                                      ','.join(mapstr(self.symbolic_features)),
-                                      len(self.numeric_features),
-                                      ','.join(mapstr(self.numeric_features))]))
+        return tabulate.tabulate(zip([
+            '# symbolic variables',
+            'symbolic variables',
+            '# numeric variables',
+            'numeric variables',
+            '# symbolic features',
+            'symbolic features',
+            '# numeric features',
+            'numeric features'
+        ], [
+            len(self.symbolic_vars),
+            ','.join(mapstr(self.symbolic_vars)),
+            len(self.numeric_vars),
+            ','.join(mapstr(self.numeric_vars)),
+            len(self.symbolic_features),
+            ','.join(mapstr(self.symbolic_features)),
+            len(self.numeric_features),
+            ','.join(mapstr(self.numeric_features))
+        ]))
 

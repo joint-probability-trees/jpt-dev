@@ -30,9 +30,11 @@ class SequenceTest(unittest.TestCase):
         sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
         sequence_tree.fit([self.data, self.data])
 
-        r = sequence_tree.independent_marginals([{},
-                                                 jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()),
-                                                 {}])
+        r = sequence_tree.independent_marginals([
+            {},
+            template_tree.bind(X=[0.95, 1.05]),
+            {}
+        ])
 
         for tree in r:
             self.assertEqual(sum(l.prior for l in tree.leaves.values()), 1.)
