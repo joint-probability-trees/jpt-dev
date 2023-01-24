@@ -79,7 +79,7 @@ class JPTTest(TestCase):
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
         probs = jpt.likelihood(self.data.reshape(-1, 1))
-        #TODO: add test condition
+        self.assertTrue(all(probs > 0))
 
     def test_unsatisfiability(self):
         df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
@@ -140,7 +140,7 @@ class JPTTest(TestCase):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
-        self.assertEqual(126, jpt.number_of_parameters())
+        self.assertEqual(24, jpt.number_of_parameters())
 
     def test_independence(self):
         x = NumericVariable('X')
@@ -235,6 +235,9 @@ class TestCasePosteriorNumeric(TestCase):
         self.q = [self.varx]
         self.e = {self.vary: 0}
         self.posterior = self.jpt.posterior(self.q, self.e)
+
+    def test_convexity(self):
+        self.jpt.postprocess_leaves()
 
     def plot(self):
         print('Tearing down test method',
@@ -341,7 +344,7 @@ class TestCasePosteriorSymbolic(TestCase):
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
     def test_parameter_count(self):
-        self.assertEqual(144, self.jpt.number_of_parameters())
+        self.assertEqual(132, self.jpt.number_of_parameters())
 
 
 # noinspection PyPep8Naming
@@ -410,7 +413,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
     def test_parameter_count(self):
-        self.assertEqual(264, self.jpt.number_of_parameters())
+        self.assertEqual(230, self.jpt.number_of_parameters())
 
     def test_posterior_mixed_numeric_query(self):
         self.q = [self.variables[9]]
@@ -543,7 +546,7 @@ class TestCaseInference(TestCase):
         e = self.jpt.bind(WaitEstimate=[0, 10], Food='Thai')
         inference = self.jpt.infer(q, e)
         # print(self.jpt.conditional_jpt(e))
-        self.assertAlmostEqual(.6, inference.result, places=10)
+        self.assertAlmostEqual(.5, inference.result, places=10)
 
     def test_inference_mixed_neu(self):
         self.q = [self.variables[-1]]

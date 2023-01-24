@@ -38,7 +38,7 @@ except ModuleNotFoundError:
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
-    from ..base.functions import LinearFunction, ConstantFunction
+    from ..base.functions import LinearFunction, ConstantFunction, PiecewiseFunction
     from .quantile.quantiles import QuantileDistribution
 
 
@@ -745,6 +745,51 @@ class Numeric(Distribution):
     @classmethod
     def type_from_json(cls, data):
         return cls
+
+    def insert_convex_fragments(self, left: ContinuousSet or None, right: ContinuousSet or None,
+                                number_of_samples: int):
+        """Insert fragments of distributions on the right and left part of this distribution. This should only be used
+        to create a convex hull around the JPTs domain which density is never 0.
+
+        :param right: The right (lower) interval to add on if needed and None else
+        :param left: The left (upper) interval to add on if needed and None else
+        :param number_of_samples: The number of samples to use as basis for the weight
+        """
+
+        # create intervals used in the new distribution
+        points = [-float("inf")]
+
+        if left:
+            points.extend([left.lower, left.upper])
+
+        if right:
+            points.extend([right.lower, right.upper])
+
+        points.append(float("inf"))
+
+        intervals = [ContinuousSet(a, b) for a, b in zip(points[:-1], points[1:])]
+
+        valid_arguments = [e for e in [left, right] if e is not None]
+        number_of_intervals = len(valid_arguments)
+        functions = [ConstantFunction(0.)]
+
+        for idx, interval in enumerate(intervals[1:]):
+            prev_value = functions[idx].eval(interval.lower)
+
+            if interval in valid_arguments:
+                functions.append(LinearFunction.from_points((interval.lower, prev_value), (interval.upper, prev_value +
+                                                                                           1/number_of_intervals)))
+            else:
+                functions.append(ConstantFunction(prev_value))
+
+        cdf = PiecewiseFunction()
+        cdf.intervals = intervals
+        cdf.functions = functions
+        quantile = QuantileDistribution.from_cdf(cdf)
+        self._quantile = QuantileDistribution.merge([self._quantile, quantile], [1-(1 / (2 * number_of_samples)),
+                                                                                 1 / (2 * number_of_samples)])
+
+
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''

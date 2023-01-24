@@ -458,3 +458,5 @@ cdef class QuantileDistribution:
                                  min_samples_mars=data['min_samples_mars'])
         q.cdf = PiecewiseFunction.from_json(data['cdf'])
         return q
+
+

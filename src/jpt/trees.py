@@ -727,7 +727,7 @@ class Leaf(Node):
         return result
 
     def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
-            -> float:
+            -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
         :param queries: A VariableMap that maps to singular values (numeric or symbolic)
@@ -749,7 +749,7 @@ class Leaf(Node):
         for idx, (variable, distribution) in enumerate(self.distributions.items()):
 
             # if the variable is symbolic
-            if isinstance(variable, SymbolicVariable):
+            if isinstance(variable, SymbolicVariable) or isinstance(variable, IntegerVariable):
 
                 # multiply by probability
                 probs = distribution._params[queries[:, idx].astype(int)]
@@ -767,6 +767,9 @@ class Leaf(Node):
                 # if no distances are provided replace infinite values with 1.
                 else:
                     probs[(probs == float("inf")).nonzero()] = 1.
+
+            else:
+                raise ValueError("Variable of type %s is not known!" % type(variable))
 
             # multiply results
             result *= probs
@@ -807,7 +810,7 @@ class Leaf(Node):
                 Leafs require 1 + the sum of all distributions parameters. The 1 extra parameter
                 represents the prior.
         """
-        return 1 + sum([distribution.number_of_parameters() for distribution in self.distributions.values()])
+        return sum([distribution.number_of_parameters() for distribution in self.distributions.values()])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -2223,10 +2226,8 @@ class JPT:
         return sum(l.samples for l in self.leaves.values())
 
     def postprocess_leaves(self) -> None:
-        """
-        Postprocess the tree such that every point in the convex hull has
-        a probability greater than 0. This only changes the numeric distributions.
-        """
+        """Postprocess leaves such that the convex hull that is postulated from this tree has likelihood > 0 for every
+        point inside the hull."""
 
         # get total number of samples and use 1/total as default value
         total_samples = self.total_samples()
@@ -2236,33 +2237,32 @@ class JPT:
             # for numeric every distribution
             for variable, distribution in leaf.distributions.items():
                 if variable.numeric and variable in leaf.path.keys() and not distribution.is_dirac_impulse():
+
+                    left = None
+                    right = None
+
                     # if the leaf is not the "lowest" in this dimension
-                    if leaf.path[variable].lower > -float("inf"):
+                    if -float("inf") < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
+
                         # create uniform distribution as bridge between the leaves
                         interval = ContinuousSet(
                             leaf.path[variable].lower,
                             distribution.cdf.intervals[0].upper
                         )
-                        function_value = 1 / (2 * total_samples * interval.range())
-                        distribution._quantile.cdf.insert_convex_fragment_left(
-                            interval,
-                            function_value
-                        )
-                        distribution._quantile.cdf.normalize()
+                        left = interval
 
                     # if the leaf is not the "highest" in this dimension
-                    if leaf.path[variable].upper < float("inf"):
+                    if float("inf") > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
+
                         # create uniform distribution as bridge between the leaves
                         interval = ContinuousSet(
-                            distribution.cdf.intervals[-1].lower,
+                            distribution.cdf.intervals[-2].upper,
                             leaf.path[variable].upper
                         )
-                        function_value = 1 / (2 * total_samples * interval.range())
-                        distribution._quantile.cdf.insert_convex_fragment_right(
-                            interval,
-                            function_value
-                        )
-                        distribution._quantile.cdf.normalize()
+                        right = interval
+
+                    distribution.insert_convex_fragments(left, right, total_samples)
+
 
     def number_of_parameters(self) -> int:
         """
