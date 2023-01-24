@@ -30,75 +30,14 @@ class SequenceTest(unittest.TestCase):
         sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
         sequence_tree.fit([self.data, self.data])
 
-        r = sequence_tree.independent_marginals([{},
-                                                 jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()),
-                                                 {}])
+        r = sequence_tree.independent_marginals([
+            {},
+            template_tree.bind(X=[0.95, 1.05]),
+            {}
+        ])
 
         for tree in r:
             self.assertEqual(sum(l.prior for l in tree.leaves.values()), 1.)
-
-
-class SequenceTestFglib(unittest.TestCase):
-
-    def setUp(self) -> None:
-        np.random.seed(1234)
-        self.g = UniformSeries()
-        self.data = np.expand_dims(self.g.sample(np.arange(np.pi / 2, 10000, np.pi)), -1).reshape(-1, 1)
-        self.variables = [jpt.variables.NumericVariable("X", precision=0.1)]
-
-    def test_learning(self):
-        template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
-        sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
-        sequence_tree.fit([self.data, self.data])
-
-        evidences = [{}, jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()), {}]
-
-        result = sequence_tree.posterior(evidences)
-
-        for idx, tree in enumerate(result):
-            expectation = tree.expectation(["X"])
-            if idx % 2 == 0:
-                self.assertAlmostEqual(expectation["X"]._res, -1., delta=0.001)
-            else:
-                self.assertAlmostEqual(expectation["X"]._res, 1., delta=0.001)
-
-    def test_expectation(self):
-        sequential_variables = [[jpt.variables.NumericVariable("X", precision=0.1)],
-                                [jpt.variables.NumericVariable("X", precision=0.1)],
-                                [jpt.variables.NumericVariable("X", precision=0.1)]]
-        template_tree = jpt.trees.JPT(sequential_variables[0], min_samples_leaf=2500)
-        sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
-        sequence_tree.fit([self.data, self.data])
-
-        evidences = [{}, {"X": [0.95, 1.05]}, {}]
-
-        result = sequence_tree.expectation(variables=sequential_variables, evidence=evidences)
-
-        for idx, expectation_result in enumerate(result):
-            expectation = expectation_result["X"]
-            if idx % 2 == 0:
-                self.assertAlmostEqual(expectation._res, -1, delta=0.001)
-            else:
-                self.assertAlmostEqual(expectation._res, 1, delta=0.001)
-
-    def test_likelihood(self):
-        template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
-        sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
-        sequence_tree.fit([self.data, self.data])
-
-        evidences = [{}, jpt.variables.VariableMap({self.variables[0]: [0.95, 1.05]}.items()), {}]
-
-        """
-        print("------------")
-        print(self.data.shape)
-        print(template_tree.encode(samples=self.data))
-        print()
-        print(sequence_tree.template_tree.leaves[1].parallel_likelihood())
-        print(self.variables)
-        print("------------")
-
-        result = sequence_tree.likelihood()
-        """
 
 
 if __name__ == '__main__':

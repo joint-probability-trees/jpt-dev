@@ -5,16 +5,17 @@ import hashlib
 import math
 import numbers
 import uuid
-from collections import OrderedDict
-from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable
+
+from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable, Type
 
 import numpy as np
-from dnutils import first, edict
+from dnutils import first, edict, ifnone
 
-from jpt.base.utils import mapstr, to_json, list2interval, setstr
+from jpt.base.utils import mapstr, to_json, list2interval, setstr, setstr_int
 from jpt.base.constants import SYMBOL
 
-from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType
+from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType, Integer, \
+    IntegerType
 
 try:
     from jpt.base.intervals import __module__
@@ -67,7 +68,8 @@ class Variable:
             if attr not in self.settings:
                 raise AttributeError('Unknown settings "%s": '
                                      'expected one of {%s}' % (attr, setstr(type(self).SETTINGS)))
-            self.settings[attr] = value
+            if value is not None:
+                self.settings[attr] = value
 
     def __getattr__(self, name):
         try:
@@ -97,7 +99,7 @@ class Variable:
         return self._domain(**{k: self.settings[k] for k in self._domain.SETTINGS})
 
     def __str__(self):
-        return f'{self.name}[{self.domain.__name__}(%s)]' % {0: 'SYM', 1: 'NUM'}[self.numeric]
+        return f'{self.name}[{self.domain.__name__}]'
 
     def __repr__(self):
         return str(self)
@@ -120,14 +122,19 @@ class Variable:
     def numeric(self) -> bool:
         return issubclass(self.domain, Numeric)
 
+    @property
+    def integer(self) -> bool:
+        return issubclass(self.domain, Integer)
+
     def str(self, assignment, **kwargs) -> str:
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def to_json(self) -> Dict[str, Any]:
-        return {'name': self.name,
-                'type': 'numeric' if self.numeric else 'symbolic',
-                'domain': None if self.domain is None else self.domain.to_json(),
-                'settings': self.settings}
+        return {
+            'name': self.name,
+            'domain': None if self.domain is None else self.domain.to_json(),
+            'settings': self.settings
+        }
 
     @staticmethod
     def from_json(data: Dict[str, Any]) -> Union['NumericVariable', 'SymbolicVariable']:
@@ -135,6 +142,8 @@ class Variable:
             return NumericVariable.from_json(data)
         elif data['type'] == 'symbolic':
             return SymbolicVariable.from_json(data)
+        elif data['type'] == 'integer':
+            return IntegerVariable.from_json(data)
         else:
             raise TypeError('Unknown distribution type: %s' % data['type'])
 
@@ -146,6 +155,21 @@ class Variable:
 
     def copy(self):
         return Variable.from_json(self.to_json())
+
+    def assignment2set(self, assignment: Any):
+        '''
+        Return a canonical representation of the variable ``assignment`` as a set
+        in the corresponding type of set.
+
+        For a ``NumericVariable``, a scalar ``assignment`` will be converted to
+        a ``ContinuousSet`` instance, for a ``SymbolicVariable``, a single value will
+        be converted to a ``set`` collection.
+
+        If ``assignment`` is alreay in its canonical set representation, it
+        will not be modified and returned as passed.
+        '''
+        raise NotImplementedError()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Numeric variables
@@ -168,12 +192,14 @@ class NumericVariable(Variable):
 
     def __init__(self,
                  name: str,
-                 domain=Numeric,
+                 domain: Type = Numeric,
                  min_impurity_improvement: float = None,
                  blur: float = None,
                  max_std: float = None,
                  precision: float = None):
-        settings = {Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement}
+        settings = {
+            Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement
+        }
         if blur is not None:
             settings[NumericVariable.BLUR] = blur
         if max_std is not None:
@@ -195,6 +221,11 @@ class NumericVariable(Variable):
                      self.blur,
                      self.max_std,
                      self.precision))
+
+    def to_json(self) -> Dict[str, Any]:
+        return edict(super().to_json()) + {
+            'type': 'numeric'
+        }
 
     @staticmethod
     def from_json(data: Dict[str, Any]) -> 'NumericVariable':
@@ -218,7 +249,7 @@ class NumericVariable(Variable):
         return self.max_std_lbl
 
     # noinspection PyIncorrectDocstring
-    def str(self, assignment: Union[List, Set, numbers.Number], **kwargs) -> str:
+    def str(self, assignment: Union[List, Set, numbers.Number, NumberSet], **kwargs) -> str:
         '''
         Construct a pretty-formatted string representation of the respective
         variable assignment.
@@ -226,11 +257,9 @@ class NumericVariable(Variable):
         :param assignment:        the value(s) assigned to this variable.
         :param fmt:               ["set" | "logic"] use either set or logical notation.
         :param precision:         (int) the number of decimals to use for rounding.
-        :param convert_values:
         '''
         fmt = kwargs.get('fmt', 'set')
         precision = kwargs.get('precision', 3)
-        convert_values = kwargs.get('convert_values', True)
         lower = '%%.%df %%s ' % precision
         upper = ' %%s %%.%df' % precision
 
@@ -250,8 +279,6 @@ class NumericVariable(Variable):
             assignment = RealSet(intervals).simplify()
         if isinstance(assignment, ContinuousSet):
             assignment = RealSet([assignment])
-        if convert_values:
-            assignment = RealSet([self.domain.value2label(i) for i in assignment.intervals])
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
@@ -272,9 +299,71 @@ class NumericVariable(Variable):
         else:
             raise ValueError('Unknown format for numeric variable: %s.' % fmt)
 
+    def assignment2set(self, assignment: Union[float, NumberSet]) -> NumberSet:
+        if isinstance(assignment, numbers.Number):
+            return ContinuousSet(assignment)
+        return assignment
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class IntegerVariable(Variable):
+    '''
+    Represents an integer-valued variable.
+    '''
+
+    def __init__(self, name: str, domain: Type, min_impurity_improvement: float = None,):
+        settings = {
+            Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement
+        }
+        super().__init__(name, domain, **settings)
+
+    def str(self, assignment, **kwargs) -> str:
+        fmt = kwargs.get('fmt', 'set')
+        if type(assignment) is set:
+            if len(assignment) == 1:
+                return self.str(first(assignment), fmt=fmt)
+            elif fmt == 'set':
+                valstr = setstr_int(assignment)
+                return f'{self.name} {SYMBOL.IN} {{{valstr}}}'
+            elif fmt == 'logic':
+                return ' v '.join([self.str(a, fmt=fmt) for a in assignment])
+        if isinstance(assignment, numbers.Number):
+            return '%s = %s' % (self.name, self.domain.labels[assignment])
+        else:
+            return '%s = %s' % (self.name, str(assignment))
+
+    def assignment2set(self, assignment: Union[int, Set[int]]) -> Set[int]:
+        if isinstance(assignment, numbers.Integral):
+            return {assignment}
+        return assignment
+
+    def __hash__(self):
+        return hash((
+            IntegerVariable,
+            hashlib.md5(self.name.encode()).hexdigest(),
+            self.domain
+        ))
+
+    @staticmethod
+    def from_json(data: Dict[str, Any]) -> 'IntegerVariable':
+        domain = Distribution.type_from_json(data['domain'])
+        return IntegerVariable(
+            name=data['name'],
+            domain=domain,
+            min_impurity_improvement=data.get(Variable.MIN_IMPURITY_IMPROVEMENT)
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        return edict(super().to_json()) + {
+            'type': 'integer'
+        }
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Classes to represent symbolic variables
+
+INVERT_IMPURITY = 'invert_impurity'
 
 
 class SymbolicVariable(Variable):
@@ -282,15 +371,29 @@ class SymbolicVariable(Variable):
     Represents a symbolic variable.
     '''
 
-    def __init__(self, name, domain, min_impurity_improvement: float = None):
+    SETTINGS = edict(Variable.SETTINGS) + {
+        INVERT_IMPURITY: False,
+    }
+
+    def __init__(self,
+                 name: str,
+                 domain: type,
+                 min_impurity_improvement: float = None,
+                 invert_impurity: bool = None):
         super().__init__(name,
                          domain,
-                         min_impurity_improvement=min_impurity_improvement)
+                         min_impurity_improvement=min_impurity_improvement,
+                         invert_impurity=invert_impurity)
 
     @staticmethod
     def from_json(data) -> Dict[str, Any]:
         domain = Distribution.type_from_json(data['domain'])
         return SymbolicVariable(name=data['name'], domain=domain)
+
+    def to_json(self) -> Dict[str, Any]:
+        return edict(super().to_json()) + {
+            'type': 'symbolic'
+        }
 
     def str(self, assignment: Union[set, numbers.Number], **kwargs) -> str:
         fmt = kwargs.get('fmt', 'set')
@@ -308,6 +411,11 @@ class SymbolicVariable(Variable):
         else:
             return '%s = %s' % (self.name, str(assignment))
 
+    def assignment2set(self, assignment: Any):
+        if not isinstance(assignment, set):
+            return {assignment}
+        return assignment
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Convenience functions and classes
@@ -319,7 +427,8 @@ def infer_from_dataframe(df,
                          max_std: float = None,
                          precision: float = None,
                          unique_domain_names: bool = False,
-                         excluded_columns: Dict[str, type] = None):
+                         excluded_columns: Dict[str, type] = None,
+                         remove_nan: bool = False):
     '''
     Creates the ``Variable`` instances from column types in a Pandas or Spark data frame.
 
@@ -347,24 +456,35 @@ def infer_from_dataframe(df,
 
     :param excluded_columns:     user-provided domains for specific columns
     :type excluded_columns:    ``Dict[str, type]``
-    '''
 
+    :param remove_nan:  skip all ``None`` or ``NaN`` or ``Inf`` values in the data to construct the
+                        numeric variable domains.
+    '''
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
         if dtype in (str, object, bool):
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
             else:
-                dom = SymbolicType('%s%s_TYPE' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''), labels=df[col].unique())
+                dom = SymbolicType(
+                    '%s%s_TYPE_S' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
+                    labels=df[col].unique()
+                )
             var = SymbolicVariable(col,
                                    dom,
                                    min_impurity_improvement=min_impurity_improvement)
 
-        elif dtype in (np.float64, np.int64, np.float32, np.int32):
+        elif dtype in (np.float64, np.float32):
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
             elif scale_numeric_types:
-                dom = NumericType('%s%s_TYPE' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''), df[col].unique())
+                values = df[col]
+                if remove_nan:
+                    values = values[~values.isin([np.nan, np.inf])]
+                dom = NumericType(
+                    '%s%s_TYPE_N' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
+                    values.unique()
+                )
             else:
                 dom = Numeric
             var = NumericVariable(col,
@@ -373,6 +493,16 @@ def infer_from_dataframe(df,
                                   blur=blur,
                                   max_std=max_std,
                                   precision=precision)
+        elif dtype in (np.int32, np.int64):
+            if excluded_columns is not None and col in excluded_columns:
+                dom = excluded_columns[col]
+            else:
+                dom = IntegerType(
+                    '%s%s_TYPE_I' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
+                    lmin=df[col].min(),
+                    lmax=df[col].max()
+                )
+            var = IntegerVariable(col, dom)
         else:
             raise TypeError('Unknown column type:', col, '[%s]' % dtype)
         variables.append(var)
@@ -385,19 +515,25 @@ class VariableMap:
     supports accessing the image set both by the variable object instance itself _and_ its name.
     '''
 
-    def __init__(self, data: Iterator[Tuple] or None = None):
+    def __init__(self,
+                 data: List[Tuple] or Dict = None,
+                 variables: Iterable[Variable] = None):
         '''
         ``data`` may be an iterable of (variable, value) pairs.
         '''
         super().__init__()
-        self._variables = {}
-        self._map = OrderedDict()
+        self._variables = {v.name: v for v in ifnone(variables, ())}
+        self._map = {}
         if data:
-            for var, value in data:
+            if isinstance(data, dict):
+                tuples = data.items()
+            else:
+                tuples = data
+            for var, value in tuples:
                 self[var] = value
 
     @property
-    def map(self) -> OrderedDict:
+    def map(self) -> {}:
         return self._map
 
     def __getitem__(self, key: Union[str, Variable]) -> Any:
@@ -406,11 +542,18 @@ class VariableMap:
         return self._map.__getitem__(key)
 
     def __setitem__(self, variable: Union[str, Variable], value: Any) -> None:
+        if type(variable) is str:
+            if variable not in self._variables:
+                raise ValueError('Variable "%s" not available in this '
+                                 '%s object. Set "variables" in the constructor '
+                                 'or use a Variable object.')
+            variable = self._variables[variable]
         if not isinstance(variable, Variable):
             raise ValueError('Illegal argument value: '
                              'expected Variable, got %s.' % type(variable).__name__)
         self._map[variable.name] = value
-        self._variables[variable.name] = variable
+        if variable.name not in self._variables:
+            self._variables[variable.name] = variable
 
     def __delitem__(self, key: Union[str, Variable]) -> None:
         if isinstance(key, Variable):
@@ -464,13 +607,13 @@ class VariableMap:
             return default
         return self[key]
 
-    def keys(self) -> Iterator[Variable]:
+    def keys(self) -> Iterator[str]:
         yield from (self._variables[name] for name in self._map.keys())
 
     def values(self) -> Iterator[Any]:
         yield from self._map.values()
 
-    def items(self) -> Iterator[Tuple[Variable, Any]]:
+    def items(self) -> Iterator[Tuple]:
         yield from ((self._variables[name], value) for name, value in self._map.items())
 
     def to_json(self) -> Dict[str, Any]:
@@ -483,9 +626,10 @@ class VariableMap:
 
     def copy(self, deep: bool = False) -> 'VariableMap':
         if not deep:
-            return type(self)([(var, val) for var, val in self.items()])
+            return type(self)([(var, val) for var, val in self.items()],
+                              variables=self._variables.values())
 
-        vmap = type(self)()
+        vmap = type(self)(variables=self._variables.values())
         for vname, value in self.items():
             if isinstance(value, (numbers.Number, str)):
                 vmap[vname] = value
@@ -494,7 +638,11 @@ class VariableMap:
         return vmap
 
     @classmethod
-    def from_json(cls, variables: Iterable[Variable], d: Dict[str, Any], typ=None, args=()) -> 'VariableMap':
+    def from_json(cls,
+                  variables: Iterable[Variable],
+                  d: Dict[str, Any],
+                  typ=None,
+                  args=()) -> 'VariableMap':
         vmap = cls()
         varbyname = {var.name: var for var in variables}
         for vname, value in d.items():
@@ -505,7 +653,7 @@ class VariableMap:
 
     def __repr__(self):
         return '<%s {%s}>' % (type(self).__name__,
-                              ','.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()]))
+                              ', '.join(['%s: %s' % (var.name, repr(val)) for var, val in self.items()]))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -519,10 +667,18 @@ class VariableAssignment(VariableMap):
     that are supposed to be used instead.
     '''
 
-    def __init__(self, data: List[Tuple] = None):
-        super().__init__(data)
+    def __init__(self,
+                 data: List[Tuple] = None,
+                 variables: Iterable[Variable] = None):
+        super().__init__(data, variables=variables)
         if type(self) is VariableAssignment:
             raise TypeError('Abstract super class %s cannot be instantiated.' % type(self).__name__)
+
+    def scalar2sets(self):
+        copy = self.copy()
+        for var, val in copy.items():
+            copy[var] = var.assignment2set(val)
+        return copy
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -581,6 +737,3 @@ class ValueAssignment(VariableAssignment):
 
     def label_assignment(self) -> LabelAssignment:
         return LabelAssignment([(var, var.domain.value2label(val)) for var, val in self.items()])
-
-    def copy(self):
-        return VariableMap.from_json(self.to_json())

@@ -24,14 +24,16 @@ cdef DTYPE_t nan
 cdef inline DTYPE_t mean(DTYPE_t[::1] arr) nogil:
     """
     Arithmetic mean in the vector ``arr``.
+    
     :param arr: the array to compute the mean on.
+    
     :return: The mean as double
     """
     cdef DTYPE_t result = 0
     cdef int i
     for i in range(arr.shape[0]):
         result += arr[i]
-    return result / <DTYPE_t> arr.shape[0]
+    return result / (<DTYPE_t> arr.shape[0])
 
 
 # ----------------------------------------------------------------------------------------------------------------------

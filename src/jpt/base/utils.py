@@ -5,7 +5,7 @@ from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
 from csv import Dialect
 
 import math
-from typing import Callable, Iterable, Any, Tuple
+from typing import Callable, Iterable, Any, Tuple, Set
 
 import numpy as np
 import arff
@@ -69,7 +69,7 @@ class Conditional:
         return self.p[tuple(evidence)].sample_one()
 
 
-def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None):
+def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None, ellipse: str = '...'):
     '''
     Convert the sequence ``seq`` into a list of strings by applying ``str`` to each of its elements.
 
@@ -81,9 +81,9 @@ def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None):
     '''
     fmt = ifnone(fmt, str)
     result = [fmt(e) for e in seq]
-    if not limit or limit > len(seq):
+    if not limit or limit >= len(seq):
         return result
-    return result[:max(limit // 2, 1)] + ['...'] + result[len(result) - limit // 2:]
+    return result[:max(limit // 2, 1)] + [ellipse] + result[len(result) - limit // 2:]
 
 
 def setstr(seq: Iterable, fmt: Callable = None, limit: int = None, sep: str = ', '):
@@ -101,11 +101,47 @@ def setstr(seq: Iterable, fmt: Callable = None, limit: int = None, sep: str = ',
     return sep.join(mapstr(seq, fmt=fmt, limit=limit))
 
 
+def setstr_int(intset: Set[int], sep_inner: str = '', sep_outer: str = ', ') -> str:
+    '''
+    Return a prettyfied string representing the given set of integers.
+
+    Consecutive numbers (e.g. 0, 1, 2) will be collapsed into a range representation "0...2".
+
+    :param intset:      the set of integers to be formatted.
+    :param sep_inner:   the separator character to be used for separating consecutive ("inner") numbers
+    :param sep_outer:   the separator character to be used for separating non-consecutive ("outer") numbers
+    '''
+    elements = list(sorted(intset))
+    chunks = []
+    chunk = [elements[0]]
+    for a, b in pairwise(elements):
+        if b == a + 1:
+            chunk.append(b)
+        else:
+            chunks.append(chunk)
+            chunk = [b]
+    chunks.append(chunk)
+    chunks = [mapstr(c, limit=2, ellipse='...') for c in chunks]
+    chunks = [
+        sep_inner.join(c) if len(c) == 3 else sep_outer.join(c)
+        for c in chunks
+    ]
+    return sep_outer.join([c for c in chunks])
+
+
 def prod(it: Iterable[numbers.Number]):
     '''
     Compute the product of all elements in ``it``.
     '''
     return reduce(lambda x, y: x * y, it)
+
+
+def none2nan(it: Iterable[numbers.Number]):
+    '''
+    Return a copy of the passed iterable ``it``, in which all occurrence
+    of ``None`` have been replaced by ``np.nan``.
+    '''
+    return map(lambda x: ifnone(x, np.nan), it)
 
 
 def to_json(obj):

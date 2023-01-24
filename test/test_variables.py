@@ -9,8 +9,9 @@ import pandas as pd
 from jpt import NumericType, SymbolicType
 from jpt.base.intervals import ContinuousSet
 from jpt.distributions import Bool, Numeric, Distribution
+from jpt.distributions.univariate import IntegerType
 from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable, infer_from_dataframe, \
-    LabelAssignment, ValueAssignment
+    LabelAssignment, ValueAssignment, IntegerVariable
 
 
 class VariableMapTest(TestCase):
@@ -37,6 +38,21 @@ class VariableMapTest(TestCase):
         self.assertEqual('bar', varmap['B'])
 
         self.assertEqual('baz', varmap[C])
+        self.assertEqual('baz', varmap['C'])
+
+    def test__set_and_get_with_variables(self):
+        varmap = VariableMap(variables=VariableMapTest.TEST_DATA)
+        varmap['A'] = 'foo'
+        varmap['B'] = 'bar'
+        varmap['C'] = 'baz'
+
+        self.assertEqual('foo', varmap[VariableMapTest.TEST_DATA[0]])
+        self.assertEqual('foo', varmap['A'])
+
+        self.assertEqual('bar', varmap[VariableMapTest.TEST_DATA[1]])
+        self.assertEqual('bar', varmap['B'])
+
+        self.assertEqual('baz', varmap[VariableMapTest.TEST_DATA[2]])
         self.assertEqual('baz', varmap['C'])
 
     def test_raises(self):
@@ -231,6 +247,40 @@ class VariableTest(TestCase):
         self.assertEqual('A ∈ [2.0,4.0]', A.str({(2, 3), (3, 4)}, fmt='set'))
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+class SymbolicVariableTest(TestCase):
+
+    def test_impurity_inversion(self):
+        symbolicType = SymbolicType('BlaType', labels=['a', 'b', 'c'])
+        v = SymbolicVariable('var', domain=symbolicType, invert_impurity=True)
+        self.assertTrue(v.invert_impurity)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class IntegerVariableTest(TestCase):
+
+    dice = IntegerType('Dice', lmin=1, lmax=6)
+
+    def test_hash(self):
+        toss1 = IntegerVariable('Toss', domain=self.dice)
+        toss2 = IntegerVariable('Toss', domain=self.dice)
+        baz = IntegerVariable('baz', domain=self.dice)
+        self.assertEqual(hash(toss1), hash(toss2))
+        self.assertNotEqual(hash(toss1), hash(baz))
+
+    def test_serialization(self):
+        toss = IntegerVariable('Toss', domain=self.dice)
+        self.assertEqual(toss, Variable.from_json(toss.to_json()))
+
+    def test_pickle(self):
+        toss = IntegerVariable('Toss', domain=self.dice)
+        self.assertEqual(toss, pickle.loads(pickle.dumps(toss)))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 class DuplicateDomainTest(TestCase):
     '''Test domain functionality of Variable classes.'''
 
@@ -240,15 +290,15 @@ class DuplicateDomainTest(TestCase):
                  SymbolicVariable('C', Bool)]
 
     data1 = {'A': ['one', 'two', 'three', 'four'],
-             'B': [68, 74, 77, 78],
-             'C': [84, 56, 73, 69],
-             'D': [78, 88, 82, 87]}
+             'B': [68., 74., 77., 78.],
+             'C': [84., 56., 73., 69.],
+             'D': [78., 88., 82., 87.]}
     DF1 = pd.DataFrame(data1)
 
     data2 = {'A': ['three', 'six', 'seven', 'four'],
-             'B': [5, 4, 3, 2],
-             'C': [9, 8, 5, 2],
-             'E': [7, 8, 5, 1]}
+             'B': [5., 4., 3., 2.],
+             'C': [9., 8., 5., 2.],
+             'E': [7., 8., 5., 1.]}
     DF2 = pd.DataFrame(data2)
 
     def test_duplicate_dom_symbolic_raise_err(self):
@@ -303,28 +353,29 @@ class DuplicateDomainTest(TestCase):
 
     def test_duplicate_dom_symbolic_excluded_columns(self):
         '''User-created type is used in infer_from_dataframe when setting excluded_columns.'''
-        atype = SymbolicType('A_TYPE', ['one', 'two', 'three', 'four'])
+        atype = SymbolicType('A_TYPE_S', ['one', 'two', 'three', 'four'])
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1, excluded_columns={'A': atype})
         self.assertEqual(atype, v1[0].domain)
         self.assertTrue(atype.equiv(v1[0].domain))
 
     def test_duplicate_dom_numeric_excluded_columns(self):
         '''User-created type is used in infer_from_dataframe when setting excluded_columns.'''
-        btype = NumericType('B_TYPE', np.array([68, 74, 77, 78]))
+        btype = NumericType('B_TYPE_N', np.array([68, 74, 77, 78], dtype=np.float64))
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1, excluded_columns={'B': btype})
         self.assertEqual(btype, v1[1].domain)
         self.assertTrue(btype.equiv(v1[1].domain))
 
     def test_duplicate_dom_symbolic_not_excluded_columns(self):
         '''User-created type is not used in infer_from_dataframe and therefore not equal but equivalent.'''
-        atype = SymbolicType('A_TYPE', ['one', 'two', 'three', 'four'])
+        atype = SymbolicType('A_TYPE_S', ['one', 'two', 'three', 'four'])
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1)
         self.assertNotEqual(atype, v1[0].domain)
         self.assertTrue(atype.equiv(Distribution.type_from_json(v1[0].domain.to_json())))
 
     def test_duplicate_dom_numeric_not_excluded_columns(self):
         '''User-created type is not used in infer_from_dataframe and therefore not equal but equivalent.'''
-        btype = NumericType('B_TYPE', np.array([68, 74, 77, 78]))
+        btype = NumericType('B_TYPE_N', np.array([68, 74, 77, 78], dtype=np.float64))
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1)
         self.assertNotEqual(btype, v1[1].domain)
+        print(btype, v1[1].domain)
         self.assertTrue(btype.equiv(Distribution.type_from_json(v1[1].domain.to_json())))
