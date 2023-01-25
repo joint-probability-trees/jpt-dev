@@ -871,7 +871,7 @@ class JPT:
         self.min_impurity_improvement = ifnone(min_impurity_improvement, 0)
 
         # a map saving the minimal distances to prevent infinite high likelihoods
-        self.minimal_distances: VariableMap = VariableMap({var: 1. for var in self.numeric_variables}.items())
+        self.minimal_distances: VariableMap = VariableMap(variables=self.variables)
         self._numsamples = 0
         self.root = None
         self.c45queue = deque()
@@ -1001,7 +1001,7 @@ class JPT:
         )
         jpt.minimal_distances = VariableMap.from_json(
             jpt.numeric_variables,
-            data["minimal_distances"]
+            data.get("minimal_distances", {})
         )
         for d in data['innernodes']:
             DecisionNode.from_json(jpt, d)
