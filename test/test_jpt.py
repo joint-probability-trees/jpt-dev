@@ -176,15 +176,15 @@ class JPTTest(TestCase):
 
         # Act
         bind1 = jpt.bind(n=1, s=True, i=3)
-        bind2 = jpt.bind({'n': 1, s: True, 'i': 3})
+        bind2 = jpt.bind({'n': 1, s: True, 'i': [3, 5]})
 
         # Assert
-        self.assertEqual(bind1, bind2)
         self.assertIsInstance(bind1, LabelAssignment)
-        truth = {n: ContinuousSet(1, 1), s: {True}, i: {3}}
+        truth1 = {n: ContinuousSet(1, 1), s: {True}, i: {3}}
+        truth2 = {n: ContinuousSet(1, 1), s: {True}, i: {3, 4, 5}}
         for var, val in bind1.items():
-            self.assertEqual(truth[var], val)
-        for var, val in truth.items():
+            self.assertEqual(truth1[var], val)
+        for var, val in truth2.items():
             self.assertEqual(val, bind2[var])
 
 
