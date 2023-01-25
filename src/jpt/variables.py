@@ -96,7 +96,11 @@ class Variable:
         '''
         Create and return a new instance of the distribution type attached to this variable.
         '''
-        return self._domain(**{k: self.settings[k] for k in self._domain.SETTINGS})
+        return self._domain(**{
+            k: self.settings[k]
+            for k in self._domain.SETTINGS
+            if k in self.settings
+        })
 
     def __str__(self):
         return f'{self.name}[{self.domain.__name__}]'
