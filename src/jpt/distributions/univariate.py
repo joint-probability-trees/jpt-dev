@@ -15,7 +15,7 @@ import os
 import re
 from operator import itemgetter
 
-from dnutils import first, out, ifnone, stop, ifnot, project, pairwise
+from dnutils import first, out, ifnone, stop, ifnot, project, pairwise, edict
 from dnutils.stats import Gaussian as Gaussian_, _matshape
 
 from scipy.stats import multivariate_normal, norm
@@ -985,8 +985,11 @@ class Multinomial(Distribution):
         return f'\n{self._cl}<p=[\n{sepcomma.join([f" {v}={p:.3}" for v, p in zip(self.labels, self.probabilities)])}]>;'
 
     def sorted(self):
-        return sorted([(p, l) for p, l in zip(self._params, self.labels.values())],
-                      key=itemgetter(0), reverse=True)
+        return sorted([
+            (p, l) for p, l in zip(self._params, self.labels.values())],
+            key=itemgetter(0),
+            reverse=True
+        )
 
     def items(self):
         '''Return a list of (probability, label) pairs representing this distribution.'''
@@ -1279,6 +1282,14 @@ class Integer(Distribution):
     values = None
     labels = None
 
+    OPEN_DOMAIN = 'open_domain'
+    AUTO_DOMAIN = 'auto_domain'
+
+    SETTINGS = edict(Distribution.SETTINGS) + {
+        OPEN_DOMAIN: False,
+        AUTO_DOMAIN: False
+    }
+
     def __init__(self, **settings):
         super().__init__(**settings)
         if not issubclass(type(self), Integer) or type(self) is Integer:
@@ -1358,6 +1369,9 @@ class Integer(Distribution):
     @classmethod
     def value2label(cls, value: Union[Any, Set]) -> Union[Any, Set]:
         if type(value) is set:
+            # if cls.open_domain:
+            #     return {cls.labels[v] for v in value if v in cls.labels}
+            # else:
             return {cls.labels[v] for v in value}
         else:
             return cls.labels[value]
@@ -1381,6 +1395,8 @@ class Integer(Distribution):
             labels = {labels}
         i1, i2 = tee(labels, 2)
         if not all(isinstance(v, numbers.Integral) and self.lmin <= v <= self.lmax for v in i1):
+            if self.open_domain:
+                return 0
             raise ValueError('Arguments must be in %s' % setstr(self.labels.values(), limit=5))
         return self._p(self.values[l] for l in labels)
 
