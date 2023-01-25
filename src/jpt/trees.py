@@ -1453,7 +1453,9 @@ class JPT:
                     raise TypeError('Unknown type of variable value: %s' % type(arg).__name__)
             if var.symbolic or var.integer:
                 # Transform into internal values (symbolic values to their indices):
-                if type(arg) in (list, tuple):
+                if type(arg) is list:
+                    arg = var.domain.list2set(arg)
+                if type(arg) is tuple:
                     raise TypeError('Illegal type for values of domain %s: %s'
                                     % (var.domain.__name__, type(arg).__name__))
                 if type(arg) is not set:
