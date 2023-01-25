@@ -1321,6 +1321,18 @@ class Integer(Distribution):
             'settings': self.settings
         }
 
+    @classmethod
+    def list2set(cls, bounds: List[int]) -> Set[int]:
+        '''
+        Convert a 2-element list specifying a lower and an upper bound into a
+        integer set containing the admissible values of the corresponding interval
+        '''
+        if not len(bounds) == 2:
+            raise ValueError('Argument list must have length 2, got length %d.' % len(bounds))
+        if bounds[0] < cls.lmin or bounds[1] > cls.lmax:
+            raise ValueError(f'Argument must be in [%d, %d].' % (cls.lmin, cls.lmax))
+        return set(range(bounds[0], bounds[1] + 1))
+
     @staticmethod
     def type_from_json(data):
         return IntegerType(data['class'], data['lmin'], data['lmax'])

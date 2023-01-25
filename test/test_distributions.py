@@ -5,7 +5,6 @@ import pickle
 from unittest import TestCase
 
 import numpy as np
-from dnutils import out
 
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
@@ -454,6 +453,18 @@ class IntegerDistributionTest(TestCase):
         # Assert
         self.assertTrue(dice.equiv(dice_))
         self.assertEqual(fair_dice_, fair_dice)
+
+    def test_list2set(self):
+        # Arrange
+        dice = IntegerType('Dice', 1, 6)
+
+        # Act
+        s = dice.list2set([2, 4])
+
+        # Assert
+        self.assertEqual({2, 3, 4}, s)
+        self.assertRaises(ValueError, dice.list2set, [7, 8])
+        self.assertRaises(ValueError, dice.list2set, [1])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
