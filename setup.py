@@ -1,7 +1,11 @@
 import sys
 import os
 from distutils.extension import Extension
-from setuptools import setup, find_packages
+from setuptools import setup
+
+import numpy
+from Cython.Build import cythonize
+
 
 sys.path.insert(0, 'src')
 
@@ -16,53 +20,6 @@ __version__ = read('version')
 def requirements():
     with open('requirements.txt', 'r') as f:
         return [_.strip() for _ in f.readlines() if _.strip()]
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Some helper functions to manage the dependencies
-
-
-# def apt_get_install(packages):
-#     subprocess.check_call(['apt-get', "install", "-y"] + packages)
-
-
-# def install(package, upgrade=False):
-#     subprocess.check_call([sys.executable, "-m", "pip", "install", package] + ['-U'] if upgrade else [])
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Install the dependencies on Ubuntu/Debian Systems
-
-# try:
-#     with open('/etc/os-release', 'r') as f:
-#         os_info = {k: v for k, v in [l.split('=') for l in f.readlines()]}
-#
-#     if os_info.get('NAME', 'N/A') in {'Ubuntu', 'Debian'}:
-#         apt_get_install(['glibc-source',
-#                          'libatlas-base-dev',
-#                          'gfortran',
-#                          'libxslt1-dev',
-#                          'libxml2-dev',
-#                          'graphviz'])
-#
-#         install('pip', upgrade=True)
-
-# except FileNotFoundError:
-#     print('We are running on Windows or Linux distribution cannot be determined.')
-
-# process = subprocess.Popen([sys.executable, "-m", "pip", "install", '-U', '-r', 'requirements.txt'],
-#                            stdout=subprocess.PIPE,
-#                            stderr=subprocess.PIPE)
-#
-# while s := process.stdout.read(1024):
-#     sys.stdout.write(s.decode())
-#
-# while s := process.stderr.read(1024):
-#     sys.stderr.write(s.decode())
-
-import numpy
-import cysignals
-from Cython.Build import cythonize
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -133,6 +90,5 @@ setup(
     ext_modules=compiled,
     zip_safe=False,
     version=__version__,
-    setup_requires=["cysignals"],
     install_requires=requirements(),
 )

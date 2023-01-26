@@ -35,7 +35,6 @@ from .distributions import Multinomial, Numeric, ScaledNumeric
 from .base.constants import plotstyle, orange, green, SYMBOL
 
 try:
-    from .base.quantiles import __module__
     from .base.intervals import __module__
     from .learning.impurity import __module__
 except ModuleNotFoundError:

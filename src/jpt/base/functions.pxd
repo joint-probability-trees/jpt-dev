@@ -5,7 +5,6 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 
-
 from .intervals cimport ContinuousSet, RealSet
 
 import numpy as np

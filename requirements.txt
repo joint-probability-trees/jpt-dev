@@ -8,6 +8,5 @@ dateparser
 arff
 tqdm
 tabulate
-cython
 fglib
 factorgraph

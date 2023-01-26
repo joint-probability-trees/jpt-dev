@@ -4,6 +4,8 @@
 # cython: wraparound=True
 # cython: boundscheck=False
 # cython: nonecheck=False
+__module__ = 'intervals.pyx'
+
 import numbers
 import re
 import traceback
@@ -17,8 +19,6 @@ import numpy as np
 cimport numpy as np
 cimport cython
 from dnutils import ifnone, first, ifnot
-
-__module__ = 'intervals.pyx'
 
 
 # ----------------------------------------------------------------------------------------------------------------------

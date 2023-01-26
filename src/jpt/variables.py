@@ -18,12 +18,12 @@ from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution,
     IntegerType
 
 try:
-    from jpt.base.intervals import __module__
+    from .base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.intervals import INC, EXC, ContinuousSet, RealSet, NumberSet
+    from .base.intervals import INC, EXC, ContinuousSet, RealSet, NumberSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------

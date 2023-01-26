@@ -4,7 +4,6 @@
 # cython: wraparound=True
 # cython: boundscheck=False
 # cython: nonecheck=False
-
 __module__ = 'functions.pyx'
 
 import itertools
