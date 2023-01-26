@@ -21,12 +21,12 @@ from dnutils import ifnone, stop, out
 
 
 try:
-    from jpt.base.intervals import __module__
+    from .intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.intervals import ContinuousSet
+    from .intervals import ContinuousSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
