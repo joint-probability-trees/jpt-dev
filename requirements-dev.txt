@@ -1,4 +1,3 @@
 cython
 ddt
-sklearn
 jupyter
