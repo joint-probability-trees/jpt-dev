@@ -547,7 +547,10 @@ cdef class ContinuousSet(NumberSet):
     def allnumbers():
         return ContinuousSet.c_allnumbers()
 
-    cpdef DTYPE_t[::1] sample(ContinuousSet self, np.int32_t k=1, DTYPE_t[::1] result=None):
+    cpdef np.ndarray[np.float64_t] sample(ContinuousSet self, np.int32_t k=1, DTYPE_t[::1] result=None):
+        return np.array(self._sample(k, result))
+
+    cpdef DTYPE_t[::1] _sample(ContinuousSet self, np.int32_t k=1, DTYPE_t[::1] result=None):
         """
         Draw from this interval ``k`` evenly distributed samples.
         :param k: The amount of samples

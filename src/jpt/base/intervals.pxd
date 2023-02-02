@@ -87,7 +87,9 @@ cdef class ContinuousSet(NumberSet):
     @staticmethod
     cdef inline ContinuousSet c_allnumbers()
 
-    cpdef DTYPE_t[::1] sample(ContinuousSet self, np.int32_t k=*, DTYPE_t[::1] result=*)
+    cpdef np.ndarray[np.float64_t] sample(ContinuousSet self, np.int32_t k=*, DTYPE_t[::1] result=*)
+
+    cpdef DTYPE_t[::1] _sample(ContinuousSet self, np.int32_t k=*, DTYPE_t[::1] result=*)
 
     cpdef inline ContinuousSet copy(ContinuousSet self)
 
