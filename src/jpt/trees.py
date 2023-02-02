@@ -802,7 +802,7 @@ class Leaf(Node):
             maximum[variable] = explanation
 
         # create mpe result
-        return result_likelihood, maximum
+        return result_likelihood, LabelAssignment(maximum.items())
 
     def number_of_parameters(self) -> int:
         """
