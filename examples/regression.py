@@ -59,17 +59,11 @@ def main(visualize=True):
 
     # Apply the JPT model
     confidence = .95
-    my_predictions = [
-        jpt.expectation(
-            [vary],
-            evidence=jpt.bind(x=x_),
-            confidence_level=confidence,
-            fail_on_unsatisfiability=False
-        ) for x_ in xx.ravel()
-    ]
-    y_pred_ = [(p[vary].result if p is not None else None) for p in my_predictions]
-    y_lower_ = [(p[vary].lower if p is not None else None) for p in my_predictions]
-    y_upper_ = [(p[vary].upper if p is not None else None) for p in my_predictions]
+    conf_level = 0.95
+    my_predictions = [jpt.posterior([vary], evidence={varx: x_}, fail_on_unsatisfiability=False) for x_ in xx.ravel()]
+    y_pred_ = [(p[vary].expectation() if p is not None else None) for p in my_predictions]
+    y_lower_ = [(p[vary].ppf.eval((1 - conf_level) / 2) if p is not None else None) for p in my_predictions]
+    y_upper_ = [(p[vary].ppf.eval(1 - (1 - conf_level) / 2) if p is not None else None) for p in my_predictions]
 
     # posterior = jpt.posterior([varx], {vary: 0})
 

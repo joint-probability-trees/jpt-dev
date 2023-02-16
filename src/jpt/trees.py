@@ -1,5 +1,4 @@
-'''© Copyright 2021, Mareike Picklum, Daniel Nyga.
-'''
+"""© Copyright 2021, Mareike Picklum, Daniel Nyga."""
 import html
 import json
 from operator import attrgetter
@@ -54,245 +53,6 @@ DISCRIMINATIVE = 'discriminative'
 GENERATIVE = 'generative'
 # ----------------------------------------------------------------------------------------------------------------------
 
-
-class Result:
-    """
-    Base class for Results returned from a JPT
-    """
-
-    def __init__(self, query, evidence, res=None, cand=None, w=None):
-        """
-        Create a result
-        :param query: the query that was posed to the model
-        :param evidence: the evidence provided to the model
-        :param res: the result of the query
-        :param cand: all candidate distributions
-        :param w: the weights of the distributions
-        """
-        self.query = query
-        self._evidence = evidence
-        self._res = ifnone(res, [])
-        self._cand = ifnone(cand, [])
-        self._w = ifnone(w, [])
-        self.candidate_dists = defaultdict(list)
-
-    def __str__(self):
-        return self.format_result()
-
-    @property
-    def evidence(self):
-        return {k: (k.domain.labels[fst(v)]
-                    if k.symbolic else ContinuousSet(k.domain.labels[v.lower],
-                                                     k.domain.labels[v.upper], v.left, v.right))
-                for k, v in self._evidence.items()}
-
-    @property
-    def result(self):
-        return self._res
-
-    @result.setter
-    def result(self, res):
-        self._res = res
-
-    @property
-    def candidates(self):
-        return self._cand
-
-    @candidates.setter
-    def candidates(self, cand):
-        self._cand = cand
-
-    @property
-    def weights(self):
-        return self._w
-
-    @weights.setter
-    def weights(self, w):
-        self._w = w
-
-    def format_result(self):
-        """
-        :return: pretty string summarizing this result
-        """
-        return ('P(%s%s) = %.3f%%' % (format_path(self.query),
-                                      (' | %s' % format_path(self._evidence)) if self.evidence else '',
-                                      self.result * 100))
-
-    def explain(self) -> str:
-        """
-        :return: the explanation on how to get to this result as string
-        """
-        result = self.format_result()
-        result += '\n'
-        for weight, leaf in sorted(zip(self.weights, self.candidates),
-                                   key=operator.itemgetter(0),
-                                   reverse=True):
-            if not weight:
-                continue
-            result += '%.3f%%: %s\n' % (weight * 100,
-                                        format_path({var: val for var, val in leaf.path.items()
-                                                     if var not in self.evidence}))
-        return result
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-class ExpectationResult(Result):
-    """
-    Class for results of the Expectation queries.
-    """
-
-    def __init__(self, query, evidence, theta, lower=None, upper=None, res=None, cand=None, w=None):
-        """
-        Create an ExpectationResult
-        :param query: the query that was posed to the model
-        :param evidence: the evidence provided to the model
-        :param theta: the confidence level
-        :param lower: the lower bound of the confidence level
-        :param upper: the upper bound of the confidence level
-        :param res: the result of the query
-        :param cand: all candidate distributions
-        :param w: the weights of the distributions
-        """
-        super().__init__(query, evidence, res=res, cand=cand, w=w)
-        self.theta = theta
-        self._lower = lower
-        self._upper = upper
-
-    @property
-    def lower(self):
-        return self.query.domain.labels[self._lower]
-
-    @property
-    def upper(self):
-        return self.query.domain.labels[self._upper]
-
-    @property
-    def result(self):
-        return self.query.domain.labels[self._res]
-
-    def format_result(self):
-        left = 'E(%s%s%s; %s = %.3f)' % (self.query.name,
-                                         ' | ' if self.evidence else '',
-                                         # ', '.join([var.str(val, fmt='logic') for var, val in self._evidence.items()]),
-                                         format_path(self._evidence),
-                                         SYMBOL.THETA,
-                                         self.theta)
-        right = '[%.3f %s %.3f %s %.3f]' % (self.lower,
-                                            SYMBOL.ARROW_BAR_LEFT,
-                                            self.result,
-                                            SYMBOL.ARROW_BAR_RIGHT,
-                                            self.upper) if self.query.numeric else self.result
-        return '%s = %s' % (left, right)
-
-    def explain(self):
-        result = self.format_result()
-        result += '\n'
-        out(self.candidates)
-        out(self.weights)
-        for weight, leaf, dist in sorted(zip(self.weights, self.candidates, self.candidate_dists),
-                                   key=operator.itemgetter(0),
-                                   reverse=True):
-            if not weight:
-                continue
-            result += '%.3f%%: %s: %s - %s - %s\n' % (weight * 100,
-                                                      format_path({var: val for var, val in leaf.path.items()}),
-                                                      dist.quantile(.05),
-                                                      dist.expectation(),
-                                                      dist.quantile(.95))
-        print(self.distribution.ppf.pfmt())
-        self.distribution.plot(view=True)
-        return result
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-class MPEResult(Result):
-    """Class for results of the MPE query"""
-    def __init__(self, evidence, res, maximum: VariableMap, path: VariableMap = VariableMap(), cand=None, w=None):
-        """
-        Create an MPEResult
-
-        :param evidence: the evidence provided to the model
-        :param res: the likelihood of this maximum
-        :param maximum: the mpe of each variable
-        :param path: the path to the leaf that describes this maximum
-        :param cand: all candidate distributions
-        :param w: the weights of the distributions
-        """
-        super().__init__(None, evidence, res=res, cand=cand, w=w)
-        self.maximum = maximum
-        self.path = path
-
-    def format_result(self):
-        return f'MPE({self.evidence}) = {format_path(self.path)}'
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-class PosteriorResult(Result):
-    """
-    Class for results of the Posterior inference.
-    """
-
-    def __init__(self, query, evidence, dists=None, cand=None, w=None):
-        """
-        Create a PosteriorResult
-        :param query: the query that was posed to the model
-        :param evidence: the evidence provided to the model
-        :param cand: all candidate distributions
-        :param w: the weights of the distributions
-        """
-        super().__init__(query, evidence, res=None, cand=cand, w=w)
-        self.distributions: Dict[Variable, Distribution] = dists
-
-    def format_result(self):
-        return ('P(%s%s%s) = %.3f%%' % (', '.join([var.str(val, fmt="logic") for var, val in self.query]),
-                                        ' | ' if self.evidence else '',
-                                        ', '.join([var.str(val, fmt='logic') for var, val in self.evidence.items()]),
-                                        self.result * 100))
-
-    def __getitem__(self, item):
-        return self.distributions[item]
-
-    def impurity(self, variables: None or List[Variable] = None):
-        """
-        Calculate the impurity (sum over variances and gini indices)
-        of the result of this query for the given variables.
-
-        :param variables: List of variables to calculate impurity on.
-        """
-        # use all variables if none are given
-
-        if variables is None:
-            variables = list(self.distributions.keys())
-
-        # initialize result
-        result = 0.
-
-        # for every requested variable
-        for variable in variables:
-
-            # get the distribution
-            distribution = self.distributions[variable]
-
-            # add variance if numeric
-            if variable.numeric or variable.integer:
-                result += distribution.variance()
-
-            # add gini impurity if symbolic
-            elif variable.symbolic:
-                result += distribution.gini_impurity()
-
-        return result
-
-    def __eq__(self, other):
-        if not isinstance(other, PosteriorResult):
-            return False
-        return self.result == other.result and self.distributions == other.distributions
-
-
-# ----------------------------------------------------------------------------------------------------------------------
 
 class Node:
     """
@@ -1072,8 +832,8 @@ class JPT:
     def infer(self,
               query: Union[Dict[Union[Variable, str], Any], VariableAssignment],
               evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
-              fail_on_unsatisfiability: bool = True) -> Result:
-        r'''For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
+              fail_on_unsatisfiability: bool = True) -> float or None:
+        r"""For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
             P(query|evidence) = \frac{p_q}{p_e}
@@ -1097,8 +857,8 @@ class JPT:
         :type query:        dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
         :param evidence:    the event conditioned on, i.e. the evidence part of the conditional P(query|evidence)
         :type evidence:     dict of {jpt.variables.Variable : jpt.learning.distributions.Distribution.value}
-        :param fail_on_unsatisfiability: whether or not an error is raised in case of unsatisifiable evidence.
-        '''
+        :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not.
+        """
         if isinstance(query, dict):
             query = self.bind(query)
         if isinstance(query, LabelAssignment):
@@ -1112,14 +872,12 @@ class JPT:
         else:
             evidence_ = evidence
 
-        r = Result(query_, evidence_)
-
         p_q = 0.
         p_e = 0.
 
         for leaf in self.apply(evidence_):
             p_m = 1
-            likelohoods = []
+            likelihoods = []
             for var in set(evidence_.keys()):
                 evidence_val = evidence_[var]
                 if var in leaf.path:  # var.numeric and
@@ -1127,7 +885,7 @@ class JPT:
                 # elif (var.symbolic or var.integer) and var in leaf.path:
                 #     continue
                 p_m *= leaf.distributions[var]._p(evidence_val)
-                likelohoods.append((var, evidence_val, leaf.distributions[var]._p(evidence_val)))
+                likelihoods.append((var, evidence_val, leaf.distributions[var]._p(evidence_val)))
 
             w = leaf.prior
             p_m *= w
@@ -1143,26 +901,21 @@ class JPT:
                     p_m *= leaf.distributions[var]._p(query_val)
                 p_q += p_m
 
-                r.candidates.append(leaf)
-                r.weights.append(p_m)
 
         if p_e == 0:
             if fail_on_unsatisfiability:
                 raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
             else:
-                r.result = None
-                r.weights = None
+                return None
         else:
-            r.result = p_q / p_e
-            r.weights = [w / p_e for w in r.weights]
-        return r
+            return p_q/p_e
 
     # noinspection PyProtectedMember
     def posterior(self,
                   variables: List[Variable or str] = None,
                   evidence: Dict[Union[Variable, str], Any] or VariableAssignment = None,
                   fail_on_unsatisfiability: bool = True,
-                  report_inconsistencies: bool = False) -> PosteriorResult:
+                  report_inconsistencies: bool = False) -> VariableMap or None:
         """
         Compute the posterior distribution of every variable in ``variables``. The result contains independent
         distributions. Be aware that they might not actually be independent.
@@ -1184,7 +937,7 @@ class JPT:
             evidence_ = evidence
 
         variables = ifnone(variables, self.variables)
-        result = PosteriorResult(variables, evidence_)
+        result = VariableMap()
         variables = [self.varnames[v] if type(v) is str else v for v in variables]
 
         distributions = defaultdict(list)
@@ -1232,9 +985,6 @@ class JPT:
                         distribution = distribution.crop(evidence_set)
                 distributions[var].append(distribution)
 
-            result.candidates.append(leaf)
-            result.candidate_dists[var].append(distribution)
-
         weights = [l * p for l, p in zip(likelihoods, priors)]
         try:
             weights = normalized(weights)
@@ -1243,38 +993,31 @@ class JPT:
                 raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence),
                                        reasons=inconsistencies)
             return None
-        result.weights = weights
 
-        # initialize all query variables with None, in case dists
-        # is empty (i.e. no candidate leaves -> query unsatisfiable)
-        result.distributions = VariableMap()
 
         for var, dists in distributions.items():
             if var.numeric:
-                result.distributions[var] = Numeric.merge(dists, weights=weights)
+                result[var] = Numeric.merge(dists, weights=weights)
             elif var.symbolic:
-                result.distributions[var] = Multinomial.merge(dists, weights=weights)
+                result[var] = Multinomial.merge(dists, weights=weights)
             elif var.integer:
-                result.distributions[var] = Integer.merge(dists, weights=weights)
+                result[var] = Integer.merge(dists, weights=weights)
 
         return result
 
     def expectation(self,
                     variables: Iterable[Variable] = None,
                     evidence: VariableAssignment = None,
-                    confidence_level: float = None,
-                    fail_on_unsatisfiability: bool = True) -> ExpectationResult:
+                    fail_on_unsatisfiability: bool = True) -> VariableMap or None:
         """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
 
         :param variables: The variables to compute the expectation distributions on
         :param evidence: The raw evidence applied to the tree
-        :param confidence_level: The level of confidence that surrounds the expectation
         :param fail_on_unsatisfiability: Rather or not an ``Unsatisfiability`` error is raised if the
                                          likelihood of the evidence is 0.
-        :return: jpt.trees.PosteriorResult containing distributions, can
-        :return: jpt.trees.ExpectationResult
+        :return: VariableMap
         """
         if evidence is None:
             evidence = self.bind()
@@ -1293,7 +1036,6 @@ class JPT:
             evidence_,
             fail_on_unsatisfiability=fail_on_unsatisfiability
         )
-        conf_level = ifnone(confidence_level, .95)
 
         if posteriors is None:
             if fail_on_unsatisfiability:
@@ -1302,21 +1044,11 @@ class JPT:
                 return None
 
         final = VariableMap()
-        for var, dist in posteriors.distributions.items():
-            result = ExpectationResult(var, posteriors._evidence, conf_level)
-            result._res = dist._expectation()
-            result.candidates.extend(posteriors.candidates)
-            result.weights = posteriors.weights
-            result.candidate_dists = posteriors.candidate_dists[var]
-            result.distribution = dist
-            if var.numeric:
-                exp_quantile = dist.cdf.eval(result._res)
-                result._lower = dist.ppf.eval((1 - conf_level) / 2)  # max(0., (exp_quantile - conf_level / 2.)))
-                result._upper = dist.ppf.eval(1 - (1 - conf_level) / 2)  # min(1., (exp_quantile + conf_level / 2.)))
-            final[var] = result
+        for var, dist in posteriors.items():
+            final[var] = dist.expectation()
         return final
 
-    def mpe(self, evidence: VariableAssignment = None) -> List[MPEResult]:
+    def mpe(self, evidence: VariableAssignment = None) -> (List[VariableMap], float) or None:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
         :param evidence: The raw evidence that is applied to the tree
@@ -1344,46 +1076,10 @@ class JPT:
 
             if likelihood == highest_likelihood:
                 # append the argmax to the results
-                mpe_result = MPEResult(evidence, highest_likelihood, mpe, leaf.path)
-                results.append(mpe_result)
+                results.append(mpe)
 
         # return the results
-        return results
-
-    def independent_marginals(self, evidence: VariableAssignment = None) -> VariableMap:
-        """
-        Get the marginal distribution of every variable given the evidence.
-        Deprecated
-        :param evidence: The evidence
-        :return: VariableMap that maps to every distribution
-        """
-        if evidence is None:
-            evidence = self.bind()
-        if isinstance(evidence, LabelAssignment):
-            evidence_ = evidence.value_assignment()
-        else:
-            evidence_ = evidence
-
-        # apply conditions
-        conditional_jpt = self.conditional_jpt(evidence_)
-
-        # generate results
-        result = dict()
-
-        # for every variable
-        for variable in self.variables:
-
-            # collect the weights and distributions
-            weights, distributions = [], []
-            for leaf in conditional_jpt.leaves.values():
-                weights.append(leaf.prior)
-                distributions.append(leaf.distributions[variable])
-
-            # merge the distributions w. r. t. the leaf priors
-            result[variable] = type(distributions[0]).merge(distributions, weights)
-
-        # transform to VariableMap and return it
-        return VariableMap(result.items())
+        return results, highest_likelihood
 
     def _preprocess_query(self,
                           query: Union[dict, VariableMap],
@@ -2094,15 +1790,12 @@ class JPT:
         """
         return JPT.from_json(self.to_json())
 
-    def conditional_jpt(self, evidence: VariableAssignment) -> 'JPT':
+    def conditional_jpt(self, evidence: VariableAssignment, fail_on_unsatisfiability: bool = True) -> 'JPT' or None:
         """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
-        The new JPT contains all variables that are not in the evidence and is a 
-        full joint probability distribution over those variables.
 
-        :param evidence: A preprocessed VariableMap mapping the observed variables to there observed,
-            single values (not intervals)
-        :type evidence: ``VariableAssignment``
+        :param evidence: A VariableAssignment mapping the observed variables to there observed values
+         :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
         """
         # Convert, if necessary, labels to internal value representations
         if isinstance(evidence, LabelAssignment):
@@ -2141,8 +1834,10 @@ class JPT:
                     fringe.appendleft(node.parent)
 
             if rm and node is conditional_jpt.root:
-                conditional_jpt.root = None
-                return conditional_jpt
+                if fail_on_unsatisfiability:
+                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                else:
+                    return None
 
         # calculate remaining probability mass
         probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())

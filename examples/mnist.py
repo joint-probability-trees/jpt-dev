@@ -41,10 +41,11 @@ def main(visualize=False):
     tree = JPT(variables=variables, min_samples_leaf=100, dependencies=dependencies)
 
     tree.learn(data=df)
+
     # testing conditional jpts in a complex scenario
     cjpt = tree.conditional_jpt(tree.bind(
         digit={"5", "6"},
-        x_28=2.
+        x_28=[0,2]
     ))
 
     leaves = list(tree.leaves.values())

@@ -56,11 +56,7 @@ def restaurant_manual_sample(visualize=True):
     e = {ra: False}
 
     res = jpt.infer(q, e)
-
-    print(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
-          f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) = {res.result}')
-
-    print(res.explain())
+    print(res)
 
 
 def restaurant_mixed_type_variables(visualize=True):
@@ -177,9 +173,7 @@ def restaurant_auto_sample(visualize=True):
     e = {ra: False}
 
     res = jpt.infer(q, e)
-    print(f'P({",".join([f"{k.name}={v}" for k, v in q.items()])}{" | " if e else ""}'
-          f'{",".join([f"{k.name}={v}" for k, v in e.items()])}) = {res.result}')
-    print(res.explain())
+    print(res)
 
 
 def main(*args):

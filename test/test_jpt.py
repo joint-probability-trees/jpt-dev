@@ -106,7 +106,7 @@ class JPTTest(TestCase):
         jpt = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
         jpt.fit(df)
 
-        mpe = jpt.mpe()
+        mpe, likelihood = jpt.mpe()
         self.assertEqual(len(mpe), 1)
 
     def test_exact_mpe_continuous(self):
@@ -114,26 +114,14 @@ class JPTTest(TestCase):
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
 
-        mpe = jpt.mpe()
+        mpe, likelihood = jpt.mpe()
         self.assertEqual(len(mpe), 1)
-
-    def test_independent_marginals(self):
-        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
-        jpt = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
-        jpt.fit(df)
-
-        im = jpt.independent_marginals()
-        self.assertEqual(len(im), len(jpt.variables))
-
-        evidence = jpt.bind(Hungry=False)
-        im = jpt.independent_marginals(evidence)
-        self.assertEqual(len(im), len(jpt.variables))
 
     def test_conditional_jpt(self):
         jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'))
         evidence = jpt.bind(Arson=[20, 30])
         cjpt = jpt.conditional_jpt(evidence)
-        marginals = cjpt.independent_marginals()
+        marginals = cjpt.posterior(evidence=VariableMap())
         self.assertEqual(marginals["Arson"].p(evidence["Arson"]), 1.)
 
     def test_parameter_count(self):
@@ -387,25 +375,25 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         self.q = ['WillWait']
         self.e = {'WaitEstimate': [0, 0], 'Food': 'Thai'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({True, False}, self.posterior.distributions[self.q[-1]].expectation())
+        self.assertEqual({True, False}, self.posterior[self.q[-1]].expectation())
 
     def test_posterior_mixed_single_candidatet_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Italian'}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({False}, self.posterior.distributions[self.q[-1]].expectation())
+        self.assertEqual({False}, self.posterior[self.q[-1]].expectation())
 
     def test_posterior_mixed_evidence_not_in_path_T(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({True}, self.posterior.distributions[self.q[-1]].expectation())
+        self.assertEqual({True}, self.posterior[self.q[-1]].expectation())
 
     def test_posterior_mixed_evidence_not_in_path_F(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({False}, self.posterior.distributions[self.q[-1]].expectation())
+        self.assertEqual({False}, self.posterior[self.q[-1]].expectation())
 
     def test_posterior_mixed_unsatisfiable(self):
         self.q = [self.variables[-1]]
@@ -492,7 +480,7 @@ class TestCaseExpectation(TestCase):
         self.e = {'WaitEstimate': [10, 30],
                   'Food': 'Thai'}
         self.expectation = self.jpt.expectation(self.q, self.e)
-        self.assertEqual([True, True], [e.result for e in self.expectation.values()])
+        self.assertEqual([{True}, {True}], [e for e in self.expectation.values()])
 
     def test_expectation_mixed_unsatisfiable(self):
         self.q = ['WillWait']
@@ -546,13 +534,13 @@ class TestCaseInference(TestCase):
         e = self.jpt.bind(WaitEstimate=[0, 10], Food='Thai')
         inference = self.jpt.infer(q, e)
         # print(self.jpt.conditional_jpt(e))
-        self.assertAlmostEqual(.5, inference.result, places=10)
+        self.assertAlmostEqual(.5, inference, places=10)
 
-    def test_inference_mixed_neu(self):
+    def test_inference_mixed_new(self):
         self.q = [self.variables[-1]]
         self.e = {self.variables[-1]: True}
         posterior = self.jpt.posterior(self.q, self.e)
-        self.assertEqual({True}, posterior.distributions['WillWait'].expectation())
+        self.assertEqual({True}, posterior['WillWait'].expectation())
 
     # def tearDown(self):
     #     print('Tearing down test method',

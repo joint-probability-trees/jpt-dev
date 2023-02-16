@@ -33,20 +33,20 @@ class JPTInferenceSymbolic(unittest.TestCase):
         q = {'Alarm': True}
         e = {'MaryCalls': True}
         res = JPTInferenceSymbolic.jpt.infer(q, e)
-        self.assertAlmostEqual(0.950593, res.result, places=5)
+        self.assertAlmostEqual(0.950593, res, places=5)
 
     def test_infer_alarm(self):
         q = {'Alarm': True}
         e = {}
         res = JPTInferenceSymbolic.jpt.infer(q, e)
-        self.assertAlmostEqual(0.210199, res.result, places=5)
+        self.assertAlmostEqual(0.210199, res, places=5)
 
     def test_infer_alarm_evidence_disjunction_symbolic(self):
         q = {'Alarm': True}
         # This tautological evidence must result in the same posterior as the empty evidence
         e = {'MaryCalls': {True, False}}
         res = JPTInferenceSymbolic.jpt.infer(q, e)
-        self.assertAlmostEqual(0.210199, res.result, places=5)
+        self.assertAlmostEqual(0.210199, res, places=5)
 
     def test_likelihood_discrete(self):
         probs = JPTInferenceSymbolic.jpt.likelihood(self.data)
@@ -65,4 +65,4 @@ class JPTInferenceNumeric(unittest.TestCase):
     def test_realset_evidence(self):
         r1 = self.jpt.infer(query={'x': RealSet(['[-1,0.5]', '[1,inf['])})
         r2 = self.jpt.infer(query={'x': ContinuousSet(.5, 1, EXC, INC)})
-        self.assertAlmostEqual(r1.result, 1 - r2.result, places=10)
+        self.assertAlmostEqual(r1, 1 - r2, places=10)

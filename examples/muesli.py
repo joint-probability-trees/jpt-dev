@@ -128,8 +128,6 @@ def muesli_tree(visualize=True):
 
     jpt = JPT([x, y, o, s], min_samples_leaf=.2)
     jpt.learn(columns=data.values.T)
-    print(len(jpt.leaves))
-    jpt.save("muesli.jpt")
 
     # json_data = jpt.to_json()
     # pprint.pprint(json_data)
@@ -141,7 +139,7 @@ def muesli_tree(visualize=True):
     print()
 
     for clazz in data['Class'].unique():
-        for exp in jpt.expectation([x.name, y.name], evidence={o.name: clazz}, confidence_level=.95):
+        for exp in jpt.expectation([x.name, y.name], evidence={o.name: clazz}):
             out(exp)
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
