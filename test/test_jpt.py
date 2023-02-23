@@ -44,7 +44,6 @@ class JPTTest(TestCase):
             dependencies=dependencies
         )
         jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
-
         self.assertEqual(jpt, jpt_)
 
     def test_serialization(self):
@@ -56,6 +55,39 @@ class JPTTest(TestCase):
         self.assertIsNone(jpt.root.parent)
         jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
         self.assertEqual(jpt, jpt_)
+
+        q = jpt.bind(X=[-1, 1])
+        self.assertEqual(jpt_.infer(q), jpt.infer(q))
+
+    def test_serialization_integer(self):
+        '''(de)serialization of JPTs with training'''
+        data = pd.DataFrame(np.array([list(range(-10, 10))]).T, columns=["X"])
+        variables = infer_from_dataframe(data, scale_numeric_types=False)
+        jpt = JPT(variables, min_samples_leaf=.1)
+        jpt.fit(data)
+
+        self.assertIsNone(jpt.root.parent)
+        jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
+        self.assertEqual(jpt, jpt_)
+
+        q = jpt.bind(X=[-1, 1])
+        self.assertEqual(jpt_.infer(q), jpt.infer(q))
+
+    def test_serialization_symbolic(self):
+        '''(de)serialization of JPTs with training'''
+        data = pd.DataFrame([["A"], ["B"]], columns=["X"])
+        variables = infer_from_dataframe(data, scale_numeric_types=False)
+        jpt = JPT(variables, min_samples_leaf=.1)
+        jpt.fit(data)
+
+        self.assertIsNone(jpt.root.parent)
+        jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
+        self.assertEqual(jpt, jpt_)
+
+        q_ = jpt_.bind(X="A")
+        q = jpt.bind(X="A")
+
+        self.assertEqual(jpt_.infer(q_), jpt.infer(q))
 
     def test_pickle(self):
         '''(de)serialization of JPTs using pickle'''

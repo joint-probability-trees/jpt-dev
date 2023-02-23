@@ -1317,10 +1317,10 @@ class Integer(Distribution):
             'type': 'integer',
             'class': cls.__qualname__,
             'labels': list(cls.labels.values()),
-            'vmin': cls.vmin,
-            'vmax': cls.vmax,
-            'lmin': cls.lmin,
-            'lmax': cls.lmax
+            'vmin': int(cls.vmin),
+            'vmax': int(cls.vmax),
+            'lmin': int(cls.lmin),
+            'lmax': int(cls.lmax)
         }
 
     to_json = type_to_json

@@ -626,7 +626,7 @@ class JPT:
 
         self.leaves: Dict[int, Leaf] = {}
         self.innernodes: Dict[int, DecisionNode] = {}
-        self.priors = {}
+        self.priors: VariableMap = VariableMap()
 
         self._min_samples_leaf = min_samples_leaf
         self._keep_samples = False
@@ -660,7 +660,7 @@ class JPT:
         """ Delete all parameters of this model (not the hyperparameters)"""
         self.innernodes.clear()
         self.leaves.clear()
-        self.priors.clear()
+        self.priors = VariableMap() # .clear()
         self.root = None
         self.c45queue.clear()
 
@@ -732,7 +732,7 @@ class JPT:
                 for var, deps in self.dependencies.items()},
             'leaves': [l.to_json() for l in self.leaves.values()],
             'innernodes': [n.to_json() for n in self.innernodes.values()],
-            'priors': {varname: p.to_json() for varname, p in self.priors.items()},
+            'priors': {variable.name: p.to_json() for variable, p in self.priors.items()},
             'root': ifnone(self.root, None, attrgetter('idx'))
         }
 
@@ -769,10 +769,11 @@ class JPT:
             DecisionNode.from_json(jpt, d)
         for d in data['leaves']:
             Leaf.from_json(jpt, d)
-        jpt.priors = {
-            varname: jpt.varnames[varname].domain.from_json(dist)
+
+        jpt.priors = VariableMap({
+            jpt.varnames[varname]: jpt.varnames[varname].domain.from_json(dist)
             for varname, dist in data['priors'].items()
-        }
+        }.items())
         jpt.root = jpt.allnodes[data.get('root')] if data.get('root') is not None else None
         return jpt
 
@@ -783,8 +784,6 @@ class JPT:
         self.__dict__ = JPT.from_json(state).__dict__
 
     def __eq__(self, o) -> bool:
-        out(self.dependencies)
-        out(o.dependencies)
         return all((
             isinstance(o, JPT),
             self.innernodes == o.innernodes,
@@ -1420,10 +1419,10 @@ class JPT:
         # Determine the prior distributions
         started = datetime.datetime.now()
         JPT.logger.info('Learning prior distributions...')
-        self.priors = {}
+        self.priors = VariableMap()
 
         for i, (vname, var) in enumerate(self.varnames.items()):
-            self.priors[vname] = var.distribution()._fit(
+            self.priors[var] = var.distribution()._fit(
                 data=_data,
                 col=i
             )
