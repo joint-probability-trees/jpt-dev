@@ -1,6 +1,6 @@
 dnutils
 graphviz
-scipy==1.8.0
+scipy
 numpy
 matplotlib
 pandas
