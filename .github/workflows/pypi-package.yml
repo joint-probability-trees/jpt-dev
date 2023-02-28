@@ -1,8 +1,15 @@
 name: Publish the pyjpt package to PyPI and TestPyPI
 
 on:
-    push:
-    branches: [ main ]
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+defaults:
+  run:
+    shell: bash
+    working-directory: /
 
 jobs:
     build-and-publish:
