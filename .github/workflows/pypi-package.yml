@@ -38,7 +38,6 @@ jobs:
             with:
               python-versions: 'cp37-cp37m cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311'
               build-requirements: 'cython numpy'
-              system-packages: 'pandoc'
               pip-wheel-args: '-w ./dist --no-deps'
           - name: Install Sphinx dependencies 📚
             uses: py-actions/py-dependency-install@v4
@@ -47,6 +46,7 @@ jobs:
           - name: Build Sphinx documentation 📝
             working-directory: ./doc
             run: |
+              apt install pandoc
               make html
           - name: Publish distribution to Test PyPI 📢
             uses: pypa/gh-action-pypi-publish@master
