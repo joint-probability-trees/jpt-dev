@@ -98,7 +98,7 @@ compiled = cythonize(
 # ----------------------------------------------------------------------------------------------------------------------
 
 setup(
-    name='jpt',
+    name='pyjpt',
     packages=['jpt', 'jpt.learning', 'jpt.base', 'jpt.distributions', 'jpt.distributions.quantile'],
     package_dir={'': 'src'},
     ext_modules=compiled,
