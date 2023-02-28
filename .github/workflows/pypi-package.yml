@@ -25,11 +25,14 @@ jobs:
                 python-version: 3.8
                 cache: pip
 
-          - name: Install dependencies 🍼
-            run: |
-              python -m pip install --upgrade pip
-              pip install -r requirements.txt
-              pip install -r requirements-dev.txt
+          - name: Install user dependencies 🍼
+            uses: py-actions/py-dependency-install@v4
+            with:
+              path: "requirements.txt"
+          - name: Install user dependencies 📐
+            uses: py-actions/py-dependency-install@v4
+            with:
+              path: "requirements-dev.txt"
           - name: Build binary wheel 🔨
             run: python setup.py bdist_wheel
           - name: Publish distribution to Test PyPI 📢
