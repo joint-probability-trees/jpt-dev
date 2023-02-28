@@ -9,7 +9,7 @@ on:
 defaults:
   run:
     shell: bash
-    working-directory: /
+    working-directory: .
 
 jobs:
     build-and-publish:
@@ -34,7 +34,8 @@ jobs:
             with:
               path: "requirements-dev.txt"
           - name: Build binary wheel 🔨
-            run: python setup.py bdist_wheel
+            run: |
+              python setup.py bdist_wheel
           - name: Publish distribution to Test PyPI 📢
             uses: pypa/gh-action-pypi-publish@master
             with:
