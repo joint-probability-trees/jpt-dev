@@ -36,6 +36,14 @@ jobs:
           - name: Build binary wheel 🔨
             run: |
               python setup.py bdist_wheel
+          - name: Install Sphinx dependencies 📚
+            uses: py-actions/py-dependency-install@v4
+            with:
+              path: "doc/requirements.txt"
+          - name: Build Sphinx documentation 📝
+            working-directory: ./doc
+            run: |
+              make html
           - name: Publish distribution to Test PyPI 📢
             uses: pypa/gh-action-pypi-publish@master
             with:
