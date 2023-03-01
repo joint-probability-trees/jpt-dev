@@ -44,7 +44,8 @@ jobs:
 
           - name: Move binary wheels to dist  🔧
             run: |
-              cp dist-raw/*manylinux*.hwl dist/
+              mkdir dist/
+              cp dist-raw/*manylinux*.whl dist/
 
           - name: Install Sphinx dependencies 📚
             uses: py-actions/py-dependency-install@v4
