@@ -40,11 +40,11 @@ jobs:
             with:
               python-versions: 'cp38-cp38'
               build-requirements: 'cython numpy'
-              pip-wheel-args: '-w ./dist --no-deps'
+              pip-wheel-args: '-w ./dist-raw --no-deps'
 
-          - name: Repair binary wheels 🔧
+          - name: Move binary wheels to dist  🔧
             run: |
-              auditwheel repair dist/*
+              cp dist-raw/*manylinux*.hwl dist/
 
           - name: Install Sphinx dependencies 📚
             uses: py-actions/py-dependency-install@v4
