@@ -36,7 +36,7 @@ jobs:
               path: "requirements-dev.txt"
 
           - name: Build binary wheels 🔨
-            uses: RalfG/python-wheels-manylinux-build@v0.7.1-manylinux2010_x86_64
+            uses: RalfG/python-wheels-manylinux-build@v0.7.1
             with:
               python-versions: 'cp38-cp38'
               build-requirements: 'cython numpy'
