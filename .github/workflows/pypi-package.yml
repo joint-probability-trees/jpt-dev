@@ -35,12 +35,16 @@ jobs:
             with:
               path: "requirements-dev.txt"
 
-          - name: Build binary wheel 🔨
+          - name: Build binary wheels 🔨
             uses: RalfG/python-wheels-manylinux-build@v0.7.1-manylinux2010_x86_64
             with:
               python-versions: 'cp38-cp38'
               build-requirements: 'cython numpy'
               pip-wheel-args: '-w ./dist --no-deps'
+
+          - name: Repair binary wheels 🔧
+            run: |
+              auditwheel repair dist/*
 
           - name: Install Sphinx dependencies 📚
             uses: py-actions/py-dependency-install@v4
@@ -59,4 +63,3 @@ jobs:
                 password: ${{ secrets.TEST_PYPI_API_TOKEN }}
                 skip_existing: true
                 repository_url: https://test.pypi.org/legacy/
-                package_dir: dist/*manylinux*
