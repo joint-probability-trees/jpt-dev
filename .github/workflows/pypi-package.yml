@@ -59,3 +59,4 @@ jobs:
                 password: ${{ secrets.TEST_PYPI_API_TOKEN }}
                 skip_existing: true
                 repository_url: https://test.pypi.org/legacy/
+                package_dir: dist/*manylinux*
