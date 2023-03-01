@@ -50,7 +50,7 @@ jobs:
           - name: Build Sphinx documentation 📝
             working-directory: ./doc
             run: |
-              apt install pandoc
+              sudo apt install pandoc
               make html
 
           - name: Publish distribution to Test PyPI 📢
