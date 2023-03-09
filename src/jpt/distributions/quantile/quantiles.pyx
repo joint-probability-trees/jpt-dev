@@ -447,6 +447,42 @@ cdef class QuantileDistribution:
 
         return distribution
 
+    def sample(self, n) -> np.ndarray:
+        """
+        Sample n samples from the underlying quantile distribution.
+        :param n: the number of samples
+        :return: 1D numpy array with samples.
+        """
+
+        if len(self.cdf.intervals) == 2:
+            return np.full(n, self.cdf.intervals[0].upper)
+
+        # create probability distribution with the probabilities of each function part
+        interval_probabilities = np.array([function.eval(interval.upper) - function.eval(interval.lower)
+                                           for function, interval in
+                                           zip(self.cdf.functions[1:-1], self.cdf.intervals[1:-1])])
+
+        # sample in which function part the samples will be
+        sample_intervals = np.random.choice(list(range(0, len(interval_probabilities))), size=(n,),
+                                            p=interval_probabilities)
+
+        # initialize result
+        result = np.zeros((n, ))
+
+        # for every interval
+        for idx, interval in enumerate(interval for interval in self.cdf.intervals[1:-1]):
+
+            # get the indices where the samples are from this interval
+            indices = np.where(sample_intervals == idx)[0]
+
+            # sample as many points as needed
+            samples = interval.sample(len(indices))
+
+            # write them into the result
+            result[indices] = samples
+
+        return result
+
     def to_json(self):
         return {'epsilon': self.epsilon,
                 'min_samples_mars': self.min_samples_mars,

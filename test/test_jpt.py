@@ -160,7 +160,7 @@ class JPTTest(TestCase):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
-        self.assertEqual(24, jpt.number_of_parameters())
+        self.assertEqual(12, jpt.number_of_parameters())
 
     def test_independence(self):
         x = NumericVariable('X')
@@ -206,6 +206,25 @@ class JPTTest(TestCase):
             self.assertEqual(truth1[var], val)
         for var, val in truth2.items():
             self.assertEqual(val, bind2[var])
+
+    def test_bind_from_json(self):
+        """This test only checks if it works with maps coming from json based communication."""
+        # Arrange
+        n = NumericVariable('n')
+        s = SymbolicVariable('s', domain=Bool)
+        i = IntegerVariable('i', IntegerType('Die', 1, 6))
+        jpt = JPT(variables=[n, s, i])
+
+        # Act
+        map1 = {"n": 1,
+                "s": True,
+                "i": 3}
+        jpt.bind(map1)
+
+        map2 = {"n": [1, 2],
+                "s": {True, False},
+                "i": {3, 4, 5}}
+        jpt.bind(map2)
 
 
 class TestCasePosteriorNumeric(TestCase):
@@ -433,7 +452,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
     def test_parameter_count(self):
-        self.assertEqual(230, self.jpt.number_of_parameters())
+        self.assertEqual(200, self.jpt.number_of_parameters())
 
     def test_posterior_mixed_numeric_query(self):
         self.q = [self.variables[9]]
@@ -446,6 +465,10 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         # Plot the data, the pdfs of each dataset and of the datasets combined
         plt.scatter(self.data['WaitEstimate'], [0]*len(self.data), color='b', marker='*', label='All training data')
         plt.scatter(xr, [0]*len(xr), color='r', marker='.', label='Filtered training data')
+
+    def test_sampling(self):
+        samples = self.jpt.sample(1000)
+        self.assertTrue(all(self.jpt.likelihood(samples) > 0))
 
     def plot(self):
         print('Tearing down test method',

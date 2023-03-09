@@ -279,7 +279,7 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(1, dist._p(R))
         self.assertEqual(.5, dist._p(ContinuousSet.parse('[0,.5]')))
 
-    def test_value_inference_sinularity(self):
+    def test_value_inference_singularity(self):
         '''PDF has a singularity like a Dirac impulse function.'''
         dist = Numeric().set(params=QuantileDistribution.from_cdf(PiecewiseFunction.from_dict(
             {']-inf,0.0[': 0,
@@ -288,6 +288,15 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(0, dist._p(ContinuousSet.parse(']-inf,0[')))
         self.assertEqual(1, dist._p(ContinuousSet.parse('[0,inf[')))
         self.assertEqual(1, dist._p(0))
+
+    def test_sampling(self):
+        """Sampling from a distribution"""
+        data = np.random.normal(0, 1, 100).reshape(-1, 1)
+        p = QuantileDistribution()
+        p.fit(data, np.arange(100), 0)
+        pdf = p.pdf
+        samples = p.sample(100)
+        self.assertTrue(all([pdf.eval(v) > 0 for v in samples]))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

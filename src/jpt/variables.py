@@ -7,6 +7,7 @@ import numbers
 import uuid
 
 from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable, Type
+import collections.abc
 
 import numpy as np
 from dnutils import first, edict, ifnone
@@ -716,6 +717,18 @@ class LabelAssignment(VariableAssignment):
     def value_assignment(self) -> 'ValueAssignment':
         return ValueAssignment([(var, var.domain.label2value(val)) for var, val in self.items()])
 
+    def to_json(self) -> Dict[str, Any]:
+        """ Convert this LabelAssignment to a json serializable dictionary. To achieve that sets are replaced
+        with lists."""
+        result = dict()
+        for variable, value in self.items():
+            if variable.symbolic or variable.integer:
+                if isinstance(value, collections.abc.Iterable):
+                    value = list(value)
+
+            result[variable.name] = to_json(value)
+
+        return result
 
 # ----------------------------------------------------------------------------------------------------------------------
 
