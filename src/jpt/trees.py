@@ -571,6 +571,18 @@ class Leaf(Node):
         """
         return sum([distribution.number_of_parameters() for distribution in self.distributions.values()])
 
+    def sample(self, amount) -> np.array:
+        """Sample `amount` many samples from the leaf.
+
+        :returns A numpy array of size (amount, self.variables) containing the samples.
+        """
+        result = np.empty((amount, len(self.distributions)), dtype=object)
+
+        for idx, (variable, distribution) in enumerate(self.distributions.items()):
+            result[:, idx] = list(distribution.sample(amount))
+
+        return result
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -1997,3 +2009,31 @@ class JPT:
         else:
             bindings = kwargs
         return self._preprocess_query(bindings, **options)
+
+    def sample(self, amount) -> np.array:
+        """Sample `amount` many samples from the tree.
+
+        :returns A numpy array of size (amount, self.variables) containing the samples.
+        """
+        # create probability distribution for the leaves
+        leaf_probabilities = np.array([leaf.prior for leaf in self.leaves.values()])
+
+        # sample in which function part the samples will be
+        sampled_leaves = np.random.choice(list(self.leaves.keys()), size=(amount,), p=leaf_probabilities)
+
+        samples = np.empty((amount, len(self.variables)), dtype=object)
+
+        # for every leaf
+        for idx, leaf in self.leaves.items():
+
+            # get indices of samples in this leaf
+            indices = (sampled_leaves == idx).nonzero()[0]
+
+            # skip if empty
+            if len(indices) == 0:
+                continue
+
+            leaf_samples = leaf.sample(len(indices))
+            samples[indices] = leaf_samples
+
+        return samples

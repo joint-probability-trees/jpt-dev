@@ -566,10 +566,10 @@ class Numeric(Distribution):
         return self._quantile.ppf
 
     def _sample(self, n):
-        raise NotImplemented()
+        return self._quantile.sample(n)
 
     def _sample_one(self):
-        raise NotImplemented()
+        return self._quantile.sample(1)[0]
 
     def number_of_parameters(self) -> int:
         """
@@ -579,7 +579,7 @@ class Numeric(Distribution):
         if self.is_dirac_impulse():
             return 1
         else:
-            return len(self.cdf.intervals) * 2
+            return len(self.cdf.intervals)
 
     def _expectation(self) -> numbers.Real:
         e = 0
@@ -1165,6 +1165,13 @@ class Multinomial(Distribution):
         if self.is_dirac_impulse():
             return 1
         return len(self._params)
+
+    @classmethod
+    def list2set(cls, values: List[str]) -> Set[str]:
+        """
+        Convert a list to a set.
+        """
+        return set(values)
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.

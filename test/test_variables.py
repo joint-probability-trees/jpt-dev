@@ -201,6 +201,16 @@ class LabelValueAssignmentTest(TestCase):
         self.assertEqual(l_['A'], ContinuousSet(0, 1))
         self.assertEqual(l_['D'], 'one')
 
+    def test_serialization(self):
+        """Test the serialization to json. This is special since sets cannot be serialized to json."""
+        dom = SymbolicType('TestType', labels=['zero', 'one', 'two'])
+        D = SymbolicVariable('D', domain=dom)
+        a = LabelAssignment()
+        a[D] = {'zero', 'one'}
+        a_json = a.to_json()
+        a_json["D"] = set(a_json["D"])
+        solution = {"D": set(['zero', 'one'])}
+        self.assertEqual(a_json, solution)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
