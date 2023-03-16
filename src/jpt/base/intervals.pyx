@@ -113,6 +113,8 @@ cdef class RealSet(NumberSet):
             for i in intervals:
                 if type(i) is str:
                     i = ContinuousSet.parse(i)
+                else:
+                    i = i.copy()
                 self.intervals.append(i)
 
     def __contains__(self, value: numbers.Number) -> bool:
