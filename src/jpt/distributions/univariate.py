@@ -712,19 +712,38 @@ class Numeric(Distribution):
         dist._quantile = self._quantile.crop(interval)
         return dist
 
-    def crop(self, restriction: ContinuousSet or float or int):
+    def crop(self, restriction: RealSet or ContinuousSet or numbers.Number):
         """Apply a restriction to this distribution. The restricted distrubtion will only assign mass
         to the given range and will preserve the relativity of the pdf.
 
         :param restriction: The range to limit this distribution (or singular value)
         :type restriction: float or int or ContinuousSet
         """
-        if not isinstance(restriction, ContinuousSet):
+
+        # for real sets the result is a merge of the single ContinuousSet crops
+        if isinstance(restriction, RealSet):
+
+            distributions = []
+            weights = []
+
+            for continuous_set in restriction.intervals:
+
+                distributions.append(self.crop(continuous_set))
+                weights.append(self._p(continuous_set))
+
+            return self.merge(distributions, weights)
+
+        elif isinstance(restriction, ContinuousSet):
+            if restriction.size() == 1:
+                return self.crop(restriction.lower)
+            else:
+                return self._crop(restriction)
+
+        elif isinstance(restriction, numbers.Number):
             return self.create_dirac_impulse(restriction)
-        interval_ = restriction.copy()
-        interval_.lower = self.values[restriction.lower]
-        interval_.upper = self.values[restriction.upper]
-        return self._crop(interval_)
+
+        else:
+            raise ValueError("Unknown Datatype for cropping a numeric distribution, type is %s" % type(restriction))
 
     @classmethod
     def type_to_json(cls):

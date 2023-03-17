@@ -222,8 +222,10 @@ class NumericDistributionTest(TestCase):
                                                         LinearFunction.from_points((DistGauss.values[.1], .0),
                                                                                    (DistGauss.values[.9], 1.)),
                                                     ContinuousSet(DistGauss.values[.9], np.PINF, INC, EXC): 1})
-        f1 = d.crop(ContinuousSet(.1, .9, EXC, EXC)).cdf.round(10)
+
+        f1 = d.crop(ContinuousSet(DistGauss.values[.1], DistGauss.values[.9], EXC, EXC)).cdf.round(10)
         f2 = ground_truth.round(10)
+
         self.assertEqual(f1, f2)
 
     def test_kldiv_equality(self):
