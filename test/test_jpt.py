@@ -588,7 +588,7 @@ class TestCaseInference(TestCase):
         q = self.jpt.bind(WillWait=True)
         e = self.jpt.bind(WaitEstimate=[0, 10], Food='Thai')
         inference = self.jpt.infer(q, e)
-        # print(self.jpt.conditional_jpt(e))
+        (self.jpt.conditional_jpt(e))
         self.assertAlmostEqual(.5, inference, places=10)
 
     def test_inference_mixed_new(self):
@@ -596,6 +596,11 @@ class TestCaseInference(TestCase):
         self.e = {self.variables[-1]: True}
         posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({True}, posterior['WillWait'].expectation())
+
+    def test_conditional_jpt(self):
+        mpe, likelihood = self.jpt.mpe()
+        cjpt = self.jpt.conditional_jpt(mpe[0])
+        self.assertEqual(cjpt.infer(mpe[0]), 1)
 
     # def tearDown(self):
     #     print('Tearing down test method',

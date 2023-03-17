@@ -445,6 +445,7 @@ class Leaf(Node):
             validation processes.
         :type min_distances: A VariableMap from numeric variables to floats or None
         """
+
         result = 1.
         if isinstance(query, LabelAssignment):
             query = query.value_assignment()
@@ -454,24 +455,7 @@ class Leaf(Node):
 
             # if it is a numeric
             if variable.numeric:
-                # and a range is given
-                if isinstance(value, ContinuousSet):
-                    # multiply by probability which is possible due to independence
-                    result *= self.distributions[variable]._p(value)
-
-                # if it is a singular value
-                else:
-                    # get the likelihood
-                    likelihood = self.distributions[variable].pdf(value)
-
-                    # if it is infinity and no handling is provided replace it with 1.
-                    if likelihood == float("inf") and not min_distances:
-                        result *= 1
-                    # if it is infinite and a handling is provided, replace with dirac_sclaing/min_distance
-                    elif likelihood == float("inf") and min_distances:
-                        result *= dirac_scaling / min_distances[variable]
-                    else:
-                        result *= likelihood
+                result *= self._numeric_probability(variable, value, dirac_scaling, min_distances)
 
             # if the variable is symbolic
             elif variable.symbolic or variable.integer:
@@ -484,6 +468,52 @@ class Leaf(Node):
                 result *= self.distributions[variable]._p(value)
 
         return result
+
+    def _numeric_probability(self, variable: NumericVariable, value, dirac_scaling: float = 2.,
+                             min_distances: VariableMap = None):
+        """ Calculate the probability of an arbitrary value for a numeric variable.
+        :param variable: A numeric variable
+        :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
+            if a durac impulse is used to model the variable.
+        :param min_distances: A dict mapping the variables to the minimal distances between the observations.
+            This can be useful to use the same likelihood parameters for different test sets for example in cross
+            validation processes.
+        """
+        if isinstance(value, RealSet):
+            return sum(self._numeric_probability(variable, cs, dirac_scaling, min_distances) for cs in value.intervals)
+
+        # handle ContinuousSet
+        elif isinstance(value, ContinuousSet):
+
+            if value.size() == 0:
+                return 0
+
+            elif value.size() == 1:
+                return self._numeric_probability(variable, value.lower, dirac_scaling, min_distances)
+
+            else:
+                return self.distributions[variable]._p(value)
+
+        # handle single Numbers
+        elif isinstance(value, numbers.Number):
+            result = 1.
+            # get the likelihood
+            likelihood = self.distributions[variable].pdf(value)
+
+            # if it is infinity and no handling is provided replace it with 1.
+            if likelihood == float("inf") and not min_distances:
+                result *= 1
+            # if it is infinite and a handling is provided, replace with dirac_sclaing/min_distance
+            elif likelihood == float("inf") and min_distances:
+                result *= dirac_scaling / min_distances[variable]
+            else:
+                result *= likelihood
+
+            return result
+
+        else:
+            raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
+
 
     def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
             -> np.ndarray:
@@ -1844,6 +1874,7 @@ class JPT:
                 if not node.parent.children:
                     fringe.appendleft(node.parent)
 
+            # check if evidence is possible
             if rm and node is conditional_jpt.root:
                 if fail_on_unsatisfiability:
                     raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
@@ -1855,11 +1886,20 @@ class JPT:
 
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
+
             leaf.prior /= probability_mass
 
             for variable, value in evidence.items():
                 # adjust leaf distributions
-                leaf.distributions[variable] = leaf.distributions[variable].crop(value)
+                if variable.symbolic or variable.integer:
+                    leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
+
+                # for numeric variables it's not as straight forward due to the value being polymorph
+                elif variable.numeric:
+                    leaf.distributions[variable] = leaf.distributions[variable].crop(value)
+
+                else:
+                    raise ValueError("Unknown variable type to crop. Type is %s" % type(variable))
 
         # clean up not needed path restrictions
         for node in conditional_jpt.allnodes.values():
