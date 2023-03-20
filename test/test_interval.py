@@ -1,3 +1,5 @@
+from unittest import TestCase
+
 import math
 import pickle
 
@@ -487,4 +489,40 @@ class RealSetTest(unittest.TestCase):
         r3 = RealSet(["[-.5, -.5]"])
         self.assertTrue(r3.intersects(ContinuousSet(-0.5, -0.5)))
         self.assertFalse(r3.intersects(ContinuousSet(0, 0, 2, 2)))
+
+
+class ContinuousSetOperatorTest(TestCase):
+
+    def test_intersection(self):
+        # Arrange
+        i1 = ContinuousSet(0, 2)
+        i2 = ContinuousSet(1, 3)
+
+        # Act
+        intersect = i1 & i2
+
+        # Assert
+        self.assertEqual(ContinuousSet(1, 2), intersect)
+
+    def test_union(self):
+        # Arrange
+        i1 = ContinuousSet(0, 1)
+        i2 = ContinuousSet(2, 3)
+
+        # Act
+        union = i1 | i2
+
+        # Assert
+        self.assertEqual(RealSet(['[0, 1]', '[2,3]']), union)
+
+    def test_diff(self):
+        # Arrange
+        i1 = ContinuousSet(0, 3)
+        i2 = ContinuousSet(1, 2)
+
+        # Act
+        diff = i1 - i2
+
+        # Assert
+        self.assertEqual(RealSet(['[0, 1[', ']2,3]']), diff)
 

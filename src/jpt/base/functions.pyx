@@ -6,17 +6,19 @@
 # cython: nonecheck=False
 __module__ = 'functions.pyx'
 
+from itertools import chain
+
 import itertools
 import numbers
 from collections import deque
-from typing import Iterator, List
+from typing import Iterator, List, Iterable, Tuple
 
 from dnutils import ifnot, ifnone, pairwise
 from scipy import stats
 from scipy.stats import norm
 
 from .intervals cimport ContinuousSet, RealSet
-from .intervals import R, EMPTY, EXC, INC
+from .intervals import R, EMPTY, EXC, INC, NumberSet
 
 import numpy as np
 cimport numpy as np
@@ -361,6 +363,11 @@ cdef class ConstantFunction(Function):
     def to_json(self):
         return {'type': 'constant', 'value': self.value}
 
+    cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2):
+        if x2 <= x1:
+            raise ValueError('The x2 argument must be greater than x1.')
+        return self.c * (x2 - x1)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -595,6 +602,14 @@ cdef class LinearFunction(Function):
         else:
             raise TypeError('Unknown function type or type not given (%s)' % data.get('type'))
 
+    cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2):
+        '''
+        Compute the integral over this function within the bounds ``x1`` and ``x2``.
+        '''
+        if x2 <= x1:
+            raise ValueError('The x2 argument must be greater than x1.')
+        return (.5 * self.m * x2 ** 2 + self.c * x2) - (.5 * self.m * x1 ** 2 + self.c * x1)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -771,6 +786,10 @@ cdef class PiecewiseFunction(Function):
     def __hash__(self):
         return hash((PiecewiseFunction, ((i, f) for i, f in self.iter())))
 
+    def append(self, interval: ContinuousSet, f: Function) -> None:
+        self.intervals.append(interval)
+        self.functions.append(f)
+
     def iter(self) -> Iterator[(ContinuousSet, Function)]:
         """ Iterate over intervals and functions at the same time. """
         return zip(self.intervals, self.functions)
@@ -804,6 +823,21 @@ cdef class PiecewiseFunction(Function):
         plf = PiecewiseFunction()
         plf.intervals.extend([i for i, _ in fcts])
         plf.functions.extend([f for _, f in fcts])
+        return plf
+
+    @staticmethod
+    def from_points(points: Iterable[Tuple[float, float]]):
+        '''
+        Construct a contiguous piecewise-linear function from a sequence of (x, y) coordinates, where
+        each point represents an interval border.
+        '''
+        plf = PiecewiseFunction()
+        for p1, p2 in pairwise(points):
+            x1, _ = p1
+            x2, _ = p2
+            plf.functions.append(LinearFunction.from_points(p1, p2))
+            plf.intervals.append(ContinuousSet(x1, x2, INC, EXC))
+        plf.intervals[-1].right = INC
         return plf
 
     cpdef DTYPE_t eval(self, DTYPE_t x):
@@ -1252,3 +1286,51 @@ cdef class PiecewiseFunction(Function):
                 raise TypeError('Unknown function type in PiecewiseFunction: "%s"' % type(function).__name__)
             plf.functions.append(function)
         return plf
+
+    def domain(self) -> NumberSet:
+        '''
+        Return the domain of this PLF, i.e. the range of input values the PLF is defined on.
+        '''
+        return RealSet(self.intervals).simplify()
+
+    def min(self, f: PiecewiseFunction) -> PiecewiseFunction:
+        intervals = [(i.lower, i.upper) for i in self.intervals] + [(i.lower, i.upper) for i in f.intervals]
+        intervals = sorted({i for i in chain(*intervals) if np.isfinite(i)})
+        queue = deque(intervals)
+        plf = PiecewiseFunction()
+        p1 = None
+        print('dom(self) = %s, dom(f) = %s' % (self.domain(), f.domain()))
+        print(self)
+        while queue:
+            if p1 is None:
+                p1 = queue.popleft()
+                continue
+            p2 = queue.popleft()
+            print('p1 = %s, p2 = %s' % (p1, p2))
+            if not all((p1 in self.domain(), p1 in f.domain(), p2 in self.domain(), p2 in f.domain())):
+                p1 = p2
+                continue
+            print(self.eval(p1), self.eval(p2))
+            delta1 = self.eval(p1) - f.eval(p1)
+            delta2 = self.eval(p2) - f.eval(p2)
+            print('delta1 = %s, delta2 = %s' % (delta1, delta2))
+            p_ = (p1 + p2) * .5
+            if delta1 * delta2 < 0:
+                intersection = self.at(p_).intersection(f.at(p_))
+                assert intersection.size() == 1, \
+                    'Intersection of %s and %s returned %s points' % (self, f, intersection)
+                queue.appendleft(p2)
+                queue.appendleft(intersection.lower)
+                continue
+            else:
+                plf.append(
+                    ContinuousSet(p1, p2, INC, EXC),
+                    (self.at(p_) if (self.eval(p_) - f.eval(p_)) < 0 else f.at(p_)).copy()
+                )
+            p1 = p2
+        return plf
+
+    def jaccard_similarity(self, f: PiecewiseFunction) -> float:
+        '''
+        Compute the Jaccard index given by the quotient of intersection over union of the two
+        '''

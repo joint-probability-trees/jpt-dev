@@ -898,6 +898,14 @@ cdef class ContinuousSet(NumberSet):
         """
         return self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
 
+    @property
+    def min(self):
+        return self.lowermost()
+
+    @property
+    def max(self):
+        return self.uppermost()
+
     def __contains__(self, x):
         try:
             if isinstance(x, ContinuousSet):
@@ -913,13 +921,24 @@ cdef class ContinuousSet(NumberSet):
     def __eq__(self, other):
         if isinstance(other, RealSet):
             return other == self
-        return (self.lower == other.lower
-                and self.upper == other.upper
-                and self.left == other.left
-                and self.right == other.right)  # hash(self) == hash(other)
+        return all((
+            self.lower == other.lower,
+            self.upper == other.upper,
+            self.left == other.left,
+            self.right == other.right
+        ))  # hash(self) == hash(other)
 
     def __ne__(self, other):
         return not self == other
+
+    def __or__(self, other: NumberSet) -> NumberSet:
+        return self.union(other)
+
+    def __and__(self, other: NumberSet) -> NumberSet:
+        return self.intersection(other)
+
+    def __sub__(self, other: NumberSet) -> NumberSet:
+        return self.difference(other)
 
     def __str__(self):
         return self.pfmt()
@@ -936,17 +955,23 @@ cdef class ContinuousSet(NumberSet):
             return _EMPTYSET
         if self.lower == self.upper and self.left == self.right == INC:
             return f'{{{precision % self.lower}}}'
-        return '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
-                                  '-∞' if self.lower == np.NINF else (precision % float(self.lower)),
-                                  '∞' if self.upper == np.inf else (precision % float(self.upper)),
-                                  {INC: ']', EXC: '['}[int(self.right)])
+        return '{}{},{}{}'.format(
+            {INC: '[', EXC: ']'}[int(self.left)],
+            '-∞' if self.lower == np.NINF else (precision % float(self.lower)),
+            '∞' if self.upper == np.inf else (precision % float(self.upper)),
+            {INC: ']', EXC: '['}[int(self.right)]
+        )
 
     def __repr__(self):
-        return '<{}={}>'.format(self.__class__.__name__,
-                                '{}{},{}{}'.format({INC: '[', EXC: ']'}[int(self.left)],
-                                                   '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
-                                                   '∞' if self.upper == np.inf else ('%.3f' % self.upper),
-                                                   {INC: ']', EXC: '['}[int(self.right)]))
+        return '<{}={}>'.format(
+            self.__class__.__name__,
+            '{}{},{}{}'.format(
+                {INC: '[', EXC: ']'}[int(self.left)],
+                '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
+                '∞' if self.upper == np.inf else ('%.3f' % self.upper),
+                {INC: ']', EXC: '['}[int(self.right)]
+            )
+        )
 
     def __bool__(self):
         return self.size() != 0
@@ -961,14 +986,18 @@ cdef class ContinuousSet(NumberSet):
         self.lower, self.upper, self.left, self.right = x
 
     def to_json(self):
-        return {'upper': self.upper,
-                'lower': self.lower,
-                'left': self.left,
-                'right': self.right}
+        return {
+            'upper': self.upper,
+            'lower': self.lower,
+            'left': self.left,
+            'right': self.right
+        }
 
     @staticmethod
     def from_json(data):
-        return ContinuousSet(data['lower'],
-                             data['upper'],
-                             data['left'],
-                             data['right'])
+        return ContinuousSet(
+            data['lower'],
+            data['upper'],
+            data['left'],
+            data['right']
+        )

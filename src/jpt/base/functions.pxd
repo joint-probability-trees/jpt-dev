@@ -135,6 +135,8 @@ cdef class ConstantFunction(Function):
 
     cpdef Function copy(self)
 
+    cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -164,6 +166,8 @@ cdef class LinearFunction(Function):
     cpdef np.int32_t is_invertible(self)
 
     cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +
+
+    cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2)
 
 
 # ----------------------------------------------------------------------------------------------------------------------

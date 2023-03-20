@@ -68,6 +68,16 @@ class ConstantFunctionTest(TestCase):
     def test_mul(self, f, arg, res):
         self.assertEqual(res, f * arg)
 
+    @data(
+        (ConstantFunction(0), (0, 1), 0),
+        (ConstantFunction(1), (0, 1), 1),
+        (ConstantFunction(1), (0, 2), 2),
+        (ConstantFunction(-1), (-1, 1), -2),
+    )
+    @unpack
+    def test_integrate(self, f, x, i):
+        self.assertEqual(i, f.integrate(x[0], x[1]))
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -142,6 +152,16 @@ class LinearFunctionTest(TestCase):
     @unpack
     def test_multiplication(self, f1, f2, v):
         self.assertEqual(v, f1 * f2)
+
+    @data(
+        (LinearFunction(1, 0), (0, 1), .5),
+        (LinearFunction(1, 1), (0, 1), 1.5),
+        (LinearFunction(1, -1), (0, 2), 0),
+        (LinearFunction(1, -1), (0, 1), -.5),
+    )
+    @unpack
+    def test_integration(self, f, x, i):
+        self.assertEqual(i, f.integrate(x[0], x[1]))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -380,3 +400,37 @@ class PLFTest(TestCase):
             '[3,∞[': 1
         })
         self.assertEqual(res, plf1 * plf2)
+
+    def test_from_points(self):
+        # Arrange
+        points = [(0, 0), (1, 1), (2, -2), (3, 3)]
+
+        # Act
+        plf = PiecewiseFunction.from_points(points)
+
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '[0,1[': 'x',
+                '[1,2[': '-3x+4',
+                '[2,3]': '5x-12'
+            }),
+            plf
+        )
+
+    def test_min(self):
+        # Arrange
+        plf1 = PiecewiseFunction.from_dict({
+                '[0,1[': 'x',
+                '[1,2[': '-3x+4',
+                '[2,4]': '5x-12'
+            })
+        plf2 = PiecewiseFunction.from_dict({
+                '[0,4]': 'x',
+            })
+
+        # Act
+        plf_min = plf1.min(plf2)
+
+        # Assert
+        print(plf_min)
