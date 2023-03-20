@@ -290,6 +290,80 @@ class IntervalTest(unittest.TestCase):
         self.assertEqual(-0.5, i2.lowermost())
         self.assertEqual(0.5, i2.uppermost())
 
+    def test_chop_normal(self):
+        # Arrange
+        i = ContinuousSet(0, 1)
+
+        # Act
+        chops = list(i.chop([.1, .5, .8]))
+
+        # Assert
+        self.assertEqual(
+            [
+                ContinuousSet.parse('[0,.1['),
+                ContinuousSet.parse('[.1,.5['),
+                ContinuousSet.parse('[.5,.8['),
+                ContinuousSet.parse('[.8,1]')
+            ],
+            chops
+        )
+        self.assertEqual(i, RealSet(intervals=chops))
+
+    def test_chop_border_case_closed(self):
+        # Arrange
+        i = ContinuousSet(0, 1)
+
+        # Act
+        chop_lower = list(i.chop([0]))
+        chop_upper = list(i.chop([1]))
+
+        # Assert
+        self.assertEqual(
+            [i], chop_lower
+        )
+        self.assertEqual(i, RealSet(intervals=chop_lower))
+        self.assertEqual(
+            [
+                ContinuousSet.parse('[0,1['),
+                ContinuousSet.parse('[1,1]')
+            ], chop_upper
+        )
+        self.assertEqual(i, RealSet(intervals=chop_upper))
+
+    def test_chop_border_case_open(self):
+        # Arrange
+        i = ContinuousSet(0, 1, EXC, EXC)
+
+        # Act
+        chop_lower = list(i.chop([i.min()]))
+        chop_upper = list(i.chop([i.max()]))
+
+        # Assert
+        self.assertEqual(
+            [i], chop_lower
+        )
+        self.assertEqual(i, RealSet(intervals=chop_lower))
+        self.assertEqual(
+            [
+                ContinuousSet(0, i.max(), INC, EXC),
+                ContinuousSet(i.max(), i.max())
+            ], chop_upper
+        )
+        self.assertEqual(i, RealSet(intervals=chop_upper))
+
+    def test_chop_border_case_open(self):
+        # Arrange
+        i = ContinuousSet(0, 1)
+
+        # Act
+        chops = list(i.chop([0]))
+
+        # Assert
+        self.assertEqual(
+            [i], chops
+        )
+        self.assertEqual(i, RealSet(intervals=chops))
+
 
 @ddt
 class RealSetTest(unittest.TestCase):
@@ -489,6 +563,24 @@ class RealSetTest(unittest.TestCase):
         r3 = RealSet(["[-.5, -.5]"])
         self.assertTrue(r3.intersects(ContinuousSet(-0.5, -0.5)))
         self.assertFalse(r3.intersects(ContinuousSet(0, 0, 2, 2)))
+
+    def test_chop(self):
+        # Arrange
+        r = RealSet([']0,1]', '[2,3['])
+
+        # Act
+        chops = r.chop([.5, 1.2, 2.5])
+
+        # Assert
+        self.assertEqual(
+            [
+                ContinuousSet(0, .5, EXC, EXC),
+                ContinuousSet(.5, 1, INC, INC),
+                ContinuousSet(2, 2.5, INC, EXC),
+                ContinuousSet(2.5, 3, INC, EXC),
+            ],
+            list(chops)
+        )
 
 
 class ContinuousSetOperatorTest(TestCase):

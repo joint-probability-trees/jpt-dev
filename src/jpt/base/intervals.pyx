@@ -282,6 +282,9 @@ cdef class RealSet(NumberSet):
         else:
             return math.nan
 
+    def min(self) -> numbers.Real:
+        return self.fst()
+
     cpdef inline np.int32_t intersects(RealSet self, NumberSet other):
         """
         Checks whether the this interval intersects with ``other``.
@@ -398,6 +401,10 @@ cdef class RealSet(NumberSet):
 
     cpdef inline NumberSet complement(RealSet self):
         return RealSet([R]).difference(self).simplify()
+
+    def chop(self, points: Iterable[float]) -> Iterable[ContinuousSet]:
+        for i in self.simplify().intervals:
+            yield from i.chop(points)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -905,6 +912,31 @@ cdef class ContinuousSet(NumberSet):
     @property
     def max(self):
         return self.uppermost()
+
+    def chop(self, points: Iterable[float]) -> Iterable[ContinuousSet]:
+        '''
+        Return a sequence of contiguous intervals obtained by chopping the
+        interval at hand into pieces at the locations ``points``.
+
+        If a point does not lie within the interval, it is ignored.
+
+        The individual chops are constructed by convention in a way such that they
+        are open to their right side and the remainder of the interval is closed on its left side.
+        i.e. the remainder of the interval contains the cutting point itself as an element.
+        '''
+        remainder = self.copy()
+        for p in sorted(points):
+            if p not in remainder:
+                continue
+            cut = ContinuousSet(remainder.lower, p, remainder.left, _EXC)
+            remainder.lower = p
+            remainder.left = _INC
+            if cut:
+                yield cut
+            if not remainder:
+                return
+        if remainder:
+            yield remainder
 
     def __contains__(self, x):
         try:
