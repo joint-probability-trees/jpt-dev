@@ -50,6 +50,12 @@ cdef class NumberSet:
     def __setstate__(self, _):
         pass
 
+    def __and__(self, other):
+        raise NotImplementedError()
+
+    def __or__(self, other):
+        raise NotImplementedError()
+
 
 _CUP = u'\u222A'
 _CAP = u'\u2229'
