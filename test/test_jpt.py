@@ -9,6 +9,7 @@ import pickle
 from unittest import TestCase
 
 import pandas as pd
+import scipy.stats
 from dnutils import out
 from matplotlib import pyplot as plt
 from pandas import DataFrame
@@ -655,3 +656,38 @@ class TestJPTFeaturesTargets(TestCase):
                     min_samples_leaf=1)
         self.assertEqual([model.varnames["Price"], model.varnames["WillWait"]], model.targets)
         self.assertEqual([model.varnames["Price"], model.varnames["Food"]], model.features)
+
+
+class TestGaussianConditionalJPT(TestCase):
+
+    def setUp(self) -> None:
+        np.random.seed(69)
+        self.data = pd.DataFrame(data=np.random.multivariate_normal([100, 100], [[5.96, -2.85], [-2.85,  3.47]], 1000),
+                                 columns=["X", "Y"])
+        variables = infer_from_dataframe(self.data, scale_numeric_types=True, precision=0.01)
+        self.tree = JPT(variables, min_samples_leaf=0.1)
+        self.tree.fit(self.data)
+
+    def test_mpe(self):
+        mpe, likelihood = self.tree.mpe()
+        self.assertEqual(len(mpe), 1)
+
+    def test_conditioning_chain(self):
+        cjpt = self.tree.conditional_jpt()
+        cjpt = cjpt.conditional_jpt()
+        self.assertTrue(cjpt is not None)
+
+    def test_conditioning(self):
+        mpe, likelihood = self.tree.mpe()
+        cjpt: JPT = self.tree.conditional_jpt(mpe[0])
+        self.assertEqual(cjpt.infer(mpe[0]), 1)
+
+    def test_moment(self):
+
+        expectation = self.tree.expectation([v for v in self.tree.variables if v.numeric or v.integer])
+
+        for order in range(3):
+            moments = self.tree.moment(order, expectation)
+            for variable, moment in moments.items():
+                scipy_moment = scipy.stats.moment(self.data[variable.name], order)
+                self.assertAlmostEqual(scipy_moment, moment, delta=0.05)

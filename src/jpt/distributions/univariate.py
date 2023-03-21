@@ -421,6 +421,16 @@ class Distribution:
     def update(self):
         raise NotImplementedError()
 
+    def moment(self, order=1, c=0):
+        r"""Calculate the central moment of the r-th order almost everywhere.
+
+        .. math:: \int (x-c)^{r} p(x)
+
+        :param order: The order of the moment to calculate
+        :param c: The constant to subtract in the basis of the exponent
+        """
+        raise NotImplementedError()
+
     def fit(self,
             data: np.ndarray,
             rows: np.ndarray = None,
@@ -613,8 +623,8 @@ class Numeric(Distribution):
         :return: The likelihood of the mpe as float and the mpe itself as RealSet
         """
         _max = max(f.value for f in self.pdf.functions)
-        return _max, RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
-                              if function.value == _max])
+        return _max, self.value2label(RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
+                              if function.value == _max]))
 
     def _fit(self,
              data: np.ndarray,
@@ -724,12 +734,12 @@ class Numeric(Distribution):
         if isinstance(restriction, RealSet):
 
             distributions = []
-            weights = []
 
-            for continuous_set in restriction.intervals:
+            for idx, continuous_set in enumerate(restriction.intervals):
 
                 distributions.append(self.crop(continuous_set))
-                weights.append(self._p(continuous_set))
+
+            weights = np.full((len(distributions)), 1/len(distributions))
 
             return self.merge(distributions, weights)
 
@@ -808,7 +818,22 @@ class Numeric(Distribution):
         self._quantile = QuantileDistribution.merge([self._quantile, quantile], [1-(1 / (2 * number_of_samples)),
                                                                                  1 / (2 * number_of_samples)])
 
+    def moment(self, order=1, c=0):
+        r"""Calculate the central moment of the r-th order almost everywhere.
 
+        .. math:: \int (x-c)^{r} p(x)
+
+        :param order: The order of the moment to calculate
+        :param c: The constant to subtract in the basis of the exponent
+        """
+        result = 0
+        for interval, function in zip(self.pdf.intervals[1:-1], self.pdf.functions[1:-1]):
+            interval_ = self.value2label(interval)
+
+            function_value = function.value * (interval.range()/interval_.range())
+            result += (pow(interval_.upper - c, order+1) - pow(interval_.lower - c, order+1))\
+                      * (function_value/(order+1))
+        return result
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''
@@ -1059,7 +1084,7 @@ class Multinomial(Distribution):
         :return: The likelihood of the mpe as float and the mpe itself as Set
         """
         _max = max(self.probabilities)
-        return _max, set([label for label, p in zip(self.values.keys(), self.probabilities) if p == _max])
+        return _max, set([label for label, p in zip(self.labels.values(), self.probabilities) if p == _max])
 
     def kl_divergence(self, other):
         if type(other) is not type(self):
@@ -1557,6 +1582,19 @@ class Integer(Distribution):
 
     def number_of_parameters(self) -> int:
         return self._params.shape[0]
+
+    def moment(self, order=1, c=0):
+        r"""Calculate the central moment of the r-th order almost everywhere.
+
+        .. math:: \int (x-c)^{r} p(x)
+
+        :param order: The order of the moment to calculate
+        :param c: The constant to subtract in the basis of the exponent
+        """
+        result = 0
+        for value, probability in zip(self.labels.values(), self._params):
+            result += pow(value - c, order) * probability
+        return result
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.

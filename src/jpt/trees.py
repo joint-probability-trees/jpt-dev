@@ -1089,11 +1089,15 @@ class JPT:
             final[var] = dist.expectation()
         return final
 
-    def mpe(self, evidence: VariableAssignment = None) -> (List[VariableMap], float) or None:
+    def mpe(self, evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            fail_on_unsatisfiability: bool = True) -> (List[LabelAssignment], float) or None:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
-        :param evidence: The raw evidence that is applied to the tree
-        :return: List[MPEResult] that describes all maxima of the tree given the evidence.
+        :param evidence: The evidence that is applied to the tree
+        :param fail_on_unsatisfiability: Rather or not an ``Unsatisfiability`` error is raised if the
+                                         likelihood of the evidence is 0.
+        :return: List of LabelAssignments that describes all maxima of the tree given the evidence.
+            Additionally, a float describing the likelihood of all solutions is returned.
         """
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
@@ -1101,7 +1105,10 @@ class JPT:
             evidence_ = evidence
 
         # apply the conditions given
-        conditional_jpt = self.conditional_jpt(evidence_)
+        conditional_jpt = self.conditional_jpt(evidence_, fail_on_unsatisfiability)
+
+        if conditional_jpt is None:
+            return None
 
         # calculate the maximal probabilities for each leaf
         maxima = [leaf.mpe(self.minimal_distances) for leaf in conditional_jpt.leaves.values()]
@@ -1831,7 +1838,8 @@ class JPT:
         """
         return JPT.from_json(self.to_json())
 
-    def conditional_jpt(self, evidence: VariableAssignment, fail_on_unsatisfiability: bool = True) -> 'JPT' or None:
+    def conditional_jpt(self, evidence: VariableAssignment = LabelAssignment(),
+                        fail_on_unsatisfiability: bool = True) -> 'JPT' or None:
         """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
 
@@ -2077,3 +2085,39 @@ class JPT:
             samples[indices] = leaf_samples
 
         return samples
+
+    def moment(self, order: int = 1, c: VariableAssignment = LabelAssignment(),
+               evidence: VariableAssignment = LabelAssignment(),
+               fail_on_unsatisfiability: bool = True,) -> VariableMap or None:
+        """ Calculate the order of each numeric/integer random variable given the evidence.
+
+        :param order: The order of the moment
+        :param c: A VariableAssignment mapping each numeric/integer variable to some constant.
+            If a variable has a constant, it will be interpreted as 'c' for the central moment.
+            If it is not set, 0 will be used by default.
+        :param evidence: The evidence given for the posterior to be computed
+        :param fail_on_unsatisfiability: Rather or not an ``Unsatisfiability`` error is raised if the
+                                         likelihood of the evidence is 0.
+        """
+
+        # calculate posterior distributions
+        posteriors = self.posterior([v for v in self.variables if v.numeric or v.integer], evidence,
+                                    fail_on_unsatisfiability)
+
+        # Convert c, if necessary, labels to internal value representations
+        if isinstance(c, LabelAssignment):
+            c = c.value_assignment()
+
+        if posteriors is None:
+            return None
+
+        result = dict()
+
+        for variable, distribution in posteriors.items():
+            if variable not in c:
+                current_c = 0
+            else:
+                current_c = c[variable]
+
+            result[variable] = distribution.moment(order, current_c)
+        return VariableMap(result.items())
