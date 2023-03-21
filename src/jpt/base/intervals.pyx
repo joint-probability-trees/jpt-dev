@@ -938,6 +938,9 @@ cdef class ContinuousSet(NumberSet):
         if remainder:
             yield remainder
 
+    cpdef NumberSet simplify(self):
+        return self.copy()
+
     def __contains__(self, x):
         try:
             if isinstance(x, ContinuousSet):

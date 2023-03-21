@@ -122,3 +122,5 @@ cdef class ContinuousSet(NumberSet):
     cpdef inline DTYPE_t lowermost(ContinuousSet self)
 
     cpdef inline ContinuousSet boundaries(ContinuousSet self, int left=*, int right=*)
+
+    cpdef NumberSet simplify(self)
