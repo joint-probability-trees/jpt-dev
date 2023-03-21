@@ -413,6 +413,11 @@ cdef class RealSet(NumberSet):
         for i in self.simplify().intervals:
             yield from i.chop(points)
 
+    def __and__(self, other):
+        return self.intersection(other)
+
+    def __or__(self, other):
+        return self.union(other)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
