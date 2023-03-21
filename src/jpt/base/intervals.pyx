@@ -288,6 +288,7 @@ cdef class RealSet(NumberSet):
         else:
             return math.nan
 
+    @property
     def min(self) -> numbers.Real:
         return self.fst()
 
