@@ -5,14 +5,20 @@ from ddt import ddt, data, unpack
 
 try:
     from jpt.base.functions import __module__
-    from jpt.base.intervals import __module__, EMPTY, R
+    from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.functions import (LinearFunction, QuadraticFunction, ConstantFunction, Undefined, Function,
-                                    PiecewiseFunction)
-    from jpt.base.intervals import ContinuousSet
+    from jpt.base.functions import (
+        LinearFunction,
+        QuadraticFunction,
+        ConstantFunction,
+        Undefined,
+        Function,
+        PiecewiseFunction
+    )
+    from jpt.base.intervals import ContinuousSet, EMPTY, R
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -392,8 +398,7 @@ class PLFTest(TestCase):
             '[3,∞[': 1
         })
         res = PiecewiseFunction.from_dict({
-            ']-∞,-1.0[': 0,
-            '[-1.0,0.0[': 0,
+            ']-∞,0[': 0,
             '[0,1[': QuadraticFunction(.25, 2, 0),
             '[1.,2[': LinearFunction(.25, 2),
             '[2,3[': QuadraticFunction(.25, 1.75, -2),
@@ -418,7 +423,7 @@ class PLFTest(TestCase):
             plf
         )
 
-    def test_min(self):
+    def test_min_max(self):
         # Arrange
         plf1 = PiecewiseFunction.from_dict({
                 '[0,1[': 'x',
@@ -426,11 +431,72 @@ class PLFTest(TestCase):
                 '[2,4]': '5x-12'
             })
         plf2 = PiecewiseFunction.from_dict({
-                '[0,4]': 'x',
+                '[0,5]': 'x',
             })
 
         # Act
-        plf_min = plf1.min(plf2)
+        plf_min = PiecewiseFunction.min(plf1, plf2)
+        plf_max = PiecewiseFunction.max(plf1, plf2)
 
         # Assert
-        print(plf_min)
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '[0.0,1.0[': '1.0x',
+                '[1.0,2.0[': '-3.0x + 4.0',
+                '[2.0,3.0[': '5.0x - 12.0',
+                '[3.0,4.0]': '1.0x'
+            }),
+            plf_min
+        )
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '[0.0,3.0[': '1.0x',
+                '[3.0,4.0]': '5.0x - 12.0'
+            }),
+            plf_max
+        )
+
+    def test_integral(self):
+        # Arrange
+        plf1 = PiecewiseFunction.from_dict({
+            '[0,1[': 'x',
+            '[1,2[': '-3x+4',
+            '[2,4]': '5x-12'
+        })
+
+        # Act
+        area = plf1.integrate(ContinuousSet(.5, 1.5))
+
+        # Assert
+        self.assertAlmostEqual(.5, area, places=6)
+
+    def test_jaccard(self):
+        # Arrange
+        plf1 = PiecewiseFunction.from_dict({
+            '[0,1[': 'x',
+            '[1,2[': '-3x+4',
+            '[2,4]': '5x-12'
+        })
+        plf2 = PiecewiseFunction.from_dict({
+            '[0,5]': 'x',
+        })
+
+        plf3 = PiecewiseFunction.from_points(
+            [(0, 0), (.5, 1), (1, 0), (10, 0)]
+        )
+
+        plf4 = PiecewiseFunction.from_points(
+            [(0, 0), (2, 0), (2.5, 1), (3, 0)]
+        )
+
+        # Act
+        sim_normal = PiecewiseFunction.jaccard_similarity(plf1, plf2)
+        sim_symmetric = PiecewiseFunction.jaccard_similarity(plf2, plf1)
+        sim_reflexive = PiecewiseFunction.jaccard_similarity(plf1, plf1)
+        sim_disjoint = PiecewiseFunction.jaccard_similarity(plf3, plf4)
+
+        # Assert
+        self.assertAlmostEqual(.4, sim_normal, places=7)
+        self.assertAlmostEqual(.4, sim_symmetric, places=7)
+        self.assertEqual(1, sim_reflexive)
+        self.assertEqual(0, sim_disjoint)

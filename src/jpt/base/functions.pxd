@@ -223,6 +223,8 @@ cdef class PiecewiseFunction(Function):
 
     cpdef Function differentiate(self)
 
+    cpdef DTYPE_t integrate(self, ContinuousSet interval=*)
+
     cpdef ensure_left(self, Function left, DTYPE_t x)
 
     cpdef ensure_right(self, Function right, DTYPE_t x)
