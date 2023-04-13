@@ -5,7 +5,9 @@ from matplotlib import pyplot as plt
 
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
+import logging
 
+logging.getLogger("/jpt").setLevel(0)
 
 # ----------------------------------------------------------------------------------------------------------------------
 # The function to predict
@@ -47,15 +49,16 @@ def main(visualize=True):
 
     # Construct the predictive model
     varx = NumericVariable('x', blur=.05)
-    vary = NumericVariable('y', blur=.05)
+    vary = NumericVariable('y')
 
     # For discrimintive learning, uncomment the following line:
-    jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
+    jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=0.01)
     # For generative learning, uncomment the following line:
     # jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
 
-    jpt.learn(data=df)
-    jpt.plot(view=visualize)
+    jpt.learn(df)
+    print(len(jpt.leaves))
+    # jpt.plot(view=visualize)
 
     # Apply the JPT model
     confidence = .95
