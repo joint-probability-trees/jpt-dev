@@ -1,0 +1,66 @@
+name: Publish the pyjpt package to PyPI and TestPyPI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+defaults:
+  run:
+    shell: bash
+    working-directory: .
+
+jobs:
+    build-and-publish:
+      name: Build and publish Python distribution
+      runs-on: ubuntu-22.04
+      steps:
+          - name: Checkout 🛎
+            uses: actions/checkout@v3
+
+          - name: Setup python 🐍
+            uses: actions/setup-python@v4
+            with:
+                python-version: 3.8
+                cache: pip
+
+          - name: Install user dependencies 🍼
+            uses: py-actions/py-dependency-install@v4
+            with:
+              path: "requirements.txt"
+
+          - name: Install developer dependencies 📐
+            uses: py-actions/py-dependency-install@v4
+            with:
+              path: "requirements-dev.txt"
+
+          - name: Build binary wheels 🔨
+            uses: RalfG/python-wheels-manylinux-build@v0.7.1
+            with:
+              python-versions: 'cp38-cp38'
+              build-requirements: 'cython numpy'
+              pip-wheel-args: '-w ./dist-raw --no-deps'
+
+          - name: Move binary wheels to dist  🔧
+            run: |
+              mkdir dist/
+              cp dist-raw/*manylinux*.whl dist/
+
+          - name: Install Sphinx dependencies 📚
+            uses: py-actions/py-dependency-install@v4
+            with:
+              path: "doc/requirements.txt"
+
+          - name: Build Sphinx documentation 📝
+            working-directory: ./doc
+            run: |
+              sudo apt install pandoc
+              make html
+
+          - name: Publish distribution to Test PyPI 📢
+            uses: pypa/gh-action-pypi-publish@master
+            with:
+                password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+                skip_existing: true
+                repository_url: https://test.pypi.org/legacy/
