@@ -18,11 +18,11 @@ or clone the repository and install with
 
 .. code:: bash
 
-    $ git clone https://github.com/jpt
+    $ git clone https://github.com/joint-probability-trees/jpt-dev
     $ cd jpt
     $ python setup.py install
 
-When you are working on Dabian-based systems, you will have to install a additional requirements
+When you are working on Debian-based systems, you will have to install a additional requirements
 
 .. code:: bash
 
