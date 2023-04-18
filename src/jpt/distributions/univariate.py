@@ -1,6 +1,6 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-from collections import deque
+from collections import deque, Counter
 from itertools import tee
 from types import FunctionType
 from typing import Any, Iterable, List, Union, Set, Type, Tuple
@@ -1676,6 +1676,9 @@ class Integer(Distribution):
 def SymbolicType(name: str, labels: List[Any]) -> Type:
     if len(labels) < 1:
         raise ValueError('At least one value is needed for a symbolic type.')
+    if len(set(labels)) != len(labels):
+        duplicates = [item for item, count in Counter(labels).items() if count > 1]
+        raise ValueError('List of labels  contains duplicates: %s' % duplicates)
     t = type(name, (Multinomial,), {})
     t.values = OrderedDictProxy([(lbl, int(val)) for val, lbl in zip(range(len(labels)), labels)])
     t.labels = OrderedDictProxy([(int(val), lbl) for val, lbl in zip(range(len(labels)), labels)])
