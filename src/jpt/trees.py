@@ -1435,7 +1435,7 @@ class JPT:
         :type data:     [[str or float or bool]]; (according to `self.variables`)
         :param rows:    The training examples (assumed in row-shape)
         :type rows:     [[str or float or bool]]; (according to `self.variables`)
-        :param columns: The training examples (assumed in row-shape)
+        :param columns: The training examples (assumed in column-shape)
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
                         purposes only. Default is false.
