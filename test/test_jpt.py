@@ -10,8 +10,8 @@ from unittest import TestCase
 
 import pandas as pd
 import scipy.stats
-from dnutils import out
 from matplotlib import pyplot as plt
+from numpy.testing import assert_array_equal
 from pandas import DataFrame
 from scipy.stats import norm
 
@@ -691,3 +691,61 @@ class TestGaussianConditionalJPT(TestCase):
             for variable, moment in moments.items():
                 scipy_moment = scipy.stats.moment(self.data[variable.name], order)
                 self.assertAlmostEqual(scipy_moment, moment, delta=0.05)
+
+
+class PreprocessingTest(TestCase):
+
+    # noinspection PyMethodMayBeStatic
+    def test_preprocessing_dataframe(self):
+        # Arrange
+        DOMAIN_A = SymbolicType(
+            name='DOM_A',
+            labels=list(sorted(['250000', '0']))
+        )
+        DOMAIN_B = SymbolicType(
+            name='DOM_B',
+            labels=list(sorted([
+                '250000',
+                '250005',
+                '250001',
+                '250006',
+                '250002',
+                '0'
+            ]))
+        )
+        DOMAIN_C = IntegerType(
+            name='DOM_C',
+            lmin=1,
+            lmax=7
+        )
+
+        va = SymbolicVariable('V1', DOMAIN_A)
+        vb = SymbolicVariable('V2', DOMAIN_B)
+        vc = IntegerVariable('V3', DOMAIN_C)
+
+        jpt = JPT(variables=[va, vb, vc])
+
+        data = DataFrame.from_records([
+                ['250000', '250000', 3],
+                ['0', '0', 7],
+                ['250000', '250001', 7],
+                ['250000', '250006', 5],
+                ['0', '0', 7]
+            ],
+            columns=['V1', 'V2', 'V3']
+        )
+
+        # Act
+        data_ = jpt._preprocess_data(data)
+
+        # Assert
+        assert_array_equal(
+            np.array(
+                [[1., 1., 2.],
+                 [0., 0., 6.],
+                 [1., 2., 6.],
+                 [1., 5., 4.],
+                 [0., 0., 6.]]
+            ),
+            data_
+        )
