@@ -730,6 +730,7 @@ class LabelAssignment(VariableAssignment):
 
         return result
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection DuplicatedCode
