@@ -21,6 +21,16 @@ Lead Developers
 
 
 .. note:: If you use our ``pyjpt`` for scientific publications, any acknowlegdment is highly appreciated.
+    The original paper can be found `here <http://arxiv.org/abs/2302.07167>`_::
+
+        @inproceedings{nyga23jpts,
+            title={{Joint Probability Trees}},
+            author={Daniel Nyga and Mareike Picklum and Tom Schierenbeck and Michael Beetz},
+            year={2023},
+            booktitle = {arxiv.org},
+            note = {Preprint},
+            url = {http://arxiv.org/abs/2302.07167}
+        }
 
 
 
