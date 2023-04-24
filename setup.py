@@ -19,7 +19,10 @@ linearly in JPTs, and the tree structure allows white-box reasoning about any po
 such that interpretable explanations can be provided for any inference result. This documentation introduces the
 code base of the ``pyjpt`` library, which is implemented in Python/Cython, and showcases the practical
 applicability of JPTs in high-dimensional heterogeneous probability spaces, making it
-a promising alternative to classic probabilistic'''
+a promising alternative to classic probabilistic
+
+## Documentation
+The documentation is hosted on readthedocs.org [here](https://joint-probability-trees.readthedocs.io/en/latest/).'''
 
 
 def read(fname):
