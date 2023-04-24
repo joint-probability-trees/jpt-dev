@@ -46,19 +46,17 @@ class ImpurityTest(TestCase):
 
     def test_symbolic(self):
         jpt = JPT(
-            variables=ImpurityTest.variables,
-            targets=[ImpurityTest.wa]
+            variables=self.variables,
+            targets=[self.wa]
         )
-
-        data = jpt._preprocess_data(ImpurityTest.data)
+        data = jpt._preprocess_data(self.data)
         impurity = Impurity(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
         impurity.setup(data, np.array(list(range(data.shape[0]))))
-        print('bla')
         impurity.compute_best_split(0, data.shape[0])
 
         self.assertNotEqual(impurity.best_var, -1)
-        self.assertIs(ImpurityTest.variables[impurity.best_var], ImpurityTest.pa)
+        self.assertIs(self.variables[impurity.best_var], ImpurityTest.pa)
         self.assertEqual([-1, -1, -1, -1, 1, 1, 1, 1, 1, 1, 2, 2],
                          list(np.asarray(impurity.feat, dtype=np.int32)))
         self.assertEqual({0, 2, 5, 7}, set(impurity.indices[:4]))

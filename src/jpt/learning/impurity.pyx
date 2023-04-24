@@ -51,7 +51,10 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
     cdef DTYPE_t divisor = 0
 
     for i in range(variances_old.shape[0]):
-        if skip_idx == i:
+
+        # skip the index specified from the signature or if variance old is 0, since then variance new has to be 0 too.
+        # if this was not skipped, nans would pollute the sum.
+        if skip_idx == i or variances_old[i] == 0:
             continue
         variance_impr = variance_impr * <DTYPE_t> divisor + ((variances_old[i] -
             (variances_left[i] * <DTYPE_t> samples_left + variances_right[i] * <DTYPE_t> samples_right) / n_samples
@@ -636,7 +639,7 @@ cdef class Impurity:
         self.start = start
         self.end = end
 
-        # calculate number of samples
+        # calculate the number of samples
         cdef int n_samples = end - start
 
         # initialize impurity and gini index
@@ -683,10 +686,13 @@ cdef class Impurity:
             # calculate gini impurity of histogram
             self.gini_impurity(self.symbols_total, n_samples, self.gini_impurities)
 
-            # save total gini impurity as mean of all symbolic dimensions impurities
-            gini_total = mean(self.gini_impurities)
+            # save total gini impurity as mean of all symbolic dimensions impurities and replace nan by 0, since nan
+            # only occurs for constant columns
+            gini_total = np.nan_to_num(mean(self.gini_impurities), copy=False)
+
         else:
             gini_total = 0
+
 
         # int describing if the current variable is symbolic or not
         cdef int symbolic = 0
@@ -810,7 +816,7 @@ cdef class Impurity:
         # copy start and end index
         cdef SIZE_t start = self.start, end = self.end
 
-        # calculate number of samples
+        # calculate the number of samples
         cdef SIZE_t n_samples = end - start
 
         # --------------------------------------------------------------------------------------------------------------
@@ -925,7 +931,6 @@ cdef class Impurity:
 
             # if numeric targets exist
             if self.has_numeric_vars(var_idx):
-
                 # if there is more than one sample on the left side if the split
                 if samples_left > 1:
                     # calculate variance of left split
@@ -1003,11 +1008,11 @@ cdef class Impurity:
                     self.sums_left[...] = 0
                     self.sq_sums_left[...] = 0
 
-            # check if this split is legal according to self.min_samples_leaf
+            # check if this split is legal, according to self.min_samples_leaf
             if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
                 impurity_improvement = 0.
 
-            # check if this split is improves the impurity by the minimal required amount
+            # check if this split is improving the impurity by the minimal required amount
             if impurity_improvement > max_impurity_improvement:
                 max_impurity_improvement = impurity_improvement
                 best_split_pos[0] = split_pos

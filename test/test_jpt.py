@@ -1,16 +1,14 @@
-import tempfile
-
-import statistics
-
 import json
-import numpy as np
 import os
 import pickle
+import statistics
+import tempfile
+import unittest
 from unittest import TestCase
 
+import numpy as np
 import pandas as pd
 import scipy.stats
-from dnutils import out
 from matplotlib import pyplot as plt
 from pandas import DataFrame
 from scipy.stats import norm
@@ -229,7 +227,6 @@ class JPTTest(TestCase):
 
 
 class TestCasePosteriorNumeric(TestCase):
-
     varx = None
     vary = None
     jpt = None
@@ -326,7 +323,6 @@ class TestCasePosteriorNumeric(TestCase):
 
 # noinspection PyPep8Naming
 class TestCasePosteriorSymbolic(TestCase):
-
     data = None
     variables = None
     jpt = None
@@ -389,7 +385,6 @@ class TestCasePosteriorSymbolic(TestCase):
 
 # noinspection PyPep8Naming
 class TestCasePosteriorSymbolicAndNumeric(TestCase):
-
     data = None
     variables = None
     jpt = None
@@ -464,8 +459,8 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         xr = self.data[(self.data['Food'] == 'Burger') & (self.data['Alternatives'] == False)]['WaitEstimate']
 
         # Plot the data, the pdfs of each dataset and of the datasets combined
-        plt.scatter(self.data['WaitEstimate'], [0]*len(self.data), color='b', marker='*', label='All training data')
-        plt.scatter(xr, [0]*len(xr), color='r', marker='.', label='Filtered training data')
+        plt.scatter(self.data['WaitEstimate'], [0] * len(self.data), color='b', marker='*', label='All training data')
+        plt.scatter(xr, [0] * len(xr), color='r', marker='.', label='Filtered training data')
 
     def test_sampling(self):
         samples = self.jpt.sample(1000)
@@ -498,7 +493,6 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
 
 
 class TestCaseExpectation(TestCase):
-
     jpt = None
     data = None
     variables = None
@@ -525,11 +519,11 @@ class TestCaseExpectation(TestCase):
         cls.jpt.learn(columns=cls.data.values.T)
 
     def test_plot(self):
-        self.jpt.plot(#plotvars=['WaitEstimate'],
-                      title='Restaurant-Mixed',
-                      filename='Restaurant-Mixed',
-                      directory=tempfile.gettempdir(),
-                      view=False)
+        self.jpt.plot(  # plotvars=['WaitEstimate'],
+            title='Restaurant-Mixed',
+            filename='Restaurant-Mixed',
+            directory=tempfile.gettempdir(),
+            view=False)
 
     def test_expectation_mixed_single_candidate_T(self):
         self.q = ['WillWait', 'Friday']
@@ -547,7 +541,6 @@ class TestCaseExpectation(TestCase):
 
 
 class TestCaseInference(TestCase):
-
     jpt = None
     data = None
     variables = None
@@ -662,7 +655,7 @@ class TestGaussianConditionalJPT(TestCase):
 
     def setUp(self) -> None:
         np.random.seed(69)
-        self.data = pd.DataFrame(data=np.random.multivariate_normal([100, 100], [[5.96, -2.85], [-2.85,  3.47]], 1000),
+        self.data = pd.DataFrame(data=np.random.multivariate_normal([100, 100], [[5.96, -2.85], [-2.85, 3.47]], 1000),
                                  columns=["X", "Y"])
         variables = infer_from_dataframe(self.data, scale_numeric_types=True, precision=0.01)
         self.tree = JPT(variables, min_samples_leaf=0.1)
@@ -691,3 +684,31 @@ class TestGaussianConditionalJPT(TestCase):
             for variable, moment in moments.items():
                 scipy_moment = scipy.stats.moment(self.data[variable.name], order)
                 self.assertAlmostEqual(scipy_moment, moment, delta=0.05)
+
+
+class TestConstantColumns(unittest.TestCase):
+    """Test JPTs for datasets for constant columns occur."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        np.random.seed(69)
+        z = np.ones((100, 1), dtype=str)
+        xy = np.random.uniform(0, 1, (100, 2))
+        rotation = np.array([np.cos(np.pi/4), -np.sin(np.pi/4), np.sin(np.pi/4), np.cos(np.pi/4)]).reshape(2,2)
+        xy = xy @ rotation
+        data = np.concatenate([xy, z], axis=-1)
+        cls.data = pd.DataFrame(data, columns=["x", "y", "z"]).astype({"x": float, "y": float, "z": str})
+
+    def test_learning_symbolic(self):
+        model = JPT(variables=infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.1,
+                    min_impurity_improvement=0)
+        model = model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_numeric(self):
+        data = self.data.copy()
+        data["z"] = data["z"].astype(float)
+        model = JPT(variables=infer_from_dataframe(data, scale_numeric_types=False), min_samples_leaf=0.1,
+                    min_impurity_improvement=0)
+        model = model.fit(data)
+        self.assertTrue(len(model.leaves) > 1)

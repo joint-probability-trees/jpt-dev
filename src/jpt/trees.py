@@ -1257,7 +1257,6 @@ class JPT:
         impurity = self.impurity
 
         max_gain = impurity.compute_best_split(start, end)
-
         if max_gain < 0:
             raise ValueError('Something went wrong!')
 
