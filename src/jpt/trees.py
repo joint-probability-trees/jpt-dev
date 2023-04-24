@@ -374,13 +374,15 @@ class Leaf(Node):
         """
         :return: The DecisionNode as a json serializable dict.
         """
-        return {'idx': self.idx,
-                'distributions': self.distributions.to_json(),
-                'prior': self.prior,
-                'samples': self.samples,
-                's_indices': [int(i) for i in self.s_indices],
-                'parent': ifnone(self.parent, None, attrgetter('idx')),
-                'child_idx': self.parent.children.index(self) if self.parent is not None else -1}
+        return {
+            'idx': self.idx,
+            'distributions': self.distributions.to_json(),
+            'prior': self.prior,
+            'samples': self.samples,
+            's_indices': [int(i) for i in self.s_indices],
+            'parent': ifnone(self.parent, None, attrgetter('idx')),
+            'child_idx': self.parent.children.index(self) if self.parent is not None else -1
+        }
 
     @staticmethod
     def from_json(tree: 'JPT', data: Dict[str, Any]) -> 'Leaf':
@@ -390,8 +392,16 @@ class Leaf(Node):
         :param data: The data describing the members of the node
         :return: the constructed and mounted DecisionNode
         """
-        leaf = Leaf(idx=data['idx'], prior=data['prior'], parent=tree.innernodes.get(data['parent']))
-        leaf.distributions = VariableMap.from_json(tree.variables, data['distributions'], Distribution)
+        leaf = Leaf(
+            idx=data['idx'],
+            prior=data['prior'],
+            parent=tree.innernodes.get(data['parent'])
+        )
+        leaf.distributions = VariableMap(
+            {
+                tree.varnames[v]: tree.varnames[v].domain.from_json(d) for v, d in data['distributions'].items()
+            }
+        )
         leaf._path = []
         if leaf.parent is not None:
             leaf.parent.set_child(data['child_idx'], leaf)
@@ -513,7 +523,6 @@ class Leaf(Node):
 
         else:
             raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
-
 
     def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
             -> np.ndarray:
@@ -815,7 +824,7 @@ class JPT:
         jpt.priors = VariableMap({
             jpt.varnames[varname]: jpt.varnames[varname].domain.from_json(dist)
             for varname, dist in data['priors'].items()
-        }.items())
+        })
         jpt.root = jpt.allnodes[data.get('root')] if data.get('root') is not None else None
         return jpt
 

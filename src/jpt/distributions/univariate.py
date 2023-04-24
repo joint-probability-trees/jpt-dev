@@ -472,13 +472,6 @@ class Distribution:
     def to_json(self):
         raise NotImplementedError()
 
-    @staticmethod
-    def from_json(data):
-        clazz = DISTRIBUTIONS.get(data['class'])
-        if clazz is None:
-            raise TypeError('Unknown distribution class: %s' % data['class'])
-        return clazz.from_json(data)
-
     def __getstate__(self):
         return self.to_json()
 
@@ -486,17 +479,13 @@ class Distribution:
         self.__dict__ = Distribution.from_json(state).__dict__
 
     @staticmethod
-    def type_from_json(data):
-        typ = _DISTRIBUTION_TYPES.get(data['type'])
-        if typ is None:
+    def from_json(data) -> Type:
+        cls = _DISTRIBUTION_TYPES.get(data['type'])
+        if cls is None:
             raise TypeError('Unknown distribution type: %s' % data['type'])
-        clazz = typ.type_from_json(data)
-        if clazz.__name__ in DISTRIBUTIONS:
-            if not clazz.equiv(DISTRIBUTIONS[clazz.__name__]):
-                raise TypeError('Distribution class named "%s" is ambiguous.' % clazz.__name__)
-        else:
-            DISTRIBUTIONS[clazz.__name__] = clazz
-        return clazz
+        return cls.type_from_json(data)
+
+    type_from_json = from_json
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -757,13 +746,17 @@ class Numeric(Distribution):
 
     @classmethod
     def type_to_json(cls):
-        return {'type': 'numeric',
-                'class': cls.__name__}
+        return {
+            'type': 'numeric',
+            'class': cls.__name__
+        }
 
     def inst_to_json(self):
-        return {'class': type(self).__name__,
-                'settings': self.settings,
-                'quantile': self._quantile.to_json() if self._quantile is not None else None}
+        return {
+            'class': type(self).__name__,
+            'settings': self.settings,
+            'quantile': self._quantile.to_json() if self._quantile is not None else None
+        }
 
     to_json = type_to_json
 
@@ -922,9 +915,11 @@ class ScaledNumeric(Numeric):
 
     @classmethod
     def type_to_json(cls):
-        return {'type': 'scaled-numeric',
-                'class': cls.__name__,
-                'scaler': cls.scaler.to_json()}
+        return {
+            'type': 'scaled-numeric',
+            'class': cls.__name__,
+            'scaler': cls.scaler.to_json()
+        }
 
     to_json = type_to_json
 
@@ -1176,14 +1171,18 @@ class Multinomial(Distribution):
 
     @classmethod
     def type_to_json(cls):
-        return {'type': 'symbolic',
-                'class': cls.__qualname__,
-                'labels': list(cls.labels.values())}
+        return {
+            'type': 'symbolic',
+            'class': cls.__qualname__,
+            'labels': list(cls.labels.values())
+        }
 
     def inst_to_json(self):
-        return {'class': type(self).__qualname__,
-                'params': list(self._params),
-                'settings': self.settings}
+        return {
+            'class': type(self).__qualname__,
+            'params': list(self._params),
+            'settings': self.settings
+        }
 
     to_json = type_to_json
 
@@ -1727,11 +1726,3 @@ _DISTRIBUTIONS = {
     'Multinomial': Multinomial,
     'Integer': Integer
 }
-
-
-DISTRIBUTIONS = dict(_DISTRIBUTIONS)
-
-
-def reset():
-    global DISTRIBUTIONS
-    DISTRIBUTIONS = dict(_DISTRIBUTIONS)

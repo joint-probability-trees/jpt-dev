@@ -5,6 +5,7 @@ from unittest import TestCase
 
 import numpy as np
 import pandas as pd
+from dnutils import out
 
 from jpt import NumericType, SymbolicType
 from jpt.base.intervals import ContinuousSet
@@ -294,36 +295,46 @@ class IntegerVariableTest(TestCase):
 class DuplicateDomainTest(TestCase):
     '''Test domain functionality of Variable classes.'''
 
-    TEST_DATA = [NumericVariable('A'),
-                 NumericVariable('B'),
-                 NumericVariable('B'),
-                 SymbolicVariable('C', Bool)]
+    TEST_DATA = [
+        NumericVariable('A'),
+        NumericVariable('B'),
+        NumericVariable('B'),
+        SymbolicVariable('C', Bool)
+    ]
 
-    data1 = {'A': ['one', 'two', 'three', 'four'],
-             'B': [68., 74., 77., 78.],
-             'C': [84., 56., 73., 69.],
-             'D': [78., 88., 82., 87.]}
+    data1 = {
+        'A': ['one', 'two', 'three', 'four'],
+        'B': [68., 74., 77., 78.],
+        'C': [84., 56., 73., 69.],
+        'D': [78., 88., 82., 87.]
+    }
     DF1 = pd.DataFrame(data1)
 
-    data2 = {'A': ['three', 'six', 'seven', 'four'],
-             'B': [5., 4., 3., 2.],
-             'C': [9., 8., 5., 2.],
-             'E': [7., 8., 5., 1.]}
+    data2 = {
+        'A': ['three', 'six', 'seven', 'four'],
+        'B': [5., 4., 3., 2.],
+        'C': [9., 8., 5., 2.],
+        'E': [7., 8., 5., 1.]
+    }
     DF2 = pd.DataFrame(data2)
 
-    def test_duplicate_dom_symbolic_raise_err(self):
+    def test_duplicate_dom_symbolic_not_raise_err(self):
         '''Raise exception when generating duplicate symbolic domains.'''
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1)[0].to_json()
         v2 = infer_from_dataframe(DuplicateDomainTest.DF2)[0].to_json()
-        t1_ = Distribution.type_from_json(v1['domain'])
-        self.assertRaises(TypeError, Distribution.type_from_json, v2['domain'])
+        t1 = Distribution.type_from_json(v1['domain'])
+        t2 = Distribution.type_from_json(v2['domain'])
+        self.assertEqual(t1.__name__, t2.__name__)
+        self.assertNotEqual(t1.labels.values(), t2.labels.values())
 
-    def test_duplicate_dom_numeric_raise_err(self):
+    def test_duplicate_dom_numeric_not_raise_err(self):
         '''Raise exception when generating duplicate numeric domains.'''
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1)[1].to_json()
         v2 = infer_from_dataframe(DuplicateDomainTest.DF2)[1].to_json()
-        t1_ = Distribution.type_from_json(v1['domain'])
-        self.assertRaises(TypeError, Distribution.type_from_json, v2['domain'])
+        t1 = Distribution.type_from_json(v1['domain'])
+        t2 = Distribution.type_from_json(v2['domain'])
+        self.assertEqual(t1.__name__, t2.__name__)
+        self.assertNotEqual(id(t1), id(t2))
 
     def test_duplicate_dom_symbolic_unique(self):
         '''Raise exception when generating duplicate symbolic domains.'''
@@ -380,7 +391,7 @@ class DuplicateDomainTest(TestCase):
         atype = SymbolicType('A_TYPE_S', ['one', 'two', 'three', 'four'])
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1)
         self.assertNotEqual(atype, v1[0].domain)
-        self.assertTrue(atype.equiv(Distribution.type_from_json(v1[0].domain.to_json())))
+        self.assertTrue(atype.equiv(Distribution.from_json(v1[0].domain.to_json())))
 
     def test_duplicate_dom_numeric_not_excluded_columns(self):
         '''User-created type is not used in infer_from_dataframe and therefore not equal but equivalent.'''
@@ -388,4 +399,4 @@ class DuplicateDomainTest(TestCase):
         v1 = infer_from_dataframe(DuplicateDomainTest.DF1)
         self.assertNotEqual(btype, v1[1].domain)
         print(btype, v1[1].domain)
-        self.assertTrue(btype.equiv(Distribution.type_from_json(v1[1].domain.to_json())))
+        self.assertTrue(btype.equiv(Distribution.from_json(v1[1].domain.to_json())))
