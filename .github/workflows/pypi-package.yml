@@ -35,6 +35,11 @@ jobs:
             with:
               path: "requirements-dev.txt"
 
+          - name: Run Tests 🎓
+            run: |
+              cd test
+              PYTHONPATH=../src python -m unittest discover
+
           - name: Build binary wheels 🔨
             uses: RalfG/python-wheels-manylinux-build@v0.7.1
             with:
