@@ -1,3 +1,4 @@
+-r ../requirements-dev.txt
 sphinx
 sphinxcontrib-bibtex
 sphinx-paramlinks
