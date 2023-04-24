@@ -102,19 +102,25 @@ class MultinomialDistributionTest(TestCase):
         DistABC = self.DistABC
         Dist123 = self.Dist123
 
-        DistABC_ = Distribution.type_from_json(DistABC.type_to_json())
-        Dist123_ = Distribution.type_from_json(Dist123.type_to_json())
+        DistABC_ = Distribution.from_json(DistABC.type_to_json())
+        Dist123_ = Distribution.from_json(Dist123.type_to_json())
 
         self.assertTrue(DistABC_.equiv(DistABC))
         self.assertTrue(Dist123_.equiv(Dist123))
 
     def test_distributions_serialization(self):
         '''(De-)Serialziation of Multinomial distributions'''
+        # Arrange
         DistABC = self.DistABC
-        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
-        Distribution.type_from_json(DistABC.type_to_json())
-        d2 = Distribution.from_json(json.loads(json.dumps(d1.to_json())))
-        self.assertEqual(d1, d2)
+        d = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        d_type = Distribution.from_json(DistABC.type_to_json())
+        d_inst = d_type.from_json(json.loads(json.dumps(d.to_json())))
+
+        # Assert
+        self.assertEqual(d, d_inst)
+        self.assertTrue(DistABC.equiv(d_type))
 
     def test_distribution_manipulation(self):
         DistABC = self.DistABC
@@ -208,8 +214,16 @@ class NumericDistributionTest(TestCase):
         }))
 
     def test_distribution_serialization(self):
+        # Arrange
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
-        self.assertEqual(d, Distribution.from_json(d.to_json()))
+
+        # Act
+        d_type = Distribution.from_json(json.loads(json.dumps(type(d).to_json())))
+        d_inst = d_type.from_json(json.loads(json.dumps(d.to_json())))
+
+        # Assert
+        self.assertTrue(Numeric.equiv(d_type))
+        self.assertEqual(d, d_inst)
 
     def test_manipulation(self):
         DistGauss = self.DistGauss
@@ -217,11 +231,13 @@ class NumericDistributionTest(TestCase):
         d = DistGauss()._fit(data, col=0)
         self.assertEqual(d.expectation(), .5)
 
-        ground_truth = PiecewiseFunction.from_dict({ContinuousSet(np.NINF, DistGauss.values[.1], EXC, EXC): 0,
-                                                    ContinuousSet(DistGauss.values[.1], DistGauss.values[.9], INC, EXC):
-                                                        LinearFunction.from_points((DistGauss.values[.1], .0),
-                                                                                   (DistGauss.values[.9], 1.)),
-                                                    ContinuousSet(DistGauss.values[.9], np.PINF, INC, EXC): 1})
+        ground_truth = PiecewiseFunction.from_dict({
+            ContinuousSet(np.NINF, DistGauss.values[.1], EXC, EXC): 0,
+            ContinuousSet(DistGauss.values[.1], DistGauss.values[.9], INC, EXC):
+                LinearFunction.from_points((DistGauss.values[.1], .0),
+                                           (DistGauss.values[.9], 1.)),
+            ContinuousSet(DistGauss.values[.9], np.PINF, INC, EXC): 1
+        })
 
         f1 = d.crop(ContinuousSet(DistGauss.values[.1], DistGauss.values[.9], EXC, EXC)).cdf.round(10)
         f2 = ground_truth.round(10)
@@ -458,12 +474,12 @@ class IntegerDistributionTest(TestCase):
         fair_dice.set([1 / 6] * 6)
 
         # Act
-        dice_ = Distribution.type_from_json(dice.to_json())
-        fair_dice_ = Distribution.from_json(fair_dice.to_json())
+        dice_type = Distribution.from_json(dice.to_json())
+        fair_dice_inst = dice.from_json(fair_dice.to_json())
 
         # Assert
-        self.assertTrue(dice.equiv(dice_))
-        self.assertEqual(fair_dice_, fair_dice)
+        self.assertTrue(dice.equiv(dice_type))
+        self.assertEqual(fair_dice_inst, fair_dice)
 
     def test_list2set(self):
         # Arrange

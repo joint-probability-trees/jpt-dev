@@ -142,7 +142,7 @@ class Variable:
         }
 
     @staticmethod
-    def from_json(data: Dict[str, Any]) -> Union['NumericVariable', 'SymbolicVariable']:
+    def from_json(data: Dict[str, Any]) -> Union['NumericVariable', 'SymbolicVariable', 'IntegerVariable']:
         if data['type'] == 'numeric':
             return NumericVariable.from_json(data)
         elif data['type'] == 'symbolic':
@@ -234,13 +234,15 @@ class NumericVariable(Variable):
 
     @staticmethod
     def from_json(data: Dict[str, Any]) -> 'NumericVariable':
-        domain = Distribution.type_from_json(data['domain'])
-        return NumericVariable(name=data['name'],
-                               domain=domain,
-                               min_impurity_improvement=data.get(Variable.MIN_IMPURITY_IMPROVEMENT),
-                               max_std=data.get(NumericVariable.MAX_STDEV),
-                               precision=data.get(NumericVariable.PRECISION),
-                               blur=data.get(NumericVariable.BLUR))
+        domain = Distribution.from_json(data['domain'])
+        return NumericVariable(
+            name=data['name'],
+            domain=domain,
+            min_impurity_improvement=data.get(Variable.MIN_IMPURITY_IMPROVEMENT),
+            max_std=data.get(NumericVariable.MAX_STDEV),
+            precision=data.get(NumericVariable.PRECISION),
+            blur=data.get(NumericVariable.BLUR)
+        )
 
     @property
     def _max_std(self):
@@ -352,7 +354,7 @@ class IntegerVariable(Variable):
 
     @staticmethod
     def from_json(data: Dict[str, Any]) -> 'IntegerVariable':
-        domain = Distribution.type_from_json(data['domain'])
+        domain = Distribution.from_json(data['domain'])
         return IntegerVariable(
             name=data['name'],
             domain=domain,
@@ -385,15 +387,19 @@ class SymbolicVariable(Variable):
                  domain: type,
                  min_impurity_improvement: float = None,
                  invert_impurity: bool = None):
-        super().__init__(name,
-                         domain,
-                         min_impurity_improvement=min_impurity_improvement,
-                         invert_impurity=invert_impurity)
+        super().__init__(
+            name,
+            domain,
+            min_impurity_improvement=min_impurity_improvement,
+            invert_impurity=invert_impurity
+        )
 
     @staticmethod
-    def from_json(data) -> Dict[str, Any]:
-        domain = Distribution.type_from_json(data['domain'])
-        return SymbolicVariable(name=data['name'], domain=domain)
+    def from_json(data: Dict[str, Any]) -> 'SymbolicVariable':
+        return SymbolicVariable(
+            name=data['name'],
+            domain=Distribution.from_json(data['domain'])
+        )
 
     def to_json(self) -> Dict[str, Any]:
         return edict(super().to_json()) + {
@@ -651,9 +657,11 @@ class VariableMap:
         vmap = cls()
         varbyname = {var.name: var for var in variables}
         for vname, value in d.items():
-            vmap[varbyname[vname]] = (typ.from_json(value, *args)
-                                      if typ is not None and hasattr(typ, 'from_json')
-                                      else value)
+            vmap[varbyname[vname]] = (
+                typ.from_json(value, *args)
+                if typ is not None and hasattr(typ, 'from_json')
+                else value
+            )
         return vmap
 
     def __repr__(self):
@@ -729,6 +737,7 @@ class LabelAssignment(VariableAssignment):
             result[variable.name] = to_json(value)
 
         return result
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
