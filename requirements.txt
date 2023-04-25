@@ -9,3 +9,4 @@ arff
 tqdm
 tabulate
 fglib
+factorgraph
