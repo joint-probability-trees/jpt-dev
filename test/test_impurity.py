@@ -23,6 +23,9 @@ class ImpurityTest(TestCase):
     def setUpClass(cls) -> None:
         cls.data = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
 
+        # replace na with "None"
+        cls.data = cls.data.fillna("None")
+
         # declare variable types
         PatronsType = SymbolicType('Patrons', ['Some', 'Full', 'None'])
         PriceType = SymbolicType('Price', ['$', '$$', '$$$'])
