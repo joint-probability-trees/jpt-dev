@@ -25,6 +25,9 @@ jobs:
                 python-version: 3.8
                 cache: pip
 
+          - name: Setup Graphviz
+            uses: ts-graphviz/setup-graphviz@v1 📊
+
           - name: Install user dependencies 🍼
             uses: py-actions/py-dependency-install@v4
             with:
