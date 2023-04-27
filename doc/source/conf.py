@@ -12,26 +12,29 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../src/jpt'))
-
+import datetime
+sys.path.insert(0, os.path.abspath('../../src'))
+import jpt
 
 # -- Project information -----------------------------------------------------
 
-project = 'jpt'
-copyright = '2022, Daniel Nyga, Mareike Picklum, Tom Schierenbeck'
+project = 'pyJPT - Joint Probability Trees in Python'
+copyright = '{year}, Daniel Nyga, Mareike Picklum, Tom Schierenbeck'.format(year=datetime.date.today().year)
 author = 'Daniel Nyga, Mareike Picklum, Tom Schierenbeck'
 
 # The full version, including alpha/beta/rc tags
-release = '1.0.0'
+release = jpt.__version__
 
 # -- General configuration ---------------------------------------------------
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['autoapi.extension',
-              'sphinxcontrib.bibtex',
-              'nbsphinx']
+extensions = [
+    'autoapi.extension',
+    'sphinxcontrib.bibtex',
+    'nbsphinx'
+]
 
 # auto api setup
 autoapi_dirs = ['../../src/jpt']
