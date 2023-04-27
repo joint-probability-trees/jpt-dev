@@ -137,6 +137,8 @@ cdef class ConstantFunction(Function):
 
     cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2)
 
+    cpdef ConstantFunction xshift(self, DTYPE_t delta)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -168,6 +170,8 @@ cdef class LinearFunction(Function):
     cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +
 
     cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2)
+
+    cpdef LinearFunction xshift(self, DTYPE_t delta)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -249,3 +253,4 @@ cdef class PiecewiseFunction(Function):
 
     cpdef int idx_at(self, DTYPE_t x)
 
+    cpdef PiecewiseFunction xshift(self, DTYPE_t delta)

@@ -370,6 +370,9 @@ cdef class ConstantFunction(Function):
             raise ValueError('The x2 argument must be greater than x1.')
         return self.c * (x2 - x1)
 
+    cpdef ConstantFunction xshift(self, DTYPE_t delta):
+        return self.copy()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -613,6 +616,14 @@ cdef class LinearFunction(Function):
         elif x2 == x1:
             return 0
         return (.5 * self.m * x2 ** 2 + self.c * x2) - (.5 * self.m * x1 ** 2 + self.c * x1)
+
+    cpdef LinearFunction xshift(self, DTYPE_t delta):
+        '''
+        Shift the function along the x-axis by ``delta``, i.e. f(x - delta).
+        '''
+        cdef LinearFunction f = self.copy()
+        f.c = f(delta)
+        return f
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -928,8 +939,14 @@ cdef class PiecewiseFunction(Function):
             return result
         elif isinstance(f, PiecewiseFunction):
             result = PiecewiseFunction()
-            knots = sorted(set((itertools.chain(*[(i.lower, i.upper) for i in f.intervals] +
-                                                 [(i.lower, i.upper) for i in self.intervals]))))
+            knots = sorted(
+                set(
+                    itertools.chain(
+                        *[(i.lower, i.upper) for i in f.intervals] +
+                         [(i.lower, i.upper) for i in self.intervals]
+                    )
+                )
+            )
             for lower, upper in pairwise(knots):
                 result.intervals.append(ContinuousSet(lower, upper, INC, EXC))
                 if not np.isinf(lower) and not np.isinf(upper):
@@ -962,13 +979,13 @@ cdef class PiecewiseFunction(Function):
         elif isinstance(f, PiecewiseFunction):
             result = PiecewiseFunction()
             knots = sorted(
-                set((
+                set(
                     itertools.chain(*[
                         (i.lower, i.upper) for i in f.intervals
                     ] + [
                         (i.lower, i.upper) for i in self.intervals
                     ])
-                ))
+                )
             )
             for lower, upper in pairwise(knots):
                 result.intervals.append(
@@ -1002,37 +1019,43 @@ cdef class PiecewiseFunction(Function):
         result.intervals = [i.copy() for i in self.intervals]
         return result
 
-    def add_function(self, interval: ContinuousSet, func: Function):
+    def overwrite(self, interval: ContinuousSet, func: Function) -> 'PiecewiseFunction':
         """
-        Add a function and interval into this function.
+        Overwrite this function in the specified interval range with the passed function ``func``.
+
         :param interval: The interval to update
         :param func: The function to replace the old function at ``interval``
         :return: The update function
         """
-        if not self.intervals:
-            self.intervals.append(interval)
-            self.functions.append(func)
-            return
-        intervals = deque()
-        functions = deque()
+        result = self.copy()
+        if not result.intervals:
+            result.intervals.append(interval)
+            result.functions.append(func)
+            return result
+        intervals = []
+        functions = []
         added_ = False
-        for j, i in enumerate(self.intervals):
-            f = self.functions[j]
-            i_ = i.difference(interval)
-            if not i_.isempty():
-                if isinstance(i_, ContinuousSet):
-                    i_ = RealSet(i_)
-                intervals.append(i_.intervals[0].copy())
-                functions.append(f)
-            if i_ != i and not added_:
-                intervals.append(interval)
-                functions.append(func)
-                added_ = True
+        segments = deque(zip(result.intervals, result.functions))
+        insert_pos = 0
+        while segments:
+            i, f = segments.popleft()
+            intersection = i.intersection(interval, left=INC, right=EXC)
+            i_ = i.difference(intersection).simplify()
+            if i_.isempty():  # The original interval is subsumed by the new one and thus disappears
+                continue
             if isinstance(i_, RealSet) and len(i_.intervals) > 1:
-                intervals.append(i_.intervals[1].copy())
-                functions.append(f)
-        self.intervals = list(intervals)
-        self.functions = list(functions)
+                segments.appendleft((i_.intervals[1], f.copy()))
+                i_ = i_.intervals[0]
+            if isinstance(i_, ContinuousSet):
+                intervals.append(i_)
+                functions.append(f.copy())
+            if interval.max > i_.min:
+                insert_pos += 1
+        intervals.insert(insert_pos, interval.boundaries(left=0, right=EXC))
+        functions.insert(insert_pos, func)
+        result.intervals = list(intervals)
+        result.functions = list(functions)
+        return result
 
     cpdef tuple split(self, DTYPE_t splitpoint):
         """
@@ -1442,3 +1465,20 @@ cdef class PiecewiseFunction(Function):
         f_max = PiecewiseFunction.max(f1, f2)
         f_min = PiecewiseFunction.min(f1, f2)
         return f_min.integrate(interval) / f_max.integrate(interval)
+
+    cpdef PiecewiseFunction xshift(self, DTYPE_t delta):
+        '''
+        Returns a copy of this function, which is shifted the on the x-axis by ``delta``.
+        
+        Corresponds to a translation of $f(x - \Delta)$, i.e. positive values of
+        $\Delta$ will cause the function to "move to the right", negative value will
+        move it to the left. 
+        '''
+        cdef PiecewiseFunction f = self.copy()
+        for j, i in enumerate(f.intervals):
+            if np.isfinite(i.lower):
+                i.lower -= delta
+            if np.isfinite(i.upper):
+                i.upper -= delta
+            f.functions[j] = f.functions[j].xshift(delta)
+        return f

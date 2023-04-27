@@ -3,6 +3,8 @@ from unittest import TestCase
 import numpy as np
 from ddt import ddt, data, unpack
 
+from jpt.base.constants import eps
+
 try:
     from jpt.base.functions import __module__
     from jpt.base.intervals import __module__
@@ -18,7 +20,7 @@ finally:
         Function,
         PiecewiseFunction
     )
-    from jpt.base.intervals import ContinuousSet, EMPTY, R
+    from jpt.base.intervals import ContinuousSet, EMPTY, R, EXC, INC
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -169,6 +171,16 @@ class LinearFunctionTest(TestCase):
     def test_integration(self, f, x, i):
         self.assertEqual(i, f.integrate(x[0], x[1]))
 
+    def test_xshift(self):
+        # Arrange
+        f = LinearFunction(2, -1)
+
+        # Act
+        f_ = f.xshift(5)  # shift f to the left by 5
+
+        # Assert
+        self.assertEqual(LinearFunction(2, 9), f_)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -233,6 +245,7 @@ class QuadraticFunctionTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+@ddt
 class PLFTest(TestCase):
 
     def test_plf_constant_from_dict(self):
@@ -500,3 +513,89 @@ class PLFTest(TestCase):
         self.assertAlmostEqual(.4, sim_symmetric, places=7)
         self.assertEqual(1, sim_reflexive)
         self.assertEqual(0, sim_disjoint)
+
+    def test_overwrite_1(self):
+        # Arrange
+        result = PiecewiseFunction.from_dict({R: 0})
+
+        # Act
+        result = result.overwrite(
+            ContinuousSet(0, 1),
+            ConstantFunction(1)
+        )
+
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                ']-inf,0[': 0,
+                ContinuousSet(0, 1 + eps, INC, EXC): 1,
+                ContinuousSet(1 + eps, np.inf, INC, EXC): 0
+            }),
+            result
+        )
+
+        # Act
+        result = result.overwrite(
+            ContinuousSet(.5, 1.5),
+            ConstantFunction(2)
+        )
+
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                ']-inf,0[': 0,
+                ContinuousSet(0, .5, INC, EXC): 1,
+                ContinuousSet(.5, 1.5 + eps, INC, EXC): 2,
+                ContinuousSet(1.5 + eps, np.inf, INC, EXC): 0
+            }),
+            result
+        )
+
+    def test_overwrite_2(self):
+        # Arrange
+        result = PiecewiseFunction.from_dict({
+            ContinuousSet(-2, -1, INC, EXC): 1,
+            ContinuousSet(1, 2, INC, EXC): 1
+        })
+
+        # Act
+        result = result.overwrite(ContinuousSet(-.5, .5, INC, EXC), ConstantFunction(2))
+
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                ContinuousSet(-2, -1, INC, EXC): 1,
+                ContinuousSet(-.5, .5, INC, EXC): ConstantFunction(2),
+                ContinuousSet(1, 2, INC, EXC): 1
+            }),
+            result
+        )
+
+    def test_xshift(self):
+        # Arrange
+        plf = PiecewiseFunction.from_dict({
+             R: 0
+        })
+        plf2 = PiecewiseFunction.from_points([
+                (-2, 0),
+                (-1, 1),
+                (1, 1),
+                (2 - eps, 0)
+        ])
+        for i, f in plf2:
+            plf = plf.overwrite(i, f)
+
+        # Act
+        result = plf.xshift(3)
+
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                ']-∞,-5.0[': 0,
+                '[-5.0,-4.0[': 'x+5',
+                '[-4.0,-2.0[': 1,
+                '[-2.0,-1.0[': LinearFunction(-1 - eps, - 1 - eps - eps - eps - eps),
+                '[-1.0,∞[': 0,
+            }),
+            result
+        )
