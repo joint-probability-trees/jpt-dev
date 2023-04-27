@@ -857,7 +857,7 @@ cdef class ContinuousSet(NumberSet):
         elif self.contains_interval(other, proper_containment=True):
             result = RealSet([
                 ContinuousSet(self.lower, other.lower, self.left, _INC if other.left == _EXC else _EXC),
-                ContinuousSet(other.upper, self.upper, _INC if other.left == _EXC else _EXC, self.right)
+                ContinuousSet(other.upper, self.upper, _INC if other.right == _EXC else _EXC, self.right)
             ])
             return result
         elif self.intersects(other):

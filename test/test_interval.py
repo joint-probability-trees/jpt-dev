@@ -40,7 +40,7 @@ class UtilsTest(unittest.TestCase):
 
 
 @ddt
-class IntervalTest(unittest.TestCase):
+class ContinuousSetTest(unittest.TestCase):
 
     @data(('[-10, 5]', ContinuousSet(-10, 5)),
           (']5, 10]', ContinuousSet(5, 10, EXC)),
@@ -176,6 +176,7 @@ class IntervalTest(unittest.TestCase):
     @data(('[-10, 5]', '[0, 10]', ContinuousSet.parse('[-10,0[')),
           ('[-10, 10]', '[-5, 5]', RealSet(['[-10,-5[', ']5,10]'])),
           ('[-10, 10]', ']-5, 5[', RealSet(['[-10,-5]', '[5,10]'])),
+          ('[-10, 10]', '[-5, 5[', RealSet(['[-10,-5[', '[5,10]'])),
           ('[-1.0,1.0]', '[0.0, 1.0]', ContinuousSet(-1, 0, INC, EXC)),
           ('[0,1]', '[1,2]', ContinuousSet(0, 1, INC, EXC))
           # ('[-10, 10]', '[-10, 10]', '[-10,10]'),
