@@ -1,5 +1,8 @@
 from unittest import TestCase
 
+import np
+
+from jpt.base.constants import eps
 from jpt.base.utils import mapstr, setstr_int
 
 
@@ -24,3 +27,15 @@ class UtilsTest(TestCase):
         # Assert
         self.assertEqual('0...2, 4, 6, 7, 9...11', str_1)
         self.assertEqual('0, ..., 2, 4, 6, 7, 9, ..., 11', str_2)
+
+    def test_epsilon(self):
+        # Arrange
+        x = np.pi
+
+        # Act
+        x_plus_eps = x + eps
+        x_minus_eps = x - eps
+
+        # Assert
+        self.assertEqual(np.nextafter(x, x + 1), x_plus_eps)
+        self.assertEqual(np.nextafter(x, x - 1), x_minus_eps)

@@ -1,3 +1,5 @@
+import numpy as np
+
 sepcomma = ',\n'
 sepsemi = ';\n'
 sepn = '\n'
@@ -64,3 +66,22 @@ class SYMBOL:
     THETA = '\u03D1'
     ARROW_BAR_LEFT = '\u21E4'
     ARROW_BAR_RIGHT = '\u21E5'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Numeric constants
+
+class Epsilon:
+    '''
+    Class representing the smallest machine-representable increment or decrement
+    of a 64bit float based on numpy data types.
+    '''
+
+    def __radd__(self, x):
+        return np.nextafter(x, x + 1)
+
+    def __rsub__(self, x):
+        return np.nextafter(x, x - 1)
+
+
+eps = Epsilon()
