@@ -418,7 +418,7 @@ class RealSetTest(unittest.TestCase):
         self.assertEqual(o, i.simplify())
 
     @data(
-        (RealSet(['[-1,1]', '[-.5,.5]']), RealSet(['[0,1[']), RealSet(['[-1,0[', ']1,1]'])),
+        (RealSet(['[-1,1]', '[-.5,.5]']), RealSet(['[0,1[']), RealSet(['[-1,0[', '[1,1]'])),
         (RealSet(['[-1,1]', '[-.5,.5]']), RealSet(['[0,1]']), ContinuousSet.parse('[-1,0[')),
         (RealSet(['[0,1]', '[1,2]', '[2,3]']), ContinuousSet(1, 2), RealSet(['[0,1[', ']2,3]'])),
         (RealSet([EMPTY]), EMPTY, EMPTY),
