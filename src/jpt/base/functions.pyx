@@ -844,6 +844,7 @@ cdef class PiecewiseFunction(Function):
             plf.functions.append(LinearFunction.from_points(p1, p2))
             plf.intervals.append(ContinuousSet(x1, x2, INC, EXC))
         plf.intervals[-1].right = INC
+        plf.intervals[-1] = plf.intervals[-1].ends(right=EXC)
         return plf
 
     cpdef DTYPE_t eval(self, DTYPE_t x):

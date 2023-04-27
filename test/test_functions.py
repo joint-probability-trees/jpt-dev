@@ -418,7 +418,7 @@ class PLFTest(TestCase):
             PiecewiseFunction.from_dict({
                 '[0,1[': 'x',
                 '[1,2[': '-3x+4',
-                '[2,3]': '5x-12'
+                ContinuousSet(2, 3 + eps, INC, EXC): '5x-12'
             }),
             plf
         )
