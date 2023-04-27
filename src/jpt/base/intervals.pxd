@@ -124,3 +124,5 @@ cdef class ContinuousSet(NumberSet):
     cpdef inline ContinuousSet boundaries(ContinuousSet self, int left=*, int right=*)
 
     cpdef NumberSet simplify(self)
+
+    cpdef ContinuousSet ends(self, int left=*, int right=*)

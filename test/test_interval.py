@@ -7,7 +7,9 @@ from ddt import ddt, data, unpack
 import numpy as np
 import unittest
 
-from dnutils import out
+from dnutils.tools import ifstr
+
+from jpt.base.constants import eps
 
 try:
     from jpt.base.intervals import __module__
@@ -364,6 +366,29 @@ class ContinuousSetTest(unittest.TestCase):
             [i], chops
         )
         self.assertEqual(i, RealSet(intervals=chops))
+
+    @data(
+        ('[0,1]', {'left': INC, 'right': INC}, '[0,1]'),
+        ('[0,1]', {'left': EXC, 'right': EXC}, ContinuousSet(0 - eps, 1 + eps, EXC, EXC)),
+        (']0,1[', {'left': INC, 'right': INC}, ContinuousSet(0 + eps, 1 - eps, INC, INC)),
+    )
+    @unpack
+    def test_ends(self, i, args, t):
+        # Arrange
+        i = ifstr(i, ContinuousSet.parse)
+        t = ifstr(t, ContinuousSet.parse)
+
+        # Act
+        i_ = i.ends(**args)
+
+        # Assert
+        self.assertEqual(
+            t,
+            i_,
+            msg='Transforming %s with %s returned %s, not %s' % (
+                i, args, i_, t
+            )
+        )
 
 
 @ddt

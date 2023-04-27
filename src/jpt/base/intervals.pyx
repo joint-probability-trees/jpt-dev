@@ -20,6 +20,7 @@ cimport numpy as np
 cimport cython
 from dnutils import ifnone, first, ifnot
 
+from jpt.base.constants import eps
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -952,6 +953,24 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef NumberSet simplify(self):
         return self.copy()
+
+    cpdef ContinuousSet ends(self, int left=-1, int right=-1):
+        cdef ContinuousSet result = self.copy()
+        if left != -1:
+            if result.left == _INC and left == _EXC:
+                result.lower = result.lower - eps
+                result.left = _EXC
+            if result.left == _EXC and left == _INC:
+                result.lower = result.lower + eps
+                result.left = _INC
+        if right != -1:
+            if result.right == _INC and right == _EXC:
+                result.upper = result.upper + eps
+                result.right = _EXC
+            elif result.right == _EXC and right == _INC:
+                result.upper = result.upper - eps
+                result.right = _INC
+        return result
 
     def __contains__(self, x):
         try:
