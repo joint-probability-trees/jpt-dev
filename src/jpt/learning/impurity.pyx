@@ -575,11 +575,18 @@ cdef class Impurity:
         cdef SIZE_t i, j
         result[...] = 0
         for i in range(self.n_sym_vars):
+
+            # skip variables that only have 1 possible value
+            if self.symbols[i] == 1:
+                continue
+
             for j in range(self.symbols[i]):
                 result[i] += <DTYPE_t> counts[j, i] * counts[j, i]
+
             result[i] /= <DTYPE_t> (n_samples * n_samples)
             result[i] -= 1
             result[i] /= 1. / (<DTYPE_t> self.symbols[i]) - 1.
+
             if self.invert_impurity[i]:
                 result[i] = 1 - result[i]
 
@@ -686,9 +693,7 @@ cdef class Impurity:
             # calculate gini impurity of histogram
             self.gini_impurity(self.symbols_total, n_samples, self.gini_impurities)
 
-            # save total gini impurity as mean of all symbolic dimensions impurities and replace nan by 0, since nan
-            # only occurs for constant columns
-            gini_total = np.nan_to_num(mean(self.gini_impurities), copy=False)
+            gini_total = mean(self.gini_impurities)
 
         else:
             gini_total = 0

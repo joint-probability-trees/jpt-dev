@@ -695,24 +695,54 @@ class TestConstantColumns(unittest.TestCase):
         np.random.seed(69)
         z = np.ones((100, 1), dtype=str)
         xy = np.random.uniform(0, 1, (100, 2))
-        rotation = np.array([np.cos(np.pi/4), -np.sin(np.pi/4), np.sin(np.pi/4), np.cos(np.pi/4)]).reshape(2,2)
+        rotation = np.array([np.cos(np.pi / 4), -np.sin(np.pi / 4), np.sin(np.pi / 4), np.cos(np.pi / 4)]).reshape(2, 2)
         xy = xy @ rotation
         data = np.concatenate([xy, z], axis=-1)
         cls.data = pd.DataFrame(data, columns=["x", "y", "z"]).astype({"x": float, "y": float, "z": str})
 
-    def test_learning_symbolic(self):
+    def test_learning_single_constant_symbolic(self):
         model = JPT(variables=infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.1,
                     min_impurity_improvement=0)
         model = model.fit(self.data)
         self.assertTrue(len(model.leaves) > 1)
 
-    def test_learning_numeric(self):
+    def test_learning_single_constant_numeric(self):
         data = self.data.copy()
         data["z"] = data["z"].astype(float)
         model = JPT(variables=infer_from_dataframe(data, scale_numeric_types=False), min_samples_leaf=0.1,
                     min_impurity_improvement=0)
         model = model.fit(data)
         self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_multiple_constant_symbolic(self):
+        data = self.data.copy()
+        data["a"] = data["z"].copy()
+        model = JPT(variables=infer_from_dataframe(data, scale_numeric_types=False), min_samples_leaf=0.1,
+                    min_impurity_improvement=0)
+        model = model.fit(data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_multiple_constant_numeric(self):
+        data = self.data.copy()
+        data["z"] = data["z"].astype(float)
+        data["a"] = data["z"].copy()
+        model = JPT(variables=infer_from_dataframe(data, scale_numeric_types=False), min_samples_leaf=0.1,
+                    min_impurity_improvement=0)
+        model = model.fit(data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_multiple_constant_mixed(self):
+        data = self.data.copy()
+        data["a"] = data["z"].astype(float).copy()
+        data["b"] = np.zeros(100, dtype=int)
+        data["c"] = np.zeros(100, dtype=int)
+        data["d"] = np.zeros(100, dtype=str)
+        data["e"] = np.zeros(100, dtype=float)
+        model = JPT(variables=infer_from_dataframe(data, scale_numeric_types=False), min_samples_leaf=0.1,
+                    min_impurity_improvement=0)
+        model = model.fit(data)
+        self.assertTrue(len(model.leaves) > 1)
+
 
 class PreprocessingTest(TestCase):
 
@@ -747,12 +777,12 @@ class PreprocessingTest(TestCase):
         jpt = JPT(variables=[va, vb, vc])
 
         data = DataFrame.from_records([
-                ['250000', '250000', 3],
-                ['0', '0', 7],
-                ['250000', '250001', 7],
-                ['250000', '250006', 5],
-                ['0', '0', 7]
-            ],
+            ['250000', '250000', 3],
+            ['0', '0', 7],
+            ['250000', '250001', 7],
+            ['250000', '250006', 5],
+            ['0', '0', 7]
+        ],
             columns=['V1', 'V2', 'V3']
         )
 
