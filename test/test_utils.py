@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-import np
+import numpy as np
 
 from jpt.base.constants import eps
 from jpt.base.utils import mapstr, setstr_int
