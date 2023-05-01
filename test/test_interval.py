@@ -354,7 +354,7 @@ class ContinuousSetTest(unittest.TestCase):
         )
         self.assertEqual(i, RealSet(intervals=chop_upper))
 
-    def test_chop_border_case_open(self):
+    def test_chop_border_case_closed_left(self):
         # Arrange
         i = ContinuousSet(0, 1)
 
