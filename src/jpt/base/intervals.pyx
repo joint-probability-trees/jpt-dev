@@ -988,11 +988,9 @@ cdef class ContinuousSet(NumberSet):
         if isinstance(other, RealSet):
             return other == self
         return all((
-            self.lower == other.lower,
-            self.upper == other.upper,
-            self.left == other.left,
-            self.right == other.right
-        ))  # hash(self) == hash(other)
+            self.min == other.min,
+            self.max == other.max
+        ))
 
     def __ne__(self, other):
         return not self == other

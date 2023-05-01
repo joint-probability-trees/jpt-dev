@@ -70,8 +70,40 @@ class ContinuousSetTest(unittest.TestCase):
     def test_value_check(self):
         self.assertRaises(ValueError, ContinuousSet, 1, -1)
 
-    def test_lowermost(self):
-        self.assertEqual(np.nextafter(1, 2), ContinuousSet.parse(']1,2]').lowermost())
+    @data(
+        ('[0,1]', '[0,1]', True),
+        ('[0,1]', '[0,1)', False),
+        ('[0,1)', '[0,1]', False),
+        ('[0,1)', '[0,1)', True),
+        ('(0,1]', '[0,1]', False),
+        ('(0,1]', '(0,1]', True),
+        (ContinuousSet(0 + eps, 1 - eps, INC, INC), '(0,1)', True)
+    )
+    @unpack
+    def test_equality(self, i1, i2, eq):
+        # Arrange
+        i1 = ifstr(i1, ContinuousSet.parse)
+        i2 = ifstr(i2, ContinuousSet.parse)
+        # Act & Assert
+        if eq:
+            self.assertEqual(i1, i2)
+        else:
+            self.assertNotEqual(i1, i2)
+
+    @data(
+        ('[0,1]', 0, 1),
+        ('(-1,1)', -1 + eps, 1 - eps),
+        ('(3,4]', 3 + eps, 4)
+    )
+    @unpack
+    def test_min_max(self, i, min_true, max_true):
+        # Arrange
+        i = ifstr(i, ContinuousSet.parse)
+        # Act
+        min_, max_ = i.min, i.max
+        # Assert
+        self.assertEqual(min_true, min_)
+        self.assertEqual(max_true, max_)
 
     @data(']0, 0[',)
     def test_emptyness(self, s):
@@ -338,8 +370,8 @@ class ContinuousSetTest(unittest.TestCase):
         i = ContinuousSet(0, 1, EXC, EXC)
 
         # Act
-        chop_lower = list(i.chop([i.min()]))
-        chop_upper = list(i.chop([i.max()]))
+        chop_lower = list(i.chop([i.min]))
+        chop_upper = list(i.chop([i.max]))
 
         # Assert
         self.assertEqual(
@@ -348,8 +380,8 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(i, RealSet(intervals=chop_lower))
         self.assertEqual(
             [
-                ContinuousSet(0, i.max(), INC, EXC),
-                ContinuousSet(i.max(), i.max())
+                ContinuousSet(0, i.max, EXC, EXC),
+                ContinuousSet(i.max, i.max)
             ], chop_upper
         )
         self.assertEqual(i, RealSet(intervals=chop_upper))
@@ -389,6 +421,22 @@ class ContinuousSetTest(unittest.TestCase):
                 i, args, i_, t
             )
         )
+
+@data(
+    ('[0,1]', '[-1,0]'),
+    ('(3,5]', '[-5,-3)'),
+    ('(-1,1)', '(-1,1)')
+)
+@unpack
+def test_xmirror(self, i, t):
+    # Arrange
+    i = ifstr(i, ContinuousSet.parse)
+
+    # Act
+    r = i.xmirror()
+
+    # Assert
+    self.assertEqual(t, r)
 
 
 @ddt
