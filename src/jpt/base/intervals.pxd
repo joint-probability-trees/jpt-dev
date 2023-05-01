@@ -64,6 +64,8 @@ cdef class RealSet(NumberSet):
 
     cpdef inline RealSet copy(RealSet self)
 
+    cpdef inline RealSet xmirror(self)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -123,6 +125,8 @@ cdef class ContinuousSet(NumberSet):
 
     cpdef inline ContinuousSet boundaries(ContinuousSet self, int left=*, int right=*)
 
-    cpdef NumberSet simplify(self)
+    cpdef inline NumberSet simplify(self)
 
-    cpdef ContinuousSet ends(self, int left=*, int right=*)
+    cpdef inline ContinuousSet ends(self, int left=*, int right=*)
+
+    cpdef inline ContinuousSet xmirror(self)

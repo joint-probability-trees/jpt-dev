@@ -414,11 +414,25 @@ cdef class RealSet(NumberSet):
         for i in self.simplify().intervals:
             yield from i.chop(points)
 
+    cpdef inline RealSet xmirror(self):
+        '''
+        Returns a modification of this ``RealSet``, which has been mirrored at position x=0.  
+        :return: 
+        '''
+        return RealSet(
+            list(
+                reversed(
+                    [i.xmirror() for i in self.intervals]
+                )
+            )
+        )
+
     def __and__(self, other):
         return self.intersection(other)
 
     def __or__(self, other):
         return self.union(other)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -951,10 +965,10 @@ cdef class ContinuousSet(NumberSet):
         if remainder:
             yield remainder
 
-    cpdef NumberSet simplify(self):
+    cpdef inline NumberSet simplify(self):
         return self.copy()
 
-    cpdef ContinuousSet ends(self, int left=-1, int right=-1):
+    cpdef inline ContinuousSet ends(self, int left=-1, int right=-1):
         cdef ContinuousSet result = self.copy()
         if left != -1:
             if result.left == _INC and left == _EXC:
@@ -970,6 +984,17 @@ cdef class ContinuousSet(NumberSet):
             elif result.right == _EXC and right == _INC:
                 result.upper = result.upper - eps
                 result.right = _INC
+        return result
+
+    cpdef inline ContinuousSet xmirror(self):
+        '''
+        Returns a modification of this ``ContinuousSet``, which has been mirrored at position ``x=0``.
+        
+        :return: 
+        '''
+        result = self.copy()
+        result.lower, result.upper = -result.upper, -result.lower
+        result.left, result.right = result.right, result.left
         return result
 
     def __contains__(self, x):
