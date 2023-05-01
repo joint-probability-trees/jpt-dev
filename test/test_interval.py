@@ -422,21 +422,22 @@ class ContinuousSetTest(unittest.TestCase):
             )
         )
 
-@data(
-    ('[0,1]', '[-1,0]'),
-    ('(3,5]', '[-5,-3)'),
-    ('(-1,1)', '(-1,1)')
-)
-@unpack
-def test_xmirror(self, i, t):
-    # Arrange
-    i = ifstr(i, ContinuousSet.parse)
-
-    # Act
-    r = i.xmirror()
-
-    # Assert
-    self.assertEqual(t, r)
+    @data(
+        ('[0,1]', '[-1,0]'),
+        ('(3,5]', '[-5,-3)'),
+        ('(-1,1)', '(-1,1)')
+    )
+    @unpack
+    def test_xmirror(self, i, t):
+        # Arrange
+        i = ifstr(i, ContinuousSet.parse)
+        t = ifstr(t, ContinuousSet.parse)
+        # Act
+        r = i.xmirror()
+        # Assert
+        self.assertEqual(t, r)
+        self.assertEqual(r.min , -i.max)
+        self.assertEqual(r.max, -i.min)
 
 
 @ddt
@@ -654,6 +655,19 @@ class RealSetTest(unittest.TestCase):
                 ContinuousSet(2.5, 3, INC, EXC),
             ],
             list(chops)
+        )
+
+    def test_xmirror(self):
+        # Arrange
+        s = RealSet(['(-1,1]', '[2,3)'])
+        # Act
+        s_ = s.xmirror()
+        # Assert
+        self.assertEqual(
+            RealSet([
+                '(-3,-2]', '[-1,1)'
+            ]),
+            s_
         )
 
 
