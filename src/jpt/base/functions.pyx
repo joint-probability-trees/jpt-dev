@@ -13,9 +13,10 @@ from itertools import chain
 import itertools
 import numbers
 from collections import deque
+from operator import attrgetter
 from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any
 
-from dnutils import ifnot, ifnone, pairwise
+from dnutils import ifnot, ifnone, pairwise, last, fst
 from scipy import stats
 from scipy.stats import norm
 
