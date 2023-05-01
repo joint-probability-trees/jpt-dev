@@ -13,9 +13,10 @@ from itertools import chain
 import itertools
 import numbers
 from collections import deque
+from operator import attrgetter
 from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any
 
-from dnutils import ifnot, ifnone, pairwise
+from dnutils import ifnot, ifnone, pairwise, fst, last
 from scipy import stats
 from scipy.stats import norm
 
@@ -86,14 +87,17 @@ cdef class Function:
             raise TypeError('Unsupported operand type(s) for +: %s and %s' % (type(self).__name__,
                                                                               type(other).__name__))
 
-    def __mul__(self, other):
+    def __mul__(self, other: Union[float, Function]) -> 'Function':
         if isinstance(other, numbers.Real):
             return self.mul(ConstantFunction(other)).simplify()
         elif isinstance(other, Function):
             return self.mul(other).simplify()
         else:
-            raise TypeError('Unsupported operand type(s) for *: %s and %s' % (type(self).__name__,
-                                                                              type(other).__name__))
+            raise TypeError(
+                'Unsupported operand type(s) for *: %s and %s' % (
+                    type(self).__name__,
+                    type(other).__name__)
+            )
 
     def __iadd__(self, other):
         return self.set(self + other)
@@ -1536,3 +1540,39 @@ cdef class PiecewiseFunction(Function):
         result.functions = list(reversed([f.xmirror() for f in self.functions]))
         return result
 
+
+    def convolution(self, f: PiecewiseFunction) -> 'PiecewiseFunction':
+        '''
+        Compute a new function, which is given by the convolution of this function
+        and a second functino ``f``.
+
+        :param f:
+        :return:
+        '''
+        g = self
+        boundaries_g = g.boundaries()
+        boundaries_f = f.boundaries()
+        boundaries = list(sorted(set(boundaries_f + boundaries_g)))
+        print(boundaries_g, boundaries_f, boundaries)
+        z = max(boundaries_f) - min(boundaries_g)
+        f_ = f.xshift(z)
+        boundaries_f = f_.boundaries()
+        distances = np.array(
+            [[b_f - b_g for b_f in boundaries_f] for b_g in boundaries_g]
+        )
+        print(f_)
+        support_points = [z]
+        while not np.all(distances >= 0 + eps):
+            distance_min = np.abs(distances[distances != 0]).min()
+            print('distances:\n', distances, 'min abs. dist:', distance_min)
+            f_ = f_.xshift(-distance_min)
+            z += distance_min
+            support_points.append(z)
+            boundaries_g = g.boundaries()
+            boundaries_f = f_.boundaries()
+            distances = np.array(
+                [[b_f - b_g for b_f in boundaries_f] for b_g in boundaries_g]
+            )
+            print(f_)
+        print(f_)
+        print(support_points)
