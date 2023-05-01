@@ -19,6 +19,7 @@ from dnutils import ifnot, ifnone, pairwise
 from scipy import stats
 from scipy.stats import norm
 
+from .constants import eps
 from .intervals cimport ContinuousSet, RealSet
 from .intervals import R, EMPTY, EXC, INC, NumberSet, ContinuousSet
 
@@ -118,6 +119,9 @@ cdef class Function:
         Get a fresh copy of this function.
         :return: the fresh copy
         """
+        raise NotImplementedError()
+
+    cpdef Function xmirror(self):
         raise NotImplementedError()
 
 
@@ -373,6 +377,14 @@ cdef class ConstantFunction(Function):
     cpdef ConstantFunction xshift(self, DTYPE_t delta):
         return self.copy()
 
+    cpdef Function xmirror(self):
+        '''
+        Returns a modification of the functino that has been mirrored
+        at position x=0.
+        :return: 
+        '''
+        return self.copy()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -553,8 +565,8 @@ cdef class LinearFunction(Function):
         else:
             return self.copy()
 
-    @staticmethod
-    def from_points((DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2):
+    @classmethod
+    def from_points(cls, (DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2) -> 'Function':
         """
         Construct a linear function for two points.
         :param p1: the first point
@@ -574,7 +586,7 @@ cdef class LinearFunction(Function):
         cdef DTYPE_t c = y1 - m * x1
         assert not np.isnan(m) and not np.isnan(c), \
             'Fitting linear function from %s to %s resulted in m=%s, c=%s' % (p1, p2, m, c)
-        return LinearFunction(m, c)
+        return cls(m, c)
 
     cpdef np.int32_t is_invertible(self):
         """
@@ -624,6 +636,17 @@ cdef class LinearFunction(Function):
         cdef LinearFunction f = self.copy()
         f.c = f(delta)
         return f
+
+    cpdef Function xmirror(self):
+        '''
+        Returns a modification of the functino that has been mirrored
+        at position x=0.
+        :return: 
+        '''
+        return LinearFunction(
+            -self.m,
+            self.c
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -710,8 +733,8 @@ cdef class QuadraticFunction(Function):
     def from_json(data):
         return QuadraticFunction(data.get('a', 0), data.get('b', 0), data.get('c', 0))
 
-    @staticmethod
-    def from_points((DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2, (DTYPE_t, DTYPE_t) p3):
+    @classmethod
+    def from_points(cls, (DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2, (DTYPE_t, DTYPE_t) p3):
         if any(np.isnan(p) for p in itertools.chain(p1, p2, p3)):
             raise ValueError('Arguments %s, %s are invalid.' % (p1, p2))
         if p1 == p2 or p2 == p3 or p1 == p3:
@@ -719,7 +742,7 @@ cdef class QuadraticFunction(Function):
         x = np.array(list(p1), dtype=np.float64)
         y = np.array(list(p2), dtype=np.float64)
         z = np.array(list(p3), dtype=np.float64)
-        return QuadraticFunction(np.nan, np.nan, np.nan).fit(x, y, z)
+        return cls(np.nan, np.nan, np.nan).fit(x, y, z)
 
     cpdef DTYPE_t argvertex(self):
         return self.differentiate().simplify().root()
@@ -821,8 +844,17 @@ cdef class PiecewiseFunction(Function):
         else:
             return True
 
-    @staticmethod
-    def from_dict(d: Dict[Union[ContinuousSet, str], Union[Function, str]]) -> PiecewiseFunction:
+    @classmethod
+    def from_dict(cls, d: Dict[Union[ContinuousSet, str], Union[Function, str, float]]) -> PiecewiseFunction:
+        '''
+        Construct a ``PiecewiseFunction`` object from a set of key-value pairs mapping
+        ``ContinuousSet``s to ``Function``s.
+
+        Objects of ``ContinuousSet`` and ``Function`` are allowed or their respective string
+        representation. ``ConstantFunction``s may be passed by means of their constant float value.
+
+        :rtype: PiecewiseFunction
+        '''
         intervals = []
         functions = []
         for interval, function in d.items():
@@ -842,8 +874,8 @@ cdef class PiecewiseFunction(Function):
         plf.functions.extend([f for _, f in fcts])
         return plf
 
-    @staticmethod
-    def from_points(points: Iterable[Tuple[float, float]]) -> PiecewiseFunction:
+    @classmethod
+    def from_points(cls, points: Iterable[Tuple[float, float]]) -> PiecewiseFunction:
         '''
         Construct a contiguous piecewise-linear function from a sequence of (x, y) coordinates, where
         each point represents an interval border.
@@ -854,7 +886,7 @@ cdef class PiecewiseFunction(Function):
             x2, _ = p2
             plf.functions.append(LinearFunction.from_points(p1, p2))
             plf.intervals.append(ContinuousSet(x1, x2, INC, EXC))
-        plf.intervals[-1].right = INC
+        plf.intervals[-1].right = INC if np.isfinite(plf.intervals[-1].upper) else EXC
         plf.intervals[-1] = plf.intervals[-1].ends(right=EXC)
         return plf
 
@@ -1321,9 +1353,9 @@ cdef class PiecewiseFunction(Function):
             'functions': [f.to_json() for f in self.functions]
         }
 
-    @staticmethod
-    def from_json(data: Dict[str, Any]):
-        function = PiecewiseFunction()
+    @classmethod
+    def from_json(cls, data: Dict[str, Any]):
+        function = cls()
         function.intervals = [ContinuousSet.from_json(d) for d in data['intervals']]
         function.functions = [LinearFunction.from_json(d) for d in data['functions']]
         return function
@@ -1482,3 +1514,25 @@ cdef class PiecewiseFunction(Function):
                 i.upper -= delta
             f.functions[j] = f.functions[j].xshift(delta)
         return f
+
+    def boundaries(self) -> List[float]:
+        points = [fst(self.intervals, attrgetter('lower'))]
+        for i1, i2 in pairwise(self.intervals):
+            if i1.contiguous(i2):
+                points.append(i1.max)
+            else:
+                points.extend([i1.max, i2.min])
+        points.append(last(self.intervals, attrgetter('upper')))
+        return list(sorted(set(filter(np.isfinite, points))))
+
+    cpdef Function xmirror(self):
+        cdef PiecewiseFunction result = PiecewiseFunction()
+        result.intervals = [
+            i.ends(
+                left=INC if np.isfinite(i.lower) else EXC,
+                right=EXC
+            ) for i in RealSet(self.intervals).xmirror().intervals
+        ]
+        result.functions = list(reversed([f.xmirror() for f in self.functions]))
+        return result
+

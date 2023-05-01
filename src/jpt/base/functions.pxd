@@ -39,6 +39,8 @@ cdef class Function:
 
     cpdef Function copy(self)
 
+    cpdef Function xmirror(self)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 

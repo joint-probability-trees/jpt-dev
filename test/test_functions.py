@@ -92,22 +92,28 @@ class ConstantFunctionTest(TestCase):
 @ddt
 class LinearFunctionTest(TestCase):
 
-    @data(('3', ConstantFunction(3)),
-          ('undef.', Undefined(0)),
-          ('x + 1', LinearFunction(1, 1)))
+    @data(
+        ('3', ConstantFunction(3)),
+        ('undef.', Undefined()),
+        ('x + 1', LinearFunction(1, 1))
+    )
     @unpack
     def test_parsing(self, s, result):
         self.assertEqual(LinearFunction.parse(s), result)
 
-    @data(((0, 0), (1, 1), LinearFunction(1, 0)),
-          ((0, 0), (1, 0), ConstantFunction(0)),
-          ((0, 1), (1, 2), LinearFunction(1, 1)))
+    @data(
+        ((0, 0), (1, 1), LinearFunction(1, 0)),
+        ((0, 0), (1, 0), ConstantFunction(0)),
+        ((0, 1), (1, 2), LinearFunction(1, 1))
+    )
     @unpack
     def test_fit(self, p1, p2, truth):
         self.assertEqual(LinearFunction.from_points(p1, p2), truth)
 
-    @data((LinearFunction(1, 0), 1, 1),
-          (LinearFunction(1, 1), 1, 2))
+    @data(
+        (LinearFunction(1, 0), 1, 1),
+        (LinearFunction(1, 1), 1, 2)
+    )
     @unpack
     def test_eval(self, f, x, y):
         self.assertEqual(y, f.eval(x))
@@ -599,3 +605,39 @@ class PLFTest(TestCase):
             }),
             result
         )
+
+    def test_xmirror(self):
+        # Arrange
+        plf = PiecewiseFunction.from_points(
+            [(1, 0), (2, 1), (3, 0)]
+        )
+        # Act
+        mirror = plf.xmirror()
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                ContinuousSet(-3, -2 + eps, INC, EXC): 'x+3',
+                ContinuousSet(-2 + eps, -1 + eps, INC, EXC): '-1x-1',
+            }),
+            mirror
+        )
+
+    def test_convolution(self):
+        # Arrange
+        f = PiecewiseFunction.from_dict({
+            R: 0
+        }).overwrite(
+            ContinuousSet(-1, 1 + eps), ConstantFunction(1)
+        )
+
+        g = PiecewiseFunction.from_dict({
+            R: 0
+        }).overwrite(
+            ContinuousSet(-2, 2 + eps), ConstantFunction(.5)
+        )
+
+        # Act
+        result = f.convolution(f)
+
+        # Assert
+        print(result)
