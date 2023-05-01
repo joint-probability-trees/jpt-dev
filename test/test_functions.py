@@ -622,22 +622,3 @@ class PLFTest(TestCase):
             mirror
         )
 
-    def test_convolution(self):
-        # Arrange
-        f = PiecewiseFunction.from_dict({
-            R: 0
-        }).overwrite(
-            ContinuousSet(-1, 1 + eps), ConstantFunction(1)
-        )
-
-        g = PiecewiseFunction.from_dict({
-            R: 0
-        }).overwrite(
-            ContinuousSet(-2, 2 + eps), ConstantFunction(.5)
-        )
-
-        # Act
-        result = f.convolution(f)
-
-        # Assert
-        print(result)
