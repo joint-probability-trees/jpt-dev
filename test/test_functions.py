@@ -668,6 +668,21 @@ class PLFTest(TestCase):
             result
         )
 
+    def test_xmirror_simple(self):
+        plf = PiecewiseFunction.zero().overwrite(
+            ContinuousSet(-1, 1 + eps, INC, EXC),
+            ConstantFunction(1)
+        )
+        mirror = plf.xmirror()
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                ']-∞,-1.0[': 0,
+                ContinuousSet(-1, 1+eps, INC, EXC): 1,
+                ContinuousSet(1+eps, np.PINF, INC,  EXC): 0
+            }),
+            mirror
+        )
+
     def test_xmirror(self):
         # Arrange
         plf = PiecewiseFunction.from_points(
