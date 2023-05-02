@@ -17,6 +17,7 @@ from operator import attrgetter
 from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any
 
 from dnutils import ifnot, ifnone, pairwise, fst, last
+from dnutils.tools import ifstr
 from scipy import stats
 from scipy.stats import norm
 
@@ -1047,7 +1048,7 @@ cdef class PiecewiseFunction(Function):
         result.intervals = [i.copy() for i in self.intervals]
         return result
 
-    def overwrite(self, interval: ContinuousSet, func: Function) -> 'PiecewiseFunction':
+    def overwrite(self, interval: ContinuousSet or str, func: Function) -> 'PiecewiseFunction':
         """
         Overwrite this function in the specified interval range with the passed function ``func``.
 
@@ -1055,6 +1056,7 @@ cdef class PiecewiseFunction(Function):
         :param func: The function to replace the old function at ``interval``
         :return: The update function
         """
+        interval = ifstr(interval, ContinuousSet.parse)
         result = self.copy()
         if not result.intervals:
             result.intervals.append(interval)
