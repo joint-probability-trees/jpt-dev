@@ -9,6 +9,7 @@ __module__ = 'intervals.pyx'
 import numbers
 import re
 import traceback
+from functools import cmp_to_key
 from itertools import tee
 from operator import attrgetter
 
@@ -1016,6 +1017,24 @@ cdef class ContinuousSet(NumberSet):
             self.min == other.min,
             self.max == other.max
         ))
+
+    @staticmethod
+    def comparator(i1: ContinuousSet, i2: ContinuousSet) -> int:
+        '''
+        A comparator for sorting intervals on a total order.
+
+        Intervals must be disjoint, otherwise a ``ValueError`` is raised.
+        '''
+        if i1.max < i2.min:
+            return -1
+        elif i2.max < i1.min:
+            return 1
+        else:
+            raise ValueError(
+                'Intervals must be disjoint, got %s and %s, intersecting at %s' % (
+                    i1, i2, i1.intersection(i2)
+                )
+            )
 
     def __ne__(self, other):
         return not self == other

@@ -1466,27 +1466,11 @@ cdef class PiecewiseFunction(Function):
         return PiecewiseFunction.combine(f1, f2, operator='max')
 
     @staticmethod
-    def cmp_intervals(i1: ContinuousSet, i2: ContinuousSet) -> int:
-        '''
-        A comparator for sorting intervals on a total order.
-
-        Intervals must be disjoint, otherwise a ``ValueError`` is raised.
-        '''
-        if i1.max < i2.min:
-            return -1
-        elif i2.max < i1.min:
-            return 1
-        else:
-            raise ValueError(
-                'Intervals must be disjoint, got %s and %s' % (i1, i2)
-            )
-
-    @staticmethod
     def cmp_segments(s1: Tuple[ContinuousSet, Function], s2: Tuple[ContinuousSet, Function]) -> int:
         '''
-        A comparator for <interval, function> pais. Uses the ``cmp_intervals()`` comparator.
+        A comparator for <interval, function> pais. Uses the ``ContinuousSet.comparator()`` function.
         '''
-        return PiecewiseFunction.cmp_intervals(s1[0], s2[0])
+        return ContinuousSet.comparator(s1[0], s2[0])
 
     @staticmethod
     def jaccard_similarity(
