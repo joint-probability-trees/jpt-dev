@@ -875,6 +875,28 @@ cdef class PiecewiseFunction(Function):
             return True
 
     @classmethod
+    def zero(cls, interval: ContinuousSet = None) -> PiecewiseFunction:
+        '''
+        Return a constant 'zero'-function on the specified interval, or on |R, if
+        no interval is passed.
+        '''
+        return cls.from_dict({
+            ifnone(interval, R.copy()): 0
+        })
+
+    def drop_undef(self) -> PiecewiseFunction:
+        '''
+        Return a copy of this ``PiecewiseFunction``, in which all segments
+        of ``Undefined`` function instances have been removed.
+        '''
+        result = PiecewiseFunction()
+        for i, f in self.iter():
+            if isinstance(f, Undefined):
+                continue
+            result.append(i.copy(), f.copy())
+        return result
+
+    @classmethod
     def from_dict(cls, d: Dict[Union[ContinuousSet, str], Union[Function, str, float]]) -> PiecewiseFunction:
         '''
         Construct a ``PiecewiseFunction`` object from a set of key-value pairs mapping

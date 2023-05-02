@@ -699,6 +699,36 @@ class PLFTest(TestCase):
             mirror
         )
 
+    def test_boundaries(self):
+        # Symmatric functions have identical boundaries
+        plf = PiecewiseFunction.zero().overwrite(
+            ContinuousSet(-1, 1 + eps, INC, EXC),
+            ConstantFunction(1)
+        )
+        mirror = plf.xmirror()
+        self.assertEqual(
+            plf.boundaries(),
+            mirror.boundaries()
+        )
+
+    def test_drop_undef(self):
+        # Arrange
+        plf = PiecewiseFunction.from_dict({
+            '[-inf,0)': 0,
+            '[0,1)': Undefined(),
+            '[1,inf)': 0
+        })
+        # Act
+        result = plf.drop_undef()
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '[-inf,0)': 0,
+                '[1,inf)': 0
+            }),
+            result
+        )
+
     def test_convolution(self):
         # Arrange
         f = PiecewiseFunction.from_dict({
