@@ -341,6 +341,30 @@ cdef class RealSet(NumberSet):
                 result.intervals.append(subset_j.intersection(subset_i))
         return result.simplify()
 
+    def intersections(self, other: RealSet) -> RealSet:
+        '''
+        Compute a ``RealSet`` whose individual interval constituents contain
+        all pairwise intersections of this ``RealSet``'s constituents and the ``other``
+        ``RealSet``'s. The result is sorted but not simplified in the sense that
+        contiguous sub-intervals are not merged.
+        '''
+        intervals_ = [i1.intersection(i2) for i1 in self.intervals for i2 in other.intervals]
+        intervals = []
+        closed = set()
+        for i in intervals_:
+            if i.isempty() or i in closed:
+                continue
+            intervals.append(i)
+            closed.add(i)
+        return RealSet(
+            intervals=list(
+                sorted(
+                    intervals,
+                    key=cmp_to_key(ContinuousSet.comparator)
+                )
+            )
+        )
+
     cpdef inline NumberSet simplify(RealSet self):
         """        
         Constructs a new simplified modification of this ``RealSet`` instance, in which the
@@ -994,9 +1018,9 @@ cdef class ContinuousSet(NumberSet):
         :return: 
         '''
         result = self.copy()
-        result.lower, result.upper = -result.upper, -result.lower
-        result.left, result.right = result.right, result.left
-        return result
+        result.lower, result.upper = -result.max, -result.min
+        result.left, result.right = INC, INC
+        return result.ends(left=self.right, right=self.left)
 
     def __contains__(self, x):
         try:
