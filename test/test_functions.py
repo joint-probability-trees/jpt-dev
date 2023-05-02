@@ -81,6 +81,7 @@ class ConstantFunctionTest(TestCase):
         (ConstantFunction(1), (0, 1), 1),
         (ConstantFunction(1), (0, 2), 2),
         (ConstantFunction(-1), (-1, 1), -2),
+        (ConstantFunction(0), (np.NINF, np.PINF), 0)
     )
     @unpack
     def test_integrate(self, f, x, i):
@@ -172,10 +173,18 @@ class LinearFunctionTest(TestCase):
         (LinearFunction(1, 1), (0, 1), 1.5),
         (LinearFunction(1, -1), (0, 2), 0),
         (LinearFunction(1, -1), (0, 1), -.5),
+        (LinearFunction(1, 0), (0, np.PINF), np.PINF),
+        (LinearFunction(-1, 0), (0, np.PINF), np.NINF),
+        (LinearFunction(-1, 0), (np.NINF, np.PINF), np.nan)
     )
     @unpack
     def test_integration(self, f, x, i):
-        self.assertEqual(i, f.integrate(x[0], x[1]))
+        # Act
+        result = f.integrate(x[0], x[1])
+        if np.isnan(i):
+            self.assertTrue(np.isnan(result))
+        else:
+            self.assertEqual(i, result)
 
     def test_xshift(self):
         # Arrange

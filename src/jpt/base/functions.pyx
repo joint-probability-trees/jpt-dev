@@ -383,9 +383,14 @@ cdef class ConstantFunction(Function):
         return {'type': 'constant', 'value': self.value}
 
     cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2):
-        if x2 <= x1:
-            raise ValueError('The x2 argument must be greater than x1.')
-        return self.c * (x2 - x1)
+        if x2 < x1:
+            raise ValueError(
+                'The x2 argument must be greater than x1. '
+                'Got x1=%s, x2=%s' % (
+                    x1, x2
+                )
+            )
+        return 0 if not self.c else (self.c * (x2 - x1))
 
     cpdef ConstantFunction xshift(self, DTYPE_t delta):
         return self.copy()
@@ -640,6 +645,18 @@ cdef class LinearFunction(Function):
             raise ValueError('The x2 argument must be greater than x1.')
         elif x2 == x1:
             return 0
+        elif np.isinf(x1) and np.isinf(x2):
+            if self.m != 0:
+                return np.nan
+            return np.PINF if self.c > 0 else np.NINF
+        elif np.isinf(x1):
+            if self.m <= 0:
+                return np.PINF
+            return np.NINF
+        elif np.isinf(x2):
+            if self.m >= 0:
+                return np.PINF
+            return np.NINF
         return (.5 * self.m * x2 ** 2 + self.c * x2) - (.5 * self.m * x1 ** 2 + self.c * x1)
 
     cpdef LinearFunction xshift(self, DTYPE_t delta):
