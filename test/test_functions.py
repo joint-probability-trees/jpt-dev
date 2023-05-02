@@ -403,11 +403,64 @@ class PLFTest(TestCase):
         })
         self.assertEqual(res, plf1 + plf2)
 
-    def test_mul(self):
+    def test_mul_const_const(self):
+        # Arrange
+        plf = PiecewiseFunction.zero().overwrite(
+            '[0,1)', ConstantFunction(1)
+        )
+        # Act
+        product = plf.mul(ConstantFunction(2))
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.zero().overwrite(
+                '[0,1)', ConstantFunction(2)
+            ),
+            product
+        )
+
+    def test_mul_const_linear(self):
+        # Arrange
+        plf = PiecewiseFunction.zero().overwrite(
+            '[-1,1)', ConstantFunction(1)
+        )
+        # Act
+        product = plf.mul(LinearFunction(1, 0))
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.zero().overwrite(
+                '[-1,1)', LinearFunction(1, 0)
+            ),
+            product
+        )
+
+    def test_mul_plf_constant(self):
+        # Arrange
+        plf1 = PiecewiseFunction.from_dict({
+            '[-2,-1)': 1,
+            '[1,inf)': 2
+        })
+        plf2 = PiecewiseFunction.from_dict({
+            '[-1.5,1.5)': -.5
+        })
+        # Act
+        product = plf1 * plf2
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '[-2,-1.5)': Undefined(),
+                '[-1.5,-1)': -.5,
+                '[-1,1)': Undefined(),
+                '[1,1.5)': -1,
+                '[1.5,inf)': Undefined()
+            }),
+            product
+        )
+
+    def test_mul_plf_mixed(self):
         plf1 = PiecewiseFunction.from_dict({
             ']-∞,0[': 0,
-            '[0,1[': str(LinearFunction.from_points((0, 0), (1, .5))),
-            '[1.,2[': '.5',
+            '[0,1[': LinearFunction.from_points((0, 0), (1, .5)),
+            '[1,2[': .5,
             '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
             '[3,∞[': 1
         })

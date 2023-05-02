@@ -313,26 +313,34 @@ cdef class ConstantFunction(Function):
             self.value = f.value
             return self
         else:
-            raise TypeError('Object of type %s can only be set to '
-                            'parameters of objects of the same type' % type(self).__name__)
+            raise TypeError(
+                'Object of type %s can only be set to parameters '
+                'of objects of the same type' % type(self).__name__
+            )
 
     cpdef Function mul(self, Function f):
         if isinstance(f, ConstantFunction):
             return ConstantFunction(self.value * f.value)
-        elif isinstance(f, (LinearFunction, QuadraticFunction)):
+        elif isinstance(f, (LinearFunction, QuadraticFunction, Undefined)):
             return f.mul(self)
         else:
-            raise TypeError('Unsupported operand type(s) for '
-                            'mul(): %s and %s.' % (type(self).__name__, type(f).__name__))
+            raise TypeError(
+                'Unsupported operand type(s) for mul(): %s and %s.' % (
+                    type(self).__name__, type(f).__name__
+                )
+            )
 
     cpdef Function add(self, Function f):
         if isinstance(f, ConstantFunction):
             return ConstantFunction(self.value + f.value)
-        elif isinstance(f, (LinearFunction, QuadraticFunction)):
+        elif isinstance(f, (LinearFunction, QuadraticFunction, Undefined)):
             return f.add(self)
         else:
-            raise TypeError('Unsupported operand type(s) for '
-                            'add(): %s and %s.' % (type(self).__name__, type(f).__name__))
+            raise TypeError(
+                'Unsupported operand type(s) for add(): %s and %s.' % (
+                    type(self).__name__, type(f).__name__
+                )
+            )
 
     @property
     def m(self):
@@ -969,83 +977,67 @@ cdef class PiecewiseFunction(Function):
 
     # noinspection DuplicatedCode
     cpdef Function add(self, Function f):
-        if isinstance(f, (ConstantFunction, LinearFunction, QuadraticFunction)):
+        if isinstance(f, (ConstantFunction, LinearFunction)):
             result = self.copy()
             result.functions = [g + f for g in result.functions]
             return result
         elif isinstance(f, PiecewiseFunction):
-            result = PiecewiseFunction()
-            knots = sorted(
-                set(
-                    itertools.chain(
-                        *[(i.lower, i.upper) for i in f.intervals] +
-                         [(i.lower, i.upper) for i in self.intervals]
-                    )
+            domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
+            undefined = self.domain().union(f.domain()).difference(domain)
+            if not isinstance(undefined, RealSet):
+                undefined = RealSet([undefined])
+            result = PiecewiseFunction.from_dict({
+                i: Undefined() for i in undefined.intervals
+            })
+            for interval in domain.intervals:
+                if np.isfinite(interval.lower) and np.isfinite(interval.upper):
+                    middle = (interval.lower + interval.upper) * .5
+                elif np.isinf(interval.lower):
+                    middle = interval.lower
+                elif np.isinf(interval.upper):
+                    middle = interval.upper
+                f1 = ifnone(self.at(middle), Undefined())
+                f2 = ifnone(f.at(middle), Undefined())
+                result = result.overwrite(interval, f1 + f2)
+            return result.simplify()
+        else:
+            raise TypeError(
+                'Addition of type %s and %s currently unsupported.' % (
+                    type(self).__name__, type(f).__name__
                 )
             )
-            for lower, upper in pairwise(knots):
-                result.intervals.append(ContinuousSet(lower, upper, INC, EXC))
-                if not np.isinf(lower) and not np.isinf(upper):
-                    middle = (lower + upper) * .5
-                elif np.isinf(lower):
-                    middle = lower
-                elif np.isinf(upper):
-                    middle = upper
-                result.functions.append(
-                    ifnone(
-                        self.at(middle),
-                        Undefined()
-                    ) + ifnone(
-                        f.at(middle),
-                        Undefined()
-                    )
-                )
-            if result.intervals:
-                if np.isinf(result.intervals[0].lower):
-                    result.intervals[0].left = EXC
-            return result.simplify()
 
     # noinspection DuplicatedCode
     cpdef Function mul(self, Function f):
-        if isinstance(f, ConstantFunction):
+        if isinstance(f, (ConstantFunction, LinearFunction)):
             result = self.copy()
-            for i, g in result.iter():
-                g *= f
+            result.functions = [g * f for g in result.functions]
             return result
         elif isinstance(f, PiecewiseFunction):
-            result = PiecewiseFunction()
-            knots = sorted(
-                set(
-                    itertools.chain(*[
-                        (i.lower, i.upper) for i in f.intervals
-                    ] + [
-                        (i.lower, i.upper) for i in self.intervals
-                    ])
+            domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
+            undefined = self.domain().union(f.domain()).difference(domain)
+            if not isinstance(undefined, RealSet):
+                undefined = RealSet([undefined])
+            result = PiecewiseFunction.from_dict({
+                i: Undefined() for i in undefined.intervals
+            })
+            for interval in domain.intervals:
+                if np.isfinite(interval.lower) and np.isfinite(interval.upper):
+                    middle = (interval.lower + interval.upper) * .5
+                elif np.isinf(interval.lower):
+                    middle = interval.lower
+                elif np.isinf(interval.upper):
+                    middle = interval.upper
+                f1 = ifnone(self.at(middle), Undefined())
+                f2 = ifnone(f.at(middle), Undefined())
+                result = result.overwrite(interval, f1 * f2)
+            return result.simplify()
+        else:
+            raise TypeError(
+                'Multiplication of type %s and %s currently unsupported.' % (
+                    type(self).__name__, type(f).__name__
                 )
             )
-            for lower, upper in pairwise(knots):
-                result.intervals.append(
-                    ContinuousSet(lower, upper, INC, EXC)
-                )
-                if not np.isinf(lower) and not np.isinf(upper):
-                    middle = (lower + upper) * .5
-                elif np.isinf(lower):
-                    middle = lower
-                elif np.isinf(upper):
-                    middle = upper
-                result.functions.append(
-                    ifnone(
-                        self.at(middle),
-                        Undefined()
-                    ) *  ifnone(
-                        f.at(middle),
-                        Undefined()
-                    )
-                )
-            if result.intervals:
-                if np.isinf(result.intervals[0].lower):
-                    result.intervals[0].left = EXC
-            return result.simplify()
 
     cpdef Function copy(self):
         cdef PiecewiseFunction result = PiecewiseFunction()
