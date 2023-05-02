@@ -734,14 +734,14 @@ class PLFTest(TestCase):
         f = PiecewiseFunction.from_dict({
             R: 0
         }).overwrite(
-            ContinuousSet(-1, 1 + eps), ConstantFunction(1)
+            ContinuousSet(-1, 1 + eps, INC, EXC), ConstantFunction(1)
         )
 
-        g = PiecewiseFunction.from_dict({
-            R: 0
-        }).overwrite(
-            ContinuousSet(-2, 2 + eps), ConstantFunction(.5)
-        )
+        # g = PiecewiseFunction.from_dict({
+        #     R: 0
+        # }).overwrite(
+        #     ContinuousSet(-2, 2 + eps), ConstantFunction(.5)
+        # )
 
         # Act
         result = f.convolution(f)

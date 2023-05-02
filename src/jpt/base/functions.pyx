@@ -1569,30 +1569,43 @@ cdef class PiecewiseFunction(Function):
         :param f:
         :return:
         '''
+
         g = self
+        f_ = f.xmirror()
         boundaries_g = g.boundaries()
-        boundaries_f = f.boundaries()
+        boundaries_f = f_.boundaries()
         boundaries = list(sorted(set(boundaries_f + boundaries_g)))
-        print(boundaries_g, boundaries_f, boundaries)
+        # print(f_)
+        # domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
+        # boundaries = PiecewiseFunction.from_dict({
+        #     i: Undefined() for i in domain.intervals
+        # }).boundaries()
+        print(boundaries)
         z = max(boundaries_f) - min(boundaries_g)
-        f_ = f.xshift(z)
+        print('z =', z)
+        f_ = f_.xshift(z)
         boundaries_f = f_.boundaries()
         distances = np.array(
             [[b_f - b_g for b_f in boundaries_f] for b_g in boundaries_g]
         )
         print(f_)
-        support_points = [z]
-        while not np.all(distances >= 0 + eps):
-            distance_min = np.abs(distances[distances != 0]).min()
+        support_points = [(z, 0)]
+        while not np.all(distances >= 0):
+            distance_min = np.abs(distances[distances < 0]).min()
             print('distances:\n', distances, 'min abs. dist:', distance_min)
             f_ = f_.xshift(-distance_min)
+            f_times_g = f_ * g
+            print(f_)
+            print('---')
+            print(f_times_g)
             z += distance_min
-            support_points.append(z)
-            boundaries_g = g.boundaries()
+            integral = f_times_g.integrate()
+            print('point:', (z, integral))
+            support_points.append((z, integral))
+            # boundaries_g = g.boundaries()
             boundaries_f = f_.boundaries()
             distances = np.array(
                 [[b_f - b_g for b_f in boundaries_f] for b_g in boundaries_g]
             )
-            print(f_)
-        print(f_)
+        # print(f_)
         print(support_points)
