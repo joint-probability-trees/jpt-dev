@@ -1186,7 +1186,7 @@ cdef class PiecewiseFunction(Function):
             diff.functions.append(f.differentiate())
         return diff
 
-    cpdef DTYPE_t integrate(self, ContinuousSet interval=None):
+    cpdef DTYPE_t integrate(self, ContinuousSet interval = None):
         '''
         Compute the area under this ``PiecewiseFunction`` in the ``interval``.
         '''
@@ -1438,7 +1438,10 @@ cdef class PiecewiseFunction(Function):
         return RealSet(self.intervals).simplify()
 
     cpdef PiecewiseFunction simplify(self):
-        segments = sorted(list(self.iter()), key=cmp_to_key(self.cmp_segments))
+        segments = sorted(
+            list(self.iter()),
+            key=cmp_to_key(self.cmp_segments)
+        )
         queue = deque(segments)
         plf = PiecewiseFunction()
         while queue:
@@ -1459,9 +1462,9 @@ cdef class PiecewiseFunction(Function):
         # The combination of two functions is only defined on their intersecting domains
         domain = (f1.domain() & f2.domain()).simplify()
         intervals = [
-            (i.min, i.max + np.nextafter(i.max, i.max + 1)) for i in f1.intervals
+            (i.min, i.max + eps) for i in f1.intervals
         ] + [
-            (i.min, i.max + np.nextafter(i.max, i.max + 1)) for i in f2.intervals
+            (i.min, i.max + eps) for i in f2.intervals
         ]
         intervals = domain.chop({i for i in chain(*intervals) if np.isfinite(i)})
         queue = deque(intervals)
@@ -1540,7 +1543,7 @@ cdef class PiecewiseFunction(Function):
         points = [fst(self.intervals, attrgetter('lower'))]
         for i1, i2 in pairwise(self.intervals):
             if i1.contiguous(i2):
-                points.append(i1.max)
+                points.append(i2.min)
             else:
                 points.extend([i1.max, i2.min])
         points.append(last(self.intervals, attrgetter('upper')))
