@@ -81,6 +81,7 @@ class ConstantFunctionTest(TestCase):
         (ConstantFunction(1), (0, 1), 1),
         (ConstantFunction(1), (0, 2), 2),
         (ConstantFunction(-1), (-1, 1), -2),
+        (ConstantFunction(0), (np.NINF, np.PINF), 0)
     )
     @unpack
     def test_integrate(self, f, x, i):
@@ -172,10 +173,18 @@ class LinearFunctionTest(TestCase):
         (LinearFunction(1, 1), (0, 1), 1.5),
         (LinearFunction(1, -1), (0, 2), 0),
         (LinearFunction(1, -1), (0, 1), -.5),
+        (LinearFunction(1, 0), (0, np.PINF), np.PINF),
+        (LinearFunction(-1, 0), (0, np.PINF), np.NINF),
+        (LinearFunction(-1, 0), (np.NINF, np.PINF), np.nan)
     )
     @unpack
     def test_integration(self, f, x, i):
-        self.assertEqual(i, f.integrate(x[0], x[1]))
+        # Act
+        result = f.integrate(x[0], x[1])
+        if np.isnan(i):
+            self.assertTrue(np.isnan(result))
+        else:
+            self.assertEqual(i, result)
 
     def test_xshift(self):
         # Arrange
@@ -403,11 +412,64 @@ class PLFTest(TestCase):
         })
         self.assertEqual(res, plf1 + plf2)
 
-    def test_mul(self):
+    def test_mul_const_const(self):
+        # Arrange
+        plf = PiecewiseFunction.zero().overwrite(
+            '[0,1)', ConstantFunction(1)
+        )
+        # Act
+        product = plf.mul(ConstantFunction(2))
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.zero().overwrite(
+                '[0,1)', ConstantFunction(2)
+            ),
+            product
+        )
+
+    def test_mul_const_linear(self):
+        # Arrange
+        plf = PiecewiseFunction.zero().overwrite(
+            '[-1,1)', ConstantFunction(1)
+        )
+        # Act
+        product = plf.mul(LinearFunction(1, 0))
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.zero().overwrite(
+                '[-1,1)', LinearFunction(1, 0)
+            ),
+            product
+        )
+
+    def test_mul_plf_constant(self):
+        # Arrange
+        plf1 = PiecewiseFunction.from_dict({
+            '[-2,-1)': 1,
+            '[1,inf)': 2
+        })
+        plf2 = PiecewiseFunction.from_dict({
+            '[-1.5,1.5)': -.5
+        })
+        # Act
+        product = plf1 * plf2
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '[-2,-1.5)': Undefined(),
+                '[-1.5,-1)': -.5,
+                '[-1,1)': Undefined(),
+                '[1,1.5)': -1,
+                '[1.5,inf)': Undefined()
+            }),
+            product
+        )
+
+    def test_mul_plf_mixed(self):
         plf1 = PiecewiseFunction.from_dict({
             ']-∞,0[': 0,
-            '[0,1[': str(LinearFunction.from_points((0, 0), (1, .5))),
-            '[1.,2[': '.5',
+            '[0,1[': LinearFunction.from_points((0, 0), (1, .5)),
+            '[1,2[': .5,
             '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
             '[3,∞[': 1
         })
@@ -606,6 +668,21 @@ class PLFTest(TestCase):
             result
         )
 
+    def test_xmirror_simple(self):
+        plf = PiecewiseFunction.zero().overwrite(
+            ContinuousSet(-1, 1 + eps, INC, EXC),
+            ConstantFunction(1)
+        )
+        mirror = plf.xmirror()
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                ']-∞,-1.0[': 0,
+                ContinuousSet(-1, 1+eps, INC, EXC): 1,
+                ContinuousSet(1+eps, np.PINF, INC,  EXC): 0
+            }),
+            mirror
+        )
+
     def test_xmirror(self):
         # Arrange
         plf = PiecewiseFunction.from_points(
@@ -622,3 +699,113 @@ class PLFTest(TestCase):
             mirror
         )
 
+    def test_xmirror_symmetry(self):
+        '''xmirror() must maintain a function's symmetry at x=0'''
+        plf = PiecewiseFunction.zero()
+        for i, f in PiecewiseFunction.from_points(
+            [(-1, 0), (0, 1), (1, 0)]
+        ):
+            plf = plf.overwrite(i, f)
+        # Act
+        mirror = plf.xmirror().round(64)
+        self.assertEqual(plf, mirror)
+
+    def test_boundaries(self):
+        # Symmatric functions have identical boundaries
+        plf = PiecewiseFunction.zero().overwrite(
+            ContinuousSet(-1, 1, INC, EXC),
+            ConstantFunction(1)
+        )
+        self.assertEqual([-1, 1], list(plf.boundaries()))
+
+    def test_drop_undef(self):
+        # Arrange
+        plf = PiecewiseFunction.from_dict({
+            '[-inf,0)': 0,
+            '[0,1)': Undefined(),
+            '[1,inf)': 0
+        })
+        # Act
+        result = plf.drop_undef()
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '[-inf,0)': 0,
+                '[1,inf)': 0
+            }),
+            result
+        )
+
+    @data(
+        (
+                PiecewiseFunction.from_dict({
+                    R: 0
+                }).overwrite(
+                    ContinuousSet(-1, 1, INC, EXC), ConstantFunction(1)
+                ),
+                PiecewiseFunction.from_dict({
+                    R: 0
+                }).overwrite(
+                    ContinuousSet(-2, 2, INC, EXC), ConstantFunction(.5)
+                ),
+                PiecewiseFunction.from_dict({
+                    ContinuousSet(np.NINF, -3, EXC, EXC): 0,
+                    ContinuousSet(-3, -1, INC, EXC): LinearFunction(.5, 1.5),
+                    ContinuousSet(-1, 1, INC, EXC): 1,
+                    ContinuousSet(1, 3, INC, EXC): LinearFunction(-.5, 1.5),
+                    ContinuousSet(3, np.PINF, INC, EXC): 0,
+                })
+        ),
+        (
+                PiecewiseFunction.from_dict({
+                    R: 0
+                }).overwrite(
+                    ContinuousSet(-1, 1, INC, EXC), ConstantFunction(.5)
+                ),
+                PiecewiseFunction.from_dict({
+                    R: 0
+                }).overwrite(
+                    ContinuousSet(-1, 1, INC, EXC), ConstantFunction(.5)
+                ),
+                PiecewiseFunction.from_dict({
+                    '(-∞,-2.0)': 0.0,
+                    '[-2.0,0.0)': '.25x + .5',
+                    ContinuousSet(0, 2, INC, EXC): '-.25x + .5',
+                    ContinuousSet(2, np.inf, INC, EXC): 0
+                })
+        )
+    )
+    @unpack
+    def test_convolution(self, plf1, plf2, truth):
+        # Act
+        result = plf1.convolution(plf2)
+        print(result.eval(-3 + eps))
+        # Assert
+        self.assertEqual(truth.round(8), result.round(12))
+
+    def test_rectify(self):
+        # Arrange
+        plf = PiecewiseFunction.from_dict({
+            '[0,1)': '3x+2',
+            '[1,2)': '-1x',
+            '[2,inf)': 1
+        })
+        # Act
+        result = plf.rectify()
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '[0,1)': 3.5,
+                '[1,2)': -1.5,
+                '[2,inf)': 1
+            }),
+            result
+        )
+
+    def test_rectify_error(self):
+        # Arrange
+        plf = PiecewiseFunction.from_dict({
+            R: 'x+1'
+        })
+        # Act & Assert
+        self.assertRaises(ValueError, plf.rectify)

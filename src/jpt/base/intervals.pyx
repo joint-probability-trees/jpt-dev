@@ -9,6 +9,7 @@ __module__ = 'intervals.pyx'
 import numbers
 import re
 import traceback
+from functools import cmp_to_key
 from itertools import tee
 from operator import attrgetter
 
@@ -58,9 +59,45 @@ cdef class NumberSet:
         raise NotImplementedError()
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# String and formatting constants
+
 _CUP = u'\u222A'
 _CAP = u'\u2229'
 _EMPTYSET = u'\u2205'
+_INFTY = '∞'
+
+LEFT = 0
+RIGHT = 1
+
+NOTATION_SQUARED = {
+    LEFT: {
+        INC: '[',
+        EXC: ']'
+    },
+    RIGHT: {
+        INC: ']',
+        EXC: '['
+    }
+}
+
+NOTATION_PARANTHESES = {
+    LEFT: {
+        INC: '[',
+        EXC: '('
+    },
+    RIGHT: {
+        INC: ']',
+        EXC: ')'
+    }
+}
+
+NOTATIONS = {
+    'par': NOTATION_PARANTHESES,
+    'sq': NOTATION_SQUARED
+}
+
+interval_notation = 'par'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -340,6 +377,30 @@ cdef class RealSet(NumberSet):
                 result.intervals.append(subset_j.intersection(subset_i))
         return result.simplify()
 
+    def intersections(self, other: RealSet) -> RealSet:
+        '''
+        Compute a ``RealSet`` whose individual interval constituents contain
+        all pairwise intersections of this ``RealSet``'s constituents and the ``other``
+        ``RealSet``'s. The result is sorted but not simplified in the sense that
+        contiguous sub-intervals are not merged.
+        '''
+        intervals_ = [i1.intersection(i2) for i1 in self.intervals for i2 in other.intervals]
+        intervals = []
+        closed = set()
+        for i in intervals_:
+            if i.isempty() or i in closed:
+                continue
+            intervals.append(i)
+            closed.add(i)
+        return RealSet(
+            intervals=list(
+                sorted(
+                    intervals,
+                    key=cmp_to_key(ContinuousSet.comparator)
+                )
+            )
+        )
+
     cpdef inline NumberSet simplify(RealSet self):
         """        
         Constructs a new simplified modification of this ``RealSet`` instance, in which the
@@ -546,7 +607,7 @@ cdef class ContinuousSet(NumberSet):
             return False
         if self.lower == self.upper:
             return not self.isclosed()
-        return np.nextafter(self.lower, self.upper) == self.upper and self.itype() == OPEN
+        return self.lower + eps >= self.upper and self.itype() == OPEN
 
     cpdef inline np.int32_t isclosed(ContinuousSet self):
         """
@@ -1017,6 +1078,24 @@ cdef class ContinuousSet(NumberSet):
             self.max == other.max
         ))
 
+    @staticmethod
+    def comparator(i1: ContinuousSet, i2: ContinuousSet) -> int:
+        '''
+        A comparator for sorting intervals on a total order.
+
+        Intervals must be disjoint, otherwise a ``ValueError`` is raised.
+        '''
+        if i1.max < i2.min:
+            return -1
+        elif i2.max < i1.min:
+            return 1
+        else:
+            raise ValueError(
+                'Intervals must be disjoint, got %s and %s, intersecting at %s' % (
+                    i1, i2, i1.intersection(i2)
+                )
+            )
+
     def __ne__(self, other):
         return not self == other
 
@@ -1038,27 +1117,39 @@ cdef class ContinuousSet(NumberSet):
         """
         return self.upper - self.lower
 
-    def pfmt(self, fmtstr=None):
-        precision = ifnone(fmtstr, '%s')
+    def pfmt(self, number_format: str = None, notation: str = None) -> str:
+        '''
+        Return a pretty-formatted representation of this ``ContinuousSet``.
+
+        :param number_format: the format string that is used to format the
+                              numbers, defaults to "%s", i.e. the default string conversion.
+                              May also be "%.3f" for 3-digit floating point representations, for instance.
+        :param notation: Either "par" for paranthesis style format (i.e. squared brackets for
+                         closed interval ends and parantheses for open interval ends, or
+                         "sq" for squared brackets formatting style.
+        :return:
+        '''
+        precision = ifnone(number_format, '%s')
         if self.isempty():
             return _EMPTYSET
         if self.lower == self.upper and self.left == self.right == INC:
             return f'{{{precision % self.lower}}}'
+        brackets = NOTATIONS[ifnone(notation, interval_notation)]
         return '{}{},{}{}'.format(
-            {INC: '[', EXC: ']'}[int(self.left)],
+            brackets[LEFT][int(self.left)],
             '-∞' if self.lower == np.NINF else (precision % float(self.lower)),
             '∞' if self.upper == np.inf else (precision % float(self.upper)),
-            {INC: ']', EXC: '['}[int(self.right)]
+            brackets[RIGHT][int(self.right)]
         )
 
     def __repr__(self):
         return '<{}={}>'.format(
             self.__class__.__name__,
             '{}{},{}{}'.format(
-                {INC: '[', EXC: ']'}[int(self.left)],
+                {INC: '[', EXC: '('}[int(self.left)],
                 '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
                 '∞' if self.upper == np.inf else ('%.3f' % self.upper),
-                {INC: ']', EXC: '['}[int(self.right)]
+                {INC: ']', EXC: ')'}[int(self.right)]
             )
         )
 

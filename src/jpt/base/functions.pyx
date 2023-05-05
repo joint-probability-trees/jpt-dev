@@ -16,7 +16,8 @@ from collections import deque
 from operator import attrgetter
 from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any
 
-from dnutils import ifnot, ifnone, pairwise, last, fst
+from dnutils import ifnot, ifnone, pairwise, fst, last
+from dnutils.tools import ifstr, first
 from scipy import stats
 from scipy.stats import norm
 
@@ -87,14 +88,17 @@ cdef class Function:
             raise TypeError('Unsupported operand type(s) for +: %s and %s' % (type(self).__name__,
                                                                               type(other).__name__))
 
-    def __mul__(self, other):
+    def __mul__(self, other: Union[float, Function]) -> 'Function':
         if isinstance(other, numbers.Real):
             return self.mul(ConstantFunction(other)).simplify()
         elif isinstance(other, Function):
             return self.mul(other).simplify()
         else:
-            raise TypeError('Unsupported operand type(s) for *: %s and %s' % (type(self).__name__,
-                                                                              type(other).__name__))
+            raise TypeError(
+                'Unsupported operand type(s) for *: %s and %s' % (
+                    type(self).__name__,
+                    type(other).__name__)
+            )
 
     def __iadd__(self, other):
         return self.set(self + other)
@@ -310,26 +314,34 @@ cdef class ConstantFunction(Function):
             self.value = f.value
             return self
         else:
-            raise TypeError('Object of type %s can only be set to '
-                            'parameters of objects of the same type' % type(self).__name__)
+            raise TypeError(
+                'Object of type %s can only be set to parameters '
+                'of objects of the same type' % type(self).__name__
+            )
 
     cpdef Function mul(self, Function f):
         if isinstance(f, ConstantFunction):
             return ConstantFunction(self.value * f.value)
-        elif isinstance(f, (LinearFunction, QuadraticFunction)):
+        elif isinstance(f, (LinearFunction, QuadraticFunction, Undefined)):
             return f.mul(self)
         else:
-            raise TypeError('Unsupported operand type(s) for '
-                            'mul(): %s and %s.' % (type(self).__name__, type(f).__name__))
+            raise TypeError(
+                'Unsupported operand type(s) for mul(): %s and %s.' % (
+                    type(self).__name__, type(f).__name__
+                )
+            )
 
     cpdef Function add(self, Function f):
         if isinstance(f, ConstantFunction):
             return ConstantFunction(self.value + f.value)
-        elif isinstance(f, (LinearFunction, QuadraticFunction)):
+        elif isinstance(f, (LinearFunction, QuadraticFunction, Undefined)):
             return f.add(self)
         else:
-            raise TypeError('Unsupported operand type(s) for '
-                            'add(): %s and %s.' % (type(self).__name__, type(f).__name__))
+            raise TypeError(
+                'Unsupported operand type(s) for add(): %s and %s.' % (
+                    type(self).__name__, type(f).__name__
+                )
+            )
 
     @property
     def m(self):
@@ -371,9 +383,14 @@ cdef class ConstantFunction(Function):
         return {'type': 'constant', 'value': self.value}
 
     cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2):
-        if x2 <= x1:
-            raise ValueError('The x2 argument must be greater than x1.')
-        return self.c * (x2 - x1)
+        if x2 < x1:
+            raise ValueError(
+                'The x2 argument must be greater than x1. '
+                'Got x1=%s, x2=%s' % (
+                    x1, x2
+                )
+            )
+        return 0 if not self.c else (self.c * (x2 - x1))
 
     cpdef ConstantFunction xshift(self, DTYPE_t delta):
         return self.copy()
@@ -628,6 +645,18 @@ cdef class LinearFunction(Function):
             raise ValueError('The x2 argument must be greater than x1.')
         elif x2 == x1:
             return 0
+        elif np.isinf(x1) and np.isinf(x2):
+            if self.m != 0:
+                return np.nan
+            return np.PINF if self.c > 0 else np.NINF
+        elif np.isinf(x1):
+            if self.m <= 0:
+                return np.PINF
+            return np.NINF
+        elif np.isinf(x2):
+            if self.m >= 0:
+                return np.PINF
+            return np.NINF
         return (.5 * self.m * x2 ** 2 + self.c * x2) - (.5 * self.m * x1 ** 2 + self.c * x1)
 
     cpdef LinearFunction xshift(self, DTYPE_t delta):
@@ -846,6 +875,28 @@ cdef class PiecewiseFunction(Function):
             return True
 
     @classmethod
+    def zero(cls, interval: ContinuousSet = None) -> PiecewiseFunction:
+        '''
+        Return a constant 'zero'-function on the specified interval, or on |R, if
+        no interval is passed.
+        '''
+        return cls.from_dict({
+            ifnone(interval, R.copy()): 0
+        })
+
+    def drop_undef(self) -> PiecewiseFunction:
+        '''
+        Return a copy of this ``PiecewiseFunction``, in which all segments
+        of ``Undefined`` function instances have been removed.
+        '''
+        result = PiecewiseFunction()
+        for i, f in self.iter():
+            if isinstance(f, Undefined):
+                continue
+            result.append(i.copy(), f.copy())
+        return result
+
+    @classmethod
     def from_dict(cls, d: Dict[Union[ContinuousSet, str], Union[Function, str, float]]) -> PiecewiseFunction:
         '''
         Construct a ``PiecewiseFunction`` object from a set of key-value pairs mapping
@@ -885,8 +936,10 @@ cdef class PiecewiseFunction(Function):
         for p1, p2 in pairwise(points):
             x1, _ = p1
             x2, _ = p2
-            plf.functions.append(LinearFunction.from_points(p1, p2))
-            plf.intervals.append(ContinuousSet(x1, x2, INC, EXC))
+            i = ContinuousSet(x1, x2, INC, EXC)
+            if not i.isempty():
+                plf.functions.append(LinearFunction.from_points(p1, p2))
+                plf.intervals.append(i)
         plf.intervals[-1].right = INC if np.isfinite(plf.intervals[-1].upper) else EXC
         plf.intervals[-1] = plf.intervals[-1].ends(right=EXC)
         return plf
@@ -966,83 +1019,67 @@ cdef class PiecewiseFunction(Function):
 
     # noinspection DuplicatedCode
     cpdef Function add(self, Function f):
-        if isinstance(f, (ConstantFunction, LinearFunction, QuadraticFunction)):
+        if isinstance(f, (ConstantFunction, LinearFunction)):
             result = self.copy()
             result.functions = [g + f for g in result.functions]
             return result
         elif isinstance(f, PiecewiseFunction):
-            result = PiecewiseFunction()
-            knots = sorted(
-                set(
-                    itertools.chain(
-                        *[(i.lower, i.upper) for i in f.intervals] +
-                         [(i.lower, i.upper) for i in self.intervals]
-                    )
+            domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
+            undefined = self.domain().union(f.domain()).difference(domain)
+            if not isinstance(undefined, RealSet):
+                undefined = RealSet([undefined])
+            result = PiecewiseFunction.from_dict({
+                i: Undefined() for i in undefined.intervals
+            })
+            for interval in domain.intervals:
+                if np.isfinite(interval.lower) and np.isfinite(interval.upper):
+                    middle = (interval.lower + interval.upper) * .5
+                elif np.isinf(interval.lower):
+                    middle = interval.lower
+                elif np.isinf(interval.upper):
+                    middle = interval.upper
+                f1 = ifnone(self.at(middle), Undefined())
+                f2 = ifnone(f.at(middle), Undefined())
+                result = result.overwrite(interval, f1 + f2)
+            return result.simplify()
+        else:
+            raise TypeError(
+                'Addition of type %s and %s currently unsupported.' % (
+                    type(self).__name__, type(f).__name__
                 )
             )
-            for lower, upper in pairwise(knots):
-                result.intervals.append(ContinuousSet(lower, upper, INC, EXC))
-                if not np.isinf(lower) and not np.isinf(upper):
-                    middle = (lower + upper) * .5
-                elif np.isinf(lower):
-                    middle = lower
-                elif np.isinf(upper):
-                    middle = upper
-                result.functions.append(
-                    ifnone(
-                        self.at(middle),
-                        Undefined()
-                    ) + ifnone(
-                        f.at(middle),
-                        Undefined()
-                    )
-                )
-            if result.intervals:
-                if np.isinf(result.intervals[0].lower):
-                    result.intervals[0].left = EXC
-            return result.simplify()
 
     # noinspection DuplicatedCode
     cpdef Function mul(self, Function f):
-        if isinstance(f, ConstantFunction):
+        if isinstance(f, (ConstantFunction, LinearFunction)):
             result = self.copy()
-            for i, g in result.iter():
-                g *= f
+            result.functions = [g * f for g in result.functions]
             return result
         elif isinstance(f, PiecewiseFunction):
-            result = PiecewiseFunction()
-            knots = sorted(
-                set(
-                    itertools.chain(*[
-                        (i.lower, i.upper) for i in f.intervals
-                    ] + [
-                        (i.lower, i.upper) for i in self.intervals
-                    ])
+            domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
+            undefined = self.domain().union(f.domain()).difference(domain)
+            if not isinstance(undefined, RealSet):
+                undefined = RealSet([undefined])
+            result = PiecewiseFunction.from_dict({
+                i: Undefined() for i in undefined.intervals
+            })
+            for interval in domain.intervals:
+                if np.isfinite(interval.lower) and np.isfinite(interval.upper):
+                    middle = (interval.lower + interval.upper) * .5
+                elif np.isinf(interval.lower):
+                    middle = interval.lower
+                elif np.isinf(interval.upper):
+                    middle = interval.upper
+                f1 = ifnone(self.at(middle), Undefined())
+                f2 = ifnone(f.at(middle), Undefined())
+                result = result.overwrite(interval, f1 * f2)
+            return result.simplify()
+        else:
+            raise TypeError(
+                'Multiplication of type %s and %s currently unsupported.' % (
+                    type(self).__name__, type(f).__name__
                 )
             )
-            for lower, upper in pairwise(knots):
-                result.intervals.append(
-                    ContinuousSet(lower, upper, INC, EXC)
-                )
-                if not np.isinf(lower) and not np.isinf(upper):
-                    middle = (lower + upper) * .5
-                elif np.isinf(lower):
-                    middle = lower
-                elif np.isinf(upper):
-                    middle = upper
-                result.functions.append(
-                    ifnone(
-                        self.at(middle),
-                        Undefined()
-                    ) *  ifnone(
-                        f.at(middle),
-                        Undefined()
-                    )
-                )
-            if result.intervals:
-                if np.isinf(result.intervals[0].lower):
-                    result.intervals[0].left = EXC
-            return result.simplify()
 
     cpdef Function copy(self):
         cdef PiecewiseFunction result = PiecewiseFunction()
@@ -1052,7 +1089,7 @@ cdef class PiecewiseFunction(Function):
         result.intervals = [i.copy() for i in self.intervals]
         return result
 
-    def overwrite(self, interval: ContinuousSet, func: Function) -> 'PiecewiseFunction':
+    def overwrite(self, interval: ContinuousSet or str, func: Function) -> 'PiecewiseFunction':
         """
         Overwrite this function in the specified interval range with the passed function ``func``.
 
@@ -1060,6 +1097,7 @@ cdef class PiecewiseFunction(Function):
         :param func: The function to replace the old function at ``interval``
         :return: The update function
         """
+        interval = ifstr(interval, ContinuousSet.parse)
         result = self.copy()
         if not result.intervals:
             result.intervals.append(interval)
@@ -1139,7 +1177,7 @@ cdef class PiecewiseFunction(Function):
         """
         assert len(self.intervals) == len(self.functions), \
             ('Intervals: %s, Functions: %s' % (self.intervals, self.functions))
-        return str('\n'.join([f'{str(i): <50} |--> {str(f)}' for i, f in zip(self.intervals, self.functions)]))
+        return str('\n'.join([f'{str(i): <50} ↦ {str(f)}' for i, f in zip(self.intervals, self.functions)]))
 
     cpdef Function differentiate(self):
         cdef PiecewiseFunction diff = PiecewiseFunction()
@@ -1150,7 +1188,7 @@ cdef class PiecewiseFunction(Function):
             diff.functions.append(f.differentiate())
         return diff
 
-    cpdef DTYPE_t integrate(self, ContinuousSet interval=None):
+    cpdef DTYPE_t integrate(self, ContinuousSet interval = None):
         '''
         Compute the area under this ``PiecewiseFunction`` in the ``interval``.
         '''
@@ -1364,7 +1402,7 @@ cdef class PiecewiseFunction(Function):
     def __repr__(self):
         return self.pfmt()
 
-    def round(self, digits=None, include_intervals=True):
+    def round(self, digits: int = None, include_intervals: bool = True) -> PiecewiseFunction:
         """
         Return a copy of this PLF, in which all parameters of sub-functions have been rounded by
         the specified number of digits.
@@ -1402,11 +1440,16 @@ cdef class PiecewiseFunction(Function):
         return RealSet(self.intervals).simplify()
 
     cpdef PiecewiseFunction simplify(self):
-        segments = sorted(list(self.iter()), key=cmp_to_key(self.cmp_segments))
+        segments = sorted(
+            list(self.iter()),
+            key=cmp_to_key(self.cmp_segments)
+        )
         queue = deque(segments)
         plf = PiecewiseFunction()
         while queue:
             i, f = queue.popleft()
+            if i.isempty():
+                continue
             if not plf.functions:
                 plf.append(i, f)
                 continue
@@ -1423,9 +1466,9 @@ cdef class PiecewiseFunction(Function):
         # The combination of two functions is only defined on their intersecting domains
         domain = (f1.domain() & f2.domain()).simplify()
         intervals = [
-            (i.min, i.max + np.nextafter(i.max, i.max + 1)) for i in f1.intervals
+            (i.min, i.max + eps) for i in f1.intervals
         ] + [
-            (i.min, i.max + np.nextafter(i.max, i.max + 1)) for i in f2.intervals
+            (i.min, i.max + eps) for i in f2.intervals
         ]
         intervals = domain.chop({i for i in chain(*intervals) if np.isfinite(i)})
         queue = deque(intervals)
@@ -1463,27 +1506,11 @@ cdef class PiecewiseFunction(Function):
         return PiecewiseFunction.combine(f1, f2, operator='max')
 
     @staticmethod
-    def cmp_intervals(i1: ContinuousSet, i2: ContinuousSet) -> int:
-        '''
-        A comparator for sorting intervals on a total order.
-
-        Intervals must be disjoint, otherwise a ``ValueError`` is raised.
-        '''
-        if i1.max < i2.min:
-            return -1
-        elif i2.max < i1.min:
-            return 1
-        else:
-            raise ValueError(
-                'Intervals must be disjoint, got %s and %s' % (i1, i2)
-            )
-
-    @staticmethod
     def cmp_segments(s1: Tuple[ContinuousSet, Function], s2: Tuple[ContinuousSet, Function]) -> int:
         '''
-        A comparator for <interval, function> pais. Uses the ``cmp_intervals()`` comparator.
+        A comparator for <interval, function> pais. Uses the ``ContinuousSet.comparator()`` function.
         '''
-        return PiecewiseFunction.cmp_intervals(s1[0], s2[0])
+        return ContinuousSet.comparator(s1[0], s2[0])
 
     @staticmethod
     def jaccard_similarity(
@@ -1503,9 +1530,9 @@ cdef class PiecewiseFunction(Function):
         '''
         Returns a copy of this function, which is shifted the on the x-axis by ``delta``.
         
-        Corresponds to a translation of $f(x - \Delta)$, i.e. positive values of
-        $\Delta$ will cause the function to "move to the right", negative value will
-        move it to the left. 
+        Corresponds to a translation of $f(x + \Delta)$, i.e. positive values of
+        $\Delta$ will cause the function to "move to the left", negative value will
+        move it to the right. 
         '''
         cdef PiecewiseFunction f = self.copy()
         for j, i in enumerate(f.intervals):
@@ -1516,15 +1543,26 @@ cdef class PiecewiseFunction(Function):
             f.functions[j] = f.functions[j].xshift(delta)
         return f
 
-    def boundaries(self) -> List[float]:
+    def boundaries(self) -> np.ndarray:
         points = [fst(self.intervals, attrgetter('lower'))]
         for i1, i2 in pairwise(self.intervals):
             if i1.contiguous(i2):
-                points.append(i1.max)
+                points.append(i2.min)
             else:
                 points.extend([i1.max, i2.min])
         points.append(last(self.intervals, attrgetter('upper')))
-        return list(sorted(set(filter(np.isfinite, points))))
+        return np.sort(
+            np.array(
+                list(
+                    set(
+                        filter(
+                            np.isfinite,
+                            points
+                        )
+                    )
+                )
+            )
+        )
 
     cpdef Function xmirror(self):
         cdef PiecewiseFunction result = PiecewiseFunction()
@@ -1537,3 +1575,98 @@ cdef class PiecewiseFunction(Function):
         result.functions = list(reversed([f.xmirror() for f in self.functions]))
         return result
 
+
+    def convolution(self, g: PiecewiseFunction) -> PiecewiseFunction:
+        '''
+        Compute the convolution of this function $f$ with another function $g$.
+
+        .. math::
+            f*g(z)=\int_{-\infty}^{+\infty} f(y)g(z-y) dy
+
+        At the moment, convolution only supports piecewise constant functions.
+
+        :param g:
+        :return:
+        '''
+        f = self
+        for func in itertools.chain(f.functions, g.functions):
+            if (not isinstance(func, (ConstantFunction, Undefined)) and
+                    isinstance(func, LinearFunction) and func.m != 0):
+                raise TypeError(
+                    'Only constant functions are supported for convolution, got %s.' %
+                    type(func).__name__
+                )
+        # mirror g at x=0
+        # g_ = g.xmirror()
+
+        # Compute all interval transitions
+        boundaries_f = f.boundaries()
+        boundaries_g = np.sort(-g.boundaries())
+
+        print(boundaries_g, boundaries_f)
+
+        # z is the position to which g needs to be shifted, so that
+        # g's and f's domains are just contiguous
+        z = boundaries_g.max() - boundaries_f.min()  # positive z means g's right border is right hand of f's left border
+        g_ = g.xmirror().xshift(z)  # positive z shifts g to the left
+        boundaries_g -= z  # boundaries move to the left
+        z *= -1
+        support_points = [(z, (f * g_).integrate())]
+        iteration = 1
+        while 1:
+            distances = np.array(  # compute the pairwise distances of boundaries
+                [b_g - b_f for b_g in boundaries_g for b_f in boundaries_f],
+                dtype=np.float64
+            )
+            if (distances >= 0).all():
+                break
+            delta_min = np.abs(distances[distances < 0].max())
+            # shift g ahead by delta_min
+            b = g_
+            g_ = g_.xshift(-delta_min)
+            boundaries_g += delta_min
+            f_times_g = f * g_
+            z += delta_min
+            integral = f_times_g.integrate()
+            if (z, integral) not in support_points:
+                support_points.append((z, integral))
+            iteration += 1
+
+        domain = f.domain().union(g.domain())
+        if isinstance(domain, ContinuousSet):
+            domain = RealSet([domain])
+        result = PiecewiseFunction.from_dict({
+            i: v for i, v in [
+                (first(domain.intervals), first(support_points)[1]),
+                (last(domain.intervals), last(support_points)[1])
+            ]
+        })
+        for i, h in PiecewiseFunction.from_points(support_points).iter():
+            result = result.overwrite(i, h)
+        return result.simplify()
+
+    def rectify(self) -> PiecewiseFunction:
+        '''
+        Returns a modification of this ``PiecewiseFunction``, in which all linear non-constant
+        function components have been replaced by constants given by the mean of the
+        original linear function, such that the result is a function of "rectangles".
+
+        :return:
+        '''
+        result = PiecewiseFunction()
+        for i, f in self.iter():
+            if isinstance(f, LinearFunction):
+                if np.isinf([i.lower, i.upper]).any():
+                    raise ValueError(
+                        'Expected finite interval, got %s.' % i
+                    )
+                f_ = ConstantFunction((f(i.min) + f(i.max)) * .5)
+            elif isinstance(f, (ConstantFunction, Undefined)):
+                f_ = f.copy()
+            else:
+                raise TypeError(
+                    'Rectification of functions of type %s are currently unsupported.' %
+                    type(f).__name__
+                )
+            result.append(i.copy(), f_)
+        return result
