@@ -3,3 +3,4 @@ cython
 ddt
 jupyter
 auditwheel
+scikit-learn

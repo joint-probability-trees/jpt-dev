@@ -9,11 +9,13 @@ from unittest import TestCase
 import numpy as np
 import pandas as pd
 import scipy.stats
+import sklearn.datasets
 from matplotlib import pyplot as plt
 from numpy.testing import assert_array_equal
 from pandas import DataFrame
 from scipy.stats import norm
 
+import jpt.variables
 from jpt import SymbolicType
 from jpt.base.errors import Unsatisfiability
 from jpt.base.intervals import ContinuousSet
@@ -800,3 +802,80 @@ class PreprocessingTest(TestCase):
             ),
             data_
         )
+
+
+class ConditionalJPTTest(TestCase):
+    data: pd.DataFrame
+    model: JPT
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        dataset = sklearn.datasets.load_iris()
+        df = pd.DataFrame(columns=dataset.feature_names, data=dataset.data)
+
+        target = dataset.target.astype(object)
+        for idx, target_name in enumerate(dataset.target_names):
+            target[target == idx] = target_name
+
+        df["plant"] = target
+
+        cls.data = df
+        cls.model = JPT(infer_from_dataframe(cls.data, scale_numeric_types=False, precision=0.1), min_samples_leaf=0.3)
+        cls.model.fit(cls.data)
+
+    def apply_evidence(self, evidence: jpt.variables.LabelAssignment) -> pd.DataFrame:
+
+        result = self.data.copy()
+
+        for variable, assignment in evidence.items():
+            if variable.symbolic:
+                result = result[result[variable.name].isin(assignment)]
+
+            if variable.numeric:
+                if isinstance(assignment, ContinuousSet):
+                    result = result[
+                        (result[variable.name] < assignment.upper) & (result[variable.name] >= assignment.lower)]
+
+        return result
+
+    def test_identity(self):
+        self.assertEqual(np.average(np.log(self.model.likelihood(self.data))),
+                         np.average(np.log(self.model.conditional_jpt().likelihood(self.data))))
+
+    def test_likelihood_symbolic(self):
+
+        # get original likelihood
+        likelihood = np.average(np.log(self.model.likelihood(self.data)))
+
+        # create evidence
+        evidence = self.model.bind({"plant": {"setosa", "virginica"}})
+
+        # create conditional jpt using the method
+        conditional_model = self.model.conditional_jpt(evidence)
+
+        # crop the dataframe to match evidence
+        cropped_df = self.apply_evidence(evidence)
+
+        # calculate conditional likelihood using model
+        conditional_likelihood = np.average(np.log(conditional_model.likelihood(cropped_df)))
+
+        self.assertTrue(conditional_likelihood > likelihood)
+
+    def test_likelihood_numeric_intervals(self):
+
+        # get original likelihood
+        likelihood = np.average(np.log(self.model.likelihood(self.data)))
+
+        # create evidence
+        evidence = self.model.bind({"sepal length (cm)": [5, 6]})
+
+        # create conditional jpt using the method
+        conditional_model = self.model.conditional_jpt(evidence)
+
+        # crop the dataframe to match evidence
+        cropped_df = self.apply_evidence(evidence)
+
+        # calculate conditional likelihood using model
+        conditional_likelihood = np.average(np.log(conditional_model.likelihood(cropped_df)))
+
+        self.assertTrue(conditional_likelihood > likelihood)
