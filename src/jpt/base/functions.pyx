@@ -936,8 +936,10 @@ cdef class PiecewiseFunction(Function):
         for p1, p2 in pairwise(points):
             x1, _ = p1
             x2, _ = p2
-            plf.functions.append(LinearFunction.from_points(p1, p2))
-            plf.intervals.append(ContinuousSet(x1, x2, INC, EXC))
+            i = ContinuousSet(x1, x2, INC, EXC)
+            if not i.isempty():
+                plf.functions.append(LinearFunction.from_points(p1, p2))
+                plf.intervals.append(i)
         plf.intervals[-1].right = INC if np.isfinite(plf.intervals[-1].upper) else EXC
         plf.intervals[-1] = plf.intervals[-1].ends(right=EXC)
         return plf
