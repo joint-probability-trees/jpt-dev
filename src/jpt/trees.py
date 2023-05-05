@@ -1571,7 +1571,7 @@ class JPT:
             return iv
 
     def likelihood(self,
-                   queries: np.ndarray,
+                   queries: Union[np.ndarray, pd.DataFrame],
                    dirac_scaling: float = 2.,
                    min_distances: Dict = None) -> np.ndarray:
         """
@@ -1854,6 +1854,7 @@ class JPT:
         :param evidence: A VariableAssignment mapping the observed variables to there observed values
          :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
         """
+
         # Convert, if necessary, labels to internal value representations
         if isinstance(evidence, LabelAssignment):
             evidence = evidence.value_assignment()
@@ -1861,39 +1862,74 @@ class JPT:
         # the new jpt that acts as conditional joint probability distribution
         conditional_jpt: JPT = self.copy()
 
+        # skip if evidence is empty
         if not evidence:
             return conditional_jpt
 
+        # initialize exploration queue
         fringe = deque([conditional_jpt.root])
 
         while fringe:
             # get the next node to inspect
             node = fringe.popleft()
+
+            # initialize remove as false
             rm = False
 
+            # if it is a decision node
             if isinstance(node, DecisionNode):
+
+                # that has no children
                 if not node.children:
+
+                    # remove it and update flag
                     del conditional_jpt.innernodes[node.idx]
                     rm = True
+
+                # else recurse into its children
                 else:
                     fringe.extendleft(node.children)
                     continue
+
+            # if it is a leaf node
             else:
+                # type hinting
                 leaf: Leaf = node
-                if not leaf.applies(evidence) or not leaf.consistent_with(evidence):
+
+                # calculate probability of this leaf being selected given the evidence
+                probability = leaf.probability(evidence)
+
+                # if the leafs probability is 0 with the evidence
+                if probability > 0:
+                    leaf.prior *= probability
+                else:
+                    # remove the leaf and set the flag
                     rm = True
                     del conditional_jpt.leaves[node.idx]
 
+            # if the node has been removed and the removed node as a parent
             if rm and node.parent is not None:
+
+                # if the nodes parent has children
                 if node.parent.children:
+
+                    # delete this node from the parents children
                     del node.parent.children[node.parent.children.index(node)]
+
+                # if the parent has no children
                 if not node.parent.children:
+
+                    # append the parent node the queue
                     fringe.appendleft(node.parent)
 
-            # check if evidence is possible
+            # if the resulting model is empty
             if rm and node is conditional_jpt.root:
+
+                # raise an error if wanted
                 if fail_on_unsatisfiability:
-                    raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                    raise Unsatisfiability('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+
+                # return None if error is not wanted
                 else:
                     return None
 
@@ -1903,6 +1939,7 @@ class JPT:
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
 
+            # normalize probability
             leaf.prior /= probability_mass
 
             for variable, value in evidence.items():
