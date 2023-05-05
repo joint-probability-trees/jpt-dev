@@ -607,7 +607,7 @@ cdef class ContinuousSet(NumberSet):
             return False
         if self.lower == self.upper:
             return not self.isclosed()
-        return np.nextafter(self.lower, self.upper) == self.upper and self.itype() == OPEN
+        return self.lower + eps >= self.upper and self.itype() == OPEN
 
     cpdef inline np.int32_t isclosed(ContinuousSet self):
         """
@@ -1054,9 +1054,9 @@ cdef class ContinuousSet(NumberSet):
         :return: 
         '''
         result = self.copy()
-        result.lower, result.upper = -result.max, -result.min
-        result.left, result.right = INC, INC
-        return result.ends(left=self.right, right=self.left)
+        result.lower, result.upper = -result.upper, -result.lower
+        result.left, result.right = result.right, result.left
+        return result
 
     def __contains__(self, x):
         try:

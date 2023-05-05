@@ -294,6 +294,29 @@ class ContinuousSetTest(unittest.TestCase):
     def test_complement(self, i, r):
         self.assertEqual(r, i.complement())
 
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @data(
+        ('(-inf,1)', '[1,2)', True),
+        ('(-inf,1]', '[1,2)', False),
+        ('(-inf,1]', '(1,2)', True),
+        (ContinuousSet(1, 2 + eps, INC, EXC), ContinuousSet(2 + eps, 3, INC, EXC), True),
+    )
+    @unpack
+    def test_contiguous(self, i1, i2, t):
+        # Arrange
+        i1 = ifstr(i1, ContinuousSet.parse)
+        i2 = ifstr(i2, ContinuousSet.parse)
+        # Act
+        r = i1.contiguous(i2)
+        # Assert
+        if t:
+            self.assertTrue(r)
+        else:
+            self.assertFalse(r)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     @data(
         (ContinuousSet.parse('[0,1]'), ContinuousSet.parse('[1,2]'), ContinuousSet.parse('[0,2]')),
         (ContinuousSet.parse('[1,2]'), ContinuousSet.parse('[0,1]'), ContinuousSet.parse('[0,2]')),
