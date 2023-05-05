@@ -1402,7 +1402,7 @@ cdef class PiecewiseFunction(Function):
     def __repr__(self):
         return self.pfmt()
 
-    def round(self, digits=None, include_intervals=True):
+    def round(self, digits: int = None, include_intervals: bool = True) -> PiecewiseFunction:
         """
         Return a copy of this PLF, in which all parameters of sub-functions have been rounded by
         the specified number of digits.
