@@ -59,9 +59,45 @@ cdef class NumberSet:
         raise NotImplementedError()
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# String and formatting constants
+
 _CUP = u'\u222A'
 _CAP = u'\u2229'
 _EMPTYSET = u'\u2205'
+_INFTY = '∞'
+
+LEFT = 0
+RIGHT = 1
+
+NOTATION_SQUARED = {
+    LEFT: {
+        INC: '[',
+        EXC: ']'
+    },
+    RIGHT: {
+        INC: ']',
+        EXC: '['
+    }
+}
+
+NOTATION_PARANTHESES = {
+    LEFT: {
+        INC: '[',
+        EXC: '('
+    },
+    RIGHT: {
+        INC: ']',
+        EXC: ')'
+    }
+}
+
+NOTATIONS = {
+    'par': NOTATION_PARANTHESES,
+    'sq': NOTATION_SQUARED
+}
+
+interval_notation = 'par'
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1081,27 +1117,39 @@ cdef class ContinuousSet(NumberSet):
         """
         return self.upper - self.lower
 
-    def pfmt(self, fmtstr=None):
-        precision = ifnone(fmtstr, '%s')
+    def pfmt(self, number_format: str = None, notation: str = None) -> str:
+        '''
+        Return a pretty-formatted representation of this ``ContinuousSet``.
+
+        :param number_format: the format string that is used to format the
+                              numbers, defaults to "%s", i.e. the default string conversion.
+                              May also be "%.3f" for 3-digit floating point representations, for instance.
+        :param notation: Either "par" for paranthesis style format (i.e. squared brackets for
+                         closed interval ends and parantheses for open interval ends, or
+                         "sq" for squared brackets formatting style.
+        :return:
+        '''
+        precision = ifnone(number_format, '%s')
         if self.isempty():
             return _EMPTYSET
         if self.lower == self.upper and self.left == self.right == INC:
             return f'{{{precision % self.lower}}}'
+        brackets = NOTATIONS[ifnone(notation, interval_notation)]
         return '{}{},{}{}'.format(
-            {INC: '[', EXC: ']'}[int(self.left)],
+            brackets[LEFT][int(self.left)],
             '-∞' if self.lower == np.NINF else (precision % float(self.lower)),
             '∞' if self.upper == np.inf else (precision % float(self.upper)),
-            {INC: ']', EXC: '['}[int(self.right)]
+            brackets[RIGHT][int(self.right)]
         )
 
     def __repr__(self):
         return '<{}={}>'.format(
             self.__class__.__name__,
             '{}{},{}{}'.format(
-                {INC: '[', EXC: ']'}[int(self.left)],
+                {INC: '[', EXC: '('}[int(self.left)],
                 '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
                 '∞' if self.upper == np.inf else ('%.3f' % self.upper),
-                {INC: ']', EXC: '['}[int(self.right)]
+                {INC: ']', EXC: ')'}[int(self.right)]
             )
         )
 

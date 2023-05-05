@@ -17,7 +17,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.intervals import ContinuousSet, INC, EXC, EMPTY, RealSet, chop, R, _EMPTYSET
+    from jpt.base.intervals import ContinuousSet, INC, EXC, EMPTY, RealSet, chop, R, _EMPTYSET,  _INFTY
 
 
 class UtilsTest(unittest.TestCase):
@@ -58,6 +58,8 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(ContinuousSet.parse(s), i)
         self.assertEqual(hash(i), hash(i.copy()))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     def test_itype(self):
         i1 = ContinuousSet.parse('(0,1)')
         self.assertEqual(i1.itype(), 4)
@@ -66,6 +68,34 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(i2.itype(), 2)
 
         self.assertEqual(ContinuousSet.parse('(0,1]').itype(), ContinuousSet.parse('[3,4)').itype())
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @data(
+        (ContinuousSet(0, 1), '[0.0,1.0]'),
+        (ContinuousSet(np.NINF, np.PINF, EXC, EXC), f'(-{_INFTY},{_INFTY})')
+    )
+    @unpack
+    def test_pfmt_par(self, i, s):
+        # Act
+        s_ = i.pfmt(notation='par')
+        # Assert
+        self.assertEqual(s, s_)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @data(
+        (ContinuousSet(0, 1), '[0.0,1.0]'),
+        (ContinuousSet(np.NINF, np.PINF, EXC, EXC), f']-{_INFTY},{_INFTY}[')
+    )
+    @unpack
+    def test_pfmt_sq(self, i, s):
+        # Act
+        s_ = i.pfmt(notation='sq')
+        # Assert
+        self.assertEqual(s, s_)
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     def test_value_check(self):
         self.assertRaises(ValueError, ContinuousSet, 1, -1)
@@ -90,6 +120,8 @@ class ContinuousSetTest(unittest.TestCase):
         else:
             self.assertNotEqual(i1, i2)
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     @data(
         ('[0,1]', 0, 1),
         ('(-1,1)', -1 + eps, 1 - eps),
@@ -105,6 +137,8 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(min_true, min_)
         self.assertEqual(max_true, max_)
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     @data(']0, 0[',)
     def test_emptyness(self, s):
         self.assertTrue(ContinuousSet.parse(s).isempty(),
@@ -115,6 +149,8 @@ class ContinuousSetTest(unittest.TestCase):
     @unpack
     def test_serialization(self, i):
         self.assertEqual(i, pickle.loads(pickle.dumps(i)))
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     @data(
         (ContinuousSet.parse('[0,1]'), .5, True),
@@ -128,6 +164,8 @@ class ContinuousSetTest(unittest.TestCase):
     @unpack
     def test_value_containment(self, i, v, r):
         self.assertEqual(r, i.contains_value(v))
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     @data(
         ('[0, 2]', '[.5, 1.5]', True),
@@ -149,6 +187,8 @@ class ContinuousSetTest(unittest.TestCase):
             i2 = ContinuousSet.parse(i2)
         self.assertEqual(o, i1.contains_interval(i2))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     @data(
         ('[0, 2]', '[.5, 1.5]', True),
         ('[.5, 1.5]', '[0, 2]', False),
@@ -164,6 +204,8 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(o, ContinuousSet.parse(i1).contains_interval(ContinuousSet.parse(i2),
                                                                       proper_containment=True))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     @data(('[-10, 5]', ']5, 10]'),
           ('[0, 1]', '[2, 3]'),
           (']-inf,0[', '[0, inf['),
@@ -174,6 +216,8 @@ class ContinuousSetTest(unittest.TestCase):
         i1 = ContinuousSet.parse(i1)
         i2 = ContinuousSet.parse(i2)
         self.assertEqual(EMPTY, i1.intersection(i2))
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     @data(('[-10, 5]', '[0, 10]', '[0,5]'),
           ('[-10, 10]', '[-5, 5]', '[-5,5]'),
@@ -191,6 +235,8 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(i1.intersection(i2),
                          i2.intersection(i1))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     def test_intersection_optional_left(self):
         i1 = ContinuousSet.parse('[-1, 1]')
         i2 = ContinuousSet.parse(']-1, 1[')
@@ -199,6 +245,8 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(i1.intersection(i2, left=INC),
                          i2.intersection(i1, left=INC))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     def test_intersection_optional_right(self):
         i1 = ContinuousSet.parse('[-1, 1]')
         i2 = ContinuousSet.parse(']-1, 1[')
@@ -206,6 +254,8 @@ class ContinuousSetTest(unittest.TestCase):
                          i1.intersection(i2, right=INC))
         self.assertEqual(i1.intersection(i2, right=INC),
                          i2.intersection(i1, right=INC))
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     @data(('[-10, 5]', '[0, 10]', ContinuousSet.parse('[-10,0[')),
           ('[-10, 10]', '[-5, 5]', RealSet(['[-10,-5[', ']5,10]'])),
@@ -220,6 +270,8 @@ class ContinuousSetTest(unittest.TestCase):
     def test_difference(self, i1, i2, r):
         self.assertEqual(r, ContinuousSet.parse(i1).difference(ContinuousSet.parse(i2)))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     @data(('[-10, 5]',), (']5, 10]',),
           ('[0, 1]',), ('[2, 3]',),
           (']-inf,0[',), ('[0, inf[',),
@@ -229,6 +281,8 @@ class ContinuousSetTest(unittest.TestCase):
     def test_serialization(self, i):
         i = ContinuousSet.parse(i)
         self.assertEqual(i, ContinuousSet.from_json(i.to_json()))
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     @data(
         (ContinuousSet.parse('[0,1]'), RealSet([ContinuousSet(np.NINF, 0, EXC, EXC),
@@ -256,6 +310,8 @@ class ContinuousSetTest(unittest.TestCase):
     def test_union(self, i1, i2, r):
         self.assertEqual(r, i1.union(i2))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     @data(
         ('[0,0]',),
         ('[0,1]',),
@@ -264,6 +320,8 @@ class ContinuousSetTest(unittest.TestCase):
     @unpack
     def test_hash(self, i):
         self.assertEqual(hash(i), hash(pickle.loads(pickle.dumps(i))))
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     def test_sample(self):
         # test default usage
@@ -282,6 +340,8 @@ class ContinuousSetTest(unittest.TestCase):
         for sample in samples:
             self.assertEqual(sample, -0.5)
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     def test_linspace(self):
         i1 = ContinuousSet.parse("(-1,1)")
         samples = i1.linspace(100)
@@ -291,6 +351,8 @@ class ContinuousSetTest(unittest.TestCase):
 
         i2 = ContinuousSet.emptyset()
         self.assertRaises(IndexError, i2.sample, 100)
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     def test_size(self):
         # test infinitely big sets
@@ -304,6 +366,8 @@ class ContinuousSetTest(unittest.TestCase):
         # test emptyset
         i3 = ContinuousSet.emptyset()
         self.assertEqual(i3.size(), 0)
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     def test_uppermost_lowermost(self):
         # test infinitely big sets
@@ -325,6 +389,8 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(-0.5, i2.lowermost())
         self.assertEqual(0.5, i2.uppermost())
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     def test_chop_normal(self):
         # Arrange
         i = ContinuousSet(0, 1)
@@ -343,6 +409,8 @@ class ContinuousSetTest(unittest.TestCase):
             chops
         )
         self.assertEqual(i, RealSet(intervals=chops))
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     def test_chop_border_case_closed(self):
         # Arrange
@@ -365,6 +433,8 @@ class ContinuousSetTest(unittest.TestCase):
         )
         self.assertEqual(i, RealSet(intervals=chop_upper))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     def test_chop_border_case_open(self):
         # Arrange
         i = ContinuousSet(0, 1, EXC, EXC)
@@ -386,6 +456,8 @@ class ContinuousSetTest(unittest.TestCase):
         )
         self.assertEqual(i, RealSet(intervals=chop_upper))
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     def test_chop_border_case_closed_left(self):
         # Arrange
         i = ContinuousSet(0, 1)
@@ -398,6 +470,8 @@ class ContinuousSetTest(unittest.TestCase):
             [i], chops
         )
         self.assertEqual(i, RealSet(intervals=chops))
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     @data(
         ('[0,1]', {'left': INC, 'right': INC}, '[0,1]'),
@@ -421,6 +495,8 @@ class ContinuousSetTest(unittest.TestCase):
                 i, args, i_, t
             )
         )
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     @data(
         ('[0,1]', '[-1,0]'),
