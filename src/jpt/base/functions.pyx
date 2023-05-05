@@ -1177,7 +1177,7 @@ cdef class PiecewiseFunction(Function):
         """
         assert len(self.intervals) == len(self.functions), \
             ('Intervals: %s, Functions: %s' % (self.intervals, self.functions))
-        return str('\n'.join([f'{str(i): <50} |--> {str(f)}' for i, f in zip(self.intervals, self.functions)]))
+        return str('\n'.join([f'{str(i): <50} ↦ {str(f)}' for i, f in zip(self.intervals, self.functions)]))
 
     cpdef Function differentiate(self):
         cdef PiecewiseFunction diff = PiecewiseFunction()
