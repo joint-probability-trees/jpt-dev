@@ -17,7 +17,7 @@ from operator import attrgetter
 from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any
 
 from dnutils import ifnot, ifnone, pairwise, fst, last
-from dnutils.tools import ifstr
+from dnutils.tools import ifstr, first
 from scipy import stats
 from scipy.stats import norm
 
@@ -1448,6 +1448,8 @@ cdef class PiecewiseFunction(Function):
         plf = PiecewiseFunction()
         while queue:
             i, f = queue.popleft()
+            if i.isempty():
+                continue
             if not plf.functions:
                 plf.append(i, f)
                 continue
@@ -1528,9 +1530,9 @@ cdef class PiecewiseFunction(Function):
         '''
         Returns a copy of this function, which is shifted the on the x-axis by ``delta``.
         
-        Corresponds to a translation of $f(x - \Delta)$, i.e. positive values of
-        $\Delta$ will cause the function to "move to the right", negative value will
-        move it to the left. 
+        Corresponds to a translation of $f(x + \Delta)$, i.e. positive values of
+        $\Delta$ will cause the function to "move to the left", negative value will
+        move it to the right. 
         '''
         cdef PiecewiseFunction f = self.copy()
         for j, i in enumerate(f.intervals):
@@ -1541,7 +1543,7 @@ cdef class PiecewiseFunction(Function):
             f.functions[j] = f.functions[j].xshift(delta)
         return f
 
-    def boundaries(self) -> List[float]:
+    def boundaries(self) -> np.ndarray:
         points = [fst(self.intervals, attrgetter('lower'))]
         for i1, i2 in pairwise(self.intervals):
             if i1.contiguous(i2):
@@ -1549,7 +1551,18 @@ cdef class PiecewiseFunction(Function):
             else:
                 points.extend([i1.max, i2.min])
         points.append(last(self.intervals, attrgetter('upper')))
-        return list(sorted(set(filter(np.isfinite, points))))
+        return np.sort(
+            np.array(
+                list(
+                    set(
+                        filter(
+                            np.isfinite,
+                            points
+                        )
+                    )
+                )
+            )
+        )
 
     cpdef Function xmirror(self):
         cdef PiecewiseFunction result = PiecewiseFunction()
@@ -1563,51 +1576,97 @@ cdef class PiecewiseFunction(Function):
         return result
 
 
-    def convolution(self, f: PiecewiseFunction) -> 'PiecewiseFunction':
+    def convolution(self, g: PiecewiseFunction) -> PiecewiseFunction:
         '''
-        Compute a new function, which is given by the convolution of this function
-        and a second functino ``f``.
+        Compute the convolution of this function $f$ with another function $g$.
 
-        :param f:
+        .. math::
+            f*g(z)=\int_{-\infty}^{+\infty} f(y)g(z-y) dy
+
+        At the moment, convolution only supports piecewise constant functions.
+
+        :param g:
         :return:
         '''
+        f = self
+        for func in itertools.chain(f.functions, g.functions):
+            if (not isinstance(func, (ConstantFunction, Undefined)) and
+                    isinstance(func, LinearFunction) and func.m != 0):
+                raise TypeError(
+                    'Only constant functions are supported for convolution, got %s.' %
+                    type(func).__name__
+                )
+        # mirror g at x=0
+        # g_ = g.xmirror()
 
-        g = self
-        f_ = f.xmirror()
-        boundaries_g = g.boundaries()
-        boundaries_f = f_.boundaries()
-        boundaries = list(sorted(set(boundaries_f + boundaries_g)))
-        # print(f_)
-        # domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
-        # boundaries = PiecewiseFunction.from_dict({
-        #     i: Undefined() for i in domain.intervals
-        # }).boundaries()
-        print(boundaries)
-        z = max(boundaries_f) - min(boundaries_g)
-        print('z =', z)
-        f_ = f_.xshift(z)
-        boundaries_f = f_.boundaries()
-        distances = np.array(
-            [[b_f - b_g for b_f in boundaries_f] for b_g in boundaries_g]
-        )
-        print(f_)
-        support_points = [(z, 0)]
-        while not np.all(distances >= 0):
-            distance_min = np.abs(distances[distances < 0]).min()
-            print('distances:\n', distances, 'min abs. dist:', distance_min)
-            f_ = f_.xshift(-distance_min)
-            f_times_g = f_ * g
-            print(f_)
-            print('---')
-            print(f_times_g)
-            z += distance_min
-            integral = f_times_g.integrate()
-            print('point:', (z, integral))
-            support_points.append((z, integral))
-            # boundaries_g = g.boundaries()
-            boundaries_f = f_.boundaries()
-            distances = np.array(
-                [[b_f - b_g for b_f in boundaries_f] for b_g in boundaries_g]
+        # Compute all interval transitions
+        boundaries_f = f.boundaries()
+        boundaries_g = np.sort(-g.boundaries())
+
+        print(boundaries_g, boundaries_f)
+
+        # z is the position to which g needs to be shifted, so that
+        # g's and f's domains are just contiguous
+        z = boundaries_g.max() - boundaries_f.min()  # positive z means g's right border is right hand of f's left border
+        g_ = g.xmirror().xshift(z)  # positive z shifts g to the left
+        boundaries_g -= z  # boundaries move to the left
+        z *= -1
+        support_points = [(z, (f * g_).integrate())]
+        iteration = 1
+        while 1:
+            distances = np.array(  # compute the pairwise distances of boundaries
+                [b_g - b_f for b_g in boundaries_g for b_f in boundaries_f],
+                dtype=np.float64
             )
-        # print(f_)
-        print(support_points)
+            if (distances >= 0).all():
+                break
+            delta_min = np.abs(distances[distances < 0].max())
+            # shift g ahead by delta_min
+            b = g_
+            g_ = g_.xshift(-delta_min)
+            boundaries_g += delta_min
+            f_times_g = f * g_
+            z += delta_min
+            integral = f_times_g.integrate()
+            if (z, integral) not in support_points:
+                support_points.append((z, integral))
+            iteration += 1
+
+        domain = f.domain().union(g.domain())
+        if isinstance(domain, ContinuousSet):
+            domain = RealSet([domain])
+        result = PiecewiseFunction.from_dict({
+            i: v for i, v in [
+                (first(domain.intervals), first(support_points)[1]),
+                (last(domain.intervals), last(support_points)[1])
+            ]
+        })
+        for i, h in PiecewiseFunction.from_points(support_points).iter():
+            result = result.overwrite(i, h)
+        return result.simplify()
+
+    def rectify(self) -> PiecewiseFunction:
+        '''
+        Returns a modification of this ``PiecewiseFunction``, in which all linear non-constant
+        function components have been replaced by constants given by the mean of the
+        original linear function, such that the result is a function of "rectangles".
+
+        :return:
+        '''
+        result = PiecewiseFunction()
+        for i, f in self.iter():
+            if isinstance(f, LinearFunction):
+                if np.isinf([i.lower, i.upper]).any():
+                    raise ValueError(
+                        'Expected finite interval, got %s.' % i
+                    )
+                f_ = ConstantFunction((f(i.min) + f(i.max)) * .5)
+            elif isinstance(f, (ConstantFunction, Undefined)):
+                f_ = f.copy()
+            else:
+                raise TypeError(
+                    'Rectification of functions of type %s are currently unsupported.' %
+                    type(f).__name__
+                )
+            result.append(i.copy(), f_)
+        return result
