@@ -1656,7 +1656,7 @@ cdef class PiecewiseFunction(Function):
         result = PiecewiseFunction()
         for i, f in self.iter():
             if isinstance(f, LinearFunction):
-                if np.isinf([i.lower, i.upper]).any():
+                if f.m != 0 and np.isinf([i.lower, i.upper]).any():
                     raise ValueError(
                         'Expected finite interval, got %s.' % i
                     )

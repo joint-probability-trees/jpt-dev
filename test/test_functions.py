@@ -804,8 +804,18 @@ class PLFTest(TestCase):
 
     def test_rectify_error(self):
         # Arrange
-        plf = PiecewiseFunction.from_dict({
+        plf1 = PiecewiseFunction.from_dict({
             R: 'x+1'
         })
+        plf2 = PiecewiseFunction.from_dict({
+            R: '0x+.5'
+        })
         # Act & Assert
-        self.assertRaises(ValueError, plf.rectify)
+        self.assertRaises(ValueError, plf1.rectify)
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                R: .5
+            }),
+            plf2.rectify()
+        )
+
