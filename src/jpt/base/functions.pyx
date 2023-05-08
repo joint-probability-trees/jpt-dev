@@ -1520,6 +1520,35 @@ cdef class PiecewiseFunction(Function):
         return PiecewiseFunction.combine(f1, f2, operator='max')
 
     @staticmethod
+    def abs(f: PiecewiseFunction) -> PiecewiseFunction:
+        return PiecewiseFunction.max(f, f * -1)
+
+    def is_impulse(self) -> float:
+        '''
+        Determine wether or not this ``PiecewiseFunction`` represents a Dirac impulse.
+        If yes, the return value is the non-zero function value at that impulse.
+        Otherwise, it returns 0.
+        :return:
+        '''
+        if (
+            len(self) == 3 and
+            self.intervals[0].isninf() and
+            self.functions[0] == ConstantFunction(0) and
+            self.intervals[-1].ispinf() and
+            self.functions[-1] == ConstantFunction(0) and
+            not self.intervals[1].isempty() and
+            self.intervals[1].min + eps >= self.intervals[1].upper - eps
+        ):
+            return self.functions[1].eval(self.intervals[1].lower)
+        elif (
+            len(self) == 1 and
+            self.domain() == R and
+            isinstance(self.functions[0], Impulse)
+        ):
+            return self.functions[0].weight
+        return False
+
+    @staticmethod
     def cmp_segments(s1: Tuple[ContinuousSet, Function], s2: Tuple[ContinuousSet, Function]) -> int:
         '''
         A comparator for <interval, function> pais. Uses the ``ContinuousSet.comparator()`` function.
@@ -1589,7 +1618,6 @@ cdef class PiecewiseFunction(Function):
         result.functions = list(reversed([f.xmirror() for f in self.functions]))
         return result
 
-
     def convolution(self, g: PiecewiseFunction) -> PiecewiseFunction:
         '''
         Compute the convolution of this function $f$ with another function $g$.
@@ -1610,14 +1638,9 @@ cdef class PiecewiseFunction(Function):
                     'Only constant functions are supported for convolution, got %s.' %
                     type(func).__name__
                 )
-        # mirror g at x=0
-        # g_ = g.xmirror()
-
         # Compute all interval transitions
         boundaries_f = f.boundaries()
         boundaries_g = np.sort(-g.boundaries())
-
-        print(boundaries_g, boundaries_f)
 
         # z is the position to which g needs to be shifted, so that
         # g's and f's domains are just contiguous
@@ -1641,6 +1664,7 @@ cdef class PiecewiseFunction(Function):
             boundaries_g += delta_min
             f_times_g = f * g_
             z += delta_min
+            # print(f, '\n---', g_, '\n===', f_times_g)
             integral = f_times_g.integrate()
             if (z, integral) not in support_points:
                 support_points.append((z, integral))
@@ -1655,6 +1679,7 @@ cdef class PiecewiseFunction(Function):
                 (last(domain.intervals), last(support_points)[1])
             ]
         })
+
         for i, h in PiecewiseFunction.from_points(support_points).iter():
             result = result.overwrite_at(i, h)
         return result.simplify()
@@ -1672,7 +1697,7 @@ cdef class PiecewiseFunction(Function):
             if isinstance(f, LinearFunction):
                 if f.m != 0 and np.isinf([i.lower, i.upper]).any():
                     raise ValueError(
-                        'Expected finite interval, got %s.' % i
+                        'Expected finite interval, got %s on function %s' % (i, f)
                     )
                 f_ = ConstantFunction((f(i.min) + f(i.max)) * .5)
             elif isinstance(f, (ConstantFunction, Undefined)):
@@ -1683,4 +1708,79 @@ cdef class PiecewiseFunction(Function):
                     type(f).__name__
                 )
             result.append(i.copy(), f_)
+        return result
+
+    def maximize(self) -> Tuple[RealSet, float]:
+        '''
+        Determine the global maxima of this ``PiecewiseFunction``
+        :return:
+        '''
+        f_max = np.nan
+        f_argmax = EMPTY.copy()
+        d = self.domain()
+
+        for b in itertools.chain(
+                [i.min for i in self.intervals],
+                [i.max for i in self.intervals]
+        ):
+            idx = self.idx_at(b)
+            f = self.functions[idx]
+            i = self.intervals[idx]
+            f_ = f(b)
+            if not np.isnan(f_max) and f_max > f_:
+                continue
+            if isinstance(f, LinearFunction):
+                argmax = ContinuousSet(b, b)
+            elif isinstance(f, ConstantFunction):
+                argmax = i.copy()
+            else:
+                raise TypeError(
+                    'Maximizing functions of type %s '
+                    'is currently not supported.' % type(self).__name__
+                )
+            if f_max == f_:
+                f_argmax = f_argmax.union(argmax)
+            else:
+                f_argmax = argmax
+            f_max = f_
+        return f_argmax, f_max
+
+    def approximate(
+            self,
+            epsilon: float = .01,
+            replacement: type = LinearFunction
+    ) -> PiecewiseFunction:
+        result = self.copy()
+        while 1:
+            mse_min = np.inf
+            mse_min_segments = None
+            for (i1, f1), (i2, f2) in pairwise(result.iter()):
+                if not i1.contiguous(i2) or i1.isninf() or i2.ispinf():
+                    continue
+                i = ContinuousSet(i1.lower, i2.upper, i1.left, i2.right)
+                if replacement is LinearFunction:
+                    f_ = LinearFunction.from_points(
+                        (i.lower, f1(i.lower)),
+                        (i.upper, f2(i.upper))
+                    )
+                elif replacement is ConstantFunction:
+                    f_ = ConstantFunction(
+                        f1(i.lower) * i1.width / i.width + f2(i.upper) * i2.width / i.width
+                    )
+                delta = (self.crop(i) - f_)
+                mse = ((delta * delta) * ConstantFunction(1 / i.size())).integrate()
+                _, e_max = PiecewiseFunction.abs(delta).maximize()
+                if mse < mse_min and e_max <= epsilon:
+                    mse_min = mse
+                    mse_min_segments = (i1, f1), (i2, f2), (i, f_)
+
+            if mse_min_segments is not None:
+                (i1, f1), (i2, f2), (i, f_) = mse_min_segments
+                del result.intervals[result.intervals.index(i1)]
+                del result.functions[result.functions.index(f1)]
+                del result.intervals[result.intervals.index(i2)]
+                del result.functions[result.functions.index(f2)]
+                result = result.overwrite_at(i, f_)
+            else:
+                break
         return result

@@ -504,6 +504,25 @@ class PLFTest(TestCase):
             plf
         )
 
+    @data(
+        (
+            PiecewiseFunction.zero().overwrite({
+                ContinuousSet(0, 0 + eps, INC, EXC): 1.23,
+            }),
+            1.23
+        ),
+        (
+            PiecewiseFunction.zero(),
+            False
+        )
+
+    )
+    @unpack
+    def test_is_impulse(self, plf, truth):
+        # Act
+        impulse = plf.is_impulse()
+        self.assertEqual(truth, impulse)
+
     def test_min_max(self):
         # Arrange
         plf1 = PiecewiseFunction.from_dict({
