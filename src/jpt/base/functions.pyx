@@ -941,7 +941,9 @@ cdef class PiecewiseFunction(Function):
             x2, _ = p2
             i = ContinuousSet(x1, x2, INC, EXC)
             if not i.isempty():
-                plf.functions.append(LinearFunction.from_points(p1, p2))
+                plf.functions.append(
+                    LinearFunction.from_points(p1, p2)
+                )
                 plf.intervals.append(i)
         plf.intervals[-1].right = INC if np.isfinite(plf.intervals[-1].upper) else EXC
         plf.intervals[-1] = plf.intervals[-1].ends(right=EXC)
@@ -950,8 +952,11 @@ cdef class PiecewiseFunction(Function):
     cpdef DTYPE_t eval(self, DTYPE_t x):
         return self.at(x).eval(x)
 
-    def __call__(self, x):
-        return self.eval(x)
+    def __call__(self, x: float or np.ndarray):
+        if isinstance(x, numbers.Real):
+            return self.eval(x)
+        elif isinstance(x, np.ndarray):
+            return self.multi_eval(x)
 
     def __getitem__(self, key: int):
         return self.intervals[key], self.functions[key]
