@@ -107,7 +107,9 @@ class ContinuousSetTest(unittest.TestCase):
         ('[0,1)', '[0,1)', True),
         ('(0,1]', '[0,1]', False),
         ('(0,1]', '(0,1]', True),
-        (ContinuousSet(0 + eps, 1 - eps, INC, INC), '(0,1)', True)
+        (ContinuousSet(0 + eps, 1 - eps, INC, INC), '(0,1)', True),
+        ('(0,0)', '(1,1)', True),  # Different kinds of empty sets
+        ('[0,0)', EMPTY, True)
     )
     @unpack
     def test_equality(self, i1, i2, eq):
@@ -136,6 +138,38 @@ class ContinuousSetTest(unittest.TestCase):
         # Assert
         self.assertEqual(min_true, min_)
         self.assertEqual(max_true, max_)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @data(
+        ('(-inf,1)', True),
+        ('(0,inf)', False),
+        ('(-inf,inf)', True),
+        ('(0,0)', False),
+        ('[0,1]', False),
+    )
+    @unpack
+    def test_isninf(self, i, t):
+        # Arrange
+        i = ifstr(i, ContinuousSet.parse)
+        # Act & Assert
+        self.assertEqual(t, i.isninf())
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @data(
+        ('(-inf,1)', False),
+        ('(0,inf)', True),
+        ('(-inf,inf)', True),
+        ('(0,0)', False),
+        ('[0,1]', False),
+    )
+    @unpack
+    def test_ispinf(self, i, t):
+        # Arrange
+        i = ifstr(i, ContinuousSet.parse)
+        # Act & Assert
+        self.assertEqual(t, i.ispinf())
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -262,13 +296,24 @@ class ContinuousSetTest(unittest.TestCase):
           ('[-10, 10]', ']-5, 5[', RealSet(['[-10,-5]', '[5,10]'])),
           ('[-10, 10]', '[-5, 5[', RealSet(['[-10,-5[', '[5,10]'])),
           ('[-1.0,1.0]', '[0.0, 1.0]', ContinuousSet(-1, 0, INC, EXC)),
-          ('[0,1]', '[1,2]', ContinuousSet(0, 1, INC, EXC))
-          # ('[-10, 10]', '[-10, 10]', '[-10,10]'),
+          ('[0,1]', '[1,2]', ContinuousSet(0, 1, INC, EXC)),
+          ('[-10, 10]', EMPTY, '[-10,10]'),
+          (ContinuousSet(0, 0 + eps, INC, EXC), EMPTY, ContinuousSet(0, 0 + eps, INC, EXC)),
+          (ContinuousSet(0 + eps, np.PINF, INC, EXC), EMPTY, ContinuousSet(0 + eps, np.PINF, INC, EXC)),
           # ('[-10, 10]', '[1,1]', '[1,1]')
           )
     @unpack
     def test_difference(self, i1, i2, r):
-        self.assertEqual(r, ContinuousSet.parse(i1).difference(ContinuousSet.parse(i2)))
+        # Arrange
+        i1 = ifstr(i1, ContinuousSet.parse)
+        i2 = ifstr(i2, ContinuousSet.parse)
+        r = ifstr(r, ContinuousSet.parse)
+
+        # Act
+        diff = i1.difference(i2)
+
+        # Assert
+        self.assertEqual(r, diff)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -695,17 +740,17 @@ class RealSetTest(unittest.TestCase):
         r1 = RealSet(['[-1,1]', '[-.5,.5]'])
         self.assertTrue(r1.contains_interval(ContinuousSet(-0.25, 0.25)))
         self.assertFalse(r1.contains_interval(ContinuousSet(-2, 0.25)))
-        self.assertTrue(r1.contains_interval(ContinuousSet(0, 0, 2, 2)))
+        self.assertTrue(r1.contains_interval(EMPTY))
 
         # test empty set
         r2 = RealSet.emptyset()
         self.assertFalse(r2.contains_interval(ContinuousSet(-0.25, 0.25)))
-        self.assertFalse(r2.contains_interval(ContinuousSet(0, 0, 2, 2)))
+        self.assertFalse(r2.contains_interval(EMPTY))
 
         # test singular value
         r3 = RealSet(["[-.5, -.5]"])
         self.assertTrue(r3.contains_interval(ContinuousSet(-0.5, -0.5)))
-        self.assertFalse(r3.contains_interval(ContinuousSet(0, 0, 2, 2)))
+        self.assertFalse(r3.contains_interval(EMPTY))
 
     def test_fst(self):
         # test default case
@@ -726,17 +771,17 @@ class RealSetTest(unittest.TestCase):
         r1 = RealSet(['[-1,1]', '[-.5,.5]'])
         self.assertTrue(r1.intersects(ContinuousSet(-0.25, 0.25)))
         self.assertFalse(r1.intersects(ContinuousSet(-7, -6)))
-        self.assertTrue(r1.intersects(ContinuousSet(0, 0, 2, 2)))
+        self.assertFalse(r1.intersects(EMPTY))
 
         # test empty set
         r2 = RealSet.emptyset()
         self.assertFalse(r2.intersects(ContinuousSet(-0.25, 0.25)))
-        self.assertFalse(r2.intersects(ContinuousSet(0, 0, 2, 2)))
+        self.assertFalse(r2.intersects(EMPTY))
 
         # test singular value
         r3 = RealSet(["[-.5, -.5]"])
         self.assertTrue(r3.intersects(ContinuousSet(-0.5, -0.5)))
-        self.assertFalse(r3.intersects(ContinuousSet(0, 0, 2, 2)))
+        self.assertFalse(r3.intersects(EMPTY))
 
     def test_chop(self):
         # Arrange

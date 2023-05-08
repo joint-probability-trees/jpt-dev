@@ -66,6 +66,10 @@ cdef class RealSet(NumberSet):
 
     cpdef inline RealSet xmirror(self)
 
+    cpdef inline np.int32_t isninf(self)
+
+    cpdef inline np.int32_t ispinf(self)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -130,3 +134,7 @@ cdef class ContinuousSet(NumberSet):
     cpdef inline ContinuousSet ends(self, int left=*, int right=*)
 
     cpdef inline ContinuousSet xmirror(self)
+
+    cpdef inline np.int32_t isninf(ContinuousSet self)
+
+    cpdef inline np.int32_t ispinf(ContinuousSet self)

@@ -293,6 +293,26 @@ cdef class RealSet(NumberSet):
                 return True
         return False
 
+    cpdef inline np.int32_t isninf(RealSet self):
+        """
+        Check if this ``RealSet`` is infinite to the left (negative infty).
+        :return: 
+        """
+        for i in self.intervals:
+            if i.isninf():
+                return True
+        return False
+
+    cpdef inline np.int32_t ispinf(RealSet self):
+        """
+        Check if this ``RealSet`` is infinite to the right (positive infty).
+        :return: 
+        """
+        for i in self.intervals:
+            if i.ispinf():
+                return True
+        return False
+
     cpdef inline np.int32_t isempty(RealSet self):
         """
         Checks whether this RealSet is empty or not.
@@ -452,6 +472,8 @@ cdef class RealSet(NumberSet):
         return RealSet(self.intervals + other.intervals).simplify()
 
     cpdef inline NumberSet difference(RealSet self, NumberSet other):
+        if other.isempty():
+            return self.copy()
         if isinstance(other, ContinuousSet):
             other = RealSet([other])
         intervals = []
@@ -529,13 +551,18 @@ cdef class ContinuousSet(NumberSet):
         [0.0,3.0]
     """
 
-    def __init__(ContinuousSet self,
-                 DTYPE_t lower=np.nan,
-                 DTYPE_t upper=np.nan,
-                 np.int32_t left=0,
-                 np.int32_t right=0):
+    def __init__(
+            ContinuousSet self,
+            DTYPE_t lower,
+            DTYPE_t upper,
+            np.int32_t left = 0,
+            np.int32_t right = 0
+    ):
         if lower > upper:
-            raise ValueError('Lower bound must not be smaller than upper bound (%s > %s)' % (lower, upper))
+            raise ValueError(
+                'Lower bound must be lower or equal '
+                'to upper bound. Got lower = %s > upper = %s.' % (lower, upper)
+            )
         self.lower = lower
         self.upper = upper
         self.left = ifnot(left, _INC)
@@ -551,7 +578,7 @@ cdef class ContinuousSet(NumberSet):
         """
         if s == _EMPTYSET:
             return EMPTY
-        interval = ContinuousSet()
+        interval = ContinuousSet(np.nan, np.nan)
         tokens = re_int.match(s.replace(" ", "").replace('∞', 'inf'))
 
         if tokens is None:
@@ -615,6 +642,20 @@ cdef class ContinuousSet(NumberSet):
         :return: boolean describing is this is closed or not.
         """
         return self.itype() == CLOSED
+
+    cpdef inline np.int32_t isninf(ContinuousSet self):
+        """
+        Check if this interval is infinite to the left (negative infty)
+        :return: 
+        """
+        return np.isinf(self.lower)
+
+    cpdef inline np.int32_t ispinf(ContinuousSet self):
+        """
+        Check if this interval is infinite to the right (positive infty)
+        :return: 
+        """
+        return np.isinf(self.upper)
 
     @staticmethod
     cdef inline ContinuousSet c_emptyset():
@@ -766,9 +807,11 @@ cdef class ContinuousSet(NumberSet):
         """
         return self.intersects(ContinuousSet(value, value))
 
-    cpdef inline np.int32_t contains_interval(ContinuousSet self,
-                                              NumberSet other,
-                                              int proper_containment=False):
+    cpdef inline np.int32_t contains_interval(
+            ContinuousSet self,
+            NumberSet other,
+            int proper_containment=False
+    ):
         """
         Checks if ``other`` lies in interval.
        
@@ -778,8 +821,12 @@ cdef class ContinuousSet(NumberSet):
         non-contiguous intervals.
         :return: True if the other interval is contained, else False
         """
+        if self.isempty():
+            return False
         if isinstance(other, RealSet):
-            return all([self.contains_interval(i, proper_containment=proper_containment) for i in other.intervals])
+            return all(
+                [self.contains_interval(i, proper_containment=proper_containment) for i in other.intervals]
+            )
         if self.lowermost() > other.lowermost() or self.uppermost() < other.uppermost():
             return False
         if self.lower == other.lower:
@@ -815,6 +862,8 @@ cdef class ContinuousSet(NumberSet):
         :returns True if the two intervals intersect, False otherwise
         :rtype: bool
         """
+        if other.isempty():
+            return False
         if isinstance(other, RealSet):
             return other.intersects(self)
         if other.lower > self.upper or other.upper < self.lower:
@@ -925,15 +974,28 @@ cdef class ContinuousSet(NumberSet):
         :param other: the other NumberSet 
         :return: difference of those sets as RealSet
         """
+        if other.isempty():
+            return self.copy()
         if isinstance(other, RealSet):
             return RealSet([self]).difference(other)
         cdef NumberSet result
         if other.contains_interval(self):
             return ContinuousSet.c_emptyset()
+
         elif self.contains_interval(other, proper_containment=True):
             result = RealSet([
-                ContinuousSet(self.lower, other.lower, self.left, _INC if other.left == _EXC else _EXC),
-                ContinuousSet(other.upper, self.upper, _INC if other.right == _EXC else _EXC, self.right)
+                ContinuousSet(
+                    self.lower,
+                    other.lower,
+                    self.left,
+                    _INC if other.left == _EXC else _EXC
+                ),
+                ContinuousSet(
+                    other.upper,
+                    self.upper,
+                    _INC if other.right == _EXC else _EXC,
+                    self.right
+                )
             ])
             return result
         elif self.intersects(other):
@@ -1000,6 +1062,13 @@ cdef class ContinuousSet(NumberSet):
     @property
     def max(self):
         return self.uppermost()
+
+    @property
+    def width(self):
+        if self.isninf() or self.ispinf():
+            return np.inf
+        else:
+            return self.max - self.min
 
     def chop(self, points: Iterable[float]) -> Iterable[ContinuousSet]:
         '''
@@ -1076,7 +1145,7 @@ cdef class ContinuousSet(NumberSet):
         return all((
             self.min == other.min,
             self.max == other.max
-        ))
+        )) or self.isempty() and other.isempty()
 
     @staticmethod
     def comparator(i1: ContinuousSet, i2: ContinuousSet) -> int:
@@ -1157,7 +1226,9 @@ cdef class ContinuousSet(NumberSet):
         return self.size() != 0
 
     def __hash__(self):
-        return hash((ContinuousSet, self.lower, self.upper, self.left, self.right))
+        return hash(
+            (ContinuousSet, self.lower, self.upper, self.left, self.right)
+        )
 
     def __getstate__(self):
         return self.lower, self.upper, self.left, self.right
