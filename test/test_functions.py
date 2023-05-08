@@ -414,14 +414,14 @@ class PLFTest(TestCase):
 
     def test_mul_const_const(self):
         # Arrange
-        plf = PiecewiseFunction.zero().overwrite(
+        plf = PiecewiseFunction.zero().overwrite_at(
             '[0,1)', ConstantFunction(1)
         )
         # Act
         product = plf.mul(ConstantFunction(2))
         # Assert
         self.assertEqual(
-            PiecewiseFunction.zero().overwrite(
+            PiecewiseFunction.zero().overwrite_at(
                 '[0,1)', ConstantFunction(2)
             ),
             product
@@ -429,14 +429,14 @@ class PLFTest(TestCase):
 
     def test_mul_const_linear(self):
         # Arrange
-        plf = PiecewiseFunction.zero().overwrite(
+        plf = PiecewiseFunction.zero().overwrite_at(
             '[-1,1)', ConstantFunction(1)
         )
         # Act
         product = plf.mul(LinearFunction(1, 0))
         # Assert
         self.assertEqual(
-            PiecewiseFunction.zero().overwrite(
+            PiecewiseFunction.zero().overwrite_at(
                 '[-1,1)', LinearFunction(1, 0)
             ),
             product
@@ -587,7 +587,7 @@ class PLFTest(TestCase):
         result = PiecewiseFunction.from_dict({R: 0})
 
         # Act
-        result = result.overwrite(
+        result = result.overwrite_at(
             ContinuousSet(0, 1),
             ConstantFunction(1)
         )
@@ -603,7 +603,7 @@ class PLFTest(TestCase):
         )
 
         # Act
-        result = result.overwrite(
+        result = result.overwrite_at(
             ContinuousSet(.5, 1.5),
             ConstantFunction(2)
         )
@@ -627,7 +627,7 @@ class PLFTest(TestCase):
         })
 
         # Act
-        result = result.overwrite(ContinuousSet(-.5, .5, INC, EXC), ConstantFunction(2))
+        result = result.overwrite_at(ContinuousSet(-.5, .5, INC, EXC), ConstantFunction(2))
 
         # Assert
         self.assertEqual(
@@ -651,7 +651,7 @@ class PLFTest(TestCase):
                 (2 - eps, 0)
         ])
         for i, f in plf2:
-            plf = plf.overwrite(i, f)
+            plf = plf.overwrite_at(i, f)
 
         # Act
         result = plf.xshift(3)
@@ -669,7 +669,7 @@ class PLFTest(TestCase):
         )
 
     def test_xmirror_simple(self):
-        plf = PiecewiseFunction.zero().overwrite(
+        plf = PiecewiseFunction.zero().overwrite_at(
             ContinuousSet(-1, 1 + eps, INC, EXC),
             ConstantFunction(1)
         )
@@ -705,14 +705,14 @@ class PLFTest(TestCase):
         for i, f in PiecewiseFunction.from_points(
             [(-1, 0), (0, 1), (1, 0)]
         ):
-            plf = plf.overwrite(i, f)
+            plf = plf.overwrite_at(i, f)
         # Act
         mirror = plf.xmirror().round(64)
         self.assertEqual(plf, mirror)
 
     def test_boundaries(self):
         # Symmatric functions have identical boundaries
-        plf = PiecewiseFunction.zero().overwrite(
+        plf = PiecewiseFunction.zero().overwrite_at(
             ContinuousSet(-1, 1, INC, EXC),
             ConstantFunction(1)
         )
@@ -740,12 +740,12 @@ class PLFTest(TestCase):
         (
                 PiecewiseFunction.from_dict({
                     R: 0
-                }).overwrite(
+                }).overwrite_at(
                     ContinuousSet(-1, 1, INC, EXC), ConstantFunction(1)
                 ),
                 PiecewiseFunction.from_dict({
                     R: 0
-                }).overwrite(
+                }).overwrite_at(
                     ContinuousSet(-2, 2, INC, EXC), ConstantFunction(.5)
                 ),
                 PiecewiseFunction.from_dict({
@@ -759,12 +759,12 @@ class PLFTest(TestCase):
         (
                 PiecewiseFunction.from_dict({
                     R: 0
-                }).overwrite(
+                }).overwrite_at(
                     ContinuousSet(-1, 1, INC, EXC), ConstantFunction(.5)
                 ),
                 PiecewiseFunction.from_dict({
                     R: 0
-                }).overwrite(
+                }).overwrite_at(
                     ContinuousSet(-1, 1, INC, EXC), ConstantFunction(.5)
                 ),
                 PiecewiseFunction.from_dict({

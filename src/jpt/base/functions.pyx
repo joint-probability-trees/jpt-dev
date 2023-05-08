@@ -1048,7 +1048,7 @@ cdef class PiecewiseFunction(Function):
                     middle = interval.upper
                 f1 = ifnone(self.at(middle), Undefined())
                 f2 = ifnone(f.at(middle), Undefined())
-                result = result.overwrite(interval, f1 + f2)
+                result = result.overwrite_at(interval, f1 + f2)
             return result.simplify()
         else:
             raise TypeError(
@@ -1080,7 +1080,7 @@ cdef class PiecewiseFunction(Function):
                     middle = interval.upper
                 f1 = ifnone(self.at(middle), Undefined())
                 f2 = ifnone(f.at(middle), Undefined())
-                result = result.overwrite(interval, f1 * f2)
+                result = result.overwrite_at(interval, f1 * f2)
             return result.simplify()
         else:
             raise TypeError(
@@ -1097,7 +1097,7 @@ cdef class PiecewiseFunction(Function):
         result.intervals = [i.copy() for i in self.intervals]
         return result
 
-    def overwrite(self, interval: ContinuousSet or str, func: Function) -> 'PiecewiseFunction':
+    def overwrite_at(self, interval: ContinuousSet or str, func: Function) -> 'PiecewiseFunction':
         """
         Overwrite this function in the specified interval range with the passed function ``func``.
 
@@ -1134,6 +1134,12 @@ cdef class PiecewiseFunction(Function):
         functions.insert(insert_pos, func)
         result.intervals = list(intervals)
         result.functions = list(functions)
+        return result
+
+    def overwrite(self, segments: Dict[ContinuousSet or str, Function or float]) -> PiecewiseFunction:
+        result = self.copy()
+        for i, f in PiecewiseFunction.from_dict(segments).iter():
+            result = result.overwrite_at(i, f)
         return result
 
     cpdef tuple split(self, DTYPE_t splitpoint):
@@ -1650,7 +1656,7 @@ cdef class PiecewiseFunction(Function):
             ]
         })
         for i, h in PiecewiseFunction.from_points(support_points).iter():
-            result = result.overwrite(i, h)
+            result = result.overwrite_at(i, h)
         return result.simplify()
 
     def rectify(self) -> PiecewiseFunction:
