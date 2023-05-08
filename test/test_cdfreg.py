@@ -1,3 +1,4 @@
+from unittest import TestCase
 
 from matplotlib import pyplot as plt
 
@@ -317,3 +318,38 @@ class TestCaseQuantileCrop(unittest.TestCase):
         plt.legend()
         plt.title(f'{self._testMethodName} - cropping {self.interval}')
         plt.show()
+
+
+class QuantileTest(TestCase):
+
+    def test_pdf_to_cdf(self):
+        '''Convert a PDF into a CDF by piecewise integration'''
+        # Arrange
+        pdf = PiecewiseFunction.from_dict({
+            '(-inf,-2.5)': 0,
+            '[-2.5,-1.5)': 1,
+            '[-1.5,-.5)': 3,
+            '[-.5,.5)': 5,
+            '[.5,1.5)': 3,
+            '[1.5,2.5)': 1,
+            '[2.5,inf)': 0,
+        })
+        integral = pdf.integrate()
+        pdf = pdf.mul(ConstantFunction(1 / integral))
+
+        # Act
+        cdf = QuantileDistribution.pdf_to_cdf(pdf)
+
+        # Assert
+        self.assertAlmostEqual(
+            0,
+            cdf.functions[0].value,
+            places=12
+        )
+        self.assertAlmostEqual(
+            1,
+            cdf.functions[-1].value,
+            places=12
+        )
+        for f in cdf.functions:
+            self.assertGreaterEqual(f.m, 0)

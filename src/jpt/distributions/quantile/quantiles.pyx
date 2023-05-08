@@ -11,6 +11,7 @@ from operator import itemgetter, attrgetter
 
 from dnutils import ifnot, first, ifnone
 
+from ...base.constants import eps
 from ...base.intervals import R, EMPTY, EXC, INC
 
 import numpy as np
@@ -71,9 +72,15 @@ cdef class QuantileDistribution:
         return result
 
     @staticmethod
-    def from_cdf(cdf):
+    def from_cdf(cdf: PiecewiseFunction) -> 'QuantileDistribution':
         d = QuantileDistribution()
         d.cdf = cdf
+        return d
+
+    @staticmethod
+    def from_pdf(pdf: PiecewiseFunction) -> 'QuantileDistribution':
+        d = QuantileDistribution()
+        d.pdf = pdf
         return d
 
     cpdef _assert_consistency(self):
@@ -83,12 +90,32 @@ cdef class QuantileDistribution:
                 '# intervals: %s != # functions: %s' % (len(self.cdf.intervals),
                                                         len(self.cdf.functions))
 
-    cpdef QuantileDistribution fit(self,
-                                   DTYPE_t[:, ::1] data,
-                                   SIZE_t[::1] rows,
-                                   SIZE_t col,
-                                   DTYPE_t leftmost=np.nan,
-                                   DTYPE_t rightmost=np.nan):
+    @staticmethod
+    def pdf_to_cdf(pdf: PiecewiseFunction) -> PiecewiseFunction:
+        '''Convert a PDF into a CDF by piecewise integration'''
+        cdf = PiecewiseFunction()
+        pdf = pdf.rectify()
+        head = 0
+        for i, f in pdf.iter():
+            if not f.value:
+                f_ = ConstantFunction(head)
+            else:
+                f_ = LinearFunction(
+                    f.value,
+                    head - f.value * i.lower
+                )
+            head = f_.eval(i.upper)
+            cdf.append(i.copy(), f_)
+        return cdf
+
+    cpdef QuantileDistribution fit(
+            self,
+            DTYPE_t[:, ::1] data,
+            SIZE_t[::1] rows,
+            SIZE_t col,
+            DTYPE_t leftmost = np.nan,
+            DTYPE_t rightmost = np.nan
+    ):
         """
         Fit the quantile distribution to the rows ``rows`` and column ``col`` of the
         data array ``data``.
@@ -108,9 +135,11 @@ cdef class QuantileDistribution:
 
         # We have to copy the data into C-contiguous array first
         cdef SIZE_t i, n_samples = rows.shape[0] + (0 if isnan(leftmost) else 1) + (0 if isnan(rightmost) else 1)
-        cdef DTYPE_t[:, ::1] data_buffer = np.ndarray(shape=(2, n_samples),
-                                                      dtype=np.float64,
-                                                      order='C')
+        cdef DTYPE_t[:, ::1] data_buffer = np.ndarray(
+            shape=(2, n_samples),
+            dtype=np.float64,
+            order='C'
+        )
         # Write the data points themselves into the first (upper) row of the array...
         if not isnan(leftmost):
             data_buffer[0, 0] = leftmost
@@ -188,10 +217,15 @@ cdef class QuantileDistribution:
         # cropping would result in a non-valid quantile
         if (interval.uppermost() < self._cdf.intervals[0].upper or
                 interval.lowermost() > self._cdf.intervals[-1].lower):
-            raise Unsatisfiability('CDF has zero Probability in '
-                                   '%s (should be in %s)' % (interval,
-                                                             ContinuousSet(self._cdf.intervals[0].upper,
-                                                                           self._cdf.intervals[-1].lower, EXC, EXC)))
+            raise Unsatisfiability(
+                'CDF has zero Probability in %s (should be in %s)' % (
+                    interval,
+                    ContinuousSet(
+                        self._cdf.intervals[0].upper,
+                        self._cdf.intervals[-1].lower, EXC, EXC
+                    )
+                )
+            )
 
         # I: crop
         cdf_ = self.cdf.crop(interval)
@@ -272,14 +306,25 @@ cdef class QuantileDistribution:
         elif self._pdf is None:
             pdf = self._cdf.differentiate()
             if len(self._cdf.intervals) == 2:
-                pdf.intervals.insert(1, ContinuousSet(pdf.intervals[0].upper,
-                                                      np.nextafter(pdf.intervals[0].upper,
-                                                                   pdf.intervals[0].upper + 1), INC, EXC))
-                pdf.intervals[-1].lower = np.nextafter(pdf.intervals[-1].lower,
-                                                       pdf.intervals[-1].lower + 1)
+                pdf.intervals.insert(
+                    1,
+                    ContinuousSet(
+                        pdf.intervals[0].upper,
+                        pdf.intervals[0].upper + eps,
+                        INC,
+                        EXC
+                    )
+                )
+                pdf.intervals[-1].lower += eps
                 pdf.functions.insert(1, ConstantFunction(np.PINF))
             self._pdf = pdf
         return self._pdf
+
+    @pdf.setter
+    def pdf(self, pdf):
+        self._pdf = pdf
+        self._cdf = QuantileDistribution.pdf_to_cdf(pdf)
+        self._ppf = None
 
     @property
     def ppf(self):
@@ -342,10 +387,16 @@ cdef class QuantileDistribution:
                                                                                      self._cdf.pfmt()))
 
             if np.isnan(ppf.eval(1.)):
-                raise ValueError(str(one_plus_eps) +
-                                 'ppf:\n %s\n===cdf\n%s\nval' % (ppf.pfmt(),
-                                                                 self._cdf.pfmt() + str(ppf.intervals[-1].lower) + ' ' + str(ppf.intervals[-2].upper) + ' ' + str(ppf.eval(1.)) + ' ' + str(ppf.eval(one_plus_eps))))
-
+                raise ValueError(
+                    str(one_plus_eps) +
+                    'ppf:\n %s\n===cdf\n%s\nval' % (
+                        ppf.pfmt(),
+                        (self._cdf.pfmt() + str(ppf.intervals[-1].lower)
+                         + ' ' + str(ppf.intervals[-2].upper)
+                         + ' ' + str(ppf.eval(1.))
+                         + ' ' + str(ppf.eval(one_plus_eps)))
+                    )
+                )
             self._ppf = ppf
         return self._ppf
 
