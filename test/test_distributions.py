@@ -6,20 +6,21 @@ from unittest import TestCase
 
 import numpy as np
 
+from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
 
 try:
     from jpt.base.functions import __module__
     from jpt.distributions.quantile.quantiles import __module__
-    from jpt.base.intervals import __module__, R
+    from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.functions import PiecewiseFunction, LinearFunction
+    from jpt.base.functions import PiecewiseFunction, LinearFunction, ConstantFunction
     from jpt.distributions.quantile.quantiles import QuantileDistribution
-    from jpt.base.intervals import ContinuousSet, EXC, INC, RealSet
+    from jpt.base.intervals import ContinuousSet, EXC, INC, RealSet, R
 
 
 from jpt.base.errors import Unsatisfiability
@@ -281,16 +282,19 @@ class NumericDistributionTest(TestCase):
                          DistGauss.value2label(DistGauss.label2value(RealSet(['[0, 1]', '[2,3]']))))
 
     def _test_label_inference(self):
-        return
         raise NotImplementedError()
 
     def test_value_inference_normal(self):
         '''Inference under "normal" circumstances.'''
-        dist = Numeric().set(params=QuantileDistribution.from_cdf(PiecewiseFunction.from_dict(
-            {']-inf,0[': 0,
-             '[0,1[': LinearFunction(1, 0),
-             '[1,inf[': 1}
-        )))
+        dist = Numeric().set(
+            params=QuantileDistribution.from_cdf(
+                PiecewiseFunction.from_dict({
+                    ']-inf,0[': 0,
+                    '[0,1[': LinearFunction(1, 0),
+                    '[1,inf[': 1
+                })
+            )
+        )
         self.assertEqual(0, dist._p(-1))
         self.assertEqual(0, dist._p(.5))
         self.assertEqual(0, dist._p(2))
@@ -299,10 +303,14 @@ class NumericDistributionTest(TestCase):
 
     def test_value_inference_singularity(self):
         '''PDF has a singularity like a Dirac impulse function.'''
-        dist = Numeric().set(params=QuantileDistribution.from_cdf(PiecewiseFunction.from_dict(
-            {']-inf,0.0[': 0,
-             '[0.0,inf[': 1}
-        )))
+        dist = Numeric().set(
+            params=QuantileDistribution.from_cdf(
+                PiecewiseFunction.from_dict({
+                    ']-inf,0.0[': 0,
+                    '[0.0,inf[': 1
+                })
+            )
+        )
         self.assertEqual(0, dist._p(ContinuousSet.parse(']-inf,0[')))
         self.assertEqual(1, dist._p(ContinuousSet.parse('[0,inf[')))
         self.assertEqual(1, dist._p(0))
