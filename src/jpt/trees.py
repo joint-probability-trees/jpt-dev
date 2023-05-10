@@ -1081,7 +1081,7 @@ class JPT:
             evidence_ = evidence
 
         variables = ifnot(
-            [v if isinstance(v, Variable) else self.varnames[v] for v in variables],
+            [v if isinstance(v, Variable) else self.varnames[v] for v in ifnone(variables, self.variables)],
             set(self.variables) - set(evidence_ or {})
         )
 
