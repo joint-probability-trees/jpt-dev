@@ -591,7 +591,10 @@ class Numeric(Distribution):
         return e if not singular else i.lower
 
     def expectation(self) -> numbers.Real:
-        return self.labels[self._expectation()]
+        return self.moment(1, c=0)
+
+    def variance(self) -> numbers.Real:
+        return self.moment(2, c=0)
 
     def quantile(self, gamma: numbers.Real) -> numbers.Real:
         return self.ppf.eval(gamma)
