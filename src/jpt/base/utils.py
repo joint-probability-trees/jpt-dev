@@ -1,11 +1,11 @@
 import logging
 import numbers
 import os
-from _csv import QUOTE_MINIMAL, register_dialect, QUOTE_NONE, QUOTE_NONNUMERIC
+from _csv import register_dialect, QUOTE_NONNUMERIC
 from csv import Dialect
 
 import math
-from typing import Callable, Iterable, Any, Tuple, Set
+from typing import Callable, Iterable, Any, Tuple, Set, List, Union, Dict
 
 import numpy as np
 import arff
@@ -17,8 +17,7 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from numpy import iterable
 
-from dnutils import ifnone, stop, out
-
+from dnutils import ifnone, ifnot
 
 try:
     from .intervals import __module__
@@ -267,28 +266,80 @@ def list2interval(l):
                          np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper))
 
 
-def normalized(dist, identity_on_zeros=False, allow_neg=False):
-    '''Returns a modification of ``seq`` in which all elements sum to 1, but keep their proportions.'''
+def normalized(
+        dist: Union[List[numbers.Real], np.ndarray, Dict[Any,numbers.Real]],
+        identity_on_zeros: bool = False,
+        allow_neg: bool = False,
+        zeros: float = .0
+) -> Union[List[numbers.Real], np.ndarray, Dict[Any,numbers.Real]]:
+    '''
+    Returns a modification of ``seq`` in which all elements sum to 1, but keep their proportions.
+
+    ``dist`` can be either a list or numpy array, or a dict mapping from random events
+    of any type to their respective value.
+
+    :param dist:   the values to be normalized
+    :param identity_on_zeros: if all values in dist are zero, the input argument is returned unchanged.
+                              If ``False``, an error is raised in the case that the distribution cannot be
+                              normalized.
+    :param allow_neg:  determines whether negative values are allowed. If ``True``, negative values will be treated
+                       as positive values for the normalization, but will keep their sign in the output.
+    :param zeros:  in [0,1], if ``zeros`` is a non-negative, non-zero float, all zeros in the distribution
+                   will be set to that fraction of the smallest non-zero value in the distribuition.
+                   This parameter can be used to artificially circumvent strict-0 values, which may be prohibitive
+                   in some cases.
+    '''
     if isinstance(dist, (list, np.ndarray)):
         dist_ = {i: p for i, p in enumerate(dist)}
-    else:
+    elif isinstance(dist, dict):
         dist_ = dict(dist)
-    signs = {k: np.sign(v) for k, v in dist_.items()}
-    if not all(e >= 0 for e in dist_.values()) and not allow_neg:
-        raise ValueError('Negative elements not allowed: %s' % np.array(list(dist_.values())))
-    absvals = {k: abs(v) for k, v in dist_.items()}
-    z = sum(absvals.values())
-    if not z and not identity_on_zeros:
-        raise ValueError('Not a proper distribution: %s' % dist)
-    elif not z and identity_on_zeros:
-        return [0] * len(dist)
-    if isinstance(dist, dict):
-        return {e: absvals[e] / z * signs[e] for e in dist_}
     else:
-        rval = [absvals[e] / z * signs[e] for e in range(len(dist_))]
+        raise TypeError(
+            'Illegal type of distribution: %s.' % type(dist).__name__
+        )
+
+    if not all(e >= 0 for e in dist_.values()) and not allow_neg:
+        raise ValueError(
+            'Negative elements not allowed: %s' % np.array(list(dist_.values()))
+        )
+
+    signs = {
+        k: ifnot(np.sign(v), 1) for k, v in dist_.items()
+    }
+
+    retvals = {
+        k: abs(v) for k, v in dist_.items()
+    }
+
+    while 1:
+        z = sum(retvals.values())
+        if not z:
+            if not identity_on_zeros:
+                raise ValueError('Not a proper distribution: %s' % dist)
+            if not z and identity_on_zeros:
+                return dist.copy()
+
+        retvals = {
+            k: v / z for k, v in retvals.items()
+        }
+
+        if zeros and min(retvals.values()) == 0:
+            abs_min = min([v for v in retvals.values() if v > .0]) * zeros
+            retvals = {
+                k: ifnot(v, abs_min) for k, v in retvals.items()
+            }
+            continue
+
+        result = {
+            k: v * signs[k] for k, v in retvals.items()
+        }
+        if not isinstance(dist, dict):
+            result = [
+                result[e]for e in range(len(dist_))
+            ]
         if isinstance(dist, np.ndarray):
-            return np.array(rval)
-        return rval
+            return np.array(result, dtype=dist.dtype)
+        return result
 
 
 class CSVDialect(Dialect):
