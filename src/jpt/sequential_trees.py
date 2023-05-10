@@ -1,4 +1,5 @@
 import datetime
+from operator import itemgetter
 from typing import List, Dict
 
 import numpy as np
@@ -288,7 +289,7 @@ class SequentialJPT:
         evidence_ = []
         for e in evidence:
             if e is None or isinstance(e, dict):
-                e = self.template_tree.bind(e, allow_singular_values=True)
+                e = self.template_tree.bind(e, allow_singular_values=False)
             if isinstance(e, LabelAssignment):
                 e = e.value_assignment()
             evidence_.append(e)
@@ -309,8 +310,12 @@ class SequentialJPT:
 
         # Run (loopy) belief propagation (LBP)
         start = datetime.datetime.now()
-        iters, converged = factor_graph.lbp(max_iters=100, progress=True)
-        latent_distribution = factor_graph.rv_marginals()
+        factor_graph.lbp(max_iters=100, progress=True)
+        leaf_distribution = {
+            var.name: normalized(dist, zeros=.1)
+            for var, dist in factor_graph.rv_marginals()
+        }
+
         now = datetime.datetime.now()
         self.logger.debug(
             'Leaf prior computations '
@@ -318,8 +323,17 @@ class SequentialJPT:
         )
 
         # transform trees
-        for ((name, distribution), tree) in zip(sorted(latent_distribution, key=lambda x: x[0].name), altered_jpts):
-            prior = dict(zip(self.template_tree.leaves.keys(), distribution))
+        for ((tree_name, distribution), tree) in zip(
+            sorted(leaf_distribution.items(), key=itemgetter(0)),
+            altered_jpts
+        ):
+            prior = dict(
+                zip(
+                    sorted(self.template_tree.leaves.keys()),
+                    distribution
+                )
+            )
+
             adjusted_tree = tree.multiply_by_leaf_prior(prior)
             result.append(adjusted_tree)
 
