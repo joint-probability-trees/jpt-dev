@@ -187,14 +187,16 @@ class DecisionNode(Node):
         self.children: None or List[Node] = None  # [None] * len(self.splits)
 
     def __eq__(self, o) -> bool:
-        return (type(self) is type(o) and
-                self.idx == o.idx and
-                (self.parent.idx
-                 if self.parent is not None else None) == (o.parent.idx if o.parent is not None else None) and
-                [n.idx for n in self.children] == [n.idx for n in o.children] and
-                self.splits == o.splits and
-                self.variable == o.variable and
-                self.samples == o.samples)
+        return (
+            type(self) is type(o) and
+            self.idx == o.idx and
+            (self.parent.idx
+             if self.parent is not None else None) == (o.parent.idx if o.parent is not None else None) and
+            [n.idx for n in self.children] == [n.idx for n in o.children] and
+            self.splits == o.splits and
+            self.variable == o.variable and
+            self.samples == o.samples
+        )
 
     def to_json(self) -> Dict[str, Any]:
         """
@@ -788,7 +790,7 @@ class JPT:
         }
 
     @staticmethod
-    def from_json(data: Dict[str, Any]):
+    def from_json(data: Dict[str, Any]) -> 'JPT':
         """Construct a tree from a json dict."""
         variables = OrderedDict([(d['name'], Variable.from_json(d)) for d in data['variables']])
         jpt = JPT(
@@ -984,7 +986,7 @@ class JPT:
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
-            evidence_ = evidence
+            evidence_ = ifnone(evidence, {})
 
         variables = ifnone(variables, self.variables)
         result = VariableMap()
@@ -1350,15 +1352,14 @@ class JPT:
             f'{self.__class__.__name__}\n'
             f'{self.pfmt()}\n'
             f'JPT stats: #innernodes = {len(self.innernodes)}, '
-            f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n'
+            f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)'
         )
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__}\n'
-            f'{self.pfmt()}\n'
-            f'JPT stats: #innernodes = {len(self.innernodes)}, '
-            f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)\n'
+            f'<{self.__class__.__name__} '
+            f'#innernodes = {len(self.innernodes)}, '
+            f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)>'
         )
 
     def pfmt(self) -> str:
@@ -1476,14 +1477,18 @@ class JPT:
         # Determine the prior distributions
         started = datetime.datetime.now()
         JPT.logger.info('Learning prior distributions...')
-        self.priors = VariableMap()
 
         for i, (vname, var) in enumerate(self.varnames.items()):
             self.priors[var] = var.distribution()._fit(
                 data=_data,
                 col=i
             )
-        JPT.logger.info('Prior distributions learnt in %s.' % (datetime.datetime.now() - started))
+        JPT.logger.info(
+            '%d prior distributions learnt in %s.' % (
+                len(self.priors),
+                datetime.datetime.now() - started
+            )
+        )
 
         # --------------------------------------------------------------------------------------------------------------
         # Start the training
@@ -1700,9 +1705,12 @@ class JPT:
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-        dot = Digraph(format='svg', name=title,
-                      directory=directory,
-                      filename=f'{filename or title}')
+        dot = Digraph(
+            format='svg',
+            name=title,
+            directory=directory,
+            filename=f'{filename or title}'
+        )
 
         # create nodes
         sep = ",<BR/>"
@@ -1715,21 +1723,25 @@ class JPT:
             for i, pvar in enumerate(plotvars):
                 img_name = html.escape(f'{pvar.name}-{n.idx}')
 
-                params = {} if pvar.numeric else {'horizontal': True,
-                                                  'max_values': max_symb_values}
+                params = {} if pvar.numeric else {
+                    'horizontal': True,
+                    'max_values': max_symb_values
+                }
 
-                n.distributions[pvar].plot(title=html.escape(pvar.name),
-                                           fname=img_name,
-                                           directory=directory,
-                                           view=False,
-                                           **params)
+                n.distributions[pvar].plot(
+                    title=html.escape(pvar.name),
+                    fname=img_name,
+                    directory=directory,
+                    view=False,
+                    **params
+                )
                 img += (f'''{"<TR>" if i % rc == 0 else ""}
-                                    <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
-                            {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
-                            ''')
+                        <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
+                        {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
+                ''')
 
-                # clear current figure to allow for other plots
-                plt.clf()
+                # close current figure to allow for other plots
+                plt.close()
 
             if plotvars:
                 imgs = f'''
@@ -1846,8 +1858,11 @@ class JPT:
         """
         return JPT.from_json(self.to_json())
 
-    def conditional_jpt(self, evidence: VariableAssignment = LabelAssignment(),
-                        fail_on_unsatisfiability: bool = True) -> 'JPT' or None:
+    def conditional_jpt(
+            self,
+            evidence: VariableAssignment = LabelAssignment(),
+            fail_on_unsatisfiability: bool = True
+    ) -> 'JPT' or None:
         """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
 
@@ -1971,11 +1986,9 @@ class JPT:
 
         :return: self
         """
-
         for idx, leaf in self.leaves.items():
             self.leaves[idx].prior *= prior[idx]
         self.normalize()
-
         return self
 
     def normalize(self) -> 'JPT':
