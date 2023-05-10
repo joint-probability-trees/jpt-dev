@@ -811,20 +811,20 @@ class Numeric(Distribution):
         self._quantile = QuantileDistribution.merge([self._quantile, quantile], [1-(1 / (2 * number_of_samples)),
                                                                                  1 / (2 * number_of_samples)])
 
-    def moment(self, order=1, c=0):
+    def moment(self, order=1, center=0):
         r"""Calculate the central moment of the r-th order almost everywhere.
 
         .. math:: \int (x-c)^{r} p(x)
 
         :param order: The order of the moment to calculate
-        :param c: The constant to subtract in the basis of the exponent
+        :param center: The constant (c) to subtract in the basis of the exponent
         """
         result = 0
         for interval, function in zip(self.pdf.intervals[1:-1], self.pdf.functions[1:-1]):
             interval_ = self.value2label(interval)
 
             function_value = function.value * (interval.range()/interval_.range())
-            result += (pow(interval_.upper - c, order+1) - pow(interval_.lower - c, order+1))\
+            result += (pow(interval_.upper - center, order+1) - pow(interval_.lower - center, order+1))\
                       * (function_value/(order+1))
         return result
 

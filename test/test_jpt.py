@@ -879,3 +879,25 @@ class ConditionalJPTTest(TestCase):
         conditional_likelihood = np.average(np.log(conditional_model.likelihood(cropped_df)))
 
         self.assertTrue(conditional_likelihood > likelihood)
+
+    def test_posterior(self):
+
+        evidence = {"sepal length (cm)": [5, 6]}
+
+        # create conditional jpt using the method
+        conditional_model = self.model.conditional_jpt(self.model.bind(evidence))
+
+        posteriors = conditional_model.posterior(evidence=conditional_model.bind(evidence))
+
+        for variable, value in conditional_model.bind(evidence).items():
+            self.assertAlmostEqual(posteriors[variable].p(value), 1.)
+
+    def test_priors(self):
+        # create evidence
+        evidence = self.model.bind({"sepal length (cm)": [5, 6]})
+
+        # create conditional jpt using the method
+        conditional_model = self.model.conditional_jpt(evidence)
+
+        for variable, value in evidence.items():
+            self.assertAlmostEqual(conditional_model.priors[variable].p(value), 1.)

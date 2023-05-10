@@ -1,10 +1,10 @@
-import numbers
-
 import json
+import numbers
 import pickle
 from unittest import TestCase
 
 import numpy as np
+import scipy.stats
 
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
@@ -15,12 +15,12 @@ try:
     from jpt.base.intervals import __module__, R
 except ModuleNotFoundError:
     import pyximport
+
     pyximport.install()
 finally:
     from jpt.base.functions import PiecewiseFunction, LinearFunction
     from jpt.distributions.quantile.quantiles import QuantileDistribution
     from jpt.base.intervals import ContinuousSet, EXC, INC, RealSet
-
 
 from jpt.base.errors import Unsatisfiability
 from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
@@ -88,11 +88,11 @@ class MultinomialDistributionTest(TestCase):
     def test_inference(self):
         '''Posterior, MPE, Expectation'''
         DistABC = self.DistABC
-        d1 = DistABC().set(params=[1/2, 1/4, 1/4])
+        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
 
         self.assertEqual(d1.expectation(), {'A'})
         self.assertEqual(d1.mpe(), (0.5, {'A'}))
-        self.assertEqual(d1.crop([0, 2]), DistABC().set([2/3, 0, 1/3]))
+        self.assertEqual(d1.crop([0, 2]), DistABC().set([2 / 3, 0, 1 / 3]))
         self.assertEqual(d1.crop([0, 1]), DistABC().set([2 / 3, 1 / 3, 0]))
         self.assertRaises(Unsatisfiability, d1.crop, restriction=[])
         # self.assertEqual(d1.crop(), d1)
@@ -316,6 +316,22 @@ class NumericDistributionTest(TestCase):
         samples = p.sample(100)
         self.assertTrue(all([pdf.eval(v) > 0 for v in samples]))
 
+    def test_moment(self):
+        np.random.seed(69)
+        data = np.random.normal(0, 1, 100000).reshape(-1, 1)
+        distribution = Numeric()
+        distribution._fit(data, np.arange(len(data)), 0)
+
+        data_mean = np.average(data)
+        dist_mean = distribution.moment(1, 0)
+        self.assertAlmostEqual(data_mean, dist_mean, delta=0.01)
+
+        # be aware the empirical moments and qpd moments diverge
+        for order in range(2, 4):
+            empirical_moment = scipy.stats.moment(data, order)[0]
+            dist_moment = distribution.moment(order, dist_mean)
+            self.assertAlmostEqual(empirical_moment, dist_moment, delta=np.power(0.9, -order))
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -434,7 +450,7 @@ class IntegerDistributionTest(TestCase):
         fair_dice.set([1 / 6] * 6)
 
         biased_dice = dice()
-        biased_dice.set([0/6, 1/6, 2/6, 1/6, 1/6, 1/6])
+        biased_dice.set([0 / 6, 1 / 6, 2 / 6, 1 / 6, 1 / 6, 1 / 6])
 
         # Act
         p_fair, fair_mpe = fair_dice.mpe()
@@ -444,7 +460,7 @@ class IntegerDistributionTest(TestCase):
 
         # Assert
         self.assertEqual(set(range(1, 7)), fair_mpe)
-        self.assertEqual(1/6, p_fair)
+        self.assertEqual(1 / 6, p_fair)
         self.assertEqual(set(range(0, 6)), _fair_mpe)
         self.assertEqual(1 / 6, _p_fair)
 
@@ -465,7 +481,7 @@ class IntegerDistributionTest(TestCase):
         merged = dice.merge(distributions=[fair_dice, biased_dice], weights=[.5, .5])
 
         # Assert
-        self.assertEqual([.5/6, 1/6, 1.5/6, 1/6, 1/6, 1/6], list(merged.probabilities))
+        self.assertEqual([.5 / 6, 1 / 6, 1.5 / 6, 1 / 6, 1 / 6, 1 / 6], list(merged.probabilities))
 
     def test_serialization(self):
         # Arrange
@@ -493,11 +509,26 @@ class IntegerDistributionTest(TestCase):
         self.assertRaises(ValueError, dice.list2set, [7, 8])
         self.assertRaises(ValueError, dice.list2set, [1])
 
+    def test_moment(self):
+        data = np.random.randint(0, 10, size=(1000, 1))
+
+        distribution = IntegerType("test", 0, 10)()
+        distribution._fit(data, np.arange(len(data)), 0)
+
+        data_mean = np.average(data)
+        dist_mean = distribution.moment(1, 0)
+        self.assertAlmostEqual(data_mean, dist_mean, delta=0.01)
+
+        # be aware the empirical moments and qpd moments diverge
+        for order in range(2, 4):
+            empirical_moment = scipy.stats.moment(data, order)[0]
+            dist_moment = distribution.moment(order, dist_mean)
+            self.assertAlmostEqual(empirical_moment, dist_moment, delta=0.01)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 class DataScalerTest(TestCase):
-
     DATA = None
 
     @classmethod

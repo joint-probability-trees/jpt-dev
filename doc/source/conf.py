@@ -42,6 +42,9 @@ autoapi_dirs = ['../../src/jpt']
 # bibtex setup
 bibtex_bibfiles = ['./refs.bib']
 
+# document both class and init
+autoapi_python_class_content = "both"
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 

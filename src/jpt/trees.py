@@ -1,56 +1,51 @@
 """© Copyright 2021, Mareike Picklum, Daniel Nyga."""
+import datetime
 import html
 import json
-from operator import attrgetter
-
 import math
 import numbers
-import operator
 import os
 import pickle
-import pprint
 from collections import defaultdict, deque, ChainMap, OrderedDict
-import datetime
 from itertools import zip_longest
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator
+from operator import attrgetter
+from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional
 
+import dnutils
 import numpy as np
 import pandas as pd
+from dnutils import first, ifnone, mapstr, err, fst, out, ifnot
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
-import dnutils
-from dnutils import first, ifnone, mapstr, err, fst, out, ifnot
-
-from .base.utils import prod, setstr_int
+from .base.constants import plotstyle, orange, green
 from .base.errors import Unsatisfiability
-
+from .base.utils import list2interval, format_path, normalized
+from .base.utils import prod, setstr_int
+from .distributions import Integer
+from .distributions import Multinomial, Numeric
 from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable, VariableAssignment, IntegerVariable, \
     LabelAssignment, ValueAssignment
-from .distributions import Distribution, Integer
-
-from .base.utils import list2interval, format_path, normalized
-from .distributions import Multinomial, Numeric, ScaledNumeric
-from .base.constants import plotstyle, orange, green, SYMBOL
 
 try:
     from .base.intervals import __module__
     from .learning.impurity import __module__
 except ModuleNotFoundError:
     import pyximport
+
     pyximport.install()
 finally:
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import Impurity
 
-
 style.use(plotstyle)
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Global constants
 DISCRIMINATIVE = 'discriminative'
 GENERATIVE = 'generative'
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 
@@ -524,7 +519,7 @@ class Leaf(Node):
         else:
             raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
 
-    def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
+    def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2., min_distances: VariableMap = None) \
             -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
@@ -586,7 +581,6 @@ class Leaf(Node):
 
         # for every variable and distribution
         for variable, distribution in self.distributions.items():
-
             # calculate mpe of that distribution
             likelihood, explanation = distribution.mpe()
 
@@ -711,7 +705,7 @@ class JPT:
         """ Delete all parameters of this model (not the hyperparameters)"""
         self.innernodes.clear()
         self.leaves.clear()
-        self.priors = VariableMap() # .clear()
+        self.priors = VariableMap()  # .clear()
         self.root = None
         self.c45queue.clear()
 
@@ -951,14 +945,13 @@ class JPT:
                     p_m *= leaf.distributions[var]._p(query_val)
                 p_q += p_m
 
-
         if p_e == 0:
             if fail_on_unsatisfiability:
                 raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
             else:
                 return None
         else:
-            return p_q/p_e
+            return p_q / p_e
 
     # noinspection PyProtectedMember
     def posterior(self,
@@ -1043,7 +1036,6 @@ class JPT:
                 raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence),
                                        reasons=inconsistencies)
             return None
-
 
         for var, dists in distributions.items():
             if var.numeric:
@@ -1520,12 +1512,12 @@ class JPT:
                                                                 mapstr(set(self.variables) - set(self.targets)))))
         # build up tree
         self.c45queue.append((
-                _data,
-                0,
-                _data.shape[0],
-                None,
-                None,
-                0
+            _data,
+            0,
+            _data.shape[0],
+            None,
+            None,
+            0
         ))
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
@@ -1599,7 +1591,6 @@ class JPT:
 
         # for all leaves
         for leaf in self.leaves.values():
-
             # calculate likelihood
             leaf_probabilities = leaf.parallel_likelihood(
                 queries,
@@ -1658,8 +1649,9 @@ class JPT:
             confs[l.idx] = conf
 
         # the candidates are the leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
-        candidates = sorted([leafidx for leafidx, confs in confs.items() if all(c >= confidence for c in confs.values())],
-                            key=lambda l: sum(confs[l].values()), reverse=True)
+        candidates = sorted(
+            [leafidx for leafidx, confs in confs.items() if all(c >= confidence for c in confs.values())],
+            key=lambda l: sum(confs[l].values()), reverse=True)
 
         out('CANDIDATES in reverse', candidates)
 
@@ -1759,7 +1751,7 @@ class JPT:
                             </TR>
                             <TR>
                                 <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>"  if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
+                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
                             </TR>
                             <TR>
                                 <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
@@ -1846,7 +1838,7 @@ class JPT:
         """
         return JPT.from_json(self.to_json())
 
-    def conditional_jpt(self, evidence: VariableAssignment = LabelAssignment(),
+    def conditional_jpt(self, evidence: Optional[VariableAssignment] = None,
                         fail_on_unsatisfiability: bool = True) -> 'JPT' or None:
         """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
@@ -1854,6 +1846,9 @@ class JPT:
         :param evidence: A VariableAssignment mapping the observed variables to there observed values
          :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
         """
+
+        if not evidence:
+            evidence = LabelAssignment()
 
         # Convert, if necessary, labels to internal value representations
         if isinstance(evidence, LabelAssignment):
@@ -1912,13 +1907,11 @@ class JPT:
 
                 # if the nodes parent has children
                 if node.parent.children:
-
                     # delete this node from the parents children
                     del node.parent.children[node.parent.children.index(node)]
 
                 # if the parent has no children
                 if not node.parent.children:
-
                     # append the parent node the queue
                     fringe.appendleft(node.parent)
 
@@ -1959,6 +1952,11 @@ class JPT:
             for variable in evidence.keys():
                 if variable in node.path.keys():
                     del node.path[variable]
+
+        # recalculate the priors for the conditional jpt
+        priors = conditional_jpt.posterior(
+            evidence=conditional_jpt.bind({v.name: e for v, e in evidence.label_assignment().items()}))
+        conditional_jpt.priors = priors
 
         return conditional_jpt
 
@@ -2043,7 +2041,6 @@ class JPT:
 
                     # if the leaf is not the "lowest" in this dimension
                     if -float("inf") < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
-
                         # create uniform distribution as bridge between the leaves
                         interval = ContinuousSet(
                             leaf.path[variable].lower,
@@ -2053,7 +2050,6 @@ class JPT:
 
                     # if the leaf is not the "highest" in this dimension
                     if float("inf") > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
-
                         # create uniform distribution as bridge between the leaves
                         interval = ContinuousSet(
                             distribution.cdf.intervals[-2].upper,
@@ -2062,7 +2058,6 @@ class JPT:
                         right = interval
 
                     distribution.insert_convex_fragments(left, right, total_samples)
-
 
     def number_of_parameters(self) -> int:
         """
@@ -2131,13 +2126,13 @@ class JPT:
 
         return samples
 
-    def moment(self, order: int = 1, c: VariableAssignment = LabelAssignment(),
-               evidence: VariableAssignment = LabelAssignment(),
-               fail_on_unsatisfiability: bool = True,) -> VariableMap or None:
+    def moment(self, order: int = 1, center: Optional[VariableAssignment] = None,
+               evidence: Optional[VariableAssignment] = None,
+               fail_on_unsatisfiability: bool = True, ) -> VariableMap or None:
         """ Calculate the order of each numeric/integer random variable given the evidence.
 
         :param order: The order of the moment
-        :param c: A VariableAssignment mapping each numeric/integer variable to some constant.
+        :param center: A VariableAssignment mapping each numeric/integer variable to some constant.
             If a variable has a constant, it will be interpreted as 'c' for the central moment.
             If it is not set, 0 will be used by default.
         :param evidence: The evidence given for the posterior to be computed
@@ -2145,13 +2140,19 @@ class JPT:
                                          likelihood of the evidence is 0.
         """
 
+        if not center:
+            center = LabelAssignment()
+
+        if not evidence:
+            evidence = LabelAssignment()
+
         # calculate posterior distributions
         posteriors = self.posterior([v for v in self.variables if v.numeric or v.integer], evidence,
                                     fail_on_unsatisfiability)
 
         # Convert c, if necessary, labels to internal value representations
-        if isinstance(c, LabelAssignment):
-            c = c.value_assignment()
+        if isinstance(center, LabelAssignment):
+            center = center.value_assignment()
 
         if posteriors is None:
             return None
@@ -2159,10 +2160,10 @@ class JPT:
         result = dict()
 
         for variable, distribution in posteriors.items():
-            if variable not in c:
+            if variable not in center:
                 current_c = 0
             else:
-                current_c = c[variable]
+                current_c = center[variable]
 
             result[variable] = distribution.moment(order, current_c)
         return VariableMap(result.items())
