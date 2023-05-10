@@ -1890,6 +1890,10 @@ class JPT:
             # get the next node to inspect
             node = fringe.popleft()
 
+            # the node might have been deleted already
+            if node not in conditional_jpt.allnodes.values():
+                continue
+
             # initialize remove as false
             rm = False
 
@@ -1897,7 +1901,7 @@ class JPT:
             if isinstance(node, DecisionNode):
 
                 # that has no children
-                if not node.children:
+                if len(node.children) <= 1:
 
                     # remove it and update flag
                     del conditional_jpt.innernodes[node.idx]
@@ -1930,21 +1934,33 @@ class JPT:
                 # if the nodes parent has children
                 if node.parent.children:
 
+                    # and the node has a child either
+                    if isinstance(node, DecisionNode) and len(node.children) == 1:
+
+                        # replace it by its child
+                        node.parent.children[node.parent.children.index(node)] = first(node.children)
+
                     # delete this node from the parents children
-                    del node.parent.children[node.parent.children.index(node)]
+                    else:
+                        idx = node.parent.children.index(node)
+                        del node.parent.children[idx]
+                        del node.parent.splits[idx]
 
-                # if the parent has no children
-                if not node.parent.children:
-
-                    # append the parent node the queue
-                    fringe.appendleft(node.parent)
+                # append the parent node the queue
+                fringe.append(node.parent)
 
             # if the resulting model is empty
             if rm and node is conditional_jpt.root:
 
+                if len(node.children) == 1:
+                    conditional_jpt.root = first(node.children)
+
                 # raise an error if wanted
-                if fail_on_unsatisfiability:
-                    raise Unsatisfiability('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                elif fail_on_unsatisfiability:
+                    conditional_jpt.plot(plotvars=['x'], view=True)
+                    raise Unsatisfiability(
+                        'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
+                    )
 
                 # return None if error is not wanted
                 else:
@@ -1952,6 +1968,11 @@ class JPT:
 
         # calculate remaining probability mass
         probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
+
+        if not probability_mass:
+            raise Unsatisfiability(
+                'JPT is unsatisfiable (all %d leaves have 0 prior probability)' % len(self)
+            )
 
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
