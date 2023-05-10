@@ -1226,7 +1226,7 @@ cdef class ContinuousSet(NumberSet):
         )
 
     def __bool__(self):
-        return self.size() != 0
+        return not self.isempty()
 
     def __hash__(self):
         return hash(
