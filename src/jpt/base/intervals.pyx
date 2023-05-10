@@ -193,6 +193,9 @@ cdef class RealSet(NumberSet):
     def __ne__(self, other):
         return not self == other
 
+    def __bool__(self):
+        return not self.isempty()
+
     def __hash__(self):
         tmp = sorted(self.intervals, key=attrgetter('right'))
         tmp = sorted(self.intervals, key=attrgetter('upper'))
