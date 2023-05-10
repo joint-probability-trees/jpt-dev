@@ -602,7 +602,11 @@ class Numeric(Distribution):
     def create_dirac_impulse(self, value):
         """Create a dirac impulse at the given value aus quantile distribution."""
         self._quantile = QuantileDistribution()
-        self._quantile.fit(np.asarray([[value]]), rows=np.asarray([0]), col=0)
+        self._quantile.fit(
+            np.asarray([[value]], dtype=np.float64),
+            rows=np.asarray([0], dtype=np.int64),
+            col=0
+        )
         return self
 
     def is_dirac_impulse(self) -> bool:
@@ -811,8 +815,12 @@ class Numeric(Distribution):
             prev_value = functions[idx].eval(interval.lower)
 
             if interval in valid_arguments:
-                functions.append(LinearFunction.from_points((interval.lower, prev_value), (interval.upper, prev_value +
-                                                                                           1/number_of_intervals)))
+                functions.append(
+                    LinearFunction.from_points(
+                        (interval.lower, prev_value),
+                        (interval.upper, prev_value + 1 / number_of_intervals)
+                    )
+                )
             else:
                 functions.append(ConstantFunction(prev_value))
 
@@ -820,8 +828,13 @@ class Numeric(Distribution):
         cdf.intervals = intervals
         cdf.functions = functions
         quantile = QuantileDistribution.from_cdf(cdf)
-        self._quantile = QuantileDistribution.merge([self._quantile, quantile], [1-(1 / (2 * number_of_samples)),
-                                                                                 1 / (2 * number_of_samples)])
+        self._quantile = QuantileDistribution.merge(
+            [self._quantile, quantile],
+            [
+                1 - (1 / (2 * number_of_samples)),
+                1 / (2 * number_of_samples)
+            ]
+        )
 
     def moment(self, order=1, c=0):
         r"""Calculate the central moment of the r-th order almost everywhere.
@@ -924,6 +937,7 @@ class Numeric(Distribution):
 
         if view:
             plt.show()
+            plt.close()
 
 
 class ScaledNumeric(Numeric):
