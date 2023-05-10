@@ -831,13 +831,24 @@ class Numeric(Distribution):
         :param order: The order of the moment to calculate
         :param c: The constant to subtract in the basis of the exponent
         """
+        # We have to catch the special case in which the
+        # PDF is an impulse function
+        if self.pdf.is_impulse():
+            if order == 1:
+                return self.pdf.gt(0).min
+            elif order >= 2:
+                return 0
         result = 0
         for interval, function in zip(self.pdf.intervals[1:-1], self.pdf.functions[1:-1]):
             interval_ = self.value2label(interval)
 
-            function_value = function.value * (interval.range()/interval_.range())
-            result += (pow(interval_.upper - c, order+1) - pow(interval_.lower - c, order+1))\
-                      * (function_value/(order+1))
+            function_value = function.value * interval.range() / interval_.range()
+            result += ((
+                    pow(interval_.upper - c, order + 1)
+                    - pow(interval_.lower - c, order + 1)
+                )
+                * function_value / (order + 1)
+            )
         return result
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
