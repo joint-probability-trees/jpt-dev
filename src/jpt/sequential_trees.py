@@ -8,6 +8,8 @@ import factorgraph
 from dnutils import out, getlogger
 
 from jpt import JPT
+from jpt.base.errors import Unsatisfiability
+from jpt.base.utils import normalized
 from jpt.variables import LabelAssignment, VariableAssignment, VariableMap, Variable
 
 
@@ -181,13 +183,17 @@ class SequentialJPT:
         start = datetime.datetime.now()
         for timestep, e in zip(timesteps, evidence):
             # apply the evidence
-
-            conditional_jpt = self.template_tree.conditional_jpt(e)
-            self.logger.debug(
-                'Conditional JPT from %s to %s nodes.' % (
-                    len(self.template_tree.allnodes), len(conditional_jpt.allnodes)
+            try:
+                conditional_jpt = self.template_tree.conditional_jpt(e)
+                self.logger.debug(
+                    'Conditional JPT from %s to %s nodes.' % (
+                        len(self.template_tree.allnodes), len(conditional_jpt.allnodes)
+                    )
                 )
-            )
+            except Unsatisfiability as e:
+                raise Unsatisfiability(
+                    'Unsatisfiable evidence at time step %s.' % timestep
+                )
 
             # append altered jpt
             altered_jpts.append(conditional_jpt)
