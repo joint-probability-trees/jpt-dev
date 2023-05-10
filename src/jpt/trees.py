@@ -715,7 +715,7 @@ class JPT:
         """ Delete all parameters of this model (not the hyperparameters)"""
         self.innernodes.clear()
         self.leaves.clear()
-        self.priors = VariableMap() # .clear()
+        self.priors = VariableMap(variables=self.variables) # .clear()
         self.root = None
         self.c45queue.clear()
 
@@ -2020,6 +2020,10 @@ class JPT:
         :return: self
         """
         probability_mass = sum(leaf.prior for leaf in self.leaves.values())
+        if not probability_mass:
+            raise Unsatisfiability(
+                'JPT is unsatisfiable (all %s leaves have 0 prior probability).' % len(self.leaves)
+            )
         for idx, leaf in self.leaves.items():
             self.leaves[idx].prior /= probability_mass
         return self
