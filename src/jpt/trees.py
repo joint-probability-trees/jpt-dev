@@ -363,8 +363,10 @@ class Leaf(Node):
         return []
 
     def __str__(self) -> str:
-        return (f'<Leaf #{self.idx}; '
-                f'parent: <%s #%s>>' % (type(self.parent).__qualname__, ifnone(self.parent, None, attrgetter('idx'))))
+        return f'<Leaf #{self.idx}; parent: #%s prior = %.3f>' % (
+            ifnone(self.parent, None, attrgetter('idx')),
+            self.prior
+        )
 
     def __repr__(self) -> str:
         return f'Leaf<{self.idx}> object at {hex(id(self))}'
@@ -1758,7 +1760,7 @@ class JPT:
             element = ' \u2208 '
 
             # content for node labels
-            title = 'Leaf #%s' % n.idx
+            title = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
             nodelabel = f'''
             <TR>
                 <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{title}</B><BR/>{html.escape(n.str_node)}</TD>
