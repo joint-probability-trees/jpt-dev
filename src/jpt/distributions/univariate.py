@@ -618,15 +618,24 @@ class Numeric(Distribution):
         return _max, self.value2label(RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
                               if function.value == _max]))
 
-    def _fit(self,
-             data: np.ndarray,
-             rows: np.ndarray = None,
-             col: numbers.Integral = None) -> 'Numeric':
+    def _fit(
+            self,
+            data: np.ndarray,
+            rows: np.ndarray = None,
+            col: numbers.Integral = None
+    ) -> 'Numeric':
         self._quantile = QuantileDistribution(epsilon=self.precision)
-        self._quantile.fit(data,
-                           rows=rows,
-                           col=col)
+        self._quantile.fit(
+            data,
+            rows=ifnone(
+                rows,
+                np.array(list(range(data.shape[0])), dtype=np.int64)
+            ),
+            col=ifnone(col, 0)
+        )
         return self
+
+    fit = _fit
 
     def set(self, params: QuantileDistribution) -> 'Numeric':
         self._quantile = params
