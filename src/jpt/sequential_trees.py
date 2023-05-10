@@ -87,6 +87,13 @@ class SequentialJPT:
             leaf.distributions = VariableMap([(v, d) for v, d in leaf.distributions.items()
                                              if v.name in self.template_tree.varnames.keys()])
             self.template_tree.leaves[idx] = leaf
+        self.template_tree.priors = VariableMap({
+                v.name: prior for v, prior in expanded_template_tree.priors.items()
+                if v.name in self.template_tree.varnames
+            },
+            variables=self.template_tree.variables
+        )
+        out(self.template_tree.priors)
         transition_data = None
 
         for sequence in sequences:
