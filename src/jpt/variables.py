@@ -555,9 +555,10 @@ class VariableMap:
     def __setitem__(self, variable: Union[str, Variable], value: Any) -> None:
         if type(variable) is str:
             if variable not in self._variables:
-                raise ValueError('Variable "%s" not available in this '
-                                 '%s object. Set "variables" in the constructor '
-                                 'or use a Variable object.')
+                raise ValueError(
+                    'Variable "%s" not available in this %s object. '
+                    'Set "variables" in the constructor '
+                    'or use a Variable object.' % (variable, type(self).__name__))
             variable = self._variables[variable]
         if not isinstance(variable, Variable):
             raise ValueError('Illegal argument value: '
