@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional
 
 import numpy as np
 import pandas as pd
-from dnutils import first, ifnone, mapstr, err, fst, out, ifnot
+from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
@@ -630,7 +630,7 @@ class JPT:
     Implementation Joint Probability Trees (JPTs).
     """
 
-    logger = dnutils.getlogger('/jpt', level=dnutils.INFO)
+    logger = getlogger('/jpt', level=logs.INFO)
 
     def __init__(self,
                  variables: List[Variable],
