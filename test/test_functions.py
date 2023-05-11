@@ -2,6 +2,7 @@ from unittest import TestCase
 
 import numpy as np
 from ddt import ddt, data, unpack
+from dnutils.tools import ifstr
 
 from jpt.base.constants import eps
 
@@ -20,7 +21,7 @@ finally:
         Function,
         PiecewiseFunction
     )
-    from jpt.base.intervals import ContinuousSet, EMPTY, R, EXC, INC
+    from jpt.base.intervals import ContinuousSet, EMPTY, R, EXC, INC, RealSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -40,15 +41,21 @@ class UndefinedFunctionTest(TestCase):
 @ddt
 class ConstantFunctionTest(TestCase):
 
-    @data((ConstantFunction(1), -1, 1),
-          (ConstantFunction(1), 0, 1),
-          (ConstantFunction(1), 1, 1),
-          (ConstantFunction(-1), -1, -1),
-          (ConstantFunction(-1), 0, -1),
-          (ConstantFunction(-1), 1, -1),
-          (ConstantFunction(0), -1, 0),
-          (ConstantFunction(0), 0, 0),
-          (ConstantFunction(0), 1, 0))
+    @data(
+        (ConstantFunction(1), -1, 1),
+        (ConstantFunction(1), 0, 1),
+        (ConstantFunction(1), 1, 1),
+        (ConstantFunction(-1), -1, -1),
+        (ConstantFunction(-1), 0, -1),
+        (ConstantFunction(-1), 1, -1),
+        (ConstantFunction(0), -1, 0),
+        (ConstantFunction(0), 0, 0),
+        (ConstantFunction(0), 1, 0),
+        (ConstantFunction(0), np.NINF, 0),
+        (ConstantFunction(0), np.PINF, 0),
+        (ConstantFunction(.5), np.NINF, .5),
+        (ConstantFunction(.5), np.PINF, .5)
+    )
     @unpack
     def test_eval(self, f, x, y):
         self.assertEqual(y, f.eval(x))
@@ -798,7 +805,6 @@ class PLFTest(TestCase):
     def test_convolution(self, plf1, plf2, truth):
         # Act
         result = plf1.convolution(plf2)
-        print(result.eval(-3 + eps))
         # Assert
         self.assertEqual(truth.round(8), result.round(12))
 

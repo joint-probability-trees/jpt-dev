@@ -90,7 +90,9 @@ cdef class Function:
 
     def __mul__(self, other: Union[float, Function]) -> 'Function':
         if isinstance(other, numbers.Real):
-            return self.mul(ConstantFunction(other)).simplify()
+            return self.mul(
+                ConstantFunction(other)
+            ).simplify()
         elif isinstance(other, Function):
             return self.mul(other).simplify()
         else:
@@ -320,8 +322,13 @@ cdef class ConstantFunction(Function):
             )
 
     cpdef Function mul(self, Function f):
+        cpdef DTYPE_t v = np.nan
         if isinstance(f, ConstantFunction):
-            return ConstantFunction(self.value * f.value)
+            if not self.value or not f.value:
+                v = 0
+            else:
+                v = self.value * f.value
+            return ConstantFunction(v)
         elif isinstance(f, (LinearFunction, QuadraticFunction, Undefined)):
             return f.mul(self)
         else:
@@ -1063,25 +1070,32 @@ cdef class PiecewiseFunction(Function):
             result = self.copy()
             result.functions = [g * f for g in result.functions]
             return result
+
         elif isinstance(f, PiecewiseFunction):
-            domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
-            undefined = self.domain().union(f.domain()).difference(domain)
+            domain = RealSet(self.intervals).intersections(
+                RealSet(f.intervals)
+            )
+
+            undefined = self.domain().union(
+                f.domain()
+            ).difference(domain)
+
             if not isinstance(undefined, RealSet):
                 undefined = RealSet([undefined])
+
             result = PiecewiseFunction.from_dict({
                 i: Undefined() for i in undefined.intervals
-            })
+            } if undefined else {})
+
             for interval in domain.intervals:
-                if np.isfinite(interval.lower) and np.isfinite(interval.upper):
-                    middle = (interval.lower + interval.upper) * .5
-                elif np.isinf(interval.lower):
-                    middle = interval.lower
-                elif np.isinf(interval.upper):
-                    middle = interval.upper
-                f1 = ifnone(self.at(middle), Undefined())
-                f2 = ifnone(f.at(middle), Undefined())
+                pivot = interval.min
+                if interval.isninf():
+                    pivot = interval.max
+                f1 = ifnone(self.at(pivot), Undefined())
+                f2 = ifnone(f.at(pivot), Undefined())
                 result = result.overwrite_at(interval, f1 * f2)
             return result.simplify()
+
         else:
             raise TypeError(
                 'Multiplication of type %s and %s currently unsupported.' % (
