@@ -46,7 +46,7 @@ jobs:
 
       - name: Install Python & pip 💽
         run: |
-          sudo apt install python
+          sudo apt install python3 python-is-python3
           sudo python get-pip.py
 
       # ----------------------------------------------------------------------------------------------------------------
@@ -59,7 +59,7 @@ jobs:
 
       - name: Check the installation from Test PyPI ✅
         run: >-
-          python -c "import jpt"
+          python -c "import jpt; print(jpt.__version__)"
 
       # ----------------------------------------------------------------------------------------------------------------
 
