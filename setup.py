@@ -25,11 +25,14 @@ a promising alternative to classic probabilistic
 The documentation is hosted on readthedocs.org [here](https://joint-probability-trees.readthedocs.io/en/latest/).'''
 
 
-def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
+def read_version(fname):
+    try:
+        return open(os.path.join(os.path.dirname(__file__), fname)).read()
+    except FileNotFoundError:
+        return '0.0.0'
 
 
-from jpt.version import __version__
+__version__ = read_version(os.path.join('src', 'jpt', '.version'))
 
 
 def requirements():
