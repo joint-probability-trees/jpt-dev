@@ -1645,6 +1645,10 @@ cdef class PiecewiseFunction(Function):
         :return:
         '''
         f = self
+        if f.is_impulse():
+            return g.copy()
+        elif g.is_impulse():
+            return f.copy()
         for func in itertools.chain(f.functions, g.functions):
             if (not isinstance(func, (ConstantFunction, Undefined)) and
                     isinstance(func, LinearFunction) and func.m != 0):
