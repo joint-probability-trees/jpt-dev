@@ -844,3 +844,52 @@ class PLFTest(TestCase):
             plf2.rectify()
         )
 
+
+    @data(
+        (
+            PiecewiseFunction.zero().overwrite({
+                '[-2,-1)': 1,
+                '[1,2)': 1
+            }),
+            1,
+            RealSet(['[-2.0,-1.0)', '[1.0,2.0)']),
+        ),
+        (
+            PiecewiseFunction.zero().overwrite({
+                '[0,1)': '1x',
+                '[1,2)': '-1x+2'
+            }),
+            1,
+            '[1,1]'
+        ),
+        (
+            PiecewiseFunction.zero().overwrite({
+                '[-2,-1)': 1,
+                '[1,2)': 1.5
+            }),
+            1.5,
+            '[1,2)',
+        ),
+        (
+            PiecewiseFunction.from_dict({
+                R: '1x',
+            }),
+            np.inf,
+            ContinuousSet(np.inf, np.inf),
+        ),
+    )
+    @unpack
+    def test_maximize(self, f, f_max, f_argmax):
+        # Arrange
+        f_argmax = ifstr(f_argmax, ContinuousSet.parse)
+        # Act
+        argmax, max_ = f.maximize()
+        # Assert
+        self.assertEqual(f_argmax, argmax)
+        self.assertEqual(f_max, max_)
+
+    def test_approx(self):
+        plf = PiecewiseFunction.zero().overwrite({
+            '[0,1[': .1
+        })
+        print(plf.approx(.1, ConstantFunction))
