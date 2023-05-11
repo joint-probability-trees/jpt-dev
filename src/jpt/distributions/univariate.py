@@ -951,7 +951,7 @@ class Numeric(Distribution):
         .. math:: \int (x-c)^{r} p(x)
 
         :param order: The order of the moment to calculate
-        :param center: The constant (c) to subtract in the basis of the exponent
+        :param center: The constant to subtract in the basis of the exponent
         """
         # We have to catch the special case in which the
         # PDF is an impulse function
@@ -965,10 +965,31 @@ class Numeric(Distribution):
             interval_ = self.value2label(interval)
 
             function_value = function.value * interval.range() / interval_.range()
-            result += (
-                (pow(interval_.upper - center, order+1) - pow(interval_.lower - center, order+1))
-            ) * function_value / (order + 1)
+            result += ((
+                    pow(interval_.upper - center, order + 1)
+                    - pow(interval_.lower - center, order + 1)
+                )
+                * function_value / (order + 1)
+            )
         return result
+
+    def __add__(self, other: 'Numeric') -> 'Numeric':
+        result = type(self)(**self.settings)
+        result._quantile = QuantileDistribution.from_pdf(
+            self.pdf.convolution(other.pdf).rectify()
+        )
+        return result
+
+    def approx(self, epsilon=None, k=None):
+        return type(self)(**self.settings).set(
+            QuantileDistribution.from_pdf(
+                self.pdf.approx(
+                    epsilon=epsilon,
+                    k=k,
+                    replacement=ConstantFunction
+                )
+            )
+        )
 
     @staticmethod
     def jaccard_similarity(
