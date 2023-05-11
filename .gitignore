@@ -12,3 +12,4 @@ dist/**
 **/TEST/**
 doc/build/**
 doc/source/autoapi/**
+.version

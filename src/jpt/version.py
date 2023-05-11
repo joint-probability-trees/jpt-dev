@@ -1,6 +1,8 @@
 '''
 Version information for jpt.
 '''
+import logging
+import os
 import sys
 
 
@@ -13,8 +15,19 @@ __all__ = [
     '__version__',
 ]
 
+_version_fpath = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)),
+    '.version'
+)
 
-VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH = (0, 1, 12)
+try:
+    with open(_version_fpath) as f:
+        VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH = tuple(f.readline().split('.'))
+except FileNotFoundError:
+    logging.warning('Version file not found at %s' % _version_fpath)
+    VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH = 0, 0, 0
+
+
 VERSION_STRING_SHORT = '%s.%s' % (VERSION_MAJOR, VERSION_MINOR)
 VERSION_STRING_FULL = '%s.%s' % (VERSION_STRING_SHORT, VERSION_PATCH)
 

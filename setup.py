@@ -29,7 +29,7 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 
-__version__ = read('version')
+from jpt.version import __version__
 
 
 def requirements():
@@ -108,5 +108,7 @@ setup(
     zip_safe=False,
     version=__version__,
     install_requires=requirements(),
-    long_description=__description__
+    long_description=__description__,
+    package_data={'jpt': ['.version']},
+    include_package_data=True,
 )

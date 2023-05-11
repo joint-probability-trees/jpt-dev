@@ -1,5 +1,5 @@
 PKG_NAME=jpt
-PKG_VERSION=$(shell cat version)
+PKG_VERSION=$(shell cat src/jpt/.version)
 PYTHON_PATH=/usr/bin/python3.8
 PYTHON_VERSION=$(shell ${PYTHON_PATH} -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))")
 ENV_NAME=.venv/${PKG_NAME}-${PKG_VERSION}-py-${PYTHON_VERSION}

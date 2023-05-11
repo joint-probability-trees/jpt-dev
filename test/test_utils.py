@@ -39,3 +39,10 @@ class UtilsTest(TestCase):
         # Assert
         self.assertEqual(np.nextafter(x, x + 1), x_plus_eps)
         self.assertEqual(np.nextafter(x, x - 1), x_minus_eps)
+
+
+class VersionTest(TestCase):
+
+    def test_version(self):
+        import jpt
+        self.assertRegexp(jpt.__version__, r'\d\.\d\.\d')
