@@ -591,10 +591,10 @@ class Numeric(Distribution):
         return e if not singular else i.lower
 
     def expectation(self) -> numbers.Real:
-        return self.moment(1, c=0)
+        return self.moment(1)
 
     def variance(self) -> numbers.Real:
-        return self.moment(2, c=0)
+        return self.moment(2)
 
     def quantile(self, gamma: numbers.Real) -> numbers.Real:
         return self.ppf.eval(gamma)
@@ -836,13 +836,13 @@ class Numeric(Distribution):
             ]
         )
 
-    def moment(self, order=1, c=0):
+    def moment(self, order=1, center=0):
         r"""Calculate the central moment of the r-th order almost everywhere.
 
         .. math:: \int (x-c)^{r} p(x)
 
         :param order: The order of the moment to calculate
-        :param c: The constant to subtract in the basis of the exponent
+        :param center: The constant (c) to subtract in the basis of the exponent
         """
         # We have to catch the special case in which the
         # PDF is an impulse function
@@ -856,12 +856,9 @@ class Numeric(Distribution):
             interval_ = self.value2label(interval)
 
             function_value = function.value * interval.range() / interval_.range()
-            result += ((
-                    pow(interval_.upper - c, order + 1)
-                    - pow(interval_.lower - c, order + 1)
-                )
-                * function_value / (order + 1)
-            )
+            result += (
+                (pow(interval_.upper - center, order+1) - pow(interval_.lower - center, order+1))
+            ) * function_value / (order + 1)
         return result
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
@@ -937,7 +934,6 @@ class Numeric(Distribution):
 
         if view:
             plt.show()
-            plt.close()
 
 
 class ScaledNumeric(Numeric):
