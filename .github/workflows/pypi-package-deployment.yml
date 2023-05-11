@@ -1,4 +1,4 @@
-name: Publish the pyjpt package to PyPI and TestPyPI
+name: Build and Publish pyjpt to PyPI
 
 on:
   workflow_dispatch:
@@ -28,3 +28,4 @@ jobs:
       name: Run the test suite on the latest checkout
       uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-publish-package.yml@main'
       needs: build-and-test
+      secrets: inherit
