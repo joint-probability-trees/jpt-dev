@@ -40,8 +40,9 @@ jobs:
       # ----------------------------------------------------------------------------------------------------------------
 
       - name: Install pip
-        run: |
-          wget https://bootstrap.pypa.io/get-pip.py && python get-pip.py
+        uses: wei/wget@v1
+        with:
+          args: -O https://bootstrap.pypa.io/get-pip.py && python get-pip.py
 
       # ----------------------------------------------------------------------------------------------------------------
 
