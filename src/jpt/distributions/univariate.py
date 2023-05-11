@@ -836,7 +836,31 @@ class Numeric(Distribution):
             ]
         )
 
-    def moment(self, order=1, c=0):
+    @classmethod
+    def cumsum(
+            cls,
+            distributions: Iterable['Numeric'],
+            epsilon: numbers.Real = .0,
+            k: numbers.Integral = None
+    ) -> Iterable['Numeric']:
+        cumsum = None
+        for d in distributions:
+            if cumsum is None:
+                cumsum = d
+            else:
+                cumsum = cumsum + d
+                cumsum = cls().set(
+                    params=QuantileDistribution.from_cdf(
+                        cumsum.cdf.approx(
+                            epsilon=epsilon,
+                            k=k,
+                            replacement=LinearFunction
+                        )
+                    )
+                )
+            yield cumsum
+
+    def moment(self, order: numbers.Integral = 1, c: numbers.Real = 0) -> numbers.Real:
         r"""Calculate the central moment of the r-th order almost everywhere.
 
         .. math:: \int (x-c)^{r} p(x)
@@ -863,6 +887,24 @@ class Numeric(Distribution):
                 * function_value / (order + 1)
             )
         return result
+
+    def __add__(self, other: 'Numeric') -> 'Numeric':
+        result = type(self)(**self.settings)
+        result._quantile = QuantileDistribution.from_pdf(
+            self.pdf.convolution(other.pdf).rectify()
+        )
+        return result
+
+    def approx(self, epsilon=None, k=None):
+        return type(self)(**self.settings).set(
+            QuantileDistribution.from_pdf(
+                self.pdf.approx(
+                    epsilon=epsilon,
+                    k=k,
+                    replacement=ConstantFunction
+                )
+            )
+        )
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''

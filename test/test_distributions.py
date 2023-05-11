@@ -324,6 +324,33 @@ class NumericDistributionTest(TestCase):
         samples = p.sample(100)
         self.assertTrue(all([pdf.eval(v) > 0 for v in samples]))
 
+    def test_add(self):
+        # Arrange
+        x = Numeric().fit(Gaussian(-1, .5).sample(10000).reshape(-1, 1))
+        y = Numeric().fit(Gaussian(1, .5).sample(10000).reshape(-1, 1))
+
+        # x.plot(view=True)
+        # y.plot(view=True)
+
+        z = (x + y)
+        print(z.pdf)
+        print('E(z) =', z.expectation(), 'Var(z) =', z.variance())
+
+        z.plot(view=True)
+        pdf_ = z.pdf.approx(.075, 20, ConstantFunction)
+        pdf_ = pdf_ * ConstantFunction(1 / pdf_.integrate())
+        print(len(z.pdf), len(pdf_))
+        z_ = Numeric().set(QuantileDistribution.from_pdf(pdf_))
+        z_.plot(view=True)
+
+    def test_moment(self):
+        pdf = PiecewiseFunction.zero().overwrite({
+            ContinuousSet(1.23, 1.23 + eps, INC, EXC): np.inf
+        })
+        d = Numeric().set(QuantileDistribution.from_pdf(pdf))
+        self.assertEqual(1.23, d.moment(1))
+        self.assertEqual(0, d.moment(2))
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
