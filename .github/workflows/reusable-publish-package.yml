@@ -1,12 +1,18 @@
 name: Upload Wheel to Test-PyPI and PyPI and test installation
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 on:
   workflow_call:
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 defaults:
   run:
     shell: bash
     working-directory: .
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 jobs:
   publish-wheel:
@@ -14,11 +20,15 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+
+      # ----------------------------------------------------------------------------------------------------------------
       - name: Get wheel artifacts 📥
         uses: actions/download-artifact@v3
         with:
           name: pyjpt-wheel
           path: dist/
+
+      # ----------------------------------------------------------------------------------------------------------------
 
       - name: Publish distribution to Test PyPI 📢
         uses: pypa/gh-action-pypi-publish@master
@@ -27,19 +37,27 @@ jobs:
           skip_existing: true
           repository_url: https://test.pypi.org/legacy/
 
+      # ----------------------------------------------------------------------------------------------------------------
+
       - name: Setup python 🐍
         uses: actions/setup-python@v4
         with:
           python-version: 3.8
           cache: pip
 
+      # ----------------------------------------------------------------------------------------------------------------
+
       - name: Install wheel from Test PyPI 🛞
         run: >-
           python -m pip install -i https://test.pypi.org/simple/ pyjpt
 
+      # ----------------------------------------------------------------------------------------------------------------
+
       - name: Check the installation from Test PyPI ✅
         run: >-
           python -c "import jpt"
+
+      # ----------------------------------------------------------------------------------------------------------------
 
       - name: Publish distribution Version ${{ github.ref }} to PyPI 🏁
         uses: pypa/gh-action-pypi-publish@master
