@@ -42,7 +42,7 @@ jobs:
       - name: Get pip bootstrap installation 🥾
         uses: wei/wget@v1
         with:
-          args: -O https://bootstrap.pypa.io/get-pip.py
+          args: https://bootstrap.pypa.io/get-pip.py
 
       - name: Install Python & pip 💽
         run: |
