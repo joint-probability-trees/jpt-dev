@@ -22,7 +22,7 @@ jobs:
       name: Run the test suite on the latest checkout
       uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-test-and-build.yml@main'
       with:
-        version: ${{ github.ref }}
+        version: ${{ github.ref || inputs.version }}
 
     publish:
       name: Run the test suite on the latest checkout
