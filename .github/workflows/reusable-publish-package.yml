@@ -1,13 +1,7 @@
-name: Run tests and build the Python distribution
+name: Upload Wheel to Test-PyPI and PyPI and test installation
 
 on:
-
   workflow_call:
-    inputs:
-      wheel-url:
-        required: true
-        type: string
-
 
 defaults:
   run:
