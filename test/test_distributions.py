@@ -1,5 +1,6 @@
-import json
 import numbers
+
+import json
 import pickle
 from unittest import TestCase
 
@@ -16,12 +17,12 @@ try:
     from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
-
     pyximport.install()
 finally:
     from jpt.base.functions import PiecewiseFunction, LinearFunction, ConstantFunction
     from jpt.distributions.quantile.quantiles import QuantileDistribution
     from jpt.base.intervals import ContinuousSet, EXC, INC, RealSet, R
+
 
 from jpt.base.errors import Unsatisfiability
 from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
@@ -421,6 +422,33 @@ class NumericDistributionTest(TestCase):
         jacc2 = Numeric.jaccard_similarity(d2, d1)
         self.assertEqual(jacc1, jacc2)
 
+    def test_add(self):
+        # Arrange
+        x = Numeric().fit(Gaussian(-1, .5).sample(10000).reshape(-1, 1))
+        y = Numeric().fit(Gaussian(1, .5).sample(10000).reshape(-1, 1))
+
+        # x.plot(view=True)
+        # y.plot(view=True)
+
+        z = (x + y)
+        print(z.pdf)
+        print('E(z) =', z.expectation(), 'Var(z) =', z.variance())
+
+        z.plot(view=True)
+        pdf_ = z.pdf.approx(.075, 20, ConstantFunction)
+        pdf_ = pdf_ * ConstantFunction(1 / pdf_.integrate())
+        print(len(z.pdf), len(pdf_))
+        z_ = Numeric().set(QuantileDistribution.from_pdf(pdf_))
+        z_.plot(view=True)
+
+    def test_moment(self):
+        pdf = PiecewiseFunction.zero().overwrite({
+            ContinuousSet(1.23, 1.23 + eps, INC, EXC): np.inf
+        })
+        d = Numeric().set(QuantileDistribution.from_pdf(pdf))
+        self.assertEqual(1.23, d.moment(1))
+        self.assertEqual(0, d.moment(2))
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -671,10 +699,11 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual([0, 1, 2], list(sumpos.values.values()))
         self.assertEqual(res, list(sumpos.probabilities))
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 
-
 class DataScalerTest(TestCase):
+
     DATA = None
 
     @classmethod

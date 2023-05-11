@@ -32,13 +32,13 @@ from .utils import Identity, OrderedDictProxy, DataScalerProxy, DataScaler
 try:
     from ..base.intervals import __module__
     from .quantile.quantiles import __module__
-    from ..base.functions import __module__, Undefined
+    from ..base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
-    from ..base.functions import LinearFunction, ConstantFunction, PiecewiseFunction
+    from ..base.functions import LinearFunction, ConstantFunction, PiecewiseFunction, Undefined
     from .quantile.quantiles import QuantileDistribution
 
 
@@ -401,7 +401,6 @@ class Gaussian(Gaussian_):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
 class Distribution:
     '''
     Abstract supertype of all domains and distributions
@@ -746,10 +745,16 @@ class Numeric(Distribution):
         if isinstance(labels, ContinuousSet):
             return self._p(self.label2value(labels))
         elif isinstance(labels, RealSet):
-            return self._p(RealSet([ContinuousSet(self.values[i.lower],
-                                           self.values[i.upper],
-                                           i.left,
-                                           i.right) for i in labels.intervals]))
+            return self._p(
+                RealSet([
+                    ContinuousSet(
+                        self.values[i.lower],
+                        self.values[i.upper],
+                        i.left,
+                        i.right
+                    ) for i in labels.intervals
+                ])
+            )
         else:
             return self._p(self.values[labels])
 
@@ -916,7 +921,31 @@ class Numeric(Distribution):
             ]
         )
 
-    def moment(self, order=1, center=0):
+    @classmethod
+    def cumsum(
+            cls,
+            distributions: Iterable['Numeric'],
+            epsilon: numbers.Real = .0,
+            k: numbers.Integral = None
+    ) -> Iterable['Numeric']:
+        cumsum = None
+        for d in distributions:
+            if cumsum is None:
+                cumsum = d
+            else:
+                cumsum = cumsum + d
+                cumsum = cls().set(
+                    params=QuantileDistribution.from_cdf(
+                        cumsum.cdf.approx(
+                            epsilon=epsilon,
+                            k=k,
+                            replacement=LinearFunction
+                        )
+                    )
+                )
+            yield cumsum
+
+    def moment(self, order: numbers.Integral = 1, c: numbers.Real = 0) -> numbers.Real:
         r"""Calculate the central moment of the r-th order almost everywhere.
 
         .. math:: \int (x-c)^{r} p(x)
@@ -947,6 +976,24 @@ class Numeric(Distribution):
             d2: 'Numeric',
     ) -> float:
         return PiecewiseFunction.jaccard_similarity(d1.pdf, d2.pdf)
+
+    def __add__(self, other: 'Numeric') -> 'Numeric':
+        result = type(self)(**self.settings)
+        result._quantile = QuantileDistribution.from_pdf(
+            self.pdf.convolution(other.pdf).rectify()
+        )
+        return result
+
+    def approx(self, epsilon=None, k=None):
+        return type(self)(**self.settings).set(
+            QuantileDistribution.from_pdf(
+                self.pdf.approx(
+                    epsilon=epsilon,
+                    k=k,
+                    replacement=ConstantFunction
+                )
+            )
+        )
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''
@@ -1021,6 +1068,7 @@ class Numeric(Distribution):
 
         if view:
             plt.show()
+            plt.close()
 
 
 class ScaledNumeric(Numeric):
@@ -1781,7 +1829,6 @@ class Integer(Distribution):
         for value, probability in zip(self.labels.values(), self._params):
             result += pow(value - c, order) * probability
         return result
-
 
     @staticmethod
     def jaccard_similarity(
