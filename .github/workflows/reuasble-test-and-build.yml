@@ -14,7 +14,6 @@ on:
         required: true
         type: string
 
-
 defaults:
   run:
     shell: bash
@@ -24,6 +23,7 @@ jobs:
     test-and-build:
       name: Build and Test the Python distribution
       runs-on: ubuntu-22.04
+
       steps:
           - name: Checkout 🛎
             uses: actions/checkout@v3
@@ -64,11 +64,6 @@ jobs:
               build-requirements: 'cython numpy'
               pip-wheel-args: '-w ./dist-raw --no-deps'
 
-          - name: Move binary wheels to dist  🔧
-            run: |
-              mkdir dist/
-              cp dist-raw/*manylinux*.whl dist/
-
           - name: Install Sphinx dependencies 📚
             uses: py-actions/py-dependency-install@v4
             with:
@@ -79,3 +74,15 @@ jobs:
             run: |
               sudo apt install pandoc
               make html
+
+          - name: Make wheel available  🔧
+            id: wheel_url
+            uses: actions/upload-artifact@v3
+            with:
+              name: pyjpt-wheel
+              path: dist-raw/*manylinux*.whl
+#            run: |
+#
+#              mkdir dist/
+#              cp dist-raw/*manylinux*.whl dist/
+
