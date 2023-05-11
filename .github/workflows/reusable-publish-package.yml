@@ -46,7 +46,7 @@ jobs:
 
       - name: Install Python & pip 💽
         run: |
-          apt install python
+          sudo apt install python
           python get-pip.py
 
       # ----------------------------------------------------------------------------------------------------------------
