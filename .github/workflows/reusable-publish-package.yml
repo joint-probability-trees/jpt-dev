@@ -17,7 +17,7 @@ defaults:
 jobs:
   publish-wheel:
     name: Publish Python distribution to the Python package index
-    runs-on: ubuntu-22.04
+    runs-on: python:3.8
 
     steps:
 
@@ -36,14 +36,6 @@ jobs:
           password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           skip_existing: true
           repository_url: https://test.pypi.org/legacy/
-
-      # ----------------------------------------------------------------------------------------------------------------
-
-      - name: Setup python 🐍
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-          cache: pip
 
       # ----------------------------------------------------------------------------------------------------------------
 
