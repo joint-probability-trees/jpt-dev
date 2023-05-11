@@ -17,7 +17,7 @@ defaults:
 jobs:
   publish-wheel:
     name: Publish Python distribution to the Python package index
-    runs-on: python:3.8
+    runs-on: ubuntu-latest
 
     steps:
 
@@ -44,8 +44,9 @@ jobs:
         with:
           args: -O https://bootstrap.pypa.io/get-pip.py
 
-      - name: Install pip 💽
+      - name: Install Python & pip 💽
         run: |
+          apt install python
           python get-pip.py
 
       # ----------------------------------------------------------------------------------------------------------------
