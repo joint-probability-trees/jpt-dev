@@ -1,4 +1,4 @@
-name: Publish the pyjpt package to PyPI and TestPyPI
+name: Run tests and build the Python distribution
 
 on:
   push:
@@ -22,7 +22,7 @@ defaults:
 
 jobs:
     build-and-publish:
-      name: Build and publish Python distribution
+      name: Build and Test the Python distribution
       runs-on: ubuntu-22.04
       steps:
           - name: Checkout 🛎
