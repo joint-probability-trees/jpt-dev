@@ -1229,7 +1229,7 @@ cdef class PiecewiseFunction(Function):
         for i, f in self.iter():
             intersect = interval & i
             if intersect:
-                area += f.integrate(intersect.min, intersect.max)
+                area += f.integrate(intersect.lower, intersect.upper)
         return area
 
     cpdef ensure_left(self, Function left, DTYPE_t x):
