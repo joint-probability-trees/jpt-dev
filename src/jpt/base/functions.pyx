@@ -1690,7 +1690,6 @@ cdef class PiecewiseFunction(Function):
             if (z, integral) not in support_points:
                 support_points.append((z, integral))
             iteration += 1
-
         domain = f.domain().union(g.domain())
         if isinstance(domain, ContinuousSet):
             domain = RealSet([domain])
@@ -1766,16 +1765,17 @@ cdef class PiecewiseFunction(Function):
             f_max = f_
         return f_argmax, f_max
 
-    def approximate(
+    def approx(
             self,
-            epsilon: float = .01,
+            epsilon: float = .0,
+            k = None,
             replacement: type = LinearFunction
     ) -> PiecewiseFunction:
         result = self.copy()
         while 1:
             mse_min = np.inf
             mse_min_segments = None
-            for (i1, f1), (i2, f2) in pairwise(result.iter()):
+            for (i1, f1), (i2, f2) in pairwise(list(result.iter())[1:-2]):
                 if not i1.contiguous(i2) or i1.isninf() or i2.ispinf():
                     continue
                 i = ContinuousSet(i1.lower, i2.upper, i1.left, i2.right)
@@ -1788,14 +1788,20 @@ cdef class PiecewiseFunction(Function):
                     f_ = ConstantFunction(
                         f1(i.lower) * i1.width / i.width + f2(i.upper) * i2.width / i.width
                     )
-                delta = (self.crop(i) - f_)
-                mse = ((delta * delta) * ConstantFunction(1 / i.size())).integrate()
+                else:
+                    raise TypeError(
+                        'Unsupported type of replacement function: %s.' % replacement.__name__
+                    )
+                delta = self.crop(i) - f_
+                # delta_2 = delta.mul(delta)
+                # mse = (delta_2 * ConstantFunction(1 / i.width)).integrate()
                 _, e_max = PiecewiseFunction.abs(delta).maximize()
-                if mse < mse_min and e_max <= epsilon:
-                    mse_min = mse
+                if e_max < mse_min and (e_max <= epsilon or (False if k is None else k < len(result))):
+                    mse_min = e_max
                     mse_min_segments = (i1, f1), (i2, f2), (i, f_)
+                    break
 
-            if mse_min_segments is not None:
+            if np.isfinite(mse_min) and mse_min_segments is not None:
                 (i1, f1), (i2, f2), (i, f_) = mse_min_segments
                 del result.intervals[result.intervals.index(i1)]
                 del result.functions[result.functions.index(f1)]
