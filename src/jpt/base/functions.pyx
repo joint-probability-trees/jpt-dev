@@ -1748,7 +1748,7 @@ cdef class PiecewiseFunction(Function):
             f = self.functions[idx]
             i = self.intervals[idx]
             f_ = f(b)
-            if not np.isnan(f_max) and f_max > f_:
+            if np.isnan(f_) or not np.isnan(f_max) and f_max > f_:
                 continue
             if isinstance(f, LinearFunction):
                 argmax = ContinuousSet(b, b)
