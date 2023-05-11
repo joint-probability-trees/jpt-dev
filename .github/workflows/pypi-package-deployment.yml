@@ -14,14 +14,12 @@ defaults:
 jobs:
     build-and-publish:
       name: Publish Python distribution to the Python package index
-      runs-on: ubuntu-22.04
+#      runs-on: ubuntu-22.04
+      uses: joint-probability-trees/jpt-dev/.github/workflows/test-and-build.yml@master
+      with:
+        version: ${{ github.ref }}
 
       steps:
-          - name: Test and Build pyjpt Version for target ${{ github.ref }} 📦
-            uses: joint-probability-trees/jpt-dev/.github/workflows/test-and-build.yml@master
-            with:
-              version: ${{ github.ref }}
-
           - name: Publish distribution to Test PyPI 📢
             uses: pypa/gh-action-pypi-publish@master
             with:
