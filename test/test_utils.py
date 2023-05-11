@@ -45,4 +45,4 @@ class VersionTest(TestCase):
 
     def test_version(self):
         import jpt
-        self.assertRegexp(jpt.__version__, r'\d\.\d\.\d')
+        self.assertRegex(jpt.__version__, r'\d\.\d\.\d')
