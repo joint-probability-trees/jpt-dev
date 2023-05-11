@@ -21,7 +21,7 @@ defaults:
     working-directory: .
 
 jobs:
-    build-and-publish:
+    test-and-build:
       name: Build and Test the Python distribution
       runs-on: ubuntu-22.04
       steps:
