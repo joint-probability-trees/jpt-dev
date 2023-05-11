@@ -20,11 +20,11 @@ defaults:
 jobs:
     build-and-test:
       name: Run the test suite on the latest checkout
-      uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-test-and-build.yml@master'
+      uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-test-and-build.yml@main'
       with:
         version: ${{ github.ref }}
 
     publish:
       name: Run the test suite on the latest checkout
-      uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-publish-package.yml@master'
+      uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-publish-package.yml@main'
       needs: build-and-test
