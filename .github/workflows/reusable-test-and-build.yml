@@ -5,9 +5,6 @@ on:
     branches:
       - main
 
-    tags:
-      - "!**"
-
   # --------------------------------------------------------------------------------------------------------------------
 
   workflow_call:
@@ -36,9 +33,9 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Skip if git tag is present
-        if: ${{ github.ref }} != ""
-        run: exit 0
+      - name: 'Cancel Previous Runs ⛔'
+        timeout-minutes: 3
+        uses: styfle/cancel-workflow-action
 
       # ----------------------------------------------------------------------------------------------------------------
       - name: Checkout 🛎

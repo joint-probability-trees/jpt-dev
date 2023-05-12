@@ -18,15 +18,26 @@ defaults:
     working-directory: .
 
 jobs:
-    build-and-test:
-      name: Run the test suite on the latest checkout
-      uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-test-and-build.yml@main'
-      with:
-        version: ${{ github.ref || inputs.version }}
-        python-versions: "cp38-cp38"
+  cancel:
+    name: Cancel Previous Runs ⛔
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: styfle/cancel-workflow-action
+      - uses: styfle/cancel-workflow-action
+        with:
+          workflow_id: reusable-test-and-build.yml
 
-    publish:
-      name: Run the test suite on the latest checkout
-      uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-publish-package.yml@main'
-      needs: build-and-test
-      secrets: inherit
+  build-and-test:
+    name: Run the test suite on the latest checkout
+    uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-test-and-build.yml@main'
+    needs: cancel
+    with:
+      version: ${{ github.ref || inputs.version }}
+      python-versions: "cp38-cp38"
+
+  publish:
+    name: Run the test suite on the latest checkout
+    uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-publish-package.yml@main'
+    needs: build-and-test
+    secrets: inherit
