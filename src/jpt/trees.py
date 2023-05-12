@@ -2211,3 +2211,23 @@ class JPT:
 
             result[variable] = distribution.moment(order, current_c)
         return VariableMap(result.items())
+
+    def get_hyperparameters_dict(self) -> Dict[str, Any]:
+        """Get all hyperparameters as dict that can be used for MLFlow model tracking."""
+        hyperparameters = dict()
+        hyperparameters["variables"] = [v.name for v in self.variables]
+
+        for variable in self.variables:
+            json_dict = variable.to_json()
+
+            for setting, value in json_dict["settings"].items():
+                hyperparameters[f"{variable.name}.{setting}"] = value
+
+        hyperparameters["targets"] = [v.name for v in self.targets]
+        hyperparameters["features"] = [v.name for v in self.features]
+        hyperparameters["min_samples_leaf"] = self.min_samples_leaf
+        hyperparameters["min_impurity_improvement"] = self.min_impurity_improvement
+        hyperparameters["max_leaves"] = self.max_leaves
+        hyperparameters["max_depth"] = self.max_depth
+
+        return hyperparameters
