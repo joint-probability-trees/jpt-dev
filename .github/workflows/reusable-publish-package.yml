@@ -30,15 +30,6 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Publish distribution to Test PyPI 📢
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          skip_existing: true
-          repository_url: https://test.pypi.org/legacy/
-
-      # ----------------------------------------------------------------------------------------------------------------
-
       - name: Get pip bootstrap installation 🥾
         uses: wei/wget@v1
         with:
@@ -53,6 +44,15 @@ jobs:
 
       - name: Setup Graphviz 📊
         uses: ts-graphviz/setup-graphviz@v1
+
+      # ----------------------------------------------------------------------------------------------------------------
+
+      - name: Publish distribution to Test PyPI 📢
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          skip_existing: false
+          repository_url: https://test.pypi.org/legacy/
 
       # ----------------------------------------------------------------------------------------------------------------
 

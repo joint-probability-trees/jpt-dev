@@ -27,7 +27,7 @@ The documentation is hosted on readthedocs.org [here](https://joint-probability-
 
 def read_version(fname):
     try:
-        return open(os.path.join(os.path.dirname(__file__), fname)).read()
+        return open(os.path.join(os.path.dirname(__file__), fname)).read().strip()
     except FileNotFoundError:
         return '0.0.0'
 
