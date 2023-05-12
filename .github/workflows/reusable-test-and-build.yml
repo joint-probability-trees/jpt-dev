@@ -72,10 +72,10 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Create .version file if necessary 🔢
-        if: "${{ github.event.inputs.version != '' }}"
+      - name: "Create .version file if necessary [Version # passed is '${{ inputs.version }}'] 🔢"
+        if: "${{ inputs.version }} != ''"
         run: |
-          echo "${{ github.event.inputs.version }}" > src/jpt/.version
+          echo "${{ inputs.version }}" > src/jpt/.version
 
       # ----------------------------------------------------------------------------------------------------------------
 

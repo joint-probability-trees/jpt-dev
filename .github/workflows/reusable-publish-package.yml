@@ -70,7 +70,7 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Publish distribution Version ${{ github.ref }} to PyPI 🏁
+      - name: Publish distribution Version ${{ github.ref_name }} to PyPI 🏁
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
