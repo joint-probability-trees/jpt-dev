@@ -36,6 +36,10 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      - name: Skip if git tag is present
+        if: ${{ github.ref }} != ""
+        run: exit 0
+
       # ----------------------------------------------------------------------------------------------------------------
       - name: Checkout 🛎
         uses: actions/checkout@v3
