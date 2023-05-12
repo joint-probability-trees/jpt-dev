@@ -30,16 +30,16 @@ concurrency:
 jobs:
 
   build-and-test:
-    name: '[${{ github.ref || inputs.version }}] Run the test suite on the latest checkout'
+    name: '[${{ inputs.version || github.ref_name }}] Run the test suite on the latest checkout'
     uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-test-and-build.yml@main'
     with:
-      version: ${{ github.ref || inputs.version }}
+      version: ${{ inputs.version || github.ref_name }}
       python-versions: "cp38-cp38"
 
   # --------------------------------------------------------------------------------------------------------------------
 
   publish:
-    name: '[${{ github.ref || inputs.version }}] Run the test suite on the latest checkout'
+    name: '[${{ inputs.version || github.ref_name }}] Run the test suite on the latest checkout'
     uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-publish-package.yml@main'
     needs: build-and-test
     secrets: inherit
