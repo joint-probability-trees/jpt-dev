@@ -20,11 +20,10 @@ defaults:
 jobs:
   cancel:
     name: Cancel Previous Runs ⛔
-    runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: styfle/cancel-workflow-action
-      - uses: styfle/cancel-workflow-action
+      - uses: styfle/cancel-workflow-action@0.11.0
+      - uses: styfle/cancel-workflow-action@0.11.0
         with:
           workflow_id: reusable-test-and-build.yml
 
