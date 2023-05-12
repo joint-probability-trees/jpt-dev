@@ -12,21 +12,22 @@ on:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 defaults:
   run:
     shell: bash
     working-directory: .
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+concurrency:
+  group: 'jpt-testing-and-deployment'
+  cancel-in-progress: true
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 jobs:
-  cancel:
-    name: Cancel Previous Runs ⛔
-    runs-on: ubuntu-22.04
-    timeout-minutes: 3
-    steps:
-      - uses: styfle/cancel-workflow-action@0.11.0
-      - uses: styfle/cancel-workflow-action@0.11.0
-        with:
-          workflow_id: reusable-test-and-build.yml
 
   build-and-test:
     name: Run the test suite on the latest checkout
@@ -35,6 +36,8 @@ jobs:
     with:
       version: ${{ github.ref || inputs.version }}
       python-versions: "cp38-cp38"
+
+  # --------------------------------------------------------------------------------------------------------------------
 
   publish:
     name: Run the test suite on the latest checkout
