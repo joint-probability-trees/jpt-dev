@@ -42,6 +42,7 @@ Lead Developers
     introduction
     guide
     examples
+    mlflow_integration
     faq
     resources
     autoapi/index
