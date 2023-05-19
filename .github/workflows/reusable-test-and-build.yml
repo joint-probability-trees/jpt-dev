@@ -27,17 +27,19 @@ defaults:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+concurrency:
+  group: 'jpt-building-and-deployment'
+  cancel-in-progress: true
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 jobs:
   test-and-build:
     name: Build and Test the Python distribution
     runs-on: ubuntu-22.04
 
     steps:
-      - name: 'Cancel Previous Runs ⛔'
-        timeout-minutes: 3
-        uses: styfle/cancel-workflow-action@0.11.0
 
-      # ----------------------------------------------------------------------------------------------------------------
       - name: Checkout 🛎
         uses: actions/checkout@v3
 
@@ -70,10 +72,10 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Create .version file if necessary 🔢
-        if: "${{ github.event.inputs.version != '' }}"
+      - name: "Create .version file if necessary [Version # passed is '${{ inputs.version }}'] 🔢"
+        if: "${{ inputs.version }} != ''"
         run: |
-          echo "${{ github.event.inputs.version }}" > src/jpt/.version
+          echo "${{ inputs.version }}" > src/jpt/.version
 
       # ----------------------------------------------------------------------------------------------------------------
 

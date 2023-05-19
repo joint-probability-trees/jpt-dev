@@ -12,32 +12,36 @@ on:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 defaults:
   run:
     shell: bash
     working-directory: .
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+concurrency:
+  group: 'jpt-testing-and-deployment'
+  cancel-in-progress: true
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 jobs:
-  cancel:
-    name: Cancel Previous Runs ⛔
-    runs-on: ubuntu-22.04
-    timeout-minutes: 3
-    steps:
-      - uses: styfle/cancel-workflow-action@0.11.0
-      - uses: styfle/cancel-workflow-action@0.11.0
-        with:
-          workflow_id: reusable-test-and-build.yml
 
   build-and-test:
-    name: Run the test suite on the latest checkout
+    name: '[${{ inputs.version || github.ref_name }}] Run the test suite on the latest checkout'
     uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-test-and-build.yml@main'
-    needs: cancel
     with:
-      version: ${{ github.ref || inputs.version }}
-      python-versions: "cp38-cp38"
+      version: "${{ inputs.version || github.ref_name }}"
+      python-versions: "cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311"
+
+  # --------------------------------------------------------------------------------------------------------------------
 
   publish:
-    name: Run the test suite on the latest checkout
+    name: '[${{ inputs.version || github.ref_name }}] Publish the distribution on PyPI'
     uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-publish-package.yml@main'
     needs: build-and-test
     secrets: inherit
+    with:
+      version: "${{ inputs.version || github.ref_name }}"
