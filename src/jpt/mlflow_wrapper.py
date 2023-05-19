@@ -62,3 +62,4 @@ class Schema(mlflow.types.Schema):
             inputs.append(spec)
 
         super().__init__(inputs)
+
