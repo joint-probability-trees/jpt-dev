@@ -72,8 +72,8 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: "Create .version file if necessary [Version # passed is '${{ inputs.version }}'] 🔢"
-        if: "${{ inputs.version }} != ''"
+      - name: Create .version file if necessary [Version # passed is "${{ inputs.version }}"] 🔢
+        if: ${{ inputs.version }} != ""
         run: |
           echo "${{ inputs.version }}" > src/jpt/.version
 
