@@ -1968,7 +1968,11 @@ class JPT:
 
         if not probability_mass:
             raise Unsatisfiability(
-                'JPT is unsatisfiable (all %d leaves have 0 prior probability)' % len(self.leaves)
+                'JPT is unsatisfiable (all %d leaves have '
+                '0 prior probability with evidence: %s)' % (
+                    len(self.leaves),
+                    format_path(evidence)
+                )
             )
 
         # clean up not needed distributions and redistribute probability mass
