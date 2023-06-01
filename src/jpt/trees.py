@@ -1724,7 +1724,9 @@ class JPT:
              directory: str = '/tmp',
              plotvars: List[Variable] = [],
              view: bool = True,
-             max_symb_values: int = 10):
+             max_symb_values: int = 10,
+             nodefill=None,
+             leaffill=None):
         """
         Generates an SVG representation of the generated regression tree.
 
@@ -1824,13 +1826,13 @@ class JPT:
                      label=lbl,
                      shape='box',
                      style='rounded,filled',
-                     fillcolor=green)
+                     fillcolor=leaffill or green)
         for idx, node in self.innernodes.items():
             dot.node(str(idx),
                      label=node.str_node,
                      shape='ellipse',
                      style='rounded,filled',
-                     fillcolor=orange)
+                     fillcolor=nodefill or orange)
 
         # create edges
         for idx, n in self.innernodes.items():
