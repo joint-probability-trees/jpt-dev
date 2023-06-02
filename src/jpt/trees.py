@@ -573,6 +573,45 @@ class Leaf(Node):
 
         return result
 
+    def copy(self) -> 'Leaf':
+        """Create a copy of this leaf. The copy is unaware of the tree and vice versa.
+        Hence, not path or parent etc. is set. The copy only provides querying functionality."""
+        result = Leaf(self.idx, None, self.prior)
+        result.samples = self.samples
+        result.s_indices = self.s_indices
+        result.distributions = VariableMap(
+            {
+               variable:  type(distribution).from_json(distribution.to_json()) for variable, distribution in self.distributions.items()
+            }
+        )
+        return result
+
+    def conditional_leaf(self, evidence: VariableAssignment) -> 'Leaf':
+        """
+        Create a leaf that is cropped to the values described in evidence.
+        :param evidence: A VariableAssignment describing evidence.
+        :return: The cropped leaf, that hos no parent, path, etc. set.
+        """
+        if isinstance(evidence, LabelAssignment):
+            evidence = evidence.value_assignment()
+
+        result = self.copy()
+
+        for variable, value in evidence.items():
+
+            # adjust leaf distributions
+            if variable.symbolic or variable.integer:
+                result.distributions[variable] = result.distributions[variable]._crop(value)
+
+            # for numeric variables it's not as straight forward due to the value being polymorph
+            elif variable.numeric:
+                result.distributions[variable] = result.distributions[variable].crop(value)
+
+            else:
+                raise ValueError("Unknown variable type to crop. Type is %s" % type(variable))
+
+        return result
+
     def mpe(self, minimal_distances: VariableMap) -> (float, VariableMap):
         """
         Calculate the most probable explanation of this leaf as a fully factorized distribution.

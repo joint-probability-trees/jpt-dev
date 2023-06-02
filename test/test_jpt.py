@@ -901,3 +901,17 @@ class ConditionalJPTTest(TestCase):
 
         for variable, value in evidence.items():
             self.assertAlmostEqual(conditional_model.priors[variable].p(value), 1.)
+
+    def test_copy_leaf(self):
+        evidence = self.model.bind({"sepal length (cm)": 5})
+        for leaf in self.model.leaves.values():
+            copy = leaf.copy()
+            self.assertEqual(leaf.distributions, copy.distributions)
+            copy_ = copy.conditional_leaf(evidence)
+            self.assertTrue(leaf.distributions != copy_.distributions)
+
+    def test_conditional_leaf(self):
+        evidence = self.model.bind({"sepal length (cm)": [5, 6]})
+        for leaf in self.model.apply(evidence):
+            l_ = leaf.conditional_leaf(evidence)
+            self.assertAlmostEqual(1, l_.probability(evidence))
