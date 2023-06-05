@@ -1,5 +1,6 @@
 """© Copyright 2021, Mareike Picklum, Daniel Nyga."""
 import datetime
+import heapq
 import html
 import json
 import math
@@ -8,7 +9,7 @@ import os
 import pickle
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from itertools import zip_longest
-from operator import attrgetter
+from operator import attrgetter, itemgetter
 from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional
 
 import numpy as np
@@ -19,7 +20,7 @@ from matplotlib import style, pyplot as plt
 
 from .base.constants import plotstyle, orange, green
 from .base.errors import Unsatisfiability
-from .base.utils import list2interval, format_path, normalized
+from .base.utils import list2interval, format_path, normalized, Heap
 from .base.utils import prod, setstr_int
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
@@ -600,6 +601,13 @@ class Leaf(Node):
 
         # create mpe result
         return result_likelihood, LabelAssignment(maximum.items())
+
+    def k_mpe(self) -> Iterator[LabelAssignment]:
+        '''
+        Compute the ``k`` most probable explanations of this leaf.
+        :return:
+        '''
+        ...
 
     def number_of_parameters(self) -> int:
         """
@@ -2235,3 +2243,173 @@ class JPT:
         hyperparameters["max_depth"] = self.max_depth
 
         return hyperparameters
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class MPESearchState:
+
+    def __init__(
+            self,
+            domains: VariableMap,
+            assignment: VariableMap = None,
+            cost: numbers.Real = 0
+    ):
+        self.domains = domains
+        self.assignment = ifnone(
+            assignment,
+            VariableMap(variables=domains.keys())
+        )
+        self.cost = cost
+
+    def copy(self):
+        return MPESearchState(
+            domains=self.domains.copy(deep=True),
+            assignment=self.assignment.copy(deep=True),
+            cost=self.cost
+        )
+
+    def assign(self, variable: Variable or str, value: Any) -> 'MPESearchState':
+        if value not in self.domains[variable]:
+            raise ValueError(
+                'Out of domain for variable %s: %s' % (variable, value)
+            )
+        state_ = self.copy()
+        state_.assignment[variable] = value
+        del state_.domains[variable]
+        return state_
+
+    def has_successors(self) -> bool:
+        return any(bool(domain) for domain in self.domains.values())
+
+    def __repr__(self):
+        return '<MPESearchStat domains: %s assignment: %s>' % (
+            self.domains,
+            self.assignment
+        )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class MPESolver:
+    '''
+    Solver for k-MPE inference about n independent variables
+
+    This algorithm iteratively constructs all ``k`` most probable explanations
+    in descending order by performing a uniform cost search in the space of
+    atomic areas of the respective distributions.
+    '''
+
+    def __init__(
+            self,
+            distributions: VariableMap
+    ):
+        self.distributions: VariableMap = distributions
+
+        # Set up the WCSP variables and their domains.
+        self.domains = VariableMap(variables=self.distributions.variables)
+
+        likelihoods = []
+        for var, dist in self.distributions.items():
+            if isinstance(dist, Numeric):
+                domain = list(dist.pdf.intervals)
+                likelihood_max, _ = dist.mpe()
+                likelihoods.append(likelihood_max)
+
+            elif isinstance(dist, Multinomial):
+                domain = list(dist.values.values())
+
+            elif isinstance(dist, Integer):
+                domain = list(range(dist.vmin, dist.vmax))
+
+            else:
+                raise TypeError(
+                    'Expected type of Distribution, got %s' % type(dist).__name__
+                )
+            self.domains[var] = domain
+
+        # Build the unary constraints given by the log of
+        # an events counter probability
+        self.constraints = VariableMap(variables=self.domains.variables)
+        likelihood_divisor = max(likelihoods)
+        for var, dist in self.distributions.items():
+            self.constraints[var] = {
+                val: -np.log(
+                    (dist.pdf / likelihood_divisor).eval(val.any_point())
+                    if isinstance(dist, Numeric)
+                    else dist._p(val)
+                )
+                for val in self.domains[var]
+            }
+
+    def is_goal_state(self, state: MPESearchState) -> bool:
+        return not set(
+            self.domains.keys()
+        ).difference(
+            state.assignment.keys()
+        )
+
+    # @staticmethod
+    # def successors(state):
+    #     for var, values in state.domains.items():
+    #         if var in state.assignment:
+    #             continue
+    #         for val in values:
+    #             yield var, val
+
+    def successors(self, state: MPESearchState):
+        return iter(
+            sorted(
+                [(var, val, self.constraints[var][val])
+                 for var, domain in state.domains.items()
+                    for val in domain.items()],
+                key=itemgetter(2)
+            )
+        )
+
+    def iter_mpes(
+            self,
+            k: int = 0
+    ) -> Iterator[List[ValueAssignment]]:
+        '''
+        Generate ``k`` MPE states with decreasing probability.
+
+        :return:
+        '''
+        ub = np.inf
+        solutions = set()
+        fringe = Heap(
+            data=[(
+                0,
+                MPESearchState(
+                    self.domains,
+                ),
+            )],
+            key=itemgetter(0),
+            inc=-1,
+        )
+        count = 0
+        while fringe or k and count <= k - 1:
+            cost, state = fringe.pop()
+            # Goal check
+            if self.is_goal_state(state):
+                if not np.isfinite(cost):
+                    continue
+
+                if cost <= ub:
+                    if cost < ub:
+                        solutions = set()
+                    solutions.add(state.assignment)
+                elif cost > ub:
+                    yield cost, solutions
+                    count += 1
+                    solutions = {state.assignment}
+                ub = cost
+            else:
+                for var, val in MPESolver.successors(state):
+                    state_ = state.assign(var, val)
+                    state_.cost += self.constraints[var][val]
+                    if np.isfinite(state_.cost):
+                        fringe.push((state_.cost, state_))
+        if solutions:
+            yield ub, solutions

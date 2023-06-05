@@ -1,12 +1,16 @@
 import os
 import pickle
 import unittest
+from unittest import TestCase
 
 import numpy as np
+from dnutils import out
 
-from jpt import SymbolicVariable, JPT, NumericVariable
+from jpt import SymbolicVariable, JPT, NumericVariable, SymbolicType
 from jpt.base.intervals import ContinuousSet, RealSet, EXC, INC
-from jpt.distributions import Bool
+from jpt.distributions import Bool, Numeric
+from jpt.trees import MPESearchState, MPESolver
+from jpt.variables import VariableMap, ValueAssignment
 
 
 class JPTInferenceSymbolic(unittest.TestCase):
@@ -25,8 +29,10 @@ class JPTInferenceSymbolic(unittest.TestCase):
         with open(os.path.join('..', 'examples', 'data', 'alarm.pkl'), 'rb') as f:
             cls.data = np.array(pickle.load(f))
 
-        cls.jpt = JPT(variables=[cls.E, cls.B, cls.A, cls.M, cls.J],
-                      min_impurity_improvement=0).learn(rows=cls.data)
+        cls.jpt = JPT(
+            variables=[cls.E, cls.B, cls.A, cls.M, cls.J],
+            min_impurity_improvement=0
+        ).learn(rows=cls.data)
         cls.jpt.learn(rows=cls.data)
 
     def test_infer_alarm_given_mary(self):
@@ -66,3 +72,78 @@ class JPTInferenceNumeric(unittest.TestCase):
         r1 = self.jpt.infer(query={'x': RealSet(['[-1,0.5]', '[1,inf['])})
         r2 = self.jpt.infer(query={'x': ContinuousSet(.5, 1, EXC, INC)})
         self.assertAlmostEqual(r1, 1 - r2, places=10)
+
+
+class MPESolverTest(TestCase):
+
+    GAUSSIAN = None
+
+    @classmethod
+    def setUp(cls) -> None:
+        with open('resources/gaussian_100.dat', 'rb') as f:
+            cls.GAUSSIAN = pickle.load(f).reshape(-1, 1)
+
+    def test_search_state(self):
+        dom1 = SymbolicType('Dom1', labels=['A', 'B', 'C'])
+        var1 = SymbolicVariable('V1', dom1)
+
+        dom2 = SymbolicType('Dom2', labels=['D', 'E', 'F'])
+        var2 = SymbolicVariable('V2', dom2)
+
+        state = MPESearchState(
+            domains=VariableMap({
+                var1: list(dom1.labels.values()),
+                var2: list(dom2.labels.values())
+            })
+        )
+        self.assertEqual(
+            ['A', 'B', 'C'],
+            state.domains['V1']
+        )
+        self.assertEqual(
+            VariableMap(variables=[var1, var2]),
+            state.assignment
+        )
+        state = state.assign('V1', 'B')
+        self.assertEqual(
+            ['A', 'C'],
+            state.domains['V1']
+        )
+        self.assertEqual(
+            VariableMap({
+                'V1': 'B'
+            }, variables=[var1, var2]),
+            state.assignment
+        )
+        state = state.assign('V2', 'D')
+        self.assertEqual(
+            ['E', 'F'],
+            state.domains['V2']
+        )
+        self.assertEqual(
+            VariableMap({
+                'V1': 'B',
+                'V2': 'D'
+            }, variables=[var1, var2]),
+            state.assignment
+        )
+        state = state.assign('V2', 'E')
+        state = state.assign('V2', 'F')
+        self.assertRaises(ValueError, state.assign, 'V2', 'NaN')
+
+    def test_mpe_numeric(self):
+        dist1 = Numeric().fit(self.GAUSSIAN)
+        dist2 = Numeric().fit(self.GAUSSIAN)
+
+        v1 = NumericVariable('X')
+        v2 = NumericVariable('Y')
+
+        mpe_inference = MPESolver(
+            VariableMap({
+                v1: dist1,
+                v2: dist2
+            })
+        )
+        for mpe in mpe_inference.iter_mpes():
+            out(mpe)
+        dist1.plot(view=True)
