@@ -593,13 +593,22 @@ class VariableMap:
         return bool(len(self))
 
     def __eq__(self, o: 'VariableMap'):
-        return (type(o) is type(self) and
-                list(self._map.items()) == list(o._map.items()) and
-                list(self._variables.items()) == list(o._variables.items()))
+        return (
+            type(o) is type(self) and
+            set(self._map.items()) == set(o._map.items()) and
+            list(self._variables.items()) == list(o._variables.items())
+        )
 
     def __hash__(self):
-        return hash((type(self), tuple(sorted([(var, tuple(sorted(val)) if type(val) is set else val)
-                                               for var, val in self.items()], key=lambda t: t[0].name))))
+        return hash((
+            type(self),
+            tuple(
+                sorted(
+                    [(var, tuple(sorted(val)) if type(val) is set else val)
+                     for var, val in self.items()], key=lambda t: t[0].name
+                )
+            )
+        ))
 
     def __isub__(self, other):
         if isinstance(other, VariableMap):
@@ -623,7 +632,7 @@ class VariableMap:
             return default
         return self[key]
 
-    def keys(self) -> Iterator[str]:
+    def keys(self) -> Iterator[Variable]:
         yield from (self._variables[name] for name in self._map.keys())
 
     def values(self) -> Iterator[Any]:
@@ -649,7 +658,7 @@ class VariableMap:
         for vname, value in self.items():
             if isinstance(value, (numbers.Number, str)):
                 vmap[vname] = value
-            elif isinstance(value, (set, NumberSet)):
+            elif isinstance(value, (set, list, tuple, NumberSet)):
                 vmap[vname] = value.copy()
         return vmap
 
