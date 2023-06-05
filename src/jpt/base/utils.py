@@ -1,3 +1,4 @@
+import heapq
 import logging
 import numbers
 import os
@@ -403,3 +404,48 @@ def save_plot(fig,  directory, fname, fmt='pdf'):
             f"Saving distributions plot to {os.path.join(directory, f'{fname}.png')}")
         plt.savefig(os.path.join(directory, f'{fname}.png'))
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def count(start: int = 0, inc: int = 1):
+    value = start
+    while 1:
+        yield value
+        value += inc
+
+
+class Heap:
+    '''
+    Implementation of a heap wrapper inspired by
+
+    https://stackoverflow.com/questions/8875706/heapq-with-custom-compare-predicate#8875823
+    '''
+
+    def __init__(
+            self,
+            data: Iterable[Any] = None,
+            key: Callable = None,
+            inc: int = 1
+    ):
+        self._key = ifnone(key, lambda x: x)
+        self._index = 0
+        self._inc = inc
+        if data:
+            self._data = [(self._key(item), i, item) for i, item in zip(count(0, self._inc), data)]
+            self._index = len(self._data) * self._inc
+            heapq.heapify(self._data)
+        else:
+            self._data = []
+
+    def push(self, item):
+        heapq.heappush(
+            self._data,
+            (self._key(item), self._index, item)
+        )
+        self._index += self._inc
+
+    def pop(self):
+        return heapq.heappop(self._data)[2]
+
+    def __len__(self):
+        return len(self._data)
