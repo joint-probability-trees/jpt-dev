@@ -619,8 +619,13 @@ class Numeric(Distribution):
         :return: The likelihood of the mpe as float and the mpe itself as RealSet
         """
         _max = max(f.value for f in self.pdf.functions)
-        return _max, self.value2label(RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
-                              if function.value == _max]))
+        return _max, self.value2label(
+            RealSet([
+                interval
+                for interval, function in zip(self.pdf.intervals, self.pdf.functions)
+                if function.value == _max
+            ])
+        )
 
     def _fit(
             self,
@@ -1705,7 +1710,7 @@ class Integer(Distribution):
 # ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection PyPep8Naming
-def SymbolicType(name: str, labels: List[Any]) -> Type:
+def SymbolicType(name: str, labels: List[Any]) -> Type[Multinomial]:
     if len(labels) < 1:
         raise ValueError('At least one value is needed for a symbolic type.')
     if len(set(labels)) != len(labels):
@@ -1718,7 +1723,7 @@ def SymbolicType(name: str, labels: List[Any]) -> Type:
 
 
 # noinspection PyPep8Naming
-def NumericType(name: str, values: Iterable[float]) -> Type:
+def NumericType(name: str, values: Iterable[float]) -> Type[ScaledNumeric]:
     t = type(name, (ScaledNumeric,), {})
     if values is not None:
         values = np.array(list(none2nan(values)))
@@ -1731,7 +1736,7 @@ def NumericType(name: str, values: Iterable[float]) -> Type:
 
 
 # noinspection PyPep8Naming
-def IntegerType(name: str, lmin: int, lmax: int) -> Type:
+def IntegerType(name: str, lmin: int, lmax: int) -> Type[Integer]:
     if lmin > lmax:
         raise ValueError('Min label is greater tham max value: %s > %s' % (lmin, lmax))
     t = type(name, (Integer,), {})
