@@ -544,6 +544,10 @@ class VariableMap:
                 self[var] = value
 
     @property
+    def variables(self):
+        return self._variables.values()
+
+    @property
     def map(self) -> {}:
         return self._map
 
