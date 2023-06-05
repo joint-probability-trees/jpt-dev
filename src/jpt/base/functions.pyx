@@ -882,7 +882,16 @@ cdef class PiecewiseFunction(Function):
             return True
 
     def __sub__(self, other: Function) -> PiecewiseFunction:
-        return self.add(other.mul(ConstantFunction(-1)))
+        return self.add(
+            other.mul(
+                ConstantFunction(-1)
+            )
+        )
+
+    def __truediv__(self, other: numbers.Real) -> PiecewiseFunction:
+        return self.mul(
+            ConstantFunction(1 / other)
+        )
 
     @classmethod
     def zero(cls, interval: ContinuousSet = None) -> PiecewiseFunction:
