@@ -1105,8 +1105,11 @@ class JPT:
             final[var] = dist.expectation()
         return final
 
-    def mpe(self, evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
-            fail_on_unsatisfiability: bool = True) -> (List[LabelAssignment], float) or None:
+    def mpe(
+            self,
+            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> (List[LabelAssignment], float) or None:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
         :param evidence: The evidence that is applied to the tree
@@ -1144,6 +1147,67 @@ class JPT:
 
         # return the results
         return results, highest_likelihood
+
+    def kmpe(
+            self,
+            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            fail_on_unsatisfiability: bool = True,
+            k: int = 0
+    ) -> Iterator[LabelAssignment] or None:
+        '''
+        Perform a k-MPE inference on this JPT under the given evidence.
+
+        k-MPE yields the ``k`` most probable explanation states in decreasing order.
+
+        :param evidence:
+        :param fail_on_unsatisfiability:
+        :param k: the number of solutions to return
+        :return:
+        '''
+        if isinstance(evidence, LabelAssignment):
+            evidence_ = evidence.value_assignment()
+        else:
+            evidence_ = evidence
+
+        # apply the evidence given
+        conditional_jpt = self.conditional_jpt(evidence_, fail_on_unsatisfiability)
+        if conditional_jpt is None:
+            return None
+
+        # Determine the maximal likelihood in numeric distributions
+        likelihoods = []
+        for leaf in conditional_jpt.leaves.values():
+            for var, dist in leaf.distributions.items():
+                if isinstance(dist, Numeric):
+                    likelihood_max, _ = dist.mpe()
+                    likelihoods.append(likelihood_max)
+        mpe_solvers = [
+            MPESolver(
+                distributions=leaf.distributions,
+                likelihood_divisor=max(likelihoods) if likelihoods else None
+            ).solve() for leaf in self.leaves.values()
+        ]
+
+        mpe_candidates = Heap(
+            data=[(*next(solver), solver) for solver in mpe_solvers],
+            key=itemgetter(0)
+        )
+        count = 0
+        while mpe_candidates and (not k or count < k):
+            cost, solution, solver = mpe_candidates.pop()
+
+            values = ValueAssignment(
+                solution.items(),
+                variables=conditional_jpt.variables
+            )
+            if isinstance(evidence, LabelAssignment):
+                values = values.label_assignment()
+            yield values
+            try:
+                mpe_candidates.push((*next(solver), solver))
+            except StopIteration:
+                pass
+            count += 1
 
     def _preprocess_query(self,
                           query: Union[dict, VariableMap],
@@ -1246,13 +1310,15 @@ class JPT:
         # -> return leaf that matches query
         yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
 
-    def c45(self,
+    def c45(
+            self,
             data: np.ndarray,
             start: int,
             end: int,
             parent: DecisionNode,
             child_idx: int,
-            depth: int) -> None:
+            depth: int
+    ) -> None:
         """
         Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
         ``indices``. The created node is put as a child with index ``child_idx`` to the children of
@@ -1276,10 +1342,12 @@ class JPT:
         if max_gain < 0:
             raise ValueError('Something went wrong!')
 
-        self.logger.debug('Data range: %d-%d,' % (start, end),
-                          'split var:', split_var,
-                          ', split_pos:', split_pos,
-                          ', gain:', max_gain)
+        self.logger.debug(
+            'Data range: %d-%d,' % (start, end),
+            'split var:', split_var,
+            ', split_pos:', split_pos,
+            ', gain:', max_gain
+        )
 
         if max_gain:
             split_pos = impurity.best_split_pos
@@ -1315,15 +1383,19 @@ class JPT:
             self.innernodes[node.idx] = node
 
             if split_var.symbolic:  # Symbolic domain ------------------------------------------------------------------
-                split_value = int(data[self.indices[start + split_pos], split_var_idx])
+                split_value = int(
+                    data[self.indices[start + split_pos], split_var_idx]
+                )
                 splits = [
                     {split_value},
                     set(split_var.domain.values.values()) - {split_value}
                 ]
 
             elif split_var.numeric:  # Numeric domain ------------------------------------------------------------------
-                split_value = (data[self.indices[start + split_pos], split_var_idx] +
-                               data[self.indices[start + split_pos + 1], split_var_idx]) / 2
+                split_value = (
+                    data[self.indices[start + split_pos], split_var_idx] +
+                    data[self.indices[start + split_pos + 1], split_var_idx]
+                ) / 2
                 splits = [
                     Interval(np.NINF, split_value, EXC, EXC),
                     Interval(split_value, np.PINF, INC, EXC)
@@ -2253,7 +2325,7 @@ class MPESearchState:
             self,
             domains: VariableMap,
             assignment: VariableMap = None,
-            cost: numbers.Real = 0
+            cost: numbers.Real = 0,
     ):
         self.domains = domains
         self.assignment = ifnone(
@@ -2261,6 +2333,7 @@ class MPESearchState:
             VariableMap(variables=domains.keys())
         )
         self.cost = cost
+        self.successors = None
 
     def copy(self):
         return MPESearchState(
@@ -2270,6 +2343,10 @@ class MPESearchState:
         )
 
     def assign(self, variable: Variable or str, value: Any) -> 'MPESearchState':
+        if variable not in self.domains:
+            raise ValueError(
+                'Variable %s unavailable' % variable
+            )
         if value not in self.domains[variable]:
             raise ValueError(
                 'Out of domain for variable %s: %s' % (variable, value)
@@ -2296,13 +2373,16 @@ class MPESolver:
     Solver for k-MPE inference about n independent variables
 
     This algorithm iteratively constructs all ``k`` most probable explanations
-    in descending order by performing a uniform cost search in the space of
-    atomic areas of the respective distributions.
+    in descending order by performing a branch-and-bound search in the space of
+    atomic areas of the respective distributions. In constrast to classic BnB search,
+    we do not throw away the pruned states but save them in a priority queue, where
+    we can continue the search for the subsequent 2nd, 3rd, ..., k-th best solution.
     '''
 
     def __init__(
             self,
-            distributions: VariableMap
+            distributions: VariableMap,
+            likelihood_divisor: float = None
     ):
         self.distributions: VariableMap = distributions
 
@@ -2331,7 +2411,10 @@ class MPESolver:
         # Build the unary constraints given by the log of
         # an events counter probability
         self.constraints = VariableMap(variables=self.domains.variables)
-        likelihood_divisor = max(likelihoods)
+        self.likelihood_divisor = ifnone(
+            likelihood_divisor,
+            max(likelihoods)
+        )
         for var, dist in self.distributions.items():
             self.constraints[var] = {
                 val: -np.log(
@@ -2349,25 +2432,21 @@ class MPESolver:
             state.assignment.keys()
         )
 
-    # @staticmethod
-    # def successors(state):
-    #     for var, values in state.domains.items():
-    #         if var in state.assignment:
-    #             continue
-    #         for val in values:
-    #             yield var, val
-
     def successors(self, state: MPESearchState):
-        return iter(
-            sorted(
-                [(var, val, self.constraints[var][val])
-                 for var, domain in state.domains.items()
-                    for val in domain.items()],
-                key=itemgetter(2)
-            )
-        )
+        if not state.domains:
+            return None
+        var = min(
+            [(var, val, self.constraints[var][val])
+             for var, domain in state.domains.items()
+             for val in domain], key=itemgetter(2)
+        )[0]
+        return [(var, val) for var, val, _ in sorted([
+            (var, val, self.constraints[var][val])
+            for val in self.domains[var]
+            ], key=itemgetter(2)
+        )]
 
-    def iter_mpes(
+    def solve(
             self,
             k: int = 0
     ) -> Iterator[List[ValueAssignment]]:
@@ -2377,39 +2456,40 @@ class MPESolver:
         :return:
         '''
         ub = np.inf
-        solutions = set()
-        fringe = Heap(
-            data=[(
-                0,
-                MPESearchState(
-                    self.domains,
-                ),
-            )],
-            key=itemgetter(0),
-            inc=-1,
+        solutions = Heap(key=attrgetter('cost'))
+        pruned = Heap(key=attrgetter('cost'))
+        fringe = deque([
+            MPESearchState(
+                self.domains,
+            )]
         )
+        fringe[0].successors = self.successors(fringe[0])
         count = 0
-        while fringe or k and count <= k - 1:
-            cost, state = fringe.pop()
-            # Goal check
-            if self.is_goal_state(state):
-                if not np.isfinite(cost):
-                    continue
 
-                if cost <= ub:
-                    if cost < ub:
-                        solutions = set()
-                    solutions.add(state.assignment)
-                elif cost > ub:
-                    yield cost, solutions
-                    count += 1
-                    solutions = {state.assignment}
-                ub = cost
-            else:
-                for var, val in MPESolver.successors(state):
-                    state_ = state.assign(var, val)
-                    state_.cost += self.constraints[var][val]
-                    if np.isfinite(state_.cost):
-                        fringe.push((state_.cost, state_))
-        if solutions:
-            yield ub, solutions
+        while fringe or solutions:
+            while fringe:
+                state = fringe.pop()
+
+                if self.is_goal_state(state):
+                    solutions.push(state)
+                    if state.cost < ub:
+                        ub = state.cost
+                else:
+                    if state.cost > ub:
+                        pruned.push(state)
+                    for var, val in reversed(state.successors):  # reverse to append in the ascending order
+                        new_state = state.assign(var, val)
+                        new_state.successors = self.successors(new_state)
+                        new_state.cost += self.constraints[var][val]
+                        fringe.appendleft(new_state)
+
+            while solutions and solutions[0].cost == ub:
+                solution = solutions.pop()
+                count += 1
+                yield solution.cost, solution.assignment
+                if k and count >= k:
+                    return
+            ub = solutions[0].cost if solutions else np.inf
+
+            while pruned:  # Continue the search at the states that have been pruned
+                fringe.append(pruned.pop())

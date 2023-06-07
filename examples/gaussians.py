@@ -89,12 +89,11 @@ def main(verbose=True):
                    if varcolor in leaf.path else None])
     if visualize:
         plt.show()
-    # jpt.plot(view=True, plotvars=[varcolor])
 
-    # _data = jpt._preprocess_data(df)
-    # dec = DecisionTreeClassifier(min_samples_leaf=.1)
-    # dec.fit(_data[:, :-1], _data[:, -1:])
-    # plot_tree(dec)
+    print('10-MPE states:')
+    for mpe in jpt.kmpe(k=10):
+        print('  ', mpe)
+
     plot_conditional(jpt, varx, vary)
     plot_gaussian([gauss1, gauss2])
     # plot_conditional(jpt, varx, vary, {varcolor: 'R'})

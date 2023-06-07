@@ -105,9 +105,9 @@ class MPESolverTest(TestCase):
             state.assignment
         )
         state = state.assign('V1', 'B')
-        self.assertEqual(
-            ['A', 'C'],
-            state.domains['V1']
+        self.assertNotIn(
+            'V1',
+            state.domains
         )
         self.assertEqual(
             VariableMap({
@@ -116,9 +116,9 @@ class MPESolverTest(TestCase):
             state.assignment
         )
         state = state.assign('V2', 'D')
-        self.assertEqual(
-            ['E', 'F'],
-            state.domains['V2']
+        self.assertNotIn(
+            'V2',
+            state.domains
         )
         self.assertEqual(
             VariableMap({
@@ -127,8 +127,7 @@ class MPESolverTest(TestCase):
             }, variables=[var1, var2]),
             state.assignment
         )
-        state = state.assign('V2', 'E')
-        state = state.assign('V2', 'F')
+        self.assertFalse(state.domains)
         self.assertRaises(ValueError, state.assign, 'V2', 'NaN')
 
     def test_mpe_numeric(self):
@@ -138,12 +137,12 @@ class MPESolverTest(TestCase):
         v1 = NumericVariable('X')
         v2 = NumericVariable('Y')
 
-        mpe_inference = MPESolver(
+        mpe = MPESolver(
             VariableMap({
                 v1: dist1,
                 v2: dist2
             })
         )
-        for mpe in mpe_inference.iter_mpes():
+        for mpe in mpe.solve(10):
             out(mpe)
         dist1.plot(view=True)
