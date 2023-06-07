@@ -452,3 +452,12 @@ class Heap:
 
     def __len__(self):
         return len(self._data)
+
+    def __getitem__(self, item):
+        return self._data[item][2]
+
+    def __bool__(self):
+        return bool(self._data)
+
+    def __repr__(self):
+        return '<Heap %s>' % [item for _, _, item in self._data]
