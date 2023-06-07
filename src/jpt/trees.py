@@ -2413,7 +2413,7 @@ class MPESolver:
         self.constraints = VariableMap(variables=self.domains.variables)
         self.likelihood_divisor = ifnone(
             likelihood_divisor,
-            max(likelihoods)
+            max(likelihoods) if likelihoods else 1
         )
         for var, dist in self.distributions.items():
             self.constraints[var] = {
