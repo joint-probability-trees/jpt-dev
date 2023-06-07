@@ -2468,8 +2468,8 @@ class MPESolver:
 
         while fringe or solutions:
             while fringe:
-                state = fringe.pop()
-
+                state = fringe.popleft()
+                # out('%s vars assigned, %s left:' % (len(state.assignment), len(state.domains)), state.assignment)
                 if self.is_goal_state(state):
                     solutions.push(state)
                     if state.cost < ub:
