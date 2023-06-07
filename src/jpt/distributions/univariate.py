@@ -1076,11 +1076,15 @@ class Multinomial(Distribution):
         return type(self)(**self.settings).set(params=self._params)
 
     def p(self, labels):
+        if not isinstance(labels, Iterable):
+            values = {labels}
         if not isinstance(labels, (set, list, tuple, np.ndarray)):
             raise TypeError('Argument must be iterable (got %s).' % type(labels))
         return self._p(self.values[label] for label in labels)
 
     def _p(self, values):
+        if not isinstance(values, Iterable):
+            values = {values}
         i1, i2 = tee(values, 2)
         if not all(isinstance(v, numbers.Integral) for v in i1):
             raise TypeError('All arguments must be integers.')
