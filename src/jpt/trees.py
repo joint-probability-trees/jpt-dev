@@ -2442,7 +2442,7 @@ class MPESolver:
         )[0]
         return [(var, val) for var, val, _ in sorted([
             (var, val, self.constraints[var][val])
-            for val in self.domains[var]
+            for val in self.domains[var] if self.constraints[var][val] < np.inf
             ], key=itemgetter(2)
         )]
 
@@ -2475,7 +2475,7 @@ class MPESolver:
                     if state.cost < ub:
                         ub = state.cost
                 else:
-                    if state.cost > ub:
+                    if ub < state.cost < np.inf:
                         pruned.push(state)
                     for var, val in reversed(state.successors):  # reverse to append in the ascending order
                         new_state = state.assign(var, val)
@@ -2486,6 +2486,7 @@ class MPESolver:
             while solutions and solutions[0].cost == ub:
                 solution = solutions.pop()
                 count += 1
+                out('# %d solution found.' % count)
                 yield solution.cost, solution.assignment
                 if k and count >= k:
                     return
