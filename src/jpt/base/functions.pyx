@@ -890,7 +890,7 @@ cdef class PiecewiseFunction(Function):
 
     def __truediv__(self, other: numbers.Real) -> PiecewiseFunction:
         return self.mul(
-            ConstantFunction(1 / other)
+            ConstantFunction(1 / float(other))
         )
 
     @classmethod
