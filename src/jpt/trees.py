@@ -14,7 +14,7 @@ from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional
 
 import numpy as np
 import pandas as pd
-from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs
+from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs, project
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
@@ -1185,13 +1185,14 @@ class JPT:
             MPESolver(
                 distributions=leaf.distributions,
                 likelihood_divisor=max(likelihoods) if likelihoods else None
-            ).solve() for leaf in self.leaves.values()
+            ).solve() for leaf in conditional_jpt.leaves.values()
         ]
 
         mpe_candidates = Heap(
             data=[(*next(solver), solver) for solver in mpe_solvers],
             key=itemgetter(0)
         )
+
         count = 0
         while mpe_candidates and (not k or count < k):
             cost, solution, solver = mpe_candidates.pop()
@@ -1200,8 +1201,8 @@ class JPT:
                 solution.items(),
                 variables=conditional_jpt.variables
             )
-            if isinstance(evidence, LabelAssignment):
-                values = values.label_assignment()
+            # if isinstance(evidence, LabelAssignment):
+            values = values.label_assignment()
             yield values
             try:
                 mpe_candidates.push((*next(solver), solver))
@@ -2319,51 +2320,86 @@ class JPT:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class MPESearchState:
+class MPEState:
 
     def __init__(
             self,
-            domains: VariableMap,
-            assignment: VariableMap = None,
-            cost: numbers.Real = 0,
+            assignment: VariableMap,
     ):
-        self.domains = domains
-        self.assignment = ifnone(
-            assignment,
-            VariableMap(variables=domains.keys())
-        )
-        self.cost = cost
-        self.successors = None
+        self.assignment = assignment
+        self.latest_variable = None
 
     def copy(self):
-        return MPESearchState(
-            domains=self.domains.copy(deep=True),
+        return MPEState(
             assignment=self.assignment.copy(deep=True),
-            cost=self.cost
         )
 
-    def assign(self, variable: Variable or str, value: Any) -> 'MPESearchState':
-        if variable not in self.domains:
-            raise ValueError(
-                'Variable %s unavailable' % variable
-            )
-        if value not in self.domains[variable]:
-            raise ValueError(
-                'Out of domain for variable %s: %s' % (variable, value)
-            )
+    def assign(self, variable: Variable or str, value: Any) -> 'MPEState':
         state_ = self.copy()
         state_.assignment[variable] = value
-        del state_.domains[variable]
+        state_.latest_variable = variable
         return state_
 
-    def has_successors(self) -> bool:
-        return any(bool(domain) for domain in self.domains.values())
-
     def __repr__(self):
-        return '<MPESearchStat domains: %s assignment: %s>' % (
-            self.domains,
+        return '<MPESearchStat assignment: %s>' % (
             self.assignment
         )
+
+
+class BnBNode:
+
+    def __init__(self, solver, state, actual_cost):
+        self.solver: MPESolver = solver
+        self.old_state: MPEState = state
+        self.variable: Variable = first(self.solver.variable_order(state))
+        self.values: Iterator[Any] = iter(
+            self.solver.constraints[self.variable].keys() if self.variable is not None else iter([])
+        )
+        self.actual_cost = actual_cost
+        self.step_cost = 0
+        self.state: MPEState = self._generate_next()
+
+    def _generate_next(self):
+        try:
+            value = next(self.values)
+        except StopIteration:
+            return None
+        else:
+            self.step_cost = self.solver.constraints[self.variable][value]
+            return self.old_state.assign(self.variable, value)
+
+    def pop(self):
+        solution_node = None
+        if not self.free_variables:
+            solution_node = BnBSolution(
+                self.state,
+                self.cost
+            )
+        cost = self.actual_cost + self.step_cost
+        state = self.state
+        self.state = self._generate_next()
+        if solution_node is not None:
+            return solution_node
+        return BnBNode(
+            self.solver,
+            state,
+            cost
+        )
+
+    @property
+    def cost(self):
+        return self.actual_cost + self.step_cost + self.solver.lb.get(self.variable, 0)
+
+    @property
+    def free_variables(self):
+        return set(self.solver.constraints.keys()).difference(self.state.assignment.keys())
+
+
+class BnBSolution:
+
+    def __init__(self, state, cost):
+        self.state = state
+        self.cost = cost
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -2409,42 +2445,61 @@ class MPESolver:
             self.domains[var] = domain
 
         # Build the unary constraints given by the log of
-        # an events counter probability
+        # an events probability
         self.constraints = VariableMap(variables=self.domains.variables)
         self.likelihood_divisor = ifnone(
             likelihood_divisor,
             max(likelihoods) if likelihoods else 1
         )
         for var, dist in self.distributions.items():
-            self.constraints[var] = {
-                val: -np.log(
-                    (dist.pdf / likelihood_divisor).eval(val.any_point())
-                    if isinstance(dist, Numeric)
-                    else dist._p(val)
+            self.constraints[var] = OrderedDict(
+                sorted([
+                    (
+                        val,
+                        -np.log(
+                            (dist.pdf / self.likelihood_divisor).eval(val.any_point())
+                            if isinstance(dist, Numeric)
+                            else dist._p(val)
+                        )
+                    )
+                    for val in self.domains[var]],
+                    key=itemgetter(1)
                 )
-                for val in self.domains[var]
-            }
+            )
+        # Ensure node consistency, i.e. remove values with infinite costs
+        for var, constraints in self.constraints.items():
+            for val, cost in list(constraints.items()):
+                if np.isinf(cost):
+                    del constraints[val]
+        # Construct the local lower bounds
+        self.lb = {
+            v: c_min for v, c_min in zip(
+                self.variable_order(),
+                list(
+                    np.cumsum(
+                        [min(self.constraints[var].values()) for var in reversed(list(self.variable_order()))]
+                    )[:-1][::-1]
+                ) + [0]
+            )
+        }
 
-    def is_goal_state(self, state: MPESearchState) -> bool:
+    def is_goal_state(self, state: MPEState) -> bool:
         return not set(
-            self.domains.keys()
+            self.constraints.keys()
         ).difference(
             state.assignment.keys()
         )
 
-    def successors(self, state: MPESearchState):
-        if not state.domains:
-            return None
-        var = min(
-            [(var, val, self.constraints[var][val])
-             for var, domain in state.domains.items()
-             for val in domain], key=itemgetter(2)
-        )[0]
-        return [(var, val) for var, val, _ in sorted([
-            (var, val, self.constraints[var][val])
-            for val in self.domains[var] if self.constraints[var][val] < np.inf
-            ], key=itemgetter(2)
-        )]
+    def variable_order(self, state: MPEState = None) -> Iterator[Variable]:
+        if state is not None:
+            for var in self.variable_order():  # min([(var, len(dom)) for var, dom in state.domains.items()], key=itemgetter(1))[0]
+                if var not in state.assignment:
+                    yield var
+            return
+        yield from project(
+            sorted([(var, len(constraints)) for var, constraints in self.constraints.items()], key=itemgetter(1)),
+            0
+        )
 
     def solve(
             self,
@@ -2455,39 +2510,46 @@ class MPESolver:
 
         :return:
         '''
-        ub = np.inf
-        solutions = Heap(key=attrgetter('cost'))
-        pruned = Heap(key=attrgetter('cost'))
-        fringe = deque([
-            MPESearchState(
-                self.domains,
+        ub = np.inf  # Global upper bound
+        solutions = Heap(key=attrgetter('cost'))  # Buffer for all solutions
+        pruned = Heap(key=attrgetter('cost'))  # Buffer for pruned nodes for later continuation
+        fringe = deque([  # FIFO queue for depth-first search
+            BnBNode(
+                self,
+                MPEState(
+                    VariableMap(variables=self.constraints.keys())
+                ),
+                0
             )]
         )
-        fringe[0].successors = self.successors(fringe[0])
         count = 0
 
         while fringe or solutions:
             while fringe:
-                state = fringe.popleft()
-                # out('%s vars assigned, %s left:' % (len(state.assignment), len(state.domains)), state.assignment)
-                if self.is_goal_state(state):
-                    solutions.push(state)
-                    if state.cost < ub:
-                        ub = state.cost
-                else:
-                    if ub < state.cost < np.inf:
-                        pruned.push(state)
-                    for var, val in reversed(state.successors):  # reverse to append in the ascending order
-                        new_state = state.assign(var, val)
-                        new_state.successors = self.successors(new_state)
-                        new_state.cost += self.constraints[var][val]
-                        fringe.appendleft(new_state)
+                node = fringe.popleft()
 
+                if self.is_goal_state(node.state):
+                    if node.cost <= ub:
+                        ub = node.cost
+                        solutions.push(node.pop())
+                        if node.state is not None:  # We can encounter equivalent solutions, but no better ones
+                            fringe.appendleft(node)
+                    elif node.state is not None:
+                        pruned.push(node)
+                else:
+                    if ub < node.cost < np.inf:
+                        pruned.push(node)
+                    else:
+                        new_node = node.pop()
+                        if node.state is not None:
+                            fringe.appendleft(node)
+                        fringe.appendleft(
+                            new_node,
+                        )
             while solutions and solutions[0].cost == ub:
                 solution = solutions.pop()
                 count += 1
-                out('# %d solution found.' % count)
-                yield solution.cost, solution.assignment
+                yield solution.cost, solution.state.assignment
                 if k and count >= k:
                     return
             ub = solutions[0].cost if solutions else np.inf

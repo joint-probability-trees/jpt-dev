@@ -9,7 +9,7 @@ from dnutils import out
 from jpt import SymbolicVariable, JPT, NumericVariable, SymbolicType
 from jpt.base.intervals import ContinuousSet, RealSet, EXC, INC
 from jpt.distributions import Bool, Numeric
-from jpt.trees import MPESearchState, MPESolver
+from jpt.trees import MPEState, MPESolver
 from jpt.variables import VariableMap, ValueAssignment
 
 
@@ -82,53 +82,6 @@ class MPESolverTest(TestCase):
     def setUp(cls) -> None:
         with open('resources/gaussian_100.dat', 'rb') as f:
             cls.GAUSSIAN = pickle.load(f).reshape(-1, 1)
-
-    def test_search_state(self):
-        dom1 = SymbolicType('Dom1', labels=['A', 'B', 'C'])
-        var1 = SymbolicVariable('V1', dom1)
-
-        dom2 = SymbolicType('Dom2', labels=['D', 'E', 'F'])
-        var2 = SymbolicVariable('V2', dom2)
-
-        state = MPESearchState(
-            domains=VariableMap({
-                var1: list(dom1.labels.values()),
-                var2: list(dom2.labels.values())
-            })
-        )
-        self.assertEqual(
-            ['A', 'B', 'C'],
-            state.domains['V1']
-        )
-        self.assertEqual(
-            VariableMap(variables=[var1, var2]),
-            state.assignment
-        )
-        state = state.assign('V1', 'B')
-        self.assertNotIn(
-            'V1',
-            state.domains
-        )
-        self.assertEqual(
-            VariableMap({
-                'V1': 'B'
-            }, variables=[var1, var2]),
-            state.assignment
-        )
-        state = state.assign('V2', 'D')
-        self.assertNotIn(
-            'V2',
-            state.domains
-        )
-        self.assertEqual(
-            VariableMap({
-                'V1': 'B',
-                'V2': 'D'
-            }, variables=[var1, var2]),
-            state.assignment
-        )
-        self.assertFalse(state.domains)
-        self.assertRaises(ValueError, state.assign, 'V2', 'NaN')
 
     def test_mpe_numeric(self):
         dist1 = Numeric().fit(self.GAUSSIAN)
