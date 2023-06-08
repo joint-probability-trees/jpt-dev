@@ -421,6 +421,22 @@ class Heap:
     https://stackoverflow.com/questions/8875706/heapq-with-custom-compare-predicate#8875823
     '''
 
+    # ------------------------------------------------------------------------------------------------------------------
+
+    class Iterator:
+
+        def __init__(self, heap: 'Heap', reverse=False):
+            self.heap = heap
+            self._list_iterator = (reversed if reverse else iter)(self.heap._data)
+
+        def __next__(self):
+            return next(self._list_iterator)[2]
+
+        def __iter__(self):
+            return self
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def __init__(
             self,
             data: Iterable[Any] = None,
@@ -458,3 +474,9 @@ class Heap:
 
     def __repr__(self):
         return '<Heap %s>' % [item for _, _, item in self._data]
+
+    def __iter__(self):
+        return Heap.Iterator(self)
+
+    def __reversed__(self):
+        return Heap.Iterator(self, reverse=True)
