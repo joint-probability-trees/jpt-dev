@@ -3,7 +3,7 @@ from unittest import TestCase
 import numpy as np
 
 from jpt.base.constants import eps
-from jpt.base.utils import mapstr, setstr_int
+from jpt.base.utils import mapstr, setstr_int, Heap
 
 
 class UtilsTest(TestCase):
@@ -46,3 +46,26 @@ class VersionTest(TestCase):
     def test_version(self):
         import jpt
         self.assertRegex(jpt.__version__, r'\d\.\d\.\d')
+
+
+class HeapTest(TestCase):
+
+    def test_iterator(self):
+        # Arrange
+        h = Heap(data=[5, 4, 8])
+
+        # Act
+        result = list(iter(h))
+
+        # Assert
+        self.assertEqual([4, 5, 8], result)
+
+    def test_reverse(self):
+        # Arrange
+        h = Heap(data=[5, 4, 8])
+
+        # Act
+        result = list(reversed(h))
+
+        # Assert
+        self.assertEqual([8, 5, 4], result)
