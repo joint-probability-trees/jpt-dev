@@ -695,7 +695,7 @@ class VariableAssignment(VariableMap):
     '''
 
     def __init__(self,
-                 data: List[Tuple] = None,
+                 data: Iterable[Tuple] = None,
                  variables: Iterable[Variable] = None):
         super().__init__(data, variables=variables)
         if type(self) is VariableAssignment:

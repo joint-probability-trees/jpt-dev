@@ -609,6 +609,54 @@ class Leaf(Node):
         '''
         ...
 
+    def k_mpe_inductive(self, k: int, minimal_distances: VariableMap) -> List[Tuple[float, LabelAssignment]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+        :param k: The number of solutions to generate
+        :param minimal_distances:
+        :return: A list containing the likelihood and states in descending order up to k many.
+        """
+        result = [self.mpe(minimal_distances)]
+
+        k_mpes = {variable: dist.k_mpe(k) for variable, dist in self.distributions.items()}
+        mpe_state_by_index = {variable: 0 for variable, dist in self.distributions.items()}
+        for current_k in range(k-1):
+
+            # initialize the likelihood loss for every variable
+            likelihood_loss = {}
+
+            # for every variable, its mpe state by index and k_mpe
+            for (variable, mpe_index), k_mpe in zip(mpe_state_by_index.items(), k_mpes.values()):
+
+                # skip states that are already at the last possible value
+                if mpe_index == len(k_mpe) - 1:
+                    # and set the loss of those variables to be impossible
+                    likelihood_loss[variable] = float("inf")
+                    continue
+
+                # if there is another possible state,
+                likelihood_loss[variable] = k_mpe[mpe_index][0] - k_mpe[mpe_index + 1][0]
+
+            # if the min value is infinity, break the process since no other possible state exists
+            if min(likelihood_loss.values()) == float("inf"):
+                print(current_k)
+                return result
+
+            # select variable with the lowest loss
+            best_variable = min(likelihood_loss, key=likelihood_loss.get)
+
+            # increase its counter
+            mpe_state_by_index[best_variable] += 1
+
+            # create the solution
+            mpe_state = LabelAssignment({variable: k_mpes[variable][mpe_state_by_index[variable]][1] for variable in
+                                         self.distributions}.items())
+            mpe_state_likelihood = prod(k_mpes[variable][mpe_state_by_index[variable]][0] for variable in
+                                        self.distributions)
+            result.append((mpe_state_likelihood, mpe_state))
+
+        return result
+
     def number_of_parameters(self) -> int:
         """
         :return: The number of relevant parameters in this decision node.

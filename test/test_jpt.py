@@ -4,6 +4,7 @@ import pickle
 import statistics
 import tempfile
 import unittest
+from math import prod
 from unittest import TestCase
 
 import numpy as np
@@ -901,3 +902,45 @@ class ConditionalJPTTest(TestCase):
 
         for variable, value in evidence.items():
             self.assertAlmostEqual(conditional_model.priors[variable].p(value), 1.)
+
+
+class KMPELeafTest(TestCase):
+    data: pd.DataFrame
+    model: JPT
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        np.random.seed(69)
+        dataset = sklearn.datasets.load_iris()
+        df = pd.DataFrame(columns=dataset.feature_names, data=dataset.data)
+
+        target = dataset.target.astype(object)
+        for idx, target_name in enumerate(dataset.target_names):
+            target[target == idx] = target_name
+
+        df["plant"] = target
+
+        cls.data = df
+        cls.model = JPT(infer_from_dataframe(cls.data, scale_numeric_types=False, precision=0.05),
+                        min_samples_leaf=0.9)
+        cls.model.fit(cls.data)
+
+    def test_k_mpe_trivial(self):
+        leaf = next(iter(self.model.leaves.values()))
+        k_mpe = leaf.k_mpe_inductive(3, self.model.minimal_distances)
+        likelihoods = [l for l, _ in k_mpe]
+        self.assertEqual(len(k_mpe), 3)
+
+        # check that the solutions are indeed a total order
+        self.assertTrue(all(likelihoods[i] > likelihoods[i + 1] for i in range(len(likelihoods) - 1)))
+
+    def test_k_mpe_brute(self):
+        leaf = next(iter(self.model.leaves.values()))
+
+        k_mpes = {variable: dist.k_mpe(dist.number_of_parameters()) for variable, dist in leaf.distributions.items()}
+        max_number_of_solutions = prod(len(x) for x in k_mpes.values())
+        print(max_number_of_solutions)
+
+        k_mpe = leaf.k_mpe_inductive(max_number_of_solutions + 10, self.model.minimal_distances)
+        print(k_mpe)
+        self.assertEqual(len(k_mpe), max_number_of_solutions)

@@ -1,32 +1,27 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
-from collections import deque, Counter
-from itertools import tee
-from types import FunctionType
-from typing import Any, Iterable, List, Union, Set, Type, Tuple
-
-from jpt.base.utils import classproperty, save_plot, normalized, mapstr, setstr, none2nan
-from jpt.base.errors import Unsatisfiability
-
 import copy
 import math
 import numbers
 import os
 import re
+from collections import deque, Counter
+from itertools import tee
 from operator import itemgetter
-
-from dnutils import first, out, ifnone, stop, ifnot, project, pairwise, edict
-from dnutils.stats import Gaussian as Gaussian_, _matshape
-
-from scipy.stats import multivariate_normal, norm
-
-import numpy as np
-from numpy import iterable
+from types import FunctionType
+from typing import Any, Iterable, List, Union, Set, Type, Tuple
 
 import matplotlib.pyplot as plt
+import numpy as np
+from dnutils import first, out, ifnone, stop, ifnot, project, pairwise, edict
+from dnutils.stats import Gaussian as Gaussian_, _matshape
+from numpy import iterable
+from scipy.stats import multivariate_normal, norm
 
 from jpt.base.constants import sepcomma
+from jpt.base.errors import Unsatisfiability
 from jpt.base.sampling import wsample, wchoice
+from jpt.base.utils import classproperty, save_plot, normalized, mapstr, setstr, none2nan
 from .utils import Identity, OrderedDictProxy, DataScalerProxy, DataScaler
 
 try:
@@ -35,12 +30,12 @@ try:
     from ..base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
+
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
     from ..base.functions import LinearFunction, ConstantFunction, PiecewiseFunction
     from .quantile.quantiles import QuantileDistribution
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Constant symbols
@@ -140,7 +135,8 @@ class Gaussian(Gaussian_):
         if isinstance(alpha, Gaussian):
             raise TypeError('Multiplication of two Gaussians not supported yet.')
         elif isinstance(alpha, numbers.Number):
-            return Gaussian(mean=[alpha * m for m in self._mean], cov=[[alpha ** 2 * c for c in row] for row in self._cov])
+            return Gaussian(mean=[alpha * m for m in self._mean],
+                            cov=[[alpha ** 2 * c for c in row] for row in self._cov])
         else:
             raise TypeError('Undefined operation "*" on types %s and %s' % (type(self).__name__, type(alpha).__name__))
 
@@ -175,7 +171,9 @@ class Gaussian(Gaussian_):
         return np.array(norm.cdf(x, loc=self._mean, scale=self._cov))[0, :]
 
     def eval(self, lower, upper):
-        return abs(multivariate_normal(self._mean, self._cov).cdf(upper) - multivariate_normal(self._mean, self._cov).cdf(lower))
+        return abs(
+            multivariate_normal(self._mean, self._cov).cdf(upper) - multivariate_normal(self._mean, self._cov).cdf(
+                lower))
 
     def copy(self):
         g = Gaussian()
@@ -249,12 +247,13 @@ class Gaussian(Gaussian_):
         self.samples += 1
         if sum_w_ and sum_w_sq_ != 1:
             for j in range(self.dim):
-                for k in range(j+1):
+                for k in range(j + 1):
                     if k in dims or j in dims:
                         self._cov[j][k] = (oldcov[j][k] * sum_w * (1 - sum_w_sq)
                                            + sum_w * oldmean[j] * oldmean[k]
                                            - sum_w_ * self._mean[j] * self._mean[k]
-                                           + w * (x[j] if j in dims else oldmean[j]) * (x[k] if k in dims else oldmean[k])) / (sum_w_ * (1 - sum_w_sq_))
+                                           + w * (x[j] if j in dims else oldmean[j]) * (
+                                               x[k] if k in dims else oldmean[k])) / (sum_w_ * (1 - sum_w_sq_))
                     else:  # No change in either of the dimensions,
                         self._cov[j][k] = oldcov[j][k] * sum_w * (1 - sum_w_sq) / (sum_w_ * (1 - sum_w_sq_))
                     self._cov[k][j] = self._cov[j][k]
@@ -627,6 +626,24 @@ class Numeric(Distribution):
             ])
         )
 
+    def k_mpe(self, k: int) -> List[Tuple[float, RealSet]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+        :param k: The number of solutions to generate
+        :return: An list containing a tuple containing the likelihood and state in descending order.
+        """
+        sorted_likelihood = sorted(set([f.value for f in self.pdf.functions]), reverse=True)[:k]
+        result = []
+
+        for likelihood in sorted_likelihood:
+            result.append((likelihood, RealSet([
+                interval
+                for interval, function in zip(self.pdf.intervals, self.pdf.functions)
+                if function.value == likelihood
+            ])))
+
+        return result
+
     def _fit(
             self,
             data: np.ndarray,
@@ -746,10 +763,9 @@ class Numeric(Distribution):
             distributions = []
 
             for idx, continuous_set in enumerate(restriction.intervals):
-
                 distributions.append(self.crop(continuous_set))
 
-            weights = np.full((len(distributions)), 1/len(distributions))
+            weights = np.full((len(distributions)), 1 / len(distributions))
 
             return self.merge(distributions, weights)
 
@@ -862,8 +878,8 @@ class Numeric(Distribution):
 
             function_value = function.value * interval.range() / interval_.range()
             result += (
-                (pow(interval_.upper - center, order+1) - pow(interval_.lower - center, order+1))
-            ) * function_value / (order + 1)
+                          (pow(interval_.upper - center, order + 1) - pow(interval_.lower - center, order + 1))
+                      ) * function_value / (order + 1)
         return result
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
@@ -1123,6 +1139,45 @@ class Multinomial(Distribution):
         _max = max(self.probabilities)
         return _max, set([label for label, p in zip(self.labels.values(), self.probabilities) if p == _max])
 
+    def _mpe(self) -> (float, set):
+        """
+        Calculate the most probable configuration of this distribution.
+        :return: The likelihood of the mpe as float and the mpe itself as Set
+        """
+        _max = max(self.probabilities)
+        return _max, set([value for value, p in zip(self.value.values(), self.probabilities) if p == _max])
+
+    def k_mpe(self, k: int) -> List[Tuple[float, set]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+        :param k: The number of solutions to generate
+        :return: An list containing a tuple containing the likelihood and state in descending order.
+        """
+        sorted_likelihood = sorted(set(self.probabilities), reverse=True)[:k]
+        result = []
+
+        for likelihood in sorted_likelihood:
+            result.append((likelihood, set([label for label, p in zip(self.labels.values(), self.probabilities) if
+                                            p == likelihood])))
+
+        return result
+
+    def _k_mpe(self, k: int) -> List[Tuple[float, set]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+        :param k: The number of solutions to generate
+        :return: An list containing a tuple containing the likelihood and state in descending order.
+        """
+        sorted_likelihood = sorted(set(self.probabilities), reverse=True)[:k]
+        result = []
+
+        for likelihood in sorted_likelihood:
+            result.append((likelihood, set([value for value, p in zip(self.values.values(), self.probabilities) if
+                                            p == likelihood])))
+
+        return result
+
+
     def kl_divergence(self, other):
         if type(other) is not type(self):
             raise TypeError('Can only compute KL divergence between '
@@ -1366,7 +1421,6 @@ class Bool(Multinomial):
 
 # noinspection DuplicatedCode
 class Integer(Distribution):
-
     lmin = None
     lmax = None
     vmin = None
@@ -1521,6 +1575,36 @@ class Integer(Distribution):
     def _mpe(self) -> Tuple[float, Set[int]]:
         p_max = max(self.probabilities)
         return p_max, {l for l, p in zip(self.values.values(), self.probabilities) if p == p_max}
+
+    def k_mpe(self, k: int) -> List[Tuple[float, Set[int]]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+        :param k: The number of solutions to generate
+        :return: An list containing a tuple containing the likelihood and state in descending order.
+        """
+        sorted_likelihood = sorted(set(self.probabilities), reverse=True)[:k]
+        result = []
+
+        for likelihood in sorted_likelihood:
+            result.append((likelihood, set([label for label, p in zip(self.labels.values(), self.probabilities) if
+                                            p == likelihood])))
+
+        return result
+
+    def _k_mpe(self, k: int) -> List[Tuple[float, Set[int]]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+        :param k: The number of solutions to generate
+        :return: An list containing a tuple containing the likelihood and state in descending order.
+        """
+        sorted_likelihood = sorted(set(self.probabilities), reverse=True)[:k]
+        result = []
+
+        for likelihood in sorted_likelihood:
+            result.append((likelihood, set([value for value, p in zip(self.values.values(), self.probabilities) if
+                                            p == likelihood])))
+
+        return result
 
     def crop(self, restriction: Union[Iterable, int]) -> 'Distribution':
         if isinstance(restriction, numbers.Integral):
