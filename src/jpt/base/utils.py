@@ -163,12 +163,12 @@ def to_json(obj):
     return obj
 
 
-def format_path(path):
+def format_path(path, **kwargs):
     '''
     Returns a readable string representation of a conjunction of variable assignments,
     given by the dictionary ``path``.
     '''
-    return ' ^ '.join([var.str(val, fmt='logic') for var, val in path.items()])
+    return ' ^ '.join([var.str(val, fmt='logic', **kwargs) for var, val in path.items()])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
