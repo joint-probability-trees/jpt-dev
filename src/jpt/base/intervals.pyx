@@ -316,6 +316,16 @@ cdef class RealSet(NumberSet):
                 return True
         return False
 
+    cpdef inline np.int32_t isinf(RealSet self):
+        """
+        Check if this ``RealSet`` is infinite to the right OR the left (negative OR positive infty).
+        :return: 
+        """
+        for i in self.intervals:
+            if i.ispinf() or i. isninf():
+                return True
+        return False
+
     cpdef inline np.int32_t isempty(RealSet self):
         """
         Checks whether this RealSet is empty or not.
@@ -659,6 +669,13 @@ cdef class ContinuousSet(NumberSet):
         :return: 
         """
         return np.isinf(self.upper)
+
+    cpdef inline np.int32_t isinf(ContinuousSet self):
+        """
+        Check if this interval is infinite to the right (positive infty)
+        :return: 
+        """
+        return self.ispinf() or self.isninf()
 
     @staticmethod
     cdef inline ContinuousSet c_emptyset():
