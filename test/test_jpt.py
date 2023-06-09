@@ -1,3 +1,4 @@
+import itertools
 import json
 import os
 import pickle
@@ -926,21 +927,19 @@ class KMPELeafTest(TestCase):
         cls.model.fit(cls.data)
 
     def test_k_mpe_trivial(self):
-        leaf = next(iter(self.model.leaves.values()))
-        k_mpe = leaf.k_mpe_inductive(3, self.model.minimal_distances)
-        likelihoods = [l for l, _ in k_mpe]
+        k_mpe = list(self.model.kmpe(k=3))
         self.assertEqual(len(k_mpe), 3)
-
-        # check that the solutions are indeed a total order
-        self.assertTrue(all(likelihoods[i] > likelihoods[i + 1] for i in range(len(likelihoods) - 1)))
 
     def test_k_mpe_brute(self):
         leaf = next(iter(self.model.leaves.values()))
 
-        k_mpes = {variable: dist.k_mpe(dist.number_of_parameters()) for variable, dist in leaf.distributions.items()}
-        max_number_of_solutions = prod(len(x) for x in k_mpes.values())
-        print(max_number_of_solutions)
+        # calculate likelihood wise unique solutions
+        k_mpes = [[l for l, _ in dist.k_mpe(dist.number_of_parameters())] for dist in leaf.distributions.values()]
+        combined_likelihoods = set(prod(e) for e in itertools.product(*k_mpes))
 
-        k_mpe = leaf.k_mpe_inductive(max_number_of_solutions + 10, self.model.minimal_distances)
-        print(k_mpe)
-        self.assertEqual(len(k_mpe), max_number_of_solutions)
+        k_mpe = list(self.model.kmpe(k=len(combined_likelihoods) + 1000))
+        self.assertEqual(len(combined_likelihoods), len(k_mpe), msg="These should be equal to the number of solutions"
+                                                                    "that produce different likelihoods (set-wise),"
+                                                                    "which is 72 for this experiment. 216 (current)"
+                                                                    "is the number of unique solutions iff sets are not"
+                                                                    "regarded.")

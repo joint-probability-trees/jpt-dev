@@ -632,7 +632,7 @@ class Numeric(Distribution):
         :param k: The number of solutions to generate
         :return: An list containing a tuple containing the likelihood and state in descending order.
         """
-        sorted_likelihood = sorted(set([f.value for f in self.pdf.functions]), reverse=True)[:k]
+        sorted_likelihood = sorted(set([f.value for f in self.pdf.functions[1:-1]]), reverse=True)[:k]
         result = []
 
         for likelihood in sorted_likelihood:
