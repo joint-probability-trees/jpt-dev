@@ -595,7 +595,7 @@ class VariableMap:
     def __eq__(self, o: 'VariableMap'):
         return (
             type(o) is type(self) and
-            set(self._map.items()) == set(o._map.items()) and
+            self._map.items() == o._map.items() and
             list(self._variables.items()) == list(o._variables.items())
         )
 
