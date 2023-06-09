@@ -267,6 +267,7 @@ class NumericVariable(Variable):
         '''
         fmt = kwargs.get('fmt', 'set')
         precision = kwargs.get('precision', 3)
+        prec = '%%s = %%.%df' % precision
         lower = '%%.%df %%s ' % precision
         upper = ' %%s %%.%df' % precision
 
@@ -287,7 +288,7 @@ class NumericVariable(Variable):
         if isinstance(assignment, ContinuousSet):
             assignment = RealSet([assignment])
         if isinstance(assignment, numbers.Number):
-            return '%s = %s' % (self.name, self.domain.labels[assignment])
+            return prec % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
             return f'{self.name} {SYMBOL.IN} {str(assignment)}'
         elif fmt == 'logic':
