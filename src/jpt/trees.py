@@ -2008,9 +2008,12 @@ class JPT:
         probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
 
         if not probability_mass:
-            raise Unsatisfiability(
-                'JPT is unsatisfiable (all %d leaves have 0 prior probability)' % len(self.leaves)
-            )
+            if fail_on_unsatisfiability:
+                raise Unsatisfiability(
+                    'JPT is unsatisfiable (all %d leaves have 0 prior probability)' % len(self.leaves)
+                )
+            else:
+                return None
 
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
