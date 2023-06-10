@@ -467,22 +467,26 @@ cdef class Impurity:
             dependency_indices[idx_var] = idc_dep
 
         cdef SIZE_t n = self.n_features
+        cdef SIZE_t t = self.n_vars
         self.numeric_dependency_matrix = np.full(
-            (n, n),
+            (n, t),
             -1,
             dtype=np.int64,
         )
         self.symbolic_dependency_matrix = self.numeric_dependency_matrix.copy()
-        for idx_var in self.features:
+        for idx_var in self.features:  # For all feature variables...
+            # ...get the indices of the dependent numeric variables...
             indices = np.array([
                 i_num for i_num, i_var in enumerate(self.numeric_vars) if i_var in dependency_indices[idx_var]
             ], dtype=np.int64)
-            if indices.shape[0]:
+
+            if indices.shape[0]:  # ...and store them in the numeric dependency matrix
                 self.numeric_dependency_matrix[idx_var, :indices.shape[0]] = indices
+            # Get the indices of the dependent numeric variables
             indices = np.array([
                 i_sym for i_sym, i_var in enumerate(self.symbolic_vars) if i_var in dependency_indices[idx_var]
             ], dtype=np.int64)
-            if indices.shape[0]:
+            if indices.shape[0]:  # ... and store them in the numeric dependency matrix.
                 self.symbolic_dependency_matrix[idx_var, :indices.shape[0]] = indices
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
