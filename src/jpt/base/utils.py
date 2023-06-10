@@ -166,9 +166,12 @@ def to_json(obj):
 def format_path(path, **kwargs):
     '''
     Returns a readable string representation of a conjunction of variable assignments,
-    given by the dictionary ``path``.
+    given by the dictionary ``path``. The ``kwargs`` are passed to the jpt.variables.Variable.str function to allow
+    customized formatting.
     '''
-    return ' ^ '.join([var.str(val, fmt='logic', **kwargs) for var, val in path.items()])
+    if 'fmt' not in kwargs:
+        kwargs['fmt'] = 'logic'
+    return ' ^ '.join([var.str(val, **kwargs) for var, val in path.items()])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
