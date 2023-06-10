@@ -16,7 +16,7 @@ from jpt.base.utils import mapstr, to_json, list2interval, setstr, setstr_int
 from jpt.base.constants import SYMBOL
 
 from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType, Integer, \
-    IntegerType
+    IntegerType, Bool
 
 try:
     from .base.intervals import __module__
@@ -477,6 +477,8 @@ def infer_from_dataframe(df,
         if dtype in (str, object, bool):
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
+            elif dtype in (bool, np.bool_):
+                dom = Bool
             else:
                 dom = SymbolicType(
                     '%s%s_TYPE_S' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
