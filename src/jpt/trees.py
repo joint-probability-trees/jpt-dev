@@ -1154,16 +1154,16 @@ class JPT:
             fail_on_unsatisfiability: bool = True,
             k: int = 0
     ) -> Iterator[LabelAssignment] or None:
-        '''
+        """
         Perform a k-MPE inference on this JPT under the given evidence.
 
         k-MPE yields the ``k`` most probable explanation states in decreasing order.
 
-        :param evidence:
-        :param fail_on_unsatisfiability:
+        :param evidence: The evidence to apply
+        :param fail_on_unsatisfiability: Rather to raise an Unsatisfiability Error on impossible evidence or not.
         :param k: the number of solutions to return
-        :return:
-        '''
+        :return: An iterator with states ordered by likelihood.
+        """
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
