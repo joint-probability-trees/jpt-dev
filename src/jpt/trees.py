@@ -1153,7 +1153,7 @@ class JPT:
             evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
             fail_on_unsatisfiability: bool = True,
             k: int = 0
-    ) -> Iterator[LabelAssignment] or None:
+    ) -> Iterator[Tuple[float, LabelAssignment]] or None:
         """
         Perform a k-MPE inference on this JPT under the given evidence.
 
@@ -1196,14 +1196,11 @@ class JPT:
         count = 0
         while mpe_candidates and (not k or count < k):
             cost, solution, solver = mpe_candidates.pop()
-
-            values = ValueAssignment(
-                solution.items(),
-                variables=conditional_jpt.variables
-            )
+            values = LabelAssignment([(variable, value if variable.numeric else set(value))
+                                     for variable, value in solution.items()])
             # if isinstance(evidence, LabelAssignment):
-            values = values.label_assignment()
-            yield values
+            # values = values.label_assignment()
+            yield np.exp(-cost), values
             try:
                 mpe_candidates.push((*next(solver), solver))
             except StopIteration:
@@ -2420,52 +2417,43 @@ class MPESolver:
             distributions: VariableMap,
             likelihood_divisor: float = None
     ):
+
+        # save the distributions
         self.distributions: VariableMap = distributions
 
-        # Set up the WCSP variables and their domains.
+        # Set up the WCSP variables and their domains and constraints.
         self.domains = VariableMap(variables=self.distributions.variables)
+        self.constraints = VariableMap(variables=self.distributions.variables)
 
         likelihoods = []
+
+        # fill domains and constraints
         for var, dist in self.distributions.items():
+            k_mpe = dist.k_mpe()
+            self.domains[var] = [state for _, state in k_mpe]
+
             if isinstance(dist, Numeric):
-                domain = list(dist.pdf.intervals)
                 likelihood_max, _ = dist.mpe()
                 likelihoods.append(likelihood_max)
 
-            elif isinstance(dist, Multinomial):
-                domain = list(dist.values.values())
-
-            elif isinstance(dist, Integer):
-                domain = list(range(dist.vmin, dist.vmax))
-
-            else:
-                raise TypeError(
-                    'Expected type of Distribution, got %s' % type(dist).__name__
+            self.constraints[var] = OrderedDict(
+                sorted([
+                    (
+                        state if isinstance(dist, Numeric) else frozenset(state),
+                        likelihood
+                    )
+                    for idx, (likelihood, state) in enumerate(k_mpe)],
+                    key=itemgetter(1)
                 )
-            self.domains[var] = domain
+            )
 
         # Build the unary constraints given by the log of
         # an events probability
-        self.constraints = VariableMap(variables=self.domains.variables)
         self.likelihood_divisor = ifnone(
             likelihood_divisor,
             max(likelihoods) if likelihoods else 1
         )
-        for var, dist in self.distributions.items():
-            self.constraints[var] = OrderedDict(
-                sorted([
-                    (
-                        val,
-                        -np.log(
-                            (dist.pdf / self.likelihood_divisor).eval(val.any_point())
-                            if isinstance(dist, Numeric)
-                            else dist._p(val)
-                        )
-                    )
-                    for val in self.domains[var]],
-                    key=itemgetter(1)
-                )
-            )
+
         # Ensure node consistency, i.e. remove values with infinite costs
         for var, constraints in self.constraints.items():
             for val, cost in list(constraints.items()):
@@ -2491,6 +2479,11 @@ class MPESolver:
         )
 
     def variable_order(self, state: MPEState = None) -> Iterator[Variable]:
+        """
+        :param state: The state to start from
+        :return: An iterator over free variables for a state sorted by number of different possible states
+        (lowest amount of values first).
+        """
         if state is not None:
             for var in self.variable_order():  # min([(var, len(dom)) for var, dom in state.domains.items()], key=itemgetter(1))[0]
                 if var not in state.assignment:

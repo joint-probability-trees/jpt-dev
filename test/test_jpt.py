@@ -938,6 +938,9 @@ class KMPELeafTest(TestCase):
         combined_likelihoods = set(prod(e) for e in itertools.product(*k_mpes))
 
         k_mpe = list(self.model.kmpe(k=len(combined_likelihoods) + 1000))
+
+        self.assertTrue(all(k_mpe[i][0] > k_mpe[i + 1][0] for i in range(len(k_mpe) - 1)),
+                        msg="Not all solutions are ordered by descending likelihood")
         self.assertEqual(len(combined_likelihoods), len(k_mpe), msg="These should be equal to the number of solutions"
                                                                     "that produce different likelihoods (set-wise),"
                                                                     "which is 72 for this experiment. 216 (current)"

@@ -9,7 +9,7 @@ from collections import deque, Counter
 from itertools import tee
 from operator import itemgetter
 from types import FunctionType
-from typing import Any, Iterable, List, Union, Set, Type, Tuple
+from typing import Any, Iterable, List, Union, Set, Type, Tuple, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -626,12 +626,15 @@ class Numeric(Distribution):
             ])
         )
 
-    def k_mpe(self, k: int) -> List[Tuple[float, RealSet]]:
+    def k_mpe(self, k: Optional[int] = None) -> List[Tuple[float, RealSet]]:
         """
         Calculate the ``k`` most probable explanation states.
-        :param k: The number of solutions to generate
-        :return: An list containing a tuple containing the likelihood and state in descending order.
+        :param k: The number of solutions to generate, defaults to the maximum possible number.
+        :return: A list containing a tuple containing the likelihood and state in descending order.
         """
+        if k is None:
+            k = len(self.pdf.functions[1:-1])
+
         sorted_likelihood = sorted(set([f.value for f in self.pdf.functions[1:-1]]), reverse=True)[:k]
         result = []
 
@@ -1147,12 +1150,16 @@ class Multinomial(Distribution):
         _max = max(self.probabilities)
         return _max, set([value for value, p in zip(self.value.values(), self.probabilities) if p == _max])
 
-    def k_mpe(self, k: int) -> List[Tuple[float, set]]:
+    def k_mpe(self, k: Optional[int] = None) -> List[Tuple[float, set]]:
         """
         Calculate the ``k`` most probable explanation states.
-        :param k: The number of solutions to generate
-        :return: An list containing a tuple containing the likelihood and state in descending order.
+        :param k: The number of solutions to generate, defaults to the maximum possible number.
+        :return: A list containing a tuple containing the likelihood and state in descending order.
         """
+
+        if k is None:
+            k = len(self.probabilities)
+
         sorted_likelihood = sorted(set(self.probabilities), reverse=True)[:k]
         result = []
 
@@ -1576,12 +1583,16 @@ class Integer(Distribution):
         p_max = max(self.probabilities)
         return p_max, {l for l, p in zip(self.values.values(), self.probabilities) if p == p_max}
 
-    def k_mpe(self, k: int) -> List[Tuple[float, Set[int]]]:
+    def k_mpe(self, k: Optional[int] = None) -> List[Tuple[float, Set[int]]]:
         """
         Calculate the ``k`` most probable explanation states.
-        :param k: The number of solutions to generate
-        :return: An list containing a tuple containing the likelihood and state in descending order.
+        :param k: The number of solutions to generate, defaults to the maximum possible number.
+        :return: A list containing a tuple containing the likelihood and state in descending order.
         """
+
+        if k is None:
+            k = len(self.probabilities)
+
         sorted_likelihood = sorted(set(self.probabilities), reverse=True)[:k]
         result = []
 
