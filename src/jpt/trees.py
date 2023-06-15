@@ -673,13 +673,14 @@ class JPT:
 
     def __init__(self,
                  variables: List[Variable],
-                 targets: List[str or Variable] = [],
-                 features: List[str or Variable] = [],
+                 targets: Optional[List[str or Variable]] = None,
+                 features: Optional[List[str or Variable]] = None,
                  min_samples_leaf: float or int = .01,
                  min_impurity_improvement: float or None = None,
                  max_leaves: int or None = None,
                  max_depth: int or None = None,
-                 dependencies: Dict[Variable, List[Variable]] or None = None) -> None:
+                 dependencies: Dict[Variable, List[Variable]] or None = None,
+                 balance_variable_types: bool = False) -> None:
         """
         Create a JPT.
         :param variables: The variables that will be represented this model
@@ -692,6 +693,8 @@ class JPT:
         :param max_depth: The maximum depth the tree may have
         :param dependencies: A dictionary mapping variables to a list of dependent variables. Having this
         sparse may speed up training a lot.
+        :param balance_variable_types: Rather to balance the number of variables (symbolic or numeric) in the impurity
+        or not
         """
 
         self._variables = list(variables)
@@ -731,6 +734,7 @@ class JPT:
         self._node_counter = 0
         self.indices = None
         self.impurity = None
+        self.balance_variable_types = balance_variable_types
 
         # initialize the dependencies as fully dependent on each other.
         # the interface isn't modified therefore the jpt should work as before if not
@@ -758,7 +762,7 @@ class JPT:
         return ChainMap(self.innernodes, self.leaves)
 
     @property
-    def variables(self) -> Tuple[Variable]:
+    def variables(self) -> List[Variable]:
         return self._variables
 
     @property
@@ -1081,7 +1085,6 @@ class JPT:
                 raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence),
                                        reasons=inconsistencies)
             return None
-
 
         for var, dists in distributions.items():
             if var.numeric:
