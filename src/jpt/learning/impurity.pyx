@@ -289,8 +289,6 @@ cdef class Impurity:
     # 2D integer array describing all dependencies that are considered under symbolic variables
     cdef SIZE_t[:, ::1] symbolic_dependency_matrix
 
-    cdef SIZE_t balance_variable_types
-
     def __init__(self, tree):
         """
         Construct the impurity
@@ -456,9 +454,6 @@ cdef class Impurity:
         # calculate percentage of numeric targets
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
-        # set flag to use w_numeric or not
-        self.balance_variable_types = tree.balance_variable_types
-
         # construct the dependency structure
         cdef dict dependency_indices = {}
         cdef int idx_var
@@ -472,24 +467,19 @@ cdef class Impurity:
             dependency_indices[idx_var] = idc_dep
 
         cdef SIZE_t n = self.n_features
-
         cdef SIZE_t t = self.n_vars
         self.numeric_dependency_matrix = np.full(
-            (self.n_vars_total, self.n_vars_total),
+            (n, t),
             -1,
             dtype=np.int64,
         )
-        self.symbolic_dependency_matrix = np.full(
-            (self.n_vars_total, self.n_vars_total),
-            -1,
-            dtype=np.int64,
-        )
-
+        self.symbolic_dependency_matrix = self.numeric_dependency_matrix.copy()
         for idx_var in self.features:  # For all feature variables...
             # ...get the indices of the dependent numeric variables...
             indices = np.array([
                 i_num for i_num, i_var in enumerate(self.numeric_vars) if i_var in dependency_indices[idx_var]
             ], dtype=np.int64)
+
             if indices.shape[0]:  # ...and store them in the numeric dependency matrix
                 self.numeric_dependency_matrix[idx_var, :indices.shape[0]] = indices
             # Get the indices of the dependent numeric variables
@@ -980,32 +970,20 @@ cdef class Impurity:
                         self.variances_right[:] = 0
 
                     # compute the variance improvement for this split
-                    var_improvement = compute_var_improvements(
+                    impurity_improvement += compute_var_improvements(
                         variances_total,
                         self.variances_left,
                         self.variances_right,
                         samples_left,
                         samples_right,
                         num_var_idx
-                    )
-
-                    # scale with percentage of numeric types if wanted
-                    if self.balance_variable_types:
-                        var_improvement *= self.w_numeric
-
-                    # add to impurity improvement
-                    impurity_improvement +=  var_improvement
+                    ) * self.w_numeric
 
                 # if the variable is symbolic
                 else:
                     impurity_improvement += (mean(self.variances_total)
                                              - mean(self.variances_left)) / mean(self.variances_total)
-                    impurity_improvement *= <DTYPE_t> samples_left / <DTYPE_t> n_samples
-
-                    # scale with percentage of numeric types if wanted
-                    if self.balance_variable_types:
-                         impurity_improvement *= self.w_numeric
-
+                    impurity_improvement *= <DTYPE_t> samples_left / <DTYPE_t> n_samples * self.w_numeric
 
             # if symbolic targets exist
             if self.has_symbolic_vars():
@@ -1016,15 +994,12 @@ cdef class Impurity:
                     # update gini impurity left and right of the split
                     self.gini_impurity(self.symbols_left, samples_left, self.gini_left)
                     self.gini_impurity(self.symbols_right, samples_right, self.gini_right)
-                    current_improvement = (gini_total -
+                    impurity_improvement += (
+                        (gini_total -
                         mean(self.gini_left) * (<DTYPE_t> samples_left / <DTYPE_t> n_samples) -
                         mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> n_samples)) / gini_total
-
-                    # scale with percentage of numeric types if wanted
-                    if self.balance_variable_types:
-                        current_improvement *= self.w_numeric
-
-                    impurity_improvement += current_improvement
+                        * (1 - self.w_numeric)
+                    )
 
             # if this variable is symbolic
             if symbolic:
