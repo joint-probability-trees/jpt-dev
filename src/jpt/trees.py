@@ -910,11 +910,33 @@ class JPT:
         """
         if isinstance(values, LabelAssignment):
             values = values.value_assignment()
-        values_ = ValueAssignment([(var, ContinuousSet(val, val)) for var, val in values.items()])
+        if any([isinstance(val, ContinuousSet) and val.size() > 1 for val in values.values()]):
+            raise ValueError('PDF not defined on intervals of size >1')
+        if any([isinstance(val, set) and len(val) > 1 for val in values.values()]):
+            raise ValueError('PDF not defined on sets of size >1')
+
+        values_scalars = ValueAssignment(variables=values._variables.values())
+        values_sets = ValueAssignment(variables=values._variables.values())
+        for var, val in values.items():
+            if isinstance(var, NumericVariable):
+                if not isinstance(val, ContinuousSet):
+                    values_sets[var] = ContinuousSet(val, val)
+                    values_scalars[var] = val
+                else:
+                    values_sets[var] = val
+                    values_scalars[var] = val.lower
+            else:
+                if not isinstance(val, set):
+                    values_sets[var] = {val}
+                    values_scalars[var] = val
+                else:
+                    values_sets[var] = val
+                    values_scalars[var] = first(val)
+
         pdf = 0
-        for leaf in self.apply(values_):
+        for leaf in self.apply(values_sets):
             pdf += leaf.prior * (prod(leaf.distributions[var].pdf(value)
-                                      for var, value in values.items()) if values else 1)
+                                      for var, value in values_scalars.items()) if values_scalars else 1)
         return pdf
 
     def infer(self,
@@ -1726,7 +1748,9 @@ class JPT:
              view: bool = True,
              max_symb_values: int = 10,
              nodefill=None,
-             leaffill=None):
+             leaffill=None,
+             alphabet=False
+    ) -> None:
         """
         Generates an SVG representation of the generated regression tree.
 
@@ -1763,7 +1787,8 @@ class JPT:
 
                 params = {} if pvar.numeric else {
                     'horizontal': True,
-                    'max_values': max_symb_values
+                    'max_values': max_symb_values,
+                    'alphabet': alphabet
                 }
 
                 n.distributions[pvar].plot(
@@ -1774,7 +1799,7 @@ class JPT:
                     **params
                 )
                 img += (f'''{"<TR>" if i % rc == 0 else ""}
-                        <TD><IMG SCALE="TRUE" SRC="{os.path.join(directory, f"{img_name}.png")}"/></TD>
+                        <TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
                         {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
                 ''')
 
