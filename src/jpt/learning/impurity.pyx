@@ -466,7 +466,7 @@ cdef class Impurity:
             idc_dep = [tree.variables.index(var) for var in dep_vars]
             dependency_indices[idx_var] = idc_dep
 
-        cdef SIZE_t n = self.n_features
+        cdef SIZE_t n = self.n_vars_total
         cdef SIZE_t t = self.n_vars
         self.numeric_dependency_matrix = np.full(
             (n, t),
@@ -475,6 +475,7 @@ cdef class Impurity:
         )
         self.symbolic_dependency_matrix = self.numeric_dependency_matrix.copy()
         for idx_var in self.features:  # For all feature variables...
+            print(idx_var)
             # ...get the indices of the dependent numeric variables...
             indices = np.array([
                 i_num for i_num, i_var in enumerate(self.numeric_vars) if i_var in dependency_indices[idx_var]
@@ -488,6 +489,8 @@ cdef class Impurity:
             ], dtype=np.int64)
             if indices.shape[0]:  # ... and store them in the numeric dependency matrix.
                 self.symbolic_dependency_matrix[idx_var, :indices.shape[0]] = indices
+
+        print(self.numeric_dependency_matrix.base)
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
         """

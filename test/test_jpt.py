@@ -915,3 +915,41 @@ class ConditionalJPTTest(TestCase):
         for leaf in self.model.apply(evidence):
             l_ = leaf.conditional_leaf(evidence)
             self.assertAlmostEqual(1, l_.probability(evidence))
+
+
+class TestCaseTargetLearning(TestCase):
+    data: pd.DataFrame
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        np.random.seed(69)
+        covariance = np.random.rand(10, 10)
+        covariance = covariance @ covariance.T
+
+        numeric_data = np.random.multivariate_normal(mean=np.zeros(10), cov=covariance,
+                                                     size=(2000,))
+        numeric_data = np.sort(numeric_data, 0)
+        symbolic_column = np.concatenate((np.zeros((1000, 1)), np.ones((1000, 1))))
+
+        cls.data = pd.DataFrame(columns=["s0"] + [f"n{i}" for i in range(10)], data=np.concatenate((symbolic_column,
+                                                                                                    numeric_data),
+                                                                                                   axis=1))
+        cls.data["s0"] = cls.data["s0"].astype("str")
+
+    def test_learning_discriminative_single_symbolic(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["s0"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_discriminative_single_numeric(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["n0"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_discriminative_multiple_mixed(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["s0", "n0"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
