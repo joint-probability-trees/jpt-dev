@@ -942,7 +942,7 @@ class JPT:
     def infer(self,
               query: Union[Dict[Union[Variable, str], Any], VariableAssignment],
               evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
-              fail_on_unsatisfiability: bool = True) -> float or None:
+              fail_on_unsatisfiability: bool = True) -> Optional[float]:
         r"""For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -1104,7 +1104,6 @@ class JPT:
                                        reasons=inconsistencies)
             return None
 
-
         for var, dists in distributions.items():
             if var.numeric:
                 result[var] = Numeric.merge(dists, weights=weights)
@@ -1159,7 +1158,7 @@ class JPT:
         return final
 
     def mpe(self, evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
-            fail_on_unsatisfiability: bool = True) -> (List[LabelAssignment], float) or None:
+            fail_on_unsatisfiability: bool = True) -> Optional[Tuple[List[LabelAssignment], float]]:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
         :param evidence: The evidence that is applied to the tree
@@ -1647,7 +1646,7 @@ class JPT:
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
-        :returns: An np.array with shape (x, ) containing the probabilities.
+        :returns: A np.array with shape (x, ) containing the probabilities.
         """
 
         # set min distances if not overwritten
@@ -2180,7 +2179,7 @@ class JPT:
 
     # noinspection PyIncorrectDocstring
     def bind(self, *arg, **kwargs) -> LabelAssignment:
-        '''
+        """
         Returns a ``LabelAssignment`` object with the assignments passed.
 
         This method accepts one optional positional argument, which -- if passed -- must be a dictionary
@@ -2193,7 +2192,7 @@ class JPT:
 
         :param allow_singular_values: Allow singular values, such that they are transformed to the daomain
             specification of numeric variables but not transformed to intervals via the PPF.
-        '''
+        """
         options = {'allow_singular_values': False}
         if len(arg) > 1 or arg and not isinstance(arg[0], dict) and not arg[0] is None:
             raise ValueError(

@@ -30,7 +30,7 @@ def main():
     # print(seq.transition_model)
     print(seq.template_tree.plot(plotvars=['y'], view=True))
 
-    for result in seq.independent_marginals([VariableMap()] * 100):
+    for result in seq.posterior([VariableMap()] * 100):
         # print(result.posterior([y], evidence={}).distributions[y].cdf)
         result.posterior([y], evidence={}).distributions[y].plot(view=True)
 

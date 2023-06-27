@@ -40,7 +40,7 @@ def main():
 
     # stree.template_tree.plot(directory=os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-travel'))
 
-    ims = stree.independent_marginals(evidence)
+    ims = stree.posterior(evidence)
 
     expectations = []
     lowers = []
