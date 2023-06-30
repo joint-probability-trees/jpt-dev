@@ -673,9 +673,9 @@ class JPT:
 
     def __init__(self,
                  variables: List[Variable],
-                 targets: List[str or Variable] = [],
-                 features: List[str or Variable] = [],
-                 min_samples_leaf: float or int = .01,
+                 targets: List[str or Variable] = None,
+                 features: List[str or Variable] = None,
+                 min_samples_leaf: float or int = 1,
                  min_impurity_improvement: float or None = None,
                  max_leaves: int or None = None,
                  max_depth: int or None = None,
@@ -693,6 +693,8 @@ class JPT:
         :param dependencies: A dictionary mapping variables to a list of dependent variables. Having this
         sparse may speed up training a lot.
         """
+        targets = ifnone(targets, [])
+        features = ifnone(features, [])
 
         self._variables = list(variables)
         self.varnames: OrderedDict[str, Variable] = OrderedDict((var.name, var) for var in self._variables)
