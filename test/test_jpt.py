@@ -126,12 +126,25 @@ class JPTTest(TestCase):
         self.assertIsNone(jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
                                         fail_on_unsatisfiability=False))
 
+    def test_unsatisfiability_with_reasons(self):
+        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        jpt = JPT(variables=infer_from_dataframe(df), targets=['WillWait'], min_samples_leaf=1)
+        jpt.fit(df)
         try:
-            jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
-                          report_inconsistencies=True)
+            jpt.posterior(
+                evidence={
+                    'WillWait': False,
+                    'Patrons': 'Some'
+                },
+                report_inconsistencies=True
+            )
         except Unsatisfiability as e:
-            self.assertEqual({VariableMap([(jpt.varnames['WillWait'], {False})]): 1},
-                             e.reasons)
+            self.assertEqual(
+                [
+                    (1, VariableMap([(jpt.varnames['WillWait'], {False})]))
+                ],
+                list(e.reasons)
+            )
         else:
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')
 
