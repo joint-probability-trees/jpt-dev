@@ -48,6 +48,8 @@ cdef class Undefined(Function):
     '''
     This class represents an undefined function.
     '''
+    cpdef Function xshift(self, DTYPE_t delta)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 

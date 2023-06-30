@@ -166,6 +166,9 @@ cdef class Undefined(Function):
     cpdef Function copy(self):
         return Undefined()
 
+    cpdef Function xshift(self, DTYPE_t delta):
+        return Undefined()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
