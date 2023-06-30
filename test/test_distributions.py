@@ -173,6 +173,31 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual({0, 2}, DistABC.label2value({'A', 'C'}))
         self.assertEqual({'C', 'B'}, DistABC.value2label({2, 1}))
 
+    def test_jaccard_identity(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        jacc = Multinomial.jaccard_similarity(d1, d1)
+        self.assertEqual(1., jacc)
+
+    def test_jaccard_disjoint(self):
+        d1 = self.DistABC().set([0., 0., 1.])
+        d2 = self.DistABC().set([1., 0., 0.])
+        jacc = Multinomial.jaccard_similarity(d1, d2)
+        self.assertEqual(0., jacc)
+
+    def test_jaccard_overlap(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        d2 = self.DistABC().set([.2, .4, .4])
+
+        jacc = Multinomial.jaccard_similarity(d1, d2)
+        self.assertAlmostEqual(9/11, jacc, places=8)
+
+    def test_jaccard_symmetry(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        d2 = self.DistABC().set([.2, .4, .4])
+        jacc1 = Multinomial.jaccard_similarity(d1, d2)
+        jacc2 = Multinomial.jaccard_similarity(d2, d1)
+        self.assertEqual(jacc1, jacc2)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -339,6 +364,62 @@ class NumericDistributionTest(TestCase):
             empirical_moment = scipy.stats.moment(data, order)[0]
             dist_moment = distribution.moment(order, dist_mean)
             self.assertAlmostEqual(empirical_moment, dist_moment, delta=np.power(0.9, -order))
+
+    def test_jaccard_identity(self):
+        d1 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+            )
+        )
+
+        jacc = Numeric.jaccard_similarity(d1, d1)
+        self.assertEqual(1., jacc)
+
+    def test_jaccard_disjoint(self):
+        d1 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+            )
+        )
+        d2 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(2, 3), ConstantFunction(1))
+            )
+        )
+
+        jacc = Numeric.jaccard_similarity(d1, d2)
+        self.assertEqual(0., jacc)
+
+    def test_jaccard_overlap(self):
+        d1 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+            )
+        )
+        d2 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0.5, 1.5), ConstantFunction(1))
+            )
+        )
+
+        jacc = Numeric.jaccard_similarity(d1, d2)
+        self.assertEqual(1/3, jacc)
+
+    def test_jaccard_symmetry(self):
+        d1 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+            )
+        )
+        d2 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0.5, 1.5), ConstantFunction(1))
+            )
+        )
+
+        jacc1 = Numeric.jaccard_similarity(d1, d2)
+        jacc2 = Numeric.jaccard_similarity(d2, d1)
+        self.assertEqual(jacc1, jacc2)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -533,8 +614,65 @@ class IntegerDistributionTest(TestCase):
             dist_moment = distribution.moment(order, dist_mean)
             self.assertAlmostEqual(empirical_moment, dist_moment, delta=0.01)
 
+    def test_jaccard_identity(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([1 / 6] * 6)
+        jacc = Integer.jaccard_similarity(d1, d1)
+        self.assertEqual(1., jacc)
+
+    def test_jaccard_disjoint(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([0., 0., 0., 0., 0., 1.])
+        d2 = dice().set([1., 0., 0., 0., 0., 0.])
+        jacc = Integer.jaccard_similarity(d1, d2)
+        self.assertEqual(0., jacc)
+
+    def test_jaccard_overlap(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([2/6, 0/6, 1/6, 1/6, 1/6, 1/6])
+        d2 = dice().set([0/6, 2/6, 1/6, 1/6, 1/6, 1/6])
+        jacc = Integer.jaccard_similarity(d1, d2)
+        self.assertEqual(.5, jacc)
+
+    def test_jaccard_symmetry(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([2/6, 0/6, 1/6, 1/6, 1/6, 1/6])
+        d2 = dice().set([0/6, 2/6, 1/6, 1/6, 1/6, 1/6])
+        jacc1 = Integer.jaccard_similarity(d1, d2)
+        jacc2 = Integer.jaccard_similarity(d2, d1)
+        self.assertEqual(jacc1, jacc2)
+
+    def test_add(self):
+        pos = IntegerType('Pos', 0, 6)
+        posx = pos()
+        posx.set([0, 0, 1, 0, 0, 0, 0])
+
+        delta = IntegerType('Delta', -1, 1)
+        deltax = delta()
+        deltax.set([0, 0, 1])
+
+        sumpos = posx.add(deltax)
+
+        self.assertEqual(list(sumpos.labels.values()), [-1, 0, 1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(list(sumpos.values.values()), [0, 1, 2, 3, 4, 5, 6, 7, 8])
+        self.assertEqual(list(sumpos.probabilities), [0, 0, 0, 0, 1, 0, 0, 0, 0])
+
+    def test_add_bernoulli(self):
+        coin = IntegerType('Coin', 0, 1)
+        d1 = coin().set([1 / 2, 1 / 2])
+
+        sumpos = d1.add(d1)
+
+        res = []
+        for _, l in sumpos.items():
+            res.append(scipy.special.binom(2, l) * d1.p(1)**l * (1-d1.p(1))**(2-l))
+
+        self.assertEqual([0, 1, 2], list(sumpos.labels.values()))
+        self.assertEqual([0, 1, 2], list(sumpos.values.values()))
+        self.assertEqual(res, list(sumpos.probabilities))
 
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 class DataScalerTest(TestCase):
     DATA = None

@@ -3,7 +3,7 @@
 from collections import deque, Counter
 from itertools import tee
 from types import FunctionType
-from typing import Any, Iterable, List, Union, Set, Type, Tuple
+from typing import Any, Iterable, List, Union, Set, Type, Tuple, Optional
 
 from jpt.base.utils import classproperty, save_plot, normalized, mapstr, setstr, none2nan
 from jpt.base.errors import Unsatisfiability
@@ -32,7 +32,7 @@ from .utils import Identity, OrderedDictProxy, DataScalerProxy, DataScaler
 try:
     from ..base.intervals import __module__
     from .quantile.quantiles import __module__
-    from ..base.functions import __module__
+    from ..base.functions import __module__, Undefined
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
@@ -326,8 +326,81 @@ class Gaussian(Gaussian_):
                     return False
         return True
 
+    def plot(
+            self,
+            dim: int = 2,
+            title: str = None,
+            fname: str = None,
+            directory: str = '/tmp',
+            pdf: bool = False,
+            view: bool = False,
+            save: bool = False
+    ) -> None:
+        """
+
+        :param dim: if the distribution has a higher dimension than 1, the parameter `dim` allows to decide whether the
+        plot is a 2-dimensional heatmap or a 3-dimensional surface plot
+        :param title: the title of the plot
+        :param fname: the name of the file if the plot is saved
+        :param directory: the location of the file if the plot is stored
+        :param pdf: whether to save the file as a pdf, if False, the file is stored as png. Default is False
+        :param view: whether to show the generated plot
+        :param save: whether to save the plot to a file
+        :return:
+        """
+        fig, ax = plt.subplots(num=1, clear=True)
+
+        if self.dim == 1:
+            m = self.mean[0]
+            v = self.cov[0][0]
+            r = abs(2.5 * v)
+            X = np.linspace(m - r, m + r, int(m + r - (m - r)))
+            Z = np.array(self.pdf(X))
+
+            ax.plot(X, Z)
+            ax.set_xlabel('$x$')
+            ax.set_ylabel(r'$p(x|\mu,\sigma)$')
+        else:
+            cmap = 'BuPu'  # viridis, Blues, PuBu, 0rRd, BuPu
+
+            x = np.linspace(-2, 2, 30)
+            y = np.linspace(-2, 2, 30)
+            X, Y = np.meshgrid(x, y)
+
+            xy = np.column_stack([X.flat, Y.flat])
+            Z = self.pdf(xy)
+            Z = Z.reshape(X.shape)
+
+            if dim == 2:
+                # generate heatmap
+                c = ax.pcolormesh(X, Y, Z, cmap=cmap)
+
+                # setting the limits of the plot to the limits of the data
+                # ax.axis([xmin, xmax, ymin, ymax])
+                fig.colorbar(c, ax=ax)
+
+                ax.set_xlabel('$x$')
+                ax.set_ylabel(r'$p(x|\mu,\sigma)$')
+            else:
+                # generate 3d-surface plot
+                ax = plt.axes(projection='3d')
+                ax.plot_surface(X, Y, Z, cmap=cmap, edgecolor='none')
+
+                ax.set_xlabel('$x$')
+                ax.set_ylabel('$y$')
+                ax.set_zlabel(r'$p(x|\mu,\sigma)$')
+
+        plt.title(title or 'Gaussian Distribution:\n$\mu=$' + str(self._mean) + ',\n$\sigma=$' + str(self._cov))
+
+        if save:
+            save_plot(fig, directory, fname or self.__class__.__name__, fmt='pdf' if pdf else 'svg')
+
+        if view:
+            plt.show()
+
 
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 class Distribution:
     '''
@@ -450,6 +523,13 @@ class Distribution:
         raise NotImplementedError()
 
     def number_of_parameters(self) -> int:
+        raise NotImplementedError()
+
+    @staticmethod
+    def jaccard_similarity(
+            d1: 'Distribution',
+            d2: 'Distribution'
+    ) -> float:
         raise NotImplementedError()
 
     def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, **kwargs):
@@ -666,7 +746,7 @@ class Numeric(Distribution):
         if isinstance(labels, ContinuousSet):
             return self._p(self.label2value(labels))
         elif isinstance(labels, RealSet):
-            self._p(RealSet([ContinuousSet(self.values[i.lower],
+            return self._p(RealSet([ContinuousSet(self.values[i.lower],
                                            self.values[i.upper],
                                            i.left,
                                            i.right) for i in labels.intervals]))
@@ -795,7 +875,7 @@ class Numeric(Distribution):
         """
 
         # create intervals used in the new distribution
-        points = [-float("inf")]
+        points = [np.NINF]
 
         if left:
             points.extend([left.lower, left.upper])
@@ -803,7 +883,7 @@ class Numeric(Distribution):
         if right:
             points.extend([right.lower, right.upper])
 
-        points.append(float("inf"))
+        points.append(np.PINF)
 
         intervals = [ContinuousSet(a, b) for a, b in zip(points[:-1], points[1:])]
 
@@ -860,6 +940,13 @@ class Numeric(Distribution):
                 (pow(interval_.upper - center, order+1) - pow(interval_.lower - center, order+1))
             ) * function_value / (order + 1)
         return result
+
+    @staticmethod
+    def jaccard_similarity(
+            d1: 'Numeric',
+            d2: 'Numeric',
+    ) -> float:
+        return PiecewiseFunction.jaccard_similarity(d1.pdf, d2.pdf)
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''
@@ -1037,6 +1124,15 @@ class Multinomial(Distribution):
             return False
         return cls.__name__ == other.__name__ and cls.labels == other.labels and cls.values == other.values
 
+    @staticmethod
+    def jaccard_similarity(
+            d1: 'Multinomial',
+            d2: 'Multinomial'
+    ) -> float:
+        intersect = sum([min(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)])
+        union = sum([max(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)])
+        return intersect/union
+
     def __getitem__(self, value):
         return self.p([value])
 
@@ -1062,6 +1158,10 @@ class Multinomial(Distribution):
             key=itemgetter(0),
             reverse=True
         )
+
+    def _items(self):
+        '''Return a list of (probability, value) pairs representing this distribution.'''
+        return [(p, v) for p, v in zip(self._params, self.values.values())]
 
     def items(self):
         '''Return a list of (probability, label) pairs representing this distribution.'''
@@ -1395,6 +1495,45 @@ class Integer(Distribution):
         self._params: np.ndarray = None
         self.to_json: FunctionType = self.inst_to_json
 
+    def __add__(
+            self,
+            other: 'Integer'
+    ) -> 'Integer':
+        return self.add(other)
+
+    @property
+    def cdf(self) -> PiecewiseFunction:
+        cdf = PiecewiseFunction()
+        vals = list(self.values.values())
+
+        if self._params is None:
+            raise Exception(f'Fit!')
+
+        for v1, v2, p in zip(['-inf']+vals[:-1], vals, self._params):
+            # constant for each value and undefined for everything in between
+            cdf.append(interval=ContinuousSet.parse(f']{v1},{v2}['), f=Undefined())
+            cdf.append(interval=ContinuousSet.parse(f'[{v2},{v2}]'), f=ConstantFunction(p))
+        # undefined for everythin after last value
+        cdf.append(interval=ContinuousSet.parse(f']{v2},inf['), f=Undefined())
+
+        return cdf
+
+    def add(self, other: 'Integer', name: Optional[str] = None) -> 'Integer':
+        res_t = IntegerType(
+            name=f'{name if name is not None else self.__class__.__name__}+{other.__class__.__name__}',
+            lmin=self.lmin + other.lmin,
+            lmax=self.lmax + other.lmax
+        )
+        res = res_t()
+        dist = []
+        for z in res.labels.values():
+            p = 0
+            for k in self.labels.values():
+                p += self.p(k) * (other.p(z-k) if other.lmin <= z-k <= other.lmax else 0)
+            dist.append(p)
+        res.set(dist)
+        return res
+
     @classmethod
     def equiv(cls, other: Type):
         if not issubclass(other, Integer):
@@ -1615,8 +1754,8 @@ class Integer(Distribution):
         return [(p, v) for p, v in zip(self._params, self.values.values())]
 
     def items(self):
-        '''Return a list of (probability, value) pairs representing this distribution.'''
-        return [(p, self.label2value(l)) for p, l in self._items()]
+        '''Return a list of (probability, label) pairs representing this distribution.'''
+        return [(p, self.value2label(v)) for p, v in self._items()]
 
     def kl_divergence(self, other: 'Distribution'):
         if type(other) is not type(self):
@@ -1643,23 +1782,38 @@ class Integer(Distribution):
             result += pow(value - c, order) * probability
         return result
 
-    def plot(self, title=None, fname=None, directory='/tmp', pdf=False, view=False, horizontal=False, max_values=None):
+
+    @staticmethod
+    def jaccard_similarity(
+            d1: 'Integer',
+            d2: 'Integer'
+    ) -> float:
+        intersect = sum([min(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)])
+        union = sum([max(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)])
+        return intersect/union
+
+    def plot(
+            self,
+            title: str = None,
+            fname: str = None,
+            directory: str = '/tmp',
+            pdf: bool = False,
+            view: bool = False,
+            horizontal: bool = False,
+            max_values: int = None,
+            alphabet: bool = False
+    ):
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
 
         :param title:       the name of the variable this distribution represents
-        :type title:        str
         :param fname:       the name of the file to be stored
-        :type fname:        str
         :param directory:   the directory to store the generated plot files
-        :type directory:    str
         :param pdf:         whether to store files as PDF. If false, a png is generated by default
-        :type pdf:          bool
         :param view:        whether to display generated plots, default False (only stores files)
-        :type view:         bool
         :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
-        :type horizontal:   bool
         :param max_values:  maximum number of values to plot
-        :type max_values:   int
+        :param alphabet:    whether the bars are sorted in alphabetical order of the variable names. If False, the bars
+                            are sorted by probability (descending); default is False
         :return:            None
         '''
         # Only save figures, do not show
@@ -1668,12 +1822,21 @@ class Integer(Distribution):
 
         max_values = min(ifnone(max_values, len(self.labels)), len(self.labels))
 
-        labels = list(sorted(list(enumerate(self.labels.values())),
-                             key=lambda x: self._params[x[0]],
-                             reverse=True))[:max_values]
-        labels = project(labels, 1)
-        probs = list(sorted(self._params, reverse=True))[:max_values]
+        # prepare prob-label pairs containing only the first `max_values` highest probability tuples
+        pairs = sorted(
+            [
+                (self._params[idx], lbl) for idx, lbl in enumerate(self.labels.values())
+            ],
+            key=lambda x: x[0],
+            reverse=True
+        )[:max_values]
 
+        if alphabet:
+            # re-sort remaining values alphabetically
+            pairs = sorted(pairs, key=lambda x: x[1])
+
+        probs = project(pairs, 0)
+        labels = project(pairs, 1)
         vals = [re.escape(str(x)) for x in labels]
 
         x = np.arange(max_values)  # the label locations
