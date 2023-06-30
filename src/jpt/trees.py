@@ -1760,6 +1760,10 @@ class JPT:
         :param plotvars: the variables to be plotted in the graph
         :param view: whether the generated SVG file will be opened automatically
         :param max_symb_values: limit the maximum number of symbolic values that are plotted to this number
+        :param nodefill: the color of the inner nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
+        :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
+        :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
+        probability (descending); default is False
         """
 
         plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
