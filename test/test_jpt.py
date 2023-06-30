@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 import sklearn.datasets
+from jpt.base.intervals import ContinuousSet
+from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 from numpy.testing import assert_array_equal
 from pandas import DataFrame
@@ -18,8 +20,6 @@ from scipy.stats import norm
 import jpt.variables
 from jpt import SymbolicType
 from jpt.base.errors import Unsatisfiability
-from jpt.base.intervals import ContinuousSet
-from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment, \
     IntegerVariable
@@ -915,3 +915,76 @@ class ConditionalJPTTest(TestCase):
         for leaf in self.model.apply(evidence):
             l_ = leaf.conditional_leaf(evidence)
             self.assertAlmostEqual(1, l_.probability(evidence))
+
+
+class TestCaseTargetLearning(TestCase):
+    data: pd.DataFrame
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        np.random.seed(69)
+
+        # create random positive semi definite matrix
+        covariance = np.random.rand(10, 10)
+        covariance = covariance @ covariance.T
+
+        # sample a bunch of points
+        numeric_data = np.random.multivariate_normal(mean=np.zeros(10), cov=covariance,
+                                                     size=(2000,))
+
+        # sort by first numeric column
+        numeric_data = np.sort(numeric_data, 0)
+        # add dependent symbolic variable
+        symbolic_column = np.concatenate((np.zeros((1000, 1)), np.ones((1000, 1))))
+
+        # sort by second numeric column
+        numeric_data = np.sort(numeric_data, 1)
+        # add dependent integer variable
+        integer_column = np.concatenate((np.zeros((1000, 1)), np.ones((1000, 1))))
+
+        cls.data = pd.DataFrame(columns=["s0"] + ["i0"] + [f"n{i}" for i in range(10)],
+                                data=np.concatenate((symbolic_column, integer_column, numeric_data), axis=1))
+        cls.data["s0"] = cls.data["s0"].astype("str")
+        cls.data["i0"] = cls.data["i0"].astype("int")
+
+    def test_variale_setup(self):
+        vars = infer_from_dataframe(self.data)
+        self.assertEqual(1, len([v for v in vars if v.symbolic]))
+        self.assertEqual(1, len([v for v in vars if v.integer]))
+        self.assertEqual(10, len([v for v in vars if v.numeric]))
+
+    def test_learning_discriminative_single_symbolic(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["s0"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_discriminative_single_numeric(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["n0"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_discriminative_mixed_symbolic_numeric(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["s0", "n0"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_discriminative_mixed_symbolic_integer(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["s0", "i0"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_discriminative_mixed_numeric_integer(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["n5", "i0"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)
+
+    def test_learning_discriminative_mixed_all(self):
+        model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
+                    targets=["s0", "i0", "n9"])
+        model.fit(self.data)
+        self.assertTrue(len(model.leaves) > 1)

@@ -182,7 +182,6 @@ cdef inline void bincount(DTYPE_t[:, ::1] data,
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
 cdef class Impurity:
     """
     Class to implement fast impurity calculations on splits.
@@ -342,8 +341,8 @@ cdef class Impurity:
         # get the number of all symbolic variables
         self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
 
-        # get the number of all numeric variables
-        self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric])
+        # get the number of all numeric and integer variables
+        self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric or _.integer])
 
         # get indices of all targets
         self.all_vars = np.concatenate((self.numeric_vars, self.symbolic_vars))
@@ -466,7 +465,8 @@ cdef class Impurity:
             idc_dep = [tree.variables.index(var) for var in dep_vars]
             dependency_indices[idx_var] = idc_dep
 
-        cdef SIZE_t n = self.n_features
+        # create numeric and symbolic dependency matrix.
+        cdef SIZE_t n = self.n_vars_total
         cdef SIZE_t t = self.n_vars
         self.numeric_dependency_matrix = np.full(
             (n, t),
@@ -474,7 +474,9 @@ cdef class Impurity:
             dtype=np.int64,
         )
         self.symbolic_dependency_matrix = self.numeric_dependency_matrix.copy()
+
         for idx_var in self.features:  # For all feature variables...
+
             # ...get the indices of the dependent numeric variables...
             indices = np.array([
                 i_num for i_num, i_var in enumerate(self.numeric_vars) if i_var in dependency_indices[idx_var]
@@ -488,6 +490,7 @@ cdef class Impurity:
             ], dtype=np.int64)
             if indices.shape[0]:  # ... and store them in the numeric dependency matrix.
                 self.symbolic_dependency_matrix[idx_var, :indices.shape[0]] = indices
+
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
         """
@@ -682,8 +685,8 @@ cdef class Impurity:
                       result=self.variances_total)
 
             # sanity check to see if the variances "make sense"
-            if not self.check_max_variances(self.variances_total):
-                return 0
+            # if not self.check_max_variances(self.variances_total):
+            #     return 0
 
         # if symbolic targets exist
         if self.has_symbolic_vars():
@@ -713,6 +716,7 @@ cdef class Impurity:
         cdef int variable
 
         cdef SIZE_t split_pos
+
         self.index_buffer[:n_samples] = self.indices[self.start:self.end]
 
         # reset best impurity improvement
@@ -932,7 +936,9 @@ cdef class Impurity:
             # for skipping, the sample must not be the last one (1) and consecutive values must be equal (2)
             if numeric or not last_iter and symbolic:
                 subsequent_equal = data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]
-                if subsequent_equal and not last_iter:
+                if subsequent_equal:
+                    if numeric and last_iter:
+                        break
                     continue
 
             # reset impurity improvement
