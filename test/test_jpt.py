@@ -158,6 +158,18 @@ class JPTTest(TestCase):
         marginals = cjpt.posterior(evidence=VariableMap())
         self.assertEqual(marginals["Arson"].p(evidence["Arson"]), 1.)
 
+    def test_reverse_inference(self):
+        pass
+        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'))
+        q = {
+            "District": ["Spandau"],
+            "Graffiti": ContinuousSet(20, 40),
+            "Drugs": ContinuousSet(30, 40)
+        }
+        p = jpt.reverse(q)
+        expres = [(17.035751235106073, 34), (16.854094288878343, 59), (16.792804125698865, 58), (16.789359254673656, 60), (16.73021346469622, 50), (16.640170414346798, 16), (16.526547303271443, 53), (16.407173212401243, 44)]
+        self.assertEqual(expres, [(sum(c.values()), l.idx) for c, l in p])
+
     def test_parameter_count(self):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
