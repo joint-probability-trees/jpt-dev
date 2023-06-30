@@ -1677,16 +1677,17 @@ class JPT:
 
         return probabilities
 
-    def reverse(self, query, confidence=.05) -> List[Tuple[Dict, List[Node]]]:
+    def reverse(
+            self,
+            query: Dict,
+            confidence: float = .05
+    ) -> List[Tuple]:
         """
-        Determines the leaf nodes that match query best and returns their respective paths to the root node.
+        Determines the leaf nodes that match query best and returns them along with their respective confidence.
 
         :param query: a mapping from featurenames to either numeric value intervals or an iterable of categorical values
-        :type query: dict
         :param confidence:  the confidence level for this MPE inference
-        :type confidence: float
-        :returns: a mapping from probabilities to lists of matcalo.core.algorithms.JPT.Node (path to root)
-        :rtype: dict
+        :returns: a tuple of probabilities and jpt.trees.Leaf objects that match requirement (representing path to root)
         """
         # if none of the target variables is present in the query, there is no match possible
         # only check variable names, because multiple trees can have the (semantically) same variable, which differs as
@@ -1703,7 +1704,7 @@ class JPT:
             if var.numeric:
                 query_[var] = R
             else:
-                query_[var] = var.domain.values
+                query_[var] = set(var.domain.labels.values())
 
         # stores the probabilities, that the query variables take on the value(s)/a value in the interval given in
         # the query
@@ -1713,34 +1714,19 @@ class JPT:
         for k, l in self.leaves.items():
             conf = defaultdict(float)
             for v, dist in l.distributions.items():
-                if v.numeric:
-                    conf[v] = dist._p(query_[v])
-                else:
-                    conf_ = 0.
-                    for sv in query_[v]:
-                        conf_ += dist._p(sv)
-                    conf[v] = conf_
+                conf[v] = dist.p(query_[v])
             confs[l.idx] = conf
 
-        # the candidates are the leaves that satisfy the confidence requirement (i.e. each free variable of a leaf must satisfy the requirement)
-        candidates = sorted([leafidx for leafidx, confs in confs.items() if all(c >= confidence for c in confs.values())],
-                            key=lambda l: sum(confs[l].values()), reverse=True)
+        # generate list of leaf-confidence pairs, sorted by confidence (descending)
+        candidates = sorted(
+            [
+                (cf, self.leaves[lidx]) for lidx, cf in confs.items() if all(c >= confidence for c in cf.values())
+            ],
+            key=lambda i: sum(i[0].values()),
+            reverse=True
+        )
 
-        out('CANDIDATES in reverse', candidates)
-
-        # for the chosen candidate determine the path to the root
-        paths = []
-        for c in candidates:
-            p = []
-            curcand = self.leaves[c]
-            while curcand is not None:
-                p.append(curcand)
-                curcand = curcand.parent
-            paths.append((confs[c], p))
-
-        # elements of path are tuples (a, b) with a being mappings of {var: confidence} and b being an ordered list of
-        # nodes representing a path from a leaf to the root
-        return paths
+        return candidates
 
     def plot(self,
              title: str = "unnamed",
