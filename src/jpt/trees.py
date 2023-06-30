@@ -2153,7 +2153,7 @@ class JPT:
                     right = None
 
                     # if the leaf is not the "lowest" in this dimension
-                    if -float("inf") < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
+                    if np.NINF < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
                         # create uniform distribution as bridge between the leaves
                         interval = ContinuousSet(
                             leaf.path[variable].lower,
@@ -2162,7 +2162,7 @@ class JPT:
                         left = interval
 
                     # if the leaf is not the "highest" in this dimension
-                    if float("inf") > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
+                    if np.PINF > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
                         # create uniform distribution as bridge between the leaves
                         interval = ContinuousSet(
                             distribution.cdf.intervals[-2].upper,
