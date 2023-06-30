@@ -182,7 +182,6 @@ cdef inline void bincount(DTYPE_t[:, ::1] data,
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
 cdef class Impurity:
     """
     Class to implement fast impurity calculations on splits.
@@ -686,8 +685,8 @@ cdef class Impurity:
                       result=self.variances_total)
 
             # sanity check to see if the variances "make sense"
-            if not self.check_max_variances(self.variances_total):
-                return 0
+            # if not self.check_max_variances(self.variances_total):
+            #     return 0
 
         # if symbolic targets exist
         if self.has_symbolic_vars():
@@ -717,6 +716,7 @@ cdef class Impurity:
         cdef int variable
 
         cdef SIZE_t split_pos
+
         self.index_buffer[:n_samples] = self.indices[self.start:self.end]
 
         # reset best impurity improvement
@@ -936,7 +936,9 @@ cdef class Impurity:
             # for skipping, the sample must not be the last one (1) and consecutive values must be equal (2)
             if numeric or not last_iter and symbolic:
                 subsequent_equal = data[index_buffer[split_pos], var_idx] == data[index_buffer[split_pos + 1], var_idx]
-                if subsequent_equal and not last_iter:
+                if subsequent_equal:
+                    if numeric and last_iter:
+                        break
                     continue
 
             # reset impurity improvement
