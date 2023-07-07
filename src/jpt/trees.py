@@ -1094,7 +1094,7 @@ class JPT:
                 if evidence_set is not None:
                     if var in leaf.path:
                         evidence_set = evidence_set.intersection(leaf.path[var])
-                        distribution = distribution.crop(evidence_set)
+                        distribution = distribution._crop(evidence_set)
                 distributions[var].append(distribution)
 
         weights = [l * p for l, p in zip(likelihoods, priors)]
