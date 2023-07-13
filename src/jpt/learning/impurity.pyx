@@ -942,11 +942,13 @@ cdef class Impurity:
         cdef SIZE_t sample_idx
         cdef int last_iter
         cdef DTYPE_t min_samples
-        cdef SIZE_t num_var_idx
+        cdef SIZE_t num_feat_idx = -1
+
+        # check if currently evaluated variable is numeric target variable
         if self.has_numeric_vars(var_idx):
             for i in range(self.n_num_vars):
                 if self.numeric_vars[i] == var_idx:
-                    num_var_idx = i
+                    num_feat_idx = i
                     break
 
         cdef int subsequent_equal
@@ -1044,7 +1046,7 @@ cdef class Impurity:
                         self.variances_right,
                         samples_left,
                         samples_right,
-                        num_var_idx
+                        num_feat_idx
                     ) * self.w_numeric
 
                 # if the variable is symbolic
