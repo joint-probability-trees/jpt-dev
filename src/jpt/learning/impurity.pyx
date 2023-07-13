@@ -983,7 +983,7 @@ cdef class Impurity:
                 samples_right = n_samples - samples_left
 
             # Compute the numeric impurity (variance)
-            if self.has_numeric_vars():
+            if self.has_numeric_vars(var_idx):
                 self.update_numeric_stats_with_dependencies(
                     sample_idx,
                     self.numeric_dependency_matrix[var_idx, :]
@@ -1083,7 +1083,7 @@ cdef class Impurity:
                     self.num_samples[...] = 0
 
                 # if numeric targets exist
-                if self.has_numeric_vars():
+                if self.has_numeric_vars(var_idx):
                     self.sums_left[...] = 0
                     self.sq_sums_left[...] = 0
 
