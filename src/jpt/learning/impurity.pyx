@@ -11,7 +11,6 @@ __module__ = 'impurity.pyx'
 import numpy as np
 cimport numpy as np
 import tabulate
-from libc.stdio cimport printf
 from libc.math cimport isinf, isnan
 
 from dnutils import mapstr
@@ -26,12 +25,13 @@ cdef int RIGHT = 1
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
-                                   DTYPE_t[::1] variances_left,
-                                   DTYPE_t[::1] variances_right,
-                                   SIZE_t samples_left,
-                                   SIZE_t samples_right,
-                                   SIZE_t skip_idx=-1) nogil:
+cdef inline DTYPE_t compute_var_improvements(
+    DTYPE_t[::1] variances_total,
+    DTYPE_t[::1] variances_left,
+    DTYPE_t[::1] variances_right,
+    SIZE_t samples_left,
+    SIZE_t samples_right,
+    SIZE_t skip_idx=-1) nogil:
     """
     Compute the variance improvement of a split. 
     
@@ -63,15 +63,37 @@ cdef inline DTYPE_t compute_var_improvements(DTYPE_t[::1] variances_total,
     return variance_impr
 
 
+cpdef inline DTYPE_t _compute_var_improvements(
+    DTYPE_t[::1] variances_total,
+    DTYPE_t[::1] variances_left,
+    DTYPE_t[::1] variances_right,
+    SIZE_t samples_left,
+    SIZE_t samples_right,
+    SIZE_t skip_idx=-1
+):
+    """Python-callable version for testing only."""
+    return compute_var_improvements(
+        variances_total,
+        variances_left,
+        variances_right,
+        samples_left,
+        samples_right,
+        skip_idx
+    )
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection PyPep8Naming
-cdef inline void sum_at(DTYPE_t[:, ::1] M,
-                        SIZE_t[::1] rows,
-                        SIZE_t[::1] cols,
-                        DTYPE_t[::1] result) nogil:
+cdef inline void sum_at(
+    DTYPE_t[:, ::1] M,
+    SIZE_t[::1] rows,
+    SIZE_t[::1] cols,
+    DTYPE_t[::1] result
+) nogil:
     """
     Sum rows at columns.
+    
     :param M: Matrix with the raw data
     :type M; 2D contiguous view of array 
     :param rows: Indices of rows to sum
@@ -88,14 +110,27 @@ cdef inline void sum_at(DTYPE_t[:, ::1] M,
             result[j] += M[rows[i], cols[j]]
 
 
+cpdef inline void _sum_at(
+    DTYPE_t[:, ::1] M,
+    SIZE_t[::1] rows,
+    SIZE_t[::1] cols,
+    DTYPE_t[::1] result
+):
+    """Python-callable version for testing only."""
+    sum_at(M, rows, cols, result)
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
-cdef inline void sq_sum_at(DTYPE_t[:, ::1] M,
-                           SIZE_t[::1] rows,
-                           SIZE_t[::1] cols,
-                           DTYPE_t[::1] result) nogil:
+cdef inline void sq_sum_at(
+    DTYPE_t[:, ::1] M,
+    SIZE_t[::1] rows,
+    SIZE_t[::1] cols,
+    DTYPE_t[::1] result
+) nogil:
     """
-    Square the values in the rows and sum them..
+    Square the values in the rows and sum them.
+    
     :param M: Matrix with the raw data
     :type M; 2D contiguous view of array 
     :param rows: Indices of rows to sum
@@ -114,12 +149,24 @@ cdef inline void sq_sum_at(DTYPE_t[:, ::1] M,
             result[j] += v * v
 
 
+cpdef inline void _sq_sum_at(
+    DTYPE_t[:, ::1] M,
+    SIZE_t[::1] rows,
+    SIZE_t[::1] cols,
+    DTYPE_t[::1] result
+):
+    """Python-callable version for testing only."""
+    sq_sum_at(M, rows, cols, result)
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
-cdef inline void variances(DTYPE_t[::1] sq_sums,
-                           DTYPE_t[::1] sums,
-                           SIZE_t n_samples,
-                           DTYPE_t[::1] result) nogil:
+cdef inline void variances(
+    DTYPE_t[::1] sq_sums,
+    DTYPE_t[::1] sums,
+    SIZE_t n_samples,
+    DTYPE_t[::1] result
+) nogil:
     """
     Variance computation uses the proxy from sklearn: ::
 
@@ -133,11 +180,26 @@ cdef inline void variances(DTYPE_t[::1] sq_sums,
     :param n_samples: the number of samples
     :param result: The array to write into (result will be overwritten)
     """
+    # prevent nan values due to division by zero in variance calculation of one-example splits
+    if n_samples == 1:
+        result[:] = 0
+        return
+
     result[:] = sq_sums
     cdef SIZE_t i
     for i in range(sums.shape[0]):
         result[i] -= sums[i] * sums[i] / <DTYPE_t> n_samples
         result[i] /= n_samples - 1
+
+
+cpdef inline void _variances(
+    DTYPE_t[::1] sq_sums,
+    DTYPE_t[::1] sums,
+    SIZE_t n_samples,
+    DTYPE_t[::1] result
+):
+    """Python-callable version for testing only."""
+    variances(sq_sums, sums, n_samples, result)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -774,7 +836,7 @@ cdef class Impurity:
         # return the best improvement value
         return self.max_impurity_improvement
 
-    cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos):  #nogil
+    cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos) nogil:
         """
         Move all indices of data points with the specified value from ``split_pos`` on to the
         front of the index array.
@@ -802,7 +864,7 @@ cdef class Impurity:
                                    DTYPE_t[::1] variances_total,
                                    DTYPE_t gini_total,
                                    SIZE_t[::1] index_buffer,
-                                   SIZE_t* best_split_pos): # nogil except -1:
+                                   SIZE_t* best_split_pos) nogil except -1:
         """
         Evaluate a variable w. r. t. its possible slit. Calculate the best split on this variable
         and the corresponding impurity.
@@ -909,7 +971,7 @@ cdef class Impurity:
 
             # if it is symbolic
             else:
-                # get the symolbic value
+                # get the symbolic value
                 VAL_IDX = <SIZE_t> data[sample_idx, var_idx]
 
                 # track number of samples left and right of the split
