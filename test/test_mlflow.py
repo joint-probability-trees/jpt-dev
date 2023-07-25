@@ -1,24 +1,33 @@
 import unittest
-import requests
 import os
-import mlflow
 import numpy as np
+
 import jpt
-from jpt.mlflow_wrapper import JPTWrapper, Schema
 import pandas as pd
 
-
-mlflow_uri = os.getenv('MLFLOW_TRACKING_URI')
-if mlflow_uri is None:
-    mlflow_uri = "http://127.0.0.1:5000"
-
+skiptest = False
 try:
-    response = requests.get(mlflow_uri, timeout=2)
-except requests.exceptions.ConnectionError:
-    response = None
+    import mlflow
+    import requests
+    from jpt.mlflow_wrapper import JPTWrapper, Schema
+except ModuleNotFoundError as e:
+    skiptest = True, 'mlflow or requests not installed. Skipping tests.'
+else:
+    mlflow_uri = os.getenv('MLFLOW_TRACKING_URI')
+    if mlflow_uri is None:
+        mlflow_uri = "http://127.0.0.1:5000"
+
+    try:
+        response = requests.get(mlflow_uri, timeout=2)
+    except requests.exceptions.ConnectionError:
+        response = None
+    skiptest = (
+        response is None or response.status_code != requests.codes.ok,
+        'mlflow server is not available.'
+    )
 
 
-@unittest.skipIf(response is None or (response.status_code != requests.codes.ok), "mlflow server is not available.")
+@unittest.skipIf(*skiptest)
 class MLFlowTestCase(unittest.TestCase):
 
     @classmethod
