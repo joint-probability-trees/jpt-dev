@@ -945,7 +945,7 @@ class Numeric(Distribution):
                 )
             yield cumsum
 
-    def moment(self, order: numbers.Integral = 1, c: numbers.Real = 0) -> numbers.Real:
+    def moment(self, order: numbers.Integral = 1, center: numbers.Real = 0) -> numbers.Real:
         r"""Calculate the central moment of the r-th order almost everywhere.
 
         .. math:: \int (x-c)^{r} p(x)
