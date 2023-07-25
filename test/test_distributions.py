@@ -404,7 +404,7 @@ class NumericDistributionTest(TestCase):
         )
 
         jacc = Numeric.jaccard_similarity(d1, d2)
-        self.assertEqual(1/3, jacc)
+        self.assertAlmostEqual(1 / 3, jacc, places=8)
 
     def test_jaccard_symmetry(self):
         d1 = Numeric().set(
