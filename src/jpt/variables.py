@@ -547,6 +547,14 @@ class VariableMap:
                 self[var] = value
 
     @property
+    def variables(self) -> Set[Variable]:
+        return set(self._variables.values())
+
+    @property
+    def varnames(self) -> Dict[str, Variable]:
+        return {v.name: v for v in self.variables}
+
+    @property
     def map(self) -> {}:
         return self._map
 
