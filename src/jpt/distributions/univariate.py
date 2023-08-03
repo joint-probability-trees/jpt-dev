@@ -3,7 +3,7 @@
 from collections import deque, Counter
 from itertools import tee
 from types import FunctionType
-from typing import Any, Iterable, List, Union, Set, Type, Tuple, Optional
+from typing import Any, Iterable, List, Union, Set, Type, Tuple
 
 from jpt.base.utils import classproperty, save_plot, normalized, mapstr, setstr, none2nan
 from jpt.base.errors import Unsatisfiability

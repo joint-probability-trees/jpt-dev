@@ -23,7 +23,6 @@ finally:
     from jpt.distributions.quantile.quantiles import QuantileDistribution
     from jpt.base.intervals import ContinuousSet, EXC, INC, RealSet, R
 
-
 from jpt.base.errors import Unsatisfiability
 from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
     Distribution, ScaledNumeric
@@ -703,7 +702,6 @@ class IntegerDistributionTest(TestCase):
 # ----------------------------------------------------------------------------------------------------------------------
 
 class DataScalerTest(TestCase):
-
     DATA = None
 
     @classmethod
