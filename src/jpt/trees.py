@@ -6,6 +6,7 @@ import math
 import numbers
 import os
 import pickle
+import tempfile
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from itertools import zip_longest
 from operator import attrgetter
@@ -828,9 +829,25 @@ class JPT:
         }
 
     @staticmethod
-    def from_json(data: Dict[str, Any]) -> 'JPT':
-        """Construct a tree from a json dict."""
-        variables = OrderedDict([(d['name'], Variable.from_json(d)) for d in data['variables']])
+    def from_json(
+            data: Dict[str, Any],
+            variables: Optional[Iterable[Variable]] = None
+    ) -> 'JPT':
+        """
+        Construct a tree from a json dict.
+
+        :data:          The JSON dictionary holding the serialized JPT data.
+        :variables:     (optional) An iterable holding the already de-serialized variables
+                        the JPT shall be constructed with.
+        """
+        if variables is not None:
+            variables = OrderedDict(
+                [(v.name, v) for v in variables]
+            )
+        else:
+            variables = OrderedDict(
+                [(d['name'], Variable.from_json(d)) for d in data['variables']]
+            )
         jpt = JPT(
             variables=list(variables.values()),
             targets=(
@@ -917,6 +934,8 @@ class JPT:
         if any([isinstance(val, set) and len(val) > 1 for val in values.values()]):
             raise ValueError('PDF not defined on sets of size >1')
 
+        self._check_variable_assignment(values)
+
         values_scalars = ValueAssignment(variables=values._variables.values())
         values_sets = ValueAssignment(variables=values._variables.values())
         for var, val in values.items():
@@ -941,10 +960,12 @@ class JPT:
                                       for var, value in values_scalars.items()) if values_scalars else 1)
         return pdf
 
-    def infer(self,
-              query: Union[Dict[Union[Variable, str], Any], VariableAssignment],
-              evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
-              fail_on_unsatisfiability: bool = True) -> float or None:
+    def infer(
+            self,
+            query: Union[Dict[Union[Variable, str], Any], VariableAssignment],
+            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> float or None:
         r"""For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -977,12 +998,19 @@ class JPT:
             query_ = query.value_assignment()
         else:
             query_ = query
-        if evidence is None or isinstance(evidence, dict):
+
+        self._check_variable_assignment(query_)
+
+        if evidence is None:
+            evidence = {}
+        if isinstance(evidence, dict):
             evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
             evidence_ = evidence
+
+        self._check_variable_assignment(evidence_)
 
         p_q = 0.
         p_e = 0.
@@ -994,8 +1022,6 @@ class JPT:
                 evidence_val = evidence_[var]
                 if var in leaf.path:  # var.numeric and
                     evidence_val = evidence_val.intersection(leaf.path[var])
-                # elif (var.symbolic or var.integer) and var in leaf.path:
-                #     continue
                 p_m *= leaf.distributions[var]._p(evidence_val)
                 likelihoods.append((var, evidence_val, leaf.distributions[var]._p(evidence_val)))
 
@@ -1008,26 +1034,27 @@ class JPT:
                     query_val = query_[var]
                     if var.numeric and var in leaf.path:
                         query_val = query_val.intersection(leaf.path[var])
-                    elif (var.symbolic or var.integer) and var in leaf.path:
-                        continue
                     p_m *= leaf.distributions[var]._p(query_val)
                 p_q += p_m
 
-
         if p_e == 0:
             if fail_on_unsatisfiability:
-                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                raise ValueError(
+                    'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
+                )
             else:
                 return None
         else:
-            return p_q/p_e
+            return p_q / p_e
 
     # noinspection PyProtectedMember
-    def posterior(self,
-                  variables: List[Variable or str] = None,
-                  evidence: Dict[Union[Variable, str], Any] or VariableAssignment = None,
-                  fail_on_unsatisfiability: bool = True,
-                  report_inconsistencies: bool = False) -> VariableMap or None:
+    def posterior(
+            self,
+            variables: List[Variable or str] = None,
+            evidence: Dict[Union[Variable, str], Any] or VariableAssignment = None,
+            fail_on_unsatisfiability: bool = True,
+            report_inconsistencies: bool = False
+    ) -> VariableMap or None:
         """
         Compute the posterior distribution of every variable in ``variables``. The result contains independent
         distributions. Be aware that they might not actually be independent.
@@ -1041,12 +1068,16 @@ class JPT:
                                          caused the inconsistency.
         :return: jpt.trees.PosteriorResult containing distributions, candidates and weights
         """
+        if evidence is None:
+            evidence = {}
         if isinstance(evidence, dict):
             evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
-            evidence_ = ifnone(evidence, {})
+            evidence_ = evidence
+
+        self._check_variable_assignment(evidence_)
 
         variables = ifnone(variables, self.variables)
         result = VariableMap()
@@ -1117,10 +1148,12 @@ class JPT:
 
         return result
 
-    def expectation(self,
-                    variables: Iterable[Variable] = None,
-                    evidence: VariableAssignment = None,
-                    fail_on_unsatisfiability: bool = True) -> VariableMap or None:
+    def expectation(
+            self,
+            variables: Iterable[Variable] = None,
+            evidence: VariableAssignment = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> VariableMap or None:
         """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -1132,11 +1165,15 @@ class JPT:
         :return: VariableMap
         """
         if evidence is None:
-            evidence = self.bind()
+            evidence = {}
+        if isinstance(evidence, dict):
+            evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
             evidence_ = evidence
+
+        self._check_variable_assignment(evidence_)
 
         variables = ifnot(
             [v if isinstance(v, Variable) else self.varnames[v] for v in ifnone(variables, self.variables)],
@@ -1160,8 +1197,12 @@ class JPT:
             final[var] = dist.expectation()
         return final
 
-    def mpe(self, evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
-            fail_on_unsatisfiability: bool = True) -> (List[LabelAssignment], float) or None:
+    def mpe(
+            self,
+            evidence: Union[Dict[Union[Variable, str], Any],
+            VariableAssignment] = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> (List[LabelAssignment], float) or None:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
         :param evidence: The evidence that is applied to the tree
@@ -1170,10 +1211,16 @@ class JPT:
         :return: List of LabelAssignments that describes all maxima of the tree given the evidence.
             Additionally, a float describing the likelihood of all solutions is returned.
         """
+        if evidence is None:
+            evidence = {}
+        if isinstance(evidence, dict):
+            evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
             evidence_ = evidence
+
+        self._check_variable_assignment(evidence_)
 
         # apply the conditions given
         conditional_jpt = self.conditional_jpt(evidence_, fail_on_unsatisfiability)
@@ -1281,6 +1328,22 @@ class JPT:
 
         return query_
 
+    def _check_variable_assignment(self, assignment: Optional[VariableAssignment]):
+        '''
+        Check the variable assignment for compatibility with the
+        variables of this JPT.
+        '''
+        if assignment is None:
+            return
+        for var, _ in assignment.items():
+            if var.name not in self.varnames or id(var) != id(self.varnames[var.name]):
+                raise ValueError(
+                    'Variable %s undefined in this JPT. Note that variable '
+                    'instances in `VariableAssignment` and `JPT` must be identical. '
+                    'Use `JPT.bind()` to ensure compatible variable assignments.' %
+                    repr(var)
+                )
+
     def apply(self, query: VariableAssignment) -> Iterator[Leaf]:
         """
         Iterator that yields leaves that are consistent with ``query``.
@@ -1323,44 +1386,24 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
         n_samples = end - start
-        split_var_idx = split_pos = -1
+        split_pos = -1
         split_var = None
         impurity = self.impurity
 
         max_gain = impurity.compute_best_split(start, end)
-        if max_gain < 0:
-            raise ValueError('Something went wrong!')
 
-        self.logger.debug('Data range: %d-%d,' % (start, end),
-                          'split var:', split_var,
-                          ', split_pos:', split_pos,
-                          ', gain:', max_gain)
+        self.logger.debug(
+            'Data range: %d-%d,' % (start, end),
+            'split var:', split_var,
+            ', split_pos:', split_pos,
+            ', gain:', max_gain
+        )
 
-        if max_gain:
+        if max_gain >= min_impurity_improvement and depth < self.max_depth:  # Create a decision node ------------------
             split_pos = impurity.best_split_pos
             split_var_idx = impurity.best_var
             split_var = self.variables[split_var_idx]
 
-        if max_gain <= min_impurity_improvement or depth >= self.max_depth:  # Create a leaf node ----------------------
-            leaf = node = Leaf(idx=len(self.allnodes), parent=parent)
-
-            if parent is not None:
-                parent.set_child(child_idx, leaf)
-
-            for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.distribution()._fit(
-                    data=data,
-                    rows=self.indices[start:end],
-                    col=i
-                )
-            leaf.prior = n_samples / data.shape[0]
-            leaf.samples = n_samples
-            if self._keep_samples:
-                leaf.s_indices = self.indices[start:end]
-
-            self.leaves[leaf.idx] = leaf
-
-        else:  # Create a decision node --------------------------------------------------------------------------------
             node = DecisionNode(
                 idx=len(self.allnodes),
                 variable=split_var,
@@ -1398,6 +1441,25 @@ class JPT:
             self.c45queue.append((data, start + split_pos + 1, end, node, 1, depth + 1))
 
             node.splits = splits
+
+        else:  # Create a leaf node ------------------------------------------------------------------------------------
+            leaf = node = Leaf(idx=len(self.allnodes), parent=parent)
+
+            if parent is not None:
+                parent.set_child(child_idx, leaf)
+
+            for i, v in enumerate(self.variables):
+                leaf.distributions[v] = v.distribution()._fit(
+                    data=data,
+                    rows=self.indices[start:end],
+                    col=i
+                )
+            leaf.prior = n_samples / data.shape[0]
+            leaf.samples = n_samples
+            if self._keep_samples:
+                leaf.s_indices = self.indices[start:end]
+
+            self.leaves[leaf.idx] = leaf
 
         JPT.logger.debug('Created', str(node))
 
@@ -1911,7 +1973,10 @@ class JPT:
         """
         :return: a new copy of this jpt where all references are the original tree are cut.
         """
-        return JPT.from_json(self.to_json())
+        return JPT.from_json(
+            self.to_json(),
+            variables=self.variables
+        )
 
     def conditional_jpt(
             self,

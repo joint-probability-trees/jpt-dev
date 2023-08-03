@@ -17,7 +17,7 @@ ctypedef np.int64_t SIZE_t               # Type for indices and counters
 ctypedef np.npy_int32 INT32_t            # Signed 32 bit integer
 ctypedef np.npy_uint32 UINT32_t          # Unsigned 32 bit integer
 
-cdef DTYPE_t nan
+cdef DTYPE_t nan, ninf, pinf
 
 # ----------------------------------------------------------------------------------------------------------------------
 

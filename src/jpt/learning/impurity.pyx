@@ -15,7 +15,8 @@ from libc.math cimport isinf, isnan
 
 from dnutils import mapstr
 
-from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort
+from libc.stdio cimport printf
+from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort, ninf
 
 # variables declaring that at num_samples[0] are the number of samples left of the split and vice versa
 cdef int LEFT = 0
@@ -56,10 +57,15 @@ cdef inline DTYPE_t compute_var_improvements(
         # if this was not skipped, nans would pollute the sum.
         if skip_idx == i or variances_old[i] == 0:
             continue
-        variance_impr = variance_impr * <DTYPE_t> divisor + ((variances_old[i] -
-            (variances_left[i] * <DTYPE_t> samples_left + variances_right[i] * <DTYPE_t> samples_right) / n_samples
-        ) / variances_old[i]) / <DTYPE_t> (divisor + 1)
+
+        variance_impr = variance_impr * <DTYPE_t> divisor + (
+                (
+                    variances_old[i] -
+                    (variances_left[i] * <DTYPE_t> samples_left + variances_right[i] * <DTYPE_t> samples_right) / n_samples
+                ) / variances_old[i]
+        ) / <DTYPE_t> (divisor + 1)
         divisor += 1
+
     return variance_impr
 
 
@@ -173,6 +179,9 @@ cdef inline void variances(
     var = \sum_i^n (y_i - y_bar) ** 2
     = (\sum_i^n y_i ** 2) - n_samples * y_bar ** 2
 
+    We do NOT use the unbiased variance calculation, because it does not coincide with the mean squared error which
+    is the actual optimization target here. 
+
     See also: 'https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/sklearn/
                tree/_criterion.pyx#L683'
     :param sq_sums: The square sums 
@@ -181,7 +190,7 @@ cdef inline void variances(
     :param result: The array to write into (result will be overwritten)
     """
     # prevent nan values due to division by zero in variance calculation of one-example splits
-    if n_samples == 1:
+    if n_samples <= 1:
         result[:] = 0
         return
 
@@ -189,7 +198,7 @@ cdef inline void variances(
     cdef SIZE_t i
     for i in range(sums.shape[0]):
         result[i] -= sums[i] * sums[i] / <DTYPE_t> n_samples
-        result[i] /= n_samples - 1
+        result[i] /= <DTYPE_t> n_samples
 
 
 cpdef inline void _variances(
@@ -538,14 +547,13 @@ cdef class Impurity:
         self.symbolic_dependency_matrix = self.numeric_dependency_matrix.copy()
 
         for idx_var in self.features:  # For all feature variables...
-
             # ...get the indices of the dependent numeric variables...
             indices = np.array([
                 i_num for i_num, i_var in enumerate(self.numeric_vars) if i_var in dependency_indices[idx_var]
             ], dtype=np.int64)
-
             if indices.shape[0]:  # ...and store them in the numeric dependency matrix
                 self.numeric_dependency_matrix[idx_var, :indices.shape[0]] = indices
+
             # Get the indices of the dependent numeric variables
             indices = np.array([
                 i_sym for i_sym, i_var in enumerate(self.symbolic_vars) if i_var in dependency_indices[idx_var]
@@ -782,7 +790,7 @@ cdef class Impurity:
         self.index_buffer[:n_samples] = self.indices[self.start:self.end]
 
         # reset best impurity improvement
-        self.max_impurity_improvement = 0
+        self.max_impurity_improvement = ninf
 
         # for every feature
         for variable in self.features:
@@ -823,7 +831,7 @@ cdef class Impurity:
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
 
         # if max impurity improvement has been updated at least once and the best variable is symbolic
-        if self.max_impurity_improvement and self.best_var in self.symbolic_features:
+        if not isinf(self.max_impurity_improvement) and self.best_var in self.symbolic_features:
 
             # Rearrange indices to contiguous subsets
             self.move_best_values_to_front(
@@ -836,7 +844,12 @@ cdef class Impurity:
         # return the best improvement value
         return self.max_impurity_improvement
 
-    cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos) nogil:
+    cdef void move_best_values_to_front(
+            self,
+            SIZE_t var_idx,
+            DTYPE_t value,
+            SIZE_t* split_pos
+    ) nogil:
         """
         Move all indices of data points with the specified value from ``split_pos`` on to the
         front of the index array.
@@ -857,14 +870,16 @@ cdef class Impurity:
             self.feat[j] = v
         sort(&self.feat[0], &self.indices[self.start], n_samples)
 
-    cdef DTYPE_t evaluate_variable(Impurity self,
-                                   int var_idx,
-                                   int symbolic,
-                                   int symbolic_idx,
-                                   DTYPE_t[::1] variances_total,
-                                   DTYPE_t gini_total,
-                                   SIZE_t[::1] index_buffer,
-                                   SIZE_t* best_split_pos) nogil except -1:
+    cdef DTYPE_t evaluate_variable(
+            Impurity self,
+            int var_idx,
+            int symbolic,
+            int symbolic_idx,
+            DTYPE_t[::1] variances_total,
+            DTYPE_t gini_total,
+            SIZE_t[::1] index_buffer,
+            SIZE_t* best_split_pos
+    ) nogil except -1:
         """
         Evaluate a variable w. r. t. its possible slit. Calculate the best split on this variable
         and the corresponding impurity.
@@ -886,7 +901,7 @@ cdef class Impurity:
         cdef DTYPE_t[::1] f = self.feat
 
         # initialize max impurity improvement of this variable
-        cdef DTYPE_t max_impurity_improvement = 0
+        cdef DTYPE_t max_impurity_improvement = ninf
 
         # copy start and end index
         cdef SIZE_t start = self.start, end = self.end
@@ -905,17 +920,14 @@ cdef class Impurity:
         # description if this variable is numeric
         cdef int numeric = not symbolic
 
-        # if this variable only contains the same values return 0
+        # if this variable only contains the same values return ninf
+        # if there was a NaN or infinity, return ninf
         cdef int is_constant = self.col_is_constant(start, end, var_idx)
-        if is_constant == 1:
-            return 0
-
-        # if there was a NaN or infinity, return -1
-        elif is_constant == -1:
-            return -1
+        if is_constant == 1 or is_constant == -1:
+            return ninf
 
         # Prepare the numeric stats
-        if self.has_numeric_vars():
+        if self.has_numeric_vars(var_idx):
             self.sums_left[...] = 0
             self.sums_right[...] = self.sums_total
             self.sq_sums_left[...] = 0
@@ -935,18 +947,17 @@ cdef class Impurity:
         # initialize impurity improvement
         cdef DTYPE_t impurity_improvement = 0.
 
-        # initialize current impurity improvement
-        cdef DTYPE_t tmp_impurity_impr
-
         cdef SIZE_t VAL_IDX
         cdef SIZE_t sample_idx
         cdef int last_iter
         cdef DTYPE_t min_samples
-        cdef SIZE_t num_var_idx
+        cdef SIZE_t num_feat_idx = -1
+
+        # check if currently evaluated variable is numeric target variable
         if self.has_numeric_vars(var_idx):
             for i in range(self.n_num_vars):
                 if self.numeric_vars[i] == var_idx:
-                    num_var_idx = i
+                    num_feat_idx = i
                     break
 
         cdef int subsequent_equal
@@ -961,27 +972,19 @@ cdef class Impurity:
             last_iter = (symbolic and split_pos == n_samples - 1
                          or numeric and split_pos == n_samples - 2)
 
-            # if this variable is numeric
-            if numeric:
-                # track number of samples left and right of the split
-                self.num_samples[LEFT] += 1
-                self.num_samples[RIGHT] = <SIZE_t> n_samples - split_pos - 1
-                samples_left = self.num_samples[LEFT]
-                samples_right = self.num_samples[RIGHT]
+            # track number of samples left and right of the split
+            self.num_samples[LEFT] += 1
+            self.num_samples[RIGHT] = n_samples - self.num_samples[LEFT]
+            samples_left = self.num_samples[LEFT]
+            samples_right = n_samples - samples_left
 
             # if it is symbolic
-            else:
+            if symbolic:
                 # get the symbolic value
                 VAL_IDX = <SIZE_t> data[sample_idx, var_idx]
 
-                # track number of samples left and right of the split
-                self.num_samples[LEFT] += 1
-                self.num_samples[RIGHT] = n_samples - self.num_samples[LEFT]
-                samples_left = self.num_samples[LEFT]
-                samples_right = n_samples - samples_left
-
             # Compute the numeric impurity (variance)
-            if self.has_numeric_vars():
+            if self.has_numeric_vars(var_idx):
                 self.update_numeric_stats_with_dependencies(
                     sample_idx,
                     self.numeric_dependency_matrix[var_idx, :]
@@ -1001,57 +1004,38 @@ cdef class Impurity:
                 if subsequent_equal:
                     if numeric and last_iter:
                         break
-                    continue
+                    if not last_iter:
+                        continue
 
             # reset impurity improvement
             impurity_improvement = 0.
 
             # if numeric targets exist
             if self.has_numeric_vars(var_idx):
-                # if there is more than one sample on the left side if the split
-                if samples_left > 1:
-                    # calculate variance of left split
-                    variances(
-                        self.sq_sums_left,
-                        self.sums_left,
-                        samples_left,
-                        result=self.variances_left
-                    )
-                else:
-                    # reset variances left of the split
-                    self.variances_left[:] = 0
+                # calculate variance of left split
+                variances(
+                    self.sq_sums_left,
+                    self.sums_left,
+                    samples_left,
+                    result=self.variances_left
+                )
+                # calculate variance of right split
+                variances(
+                    self.sq_sums_right,
+                    self.sums_right,
+                    samples_right,
+                    result=self.variances_right
+                )
 
-                # if the variable considered for the split is numeric
-                if numeric:
-
-                    # if there is more than one sample on the right side if the split
-                    if samples_right > 1:
-                        # calculate variance of right split
-                        variances(
-                            self.sq_sums_right,
-                            self.sums_right,
-                            samples_right,
-                            result=self.variances_right
-                        )
-                    else:
-                        # if there is only one sample reset the variances
-                        self.variances_right[:] = 0
-
-                    # compute the variance improvement for this split
-                    impurity_improvement += compute_var_improvements(
-                        variances_total,
-                        self.variances_left,
-                        self.variances_right,
-                        samples_left,
-                        samples_right,
-                        num_var_idx
-                    ) * self.w_numeric
-
-                # if the variable is symbolic
-                else:
-                    impurity_improvement += (mean(self.variances_total)
-                                             - mean(self.variances_left)) / mean(self.variances_total)
-                    impurity_improvement *= <DTYPE_t> samples_left / <DTYPE_t> n_samples * self.w_numeric
+                # compute the variance improvement for this split
+                impurity_improvement += compute_var_improvements(
+                    variances_total,
+                    self.variances_left,
+                    self.variances_right,
+                    samples_left,
+                    samples_right,
+                    num_feat_idx
+                ) * self.w_numeric
 
             # if symbolic targets exist
             if self.has_symbolic_vars():
@@ -1081,13 +1065,13 @@ cdef class Impurity:
                     self.num_samples[...] = 0
 
                 # if numeric targets exist
-                if self.has_numeric_vars():
+                if self.has_numeric_vars(var_idx):
                     self.sums_left[...] = 0
                     self.sq_sums_left[...] = 0
 
             # check if this split is legal, according to self.min_samples_leaf
             if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
-                impurity_improvement = 0.
+                impurity_improvement = ninf
 
             # check if this split is improving the impurity by the minimal required amount
             if impurity_improvement > max_impurity_improvement:
