@@ -6,6 +6,7 @@ import math
 import numbers
 import os
 import pickle
+import tempfile
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from itertools import zip_longest
 from operator import attrgetter
@@ -1323,44 +1324,24 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
         n_samples = end - start
-        split_var_idx = split_pos = -1
+        split_pos = -1
         split_var = None
         impurity = self.impurity
 
         max_gain = impurity.compute_best_split(start, end)
-        if max_gain < 0:
-            raise ValueError('Something went wrong!')
 
-        self.logger.debug('Data range: %d-%d,' % (start, end),
-                          'split var:', split_var,
-                          ', split_pos:', split_pos,
-                          ', gain:', max_gain)
+        self.logger.debug(
+            'Data range: %d-%d,' % (start, end),
+            'split var:', split_var,
+            ', split_pos:', split_pos,
+            ', gain:', max_gain
+        )
 
-        if max_gain:
+        if max_gain >= min_impurity_improvement and depth < self.max_depth:  # Create a decision node ------------------
             split_pos = impurity.best_split_pos
             split_var_idx = impurity.best_var
             split_var = self.variables[split_var_idx]
 
-        if max_gain <= min_impurity_improvement or depth >= self.max_depth:  # Create a leaf node ----------------------
-            leaf = node = Leaf(idx=len(self.allnodes), parent=parent)
-
-            if parent is not None:
-                parent.set_child(child_idx, leaf)
-
-            for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.distribution()._fit(
-                    data=data,
-                    rows=self.indices[start:end],
-                    col=i
-                )
-            leaf.prior = n_samples / data.shape[0]
-            leaf.samples = n_samples
-            if self._keep_samples:
-                leaf.s_indices = self.indices[start:end]
-
-            self.leaves[leaf.idx] = leaf
-
-        else:  # Create a decision node --------------------------------------------------------------------------------
             node = DecisionNode(
                 idx=len(self.allnodes),
                 variable=split_var,
@@ -1398,6 +1379,25 @@ class JPT:
             self.c45queue.append((data, start + split_pos + 1, end, node, 1, depth + 1))
 
             node.splits = splits
+
+        else:  # Create a leaf node ------------------------------------------------------------------------------------
+            leaf = node = Leaf(idx=len(self.allnodes), parent=parent)
+
+            if parent is not None:
+                parent.set_child(child_idx, leaf)
+
+            for i, v in enumerate(self.variables):
+                leaf.distributions[v] = v.distribution()._fit(
+                    data=data,
+                    rows=self.indices[start:end],
+                    col=i
+                )
+            leaf.prior = n_samples / data.shape[0]
+            leaf.samples = n_samples
+            if self._keep_samples:
+                leaf.s_indices = self.indices[start:end]
+
+            self.leaves[leaf.idx] = leaf
 
         JPT.logger.debug('Created', str(node))
 
