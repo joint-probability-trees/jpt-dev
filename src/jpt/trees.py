@@ -829,9 +829,25 @@ class JPT:
         }
 
     @staticmethod
-    def from_json(data: Dict[str, Any]) -> 'JPT':
-        """Construct a tree from a json dict."""
-        variables = OrderedDict([(d['name'], Variable.from_json(d)) for d in data['variables']])
+    def from_json(
+            data: Dict[str, Any],
+            variables: Optional[Iterable[Variable]] = None
+    ) -> 'JPT':
+        """
+        Construct a tree from a json dict.
+
+        :data:          The JSON dictionary holding the serialized JPT data.
+        :variables:     (optional) An iterable holding the already de-serialized variables
+                        the JPT shall be constructed with.
+        """
+        if variables is not None:
+            variables = OrderedDict(
+                [(v.name, v) for v in variables]
+            )
+        else:
+            variables = OrderedDict(
+                [(d['name'], Variable.from_json(d)) for d in data['variables']]
+            )
         jpt = JPT(
             variables=list(variables.values()),
             targets=(
@@ -1909,7 +1925,10 @@ class JPT:
         """
         :return: a new copy of this jpt where all references are the original tree are cut.
         """
-        return JPT.from_json(self.to_json())
+        return JPT.from_json(
+            self.to_json(),
+            variables=self.variables
+        )
 
     def conditional_jpt(
             self,
