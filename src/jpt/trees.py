@@ -995,8 +995,6 @@ class JPT:
                 evidence_val = evidence_[var]
                 if var in leaf.path:  # var.numeric and
                     evidence_val = evidence_val.intersection(leaf.path[var])
-                # elif (var.symbolic or var.integer) and var in leaf.path:
-                #     continue
                 p_m *= leaf.distributions[var]._p(evidence_val)
                 likelihoods.append((var, evidence_val, leaf.distributions[var]._p(evidence_val)))
 
@@ -1009,19 +1007,19 @@ class JPT:
                     query_val = query_[var]
                     if var.numeric and var in leaf.path:
                         query_val = query_val.intersection(leaf.path[var])
-                    elif (var.symbolic or var.integer) and var in leaf.path:
-                        continue
                     p_m *= leaf.distributions[var]._p(query_val)
                 p_q += p_m
 
 
         if p_e == 0:
             if fail_on_unsatisfiability:
-                raise ValueError('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                raise ValueError(
+                    'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
+                )
             else:
                 return None
         else:
-            return p_q/p_e
+            return p_q / p_e
 
     # noinspection PyProtectedMember
     def posterior(self,
