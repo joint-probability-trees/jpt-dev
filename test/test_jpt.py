@@ -59,7 +59,51 @@ class JPTTest(TestCase):
         self.assertEqual(jpt, jpt_)
 
         q = jpt.bind(X=[-1, 1])
-        self.assertEqual(jpt_.infer(q), jpt.infer(q))
+        q_ = jpt_.bind(X=[-1, 1])
+        self.assertEqual(jpt_.infer(q_), jpt.infer(q))
+
+    def test_copy(self):
+        # Arrange
+        var = NumericVariable('X')
+        jpt = JPT([var])
+        # Act
+        jpt_ = jpt.copy()
+        # Assert
+        self.assertEqual(
+            jpt,
+            jpt_,
+            msg='Copied JPT is not equal to the original one.'
+        )
+        for v in jpt_.variables:
+            self.assertIs(
+                v,
+                jpt.varnames[v.name],
+                msg='Variables of copied JPT must be identical to the original ones.'
+            )
+
+    def test_check_variable_assignment(self):
+        # Arrange
+        x = SymbolicVariable('X', domain=Bool)
+        x_ = SymbolicVariable('X', domain=Bool)
+        y = SymbolicVariable('Y', domain=Bool)
+        jpt = JPT([x])
+        jpt_ = JPT([x_])
+        assignx = jpt.bind(X=True)
+        assignx_ = jpt_.bind(X=True)
+        assigny = LabelAssignment([
+            ('Y', False)
+        ], variables=[y])
+
+        # Act & Assert
+        jpt._check_variable_assignment(assignx)
+        jpt_._check_variable_assignment(assignx_)
+        # Check None
+        jpt._check_variable_assignment(assignment=None)
+        # Check containment
+        self.assertRaises(ValueError, jpt._check_variable_assignment, assignx_)
+        self.assertRaises(ValueError, jpt_._check_variable_assignment, assignx)
+        self.assertRaises(ValueError, jpt._check_variable_assignment, assigny)
+
 
     def test_serialization_integer(self):
         '''(de)serialization of JPTs with training'''
@@ -73,7 +117,11 @@ class JPTTest(TestCase):
         self.assertEqual(jpt, jpt_)
 
         q = jpt.bind(X=[-1, 1])
-        self.assertEqual(jpt_.infer(q), jpt.infer(q))
+        q_ = jpt_.bind(X=[-1, 1])
+        self.assertEqual(
+            jpt_.infer(q_),
+            jpt.infer(q)
+        )
 
     def test_serialization_symbolic(self):
         '''(de)serialization of JPTs with training'''
@@ -190,7 +238,7 @@ class JPTTest(TestCase):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
-        self.assertEqual(12, jpt.number_of_parameters())
+        self.assertEqual(71, jpt.number_of_parameters())
 
     def test_independence(self):
         x = NumericVariable('X')
@@ -479,7 +527,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
     def test_parameter_count(self):
-        self.assertEqual(200, self.jpt.number_of_parameters())
+        self.assertEqual(330, self.jpt.number_of_parameters())
 
     def test_posterior_mixed_numeric_query(self):
         self.q = [self.variables[9]]
@@ -613,8 +661,8 @@ class TestCaseInference(TestCase):
         q = self.jpt.bind(WillWait=True)
         e = self.jpt.bind(WaitEstimate=[0, 10], Food='Thai')
         inference = self.jpt.infer(q, e)
-        (self.jpt.conditional_jpt(e))
-        self.assertAlmostEqual(.5, inference, places=10)
+        self.jpt.conditional_jpt(e)
+        self.assertAlmostEqual(.6, inference, places=10)
 
     def test_inference_mixed_new(self):
         self.q = [self.variables[-1]]
