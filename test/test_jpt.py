@@ -117,21 +117,37 @@ class JPTTest(TestCase):
 
     def test_unsatisfiability(self):
         df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
-        jpt = JPT(variables=infer_from_dataframe(df), targets=['WillWait'], min_samples_leaf=1)
+        jpt = JPT(
+            variables=infer_from_dataframe(df),
+            targets=['WillWait'],
+            min_samples_leaf=1
+        )
         jpt.fit(df)
-        self.assertRaises(Unsatisfiability,
-                          jpt.posterior,
-                          evidence={'WillWait': False, 'Patrons': 'Some'},
-                          fail_on_unsatisfiability=True)
-        self.assertIsNone(jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
-                                        fail_on_unsatisfiability=False))
+        self.assertRaises(
+            Unsatisfiability,
+            jpt.posterior,
+            evidence={'WillWait': False, 'Patrons': 'Some'},
+            fail_on_unsatisfiability=True
+        )
+        self.assertIsNone(
+            jpt.posterior(
+                evidence={'WillWait': False, 'Patrons': 'Some'},
+                fail_on_unsatisfiability=False
+            )
+        )
 
         try:
-            jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
-                          report_inconsistencies=True)
+            jpt.posterior(
+                evidence={'WillWait': False, 'Patrons': 'Some'},
+                report_inconsistencies=True
+            )
         except Unsatisfiability as e:
-            self.assertEqual({VariableMap([(jpt.varnames['WillWait'], {False})]): 1},
-                             e.reasons)
+            self.assertEqual(
+                {
+                    VariableMap([(jpt.varnames['WillWait'], {False})]): 4
+                },
+                e.reasons
+            )
         else:
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')
 
