@@ -317,7 +317,7 @@ class VariancesTest(TestCase):
         _variances(sq_sums, sums, rows.shape[0], variances)
         # Assert
         self.assertEqual(
-            list(np.var(self.data, axis=0, ddof=1)),
+            list(np.var(self.data, axis=0, ddof=0)),
             list(np.asarray(variances))
         )
 
