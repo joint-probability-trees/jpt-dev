@@ -195,10 +195,10 @@ class JPTTest(TestCase):
             )
         except Unsatisfiability as e:
             self.assertEqual(
-                {
-                    VariableMap([(jpt.varnames['WillWait'], {False})]): 4
-                },
-                e.reasons
+                [
+                    (4, VariableMap([(jpt.varnames['WillWait'], {False})]))
+                ],
+                list(e.reasons)
             )
         else:
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')

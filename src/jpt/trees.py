@@ -1133,8 +1133,10 @@ class JPT:
             weights = normalized(weights)
         except ValueError:
             if fail_on_unsatisfiability:
-                raise Unsatisfiability('Evidence %s is unsatisfiable.' % format_path(evidence),
-                                       reasons=inconsistencies)
+                raise Unsatisfiability(
+                    'Evidence %s is unsatisfiable.' % format_path(evidence),
+                    reasons=inconsistencies
+                )
             return None
 
 
