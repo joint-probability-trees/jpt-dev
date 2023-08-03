@@ -934,6 +934,8 @@ class JPT:
         if any([isinstance(val, set) and len(val) > 1 for val in values.values()]):
             raise ValueError('PDF not defined on sets of size >1')
 
+        self._check_variable_assignment(values)
+
         values_scalars = ValueAssignment(variables=values._variables.values())
         values_sets = ValueAssignment(variables=values._variables.values())
         for var, val in values.items():
@@ -958,10 +960,12 @@ class JPT:
                                       for var, value in values_scalars.items()) if values_scalars else 1)
         return pdf
 
-    def infer(self,
-              query: Union[Dict[Union[Variable, str], Any], VariableAssignment],
-              evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
-              fail_on_unsatisfiability: bool = True) -> float or None:
+    def infer(
+            self,
+            query: Union[Dict[Union[Variable, str], Any], VariableAssignment],
+            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> float or None:
         r"""For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -994,12 +998,19 @@ class JPT:
             query_ = query.value_assignment()
         else:
             query_ = query
-        if evidence is None or isinstance(evidence, dict):
+
+        self._check_variable_assignment(query_)
+
+        if evidence is None:
+            evidence = {}
+        if isinstance(evidence, dict):
             evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
             evidence_ = evidence
+
+        self._check_variable_assignment(evidence_)
 
         p_q = 0.
         p_e = 0.
@@ -1026,7 +1037,6 @@ class JPT:
                     p_m *= leaf.distributions[var]._p(query_val)
                 p_q += p_m
 
-
         if p_e == 0:
             if fail_on_unsatisfiability:
                 raise ValueError(
@@ -1038,11 +1048,13 @@ class JPT:
             return p_q / p_e
 
     # noinspection PyProtectedMember
-    def posterior(self,
-                  variables: List[Variable or str] = None,
-                  evidence: Dict[Union[Variable, str], Any] or VariableAssignment = None,
-                  fail_on_unsatisfiability: bool = True,
-                  report_inconsistencies: bool = False) -> VariableMap or None:
+    def posterior(
+            self,
+            variables: List[Variable or str] = None,
+            evidence: Dict[Union[Variable, str], Any] or VariableAssignment = None,
+            fail_on_unsatisfiability: bool = True,
+            report_inconsistencies: bool = False
+    ) -> VariableMap or None:
         """
         Compute the posterior distribution of every variable in ``variables``. The result contains independent
         distributions. Be aware that they might not actually be independent.
@@ -1056,12 +1068,16 @@ class JPT:
                                          caused the inconsistency.
         :return: jpt.trees.PosteriorResult containing distributions, candidates and weights
         """
+        if evidence is None:
+            evidence = {}
         if isinstance(evidence, dict):
             evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
-            evidence_ = ifnone(evidence, {})
+            evidence_ = evidence
+
+        self._check_variable_assignment(evidence_)
 
         variables = ifnone(variables, self.variables)
         result = VariableMap()
@@ -1132,10 +1148,12 @@ class JPT:
 
         return result
 
-    def expectation(self,
-                    variables: Iterable[Variable] = None,
-                    evidence: VariableAssignment = None,
-                    fail_on_unsatisfiability: bool = True) -> VariableMap or None:
+    def expectation(
+            self,
+            variables: Iterable[Variable] = None,
+            evidence: VariableAssignment = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> VariableMap or None:
         """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -1147,11 +1165,15 @@ class JPT:
         :return: VariableMap
         """
         if evidence is None:
-            evidence = self.bind()
+            evidence = {}
+        if isinstance(evidence, dict):
+            evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
             evidence_ = evidence
+
+        self._check_variable_assignment(evidence_)
 
         variables = ifnot(
             [v if isinstance(v, Variable) else self.varnames[v] for v in ifnone(variables, self.variables)],
@@ -1175,8 +1197,12 @@ class JPT:
             final[var] = dist.expectation()
         return final
 
-    def mpe(self, evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
-            fail_on_unsatisfiability: bool = True) -> (List[LabelAssignment], float) or None:
+    def mpe(
+            self,
+            evidence: Union[Dict[Union[Variable, str], Any],
+            VariableAssignment] = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> (List[LabelAssignment], float) or None:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
         :param evidence: The evidence that is applied to the tree
@@ -1185,10 +1211,16 @@ class JPT:
         :return: List of LabelAssignments that describes all maxima of the tree given the evidence.
             Additionally, a float describing the likelihood of all solutions is returned.
         """
+        if evidence is None:
+            evidence = {}
+        if isinstance(evidence, dict):
+            evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
             evidence_ = evidence.value_assignment()
         else:
             evidence_ = evidence
+
+        self._check_variable_assignment(evidence_)
 
         # apply the conditions given
         conditional_jpt = self.conditional_jpt(evidence_, fail_on_unsatisfiability)
@@ -1295,6 +1327,22 @@ class JPT:
                 query_[var] = {v for v in arg}
 
         return query_
+
+    def _check_variable_assignment(self, assignment: Optional[VariableAssignment]):
+        '''
+        Check the variable assignment for compatibility with the
+        variables of this JPT.
+        '''
+        if assignment is None:
+            return
+        for var, _ in assignment.items():
+            if var.name not in self.varnames or id(var) != id(self.varnames[var.name]):
+                raise ValueError(
+                    'Variable %s undefined in this JPT. Note that variable '
+                    'instances in `VariableAssignment` and `JPT` must be identical. '
+                    'Use `JPT.bind()` to ensure compatible variable assignments.' %
+                    repr(var)
+                )
 
     def apply(self, query: VariableAssignment) -> Iterator[Leaf]:
         """
