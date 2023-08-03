@@ -523,7 +523,6 @@ cdef class Impurity:
 
         # calculate percentage of numeric targets
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
-        print('w_numeric', self.w_numeric)
 
         # construct the dependency structure
         cdef dict dependency_indices = {}
@@ -845,7 +844,12 @@ cdef class Impurity:
         # return the best improvement value
         return self.max_impurity_improvement
 
-    cdef void move_best_values_to_front(self, SIZE_t var_idx, DTYPE_t value, SIZE_t* split_pos) nogil:
+    cdef void move_best_values_to_front(
+            self,
+            SIZE_t var_idx,
+            DTYPE_t value,
+            SIZE_t* split_pos
+    ) nogil:
         """
         Move all indices of data points with the specified value from ``split_pos`` on to the
         front of the index array.
@@ -866,14 +870,16 @@ cdef class Impurity:
             self.feat[j] = v
         sort(&self.feat[0], &self.indices[self.start], n_samples)
 
-    cdef DTYPE_t evaluate_variable(Impurity self,
-                                   int var_idx,
-                                   int symbolic,
-                                   int symbolic_idx,
-                                   DTYPE_t[::1] variances_total,
-                                   DTYPE_t gini_total,
-                                   SIZE_t[::1] index_buffer,
-                                   SIZE_t* best_split_pos):  # nogil except -1:
+    cdef DTYPE_t evaluate_variable(
+            Impurity self,
+            int var_idx,
+            int symbolic,
+            int symbolic_idx,
+            DTYPE_t[::1] variances_total,
+            DTYPE_t gini_total,
+            SIZE_t[::1] index_buffer,
+            SIZE_t* best_split_pos
+    ) nogil except -1:
         """
         Evaluate a variable w. r. t. its possible slit. Calculate the best split on this variable
         and the corresponding impurity.
@@ -966,14 +972,6 @@ cdef class Impurity:
             last_iter = (symbolic and split_pos == n_samples - 1
                          or numeric and split_pos == n_samples - 2)
 
-            # if this variable is numeric
-            # if numeric:
-            #     # track number of samples left and right of the split
-            #     self.num_samples[LEFT] += 1
-            #     self.num_samples[RIGHT] = <SIZE_t> n_samples - split_pos - 1
-            #     samples_left = self.num_samples[LEFT]
-            #     samples_right = self.num_samples[RIGHT]
-
             # track number of samples left and right of the split
             self.num_samples[LEFT] += 1
             self.num_samples[RIGHT] = n_samples - self.num_samples[LEFT]
@@ -1038,15 +1036,6 @@ cdef class Impurity:
                     samples_right,
                     num_feat_idx
                 ) * self.w_numeric
-
-
-                    # if the variable considered for the split is numeric
-                # if numeric:
-                # if the variable is symbolic
-                # else:
-                #     impurity_improvement += (
-                #         mean(self.variances_total) - mean(self.variances_left)) / mean(self.variances_total)
-                #     impurity_improvement *= <DTYPE_t> samples_left / <DTYPE_t> n_samples * self.w_numeric
 
             # if symbolic targets exist
             if self.has_symbolic_vars():
