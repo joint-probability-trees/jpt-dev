@@ -1795,8 +1795,8 @@ class JPT:
     def plot(self,
              title: str = "unnamed",
              filename: str or None = None,
-             directory: str = '/tmp',
-             plotvars: List[Variable] = [],
+             directory: str = None,
+             plotvars: List[Variable] = None,
              view: bool = True,
              max_symb_values: int = 10,
              nodefill=None,
@@ -1817,11 +1817,17 @@ class JPT:
         :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
         probability (descending); default is False
         """
+        if directory is None:
+            directory = tempfile.mkdtemp(prefix=f'{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")}-jpt_{title}-', dir=tempfile.gettempdir())
+            # print(f'Created directory {directory}')
+        else:
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
+        if plotvars is None:
+            plotvars = []
 
         plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
-
-        if not os.path.exists(directory):
-            os.makedirs(directory)
 
         dot = Digraph(
             format='svg',
