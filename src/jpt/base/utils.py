@@ -469,8 +469,11 @@ class Heap:
     def __len__(self):
         return len(self._data)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int):
         return self._data[item][2]
+
+    def __delitem__(self, item: int):
+        del self._data[item]
 
     def __bool__(self):
         return bool(self._data)
@@ -483,3 +486,12 @@ class Heap:
 
     def __reversed__(self):
         return Heap.Iterator(self, reverse=True)
+
+    def index(self, item: Any) -> int:
+        for idx, (_, _, i) in enumerate(self._data):
+            if i == item:
+                return idx
+        else:
+            raise ValueError(
+                'Item %s not found.' % item
+            )
