@@ -5,6 +5,8 @@ from ddt import ddt, data, unpack
 from dnutils.tools import ifstr
 
 from jpt.base.constants import eps
+from jpt.distributions import Numeric
+from utils import gaussian_numeric
 
 try:
     from jpt.base.functions import __module__
@@ -19,7 +21,8 @@ finally:
         ConstantFunction,
         Undefined,
         Function,
-        PiecewiseFunction
+        PiecewiseFunction,
+        PLFApproximator
     )
     from jpt.base.intervals import ContinuousSet, EMPTY, R, EXC, INC, RealSet
 
@@ -888,8 +891,27 @@ class PLFTest(TestCase):
         self.assertEqual(f_argmax, argmax)
         self.assertEqual(f_max, max_)
 
-    def test_approx(self):
+    def test_approximate(self):
         plf = PiecewiseFunction.zero().overwrite({
             '[0,1[': .1
         })
         print(plf.approximate(.1, ConstantFunction))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class PLFApproximatorTest(TestCase):
+
+    def test_approximation(self):
+        # Arrange
+        plf: PiecewiseFunction = gaussian_numeric().cdf
+        approximator = PLFApproximator(
+            plf
+        )
+        # Act
+        approx = approximator.run(k=10)
+
+        # Assert
+        print(approx)
+
+

@@ -22,7 +22,6 @@ from dnutils.tools import ifstr, first
 from scipy import stats
 from scipy.stats import norm
 
-from jpt.base.functions import PLFApproximator
 from .constants import eps
 from .intervals cimport ContinuousSet, RealSet
 from .intervals import R, EMPTY, EXC, INC, NumberSet, ContinuousSet
@@ -327,7 +326,7 @@ cdef class ConstantFunction(Function):
             )
 
     cpdef Function mul(self, Function f):
-        cpdef DTYPE_t v = np.nan
+        cdef DTYPE_t v = np.nan
         if isinstance(f, ConstantFunction):
             if not self.value or not f.value:
                 v = 0
@@ -1887,7 +1886,7 @@ class PLFApproximator:
         # Keep replacing the contiguous segments until we
         # hit one of the abortion criteria
         while queue:
-            replacement = heapq.heappop(queue)
+            replacement = queue.pop(0)
             # Abortion: either the maximal number of segments is hit
             # or we exceed the mse_max parameter
             if (
