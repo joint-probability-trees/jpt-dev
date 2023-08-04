@@ -925,9 +925,18 @@ class Numeric(Distribution):
     def cumsum(
             cls,
             distributions: Iterable['Numeric'],
-            epsilon: numbers.Real = .0,
-            k: numbers.Integral = None
+            error_max: float = np.inf,
+            n_segments: int = None
     ) -> Iterable['Numeric']:
+        '''
+        Generator yielding the distributions that correspond to the cumulative
+        sums of the passed distributions.
+
+        :param distributions:
+        :param error_max:
+        :param n_segments:
+        :return:
+        '''
         cumsum = None
         for d in distributions:
             if cumsum is None:
@@ -937,8 +946,8 @@ class Numeric(Distribution):
                 cumsum = cls().set(
                     params=QuantileDistribution.from_cdf(
                         cumsum.cdf.approximate(
-                            error_max=epsilon,
-                            k=k,
+                            error_max=error_max,
+                            n_segments=n_segments,
                             replace_by=LinearFunction
                         )
                     )
@@ -976,16 +985,20 @@ class Numeric(Distribution):
     def __add__(self, other: 'Numeric') -> 'Numeric':
         result = type(self)(**self.settings)
         result._quantile = QuantileDistribution.from_pdf(
-            self.pdf.convolution(other.pdf).rectify()
+            self.pdf.convolution(other.pdf).rectify().simplify()
         )
         return result
 
-    def approx(self, epsilon=None, k=None):
+    def approximate(
+            self,
+            error_max: float = None,
+            n_segments: int = None
+    ) -> 'Numeric':
         return type(self)(**self.settings).set(
             QuantileDistribution.from_pdf(
                 self.pdf.approximate(
-                    error_max=epsilon,
-                    k=k,
+                    error_max=error_max,
+                    n_segments=n_segments,
                     replace_by=ConstantFunction
                 )
             )
@@ -997,24 +1010,6 @@ class Numeric(Distribution):
             d2: 'Numeric',
     ) -> float:
         return PiecewiseFunction.jaccard_similarity(d1.pdf, d2.pdf)
-
-    def __add__(self, other: 'Numeric') -> 'Numeric':
-        result = type(self)(**self.settings)
-        result._quantile = QuantileDistribution.from_pdf(
-            self.pdf.convolution(other.pdf).rectify()
-        )
-        return result
-
-    def approx(self, epsilon=None, k=None):
-        return type(self)(**self.settings).set(
-            QuantileDistribution.from_pdf(
-                self.pdf.approximate(
-                    error_max=epsilon,
-                    k=k,
-                    replace_by=ConstantFunction
-                )
-            )
-        )
 
     def plot(self, title=None, fname=None, xlabel='value', directory='/tmp', pdf=False, view=False, **kwargs):
         '''

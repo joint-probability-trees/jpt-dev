@@ -10,6 +10,7 @@ import scipy.stats
 from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
+from utils import gaussian_numeric, uniform_numeric
 
 try:
     from jpt.base.functions import __module__
@@ -349,7 +350,7 @@ class NumericDistributionTest(TestCase):
         samples = p.sample(100)
         self.assertTrue(all([pdf.eval(v) > 0 for v in samples]))
 
-    def test_moment(self):
+    def test_moments(self):
         np.random.seed(69)
         data = np.random.normal(0, 1, 100000).reshape(-1, 1)
         distribution = Numeric()
@@ -423,22 +424,24 @@ class NumericDistributionTest(TestCase):
 
     def test_add(self):
         # Arrange
-        x = Numeric().fit(Gaussian(-1, .5).sample(10000).reshape(-1, 1))
-        y = Numeric().fit(Gaussian(1, .5).sample(10000).reshape(-1, 1))
-
-        # x.plot(view=True)
-        # y.plot(view=True)
-
+        x = uniform_numeric(-1, 1)
+        y = uniform_numeric(-1, 1)
+        # Act
         z = (x + y)
-        print(z.pdf)
-        print('E(z) =', z.expectation(), 'Var(z) =', z.variance())
-
-        z.plot(view=True)
-        pdf_ = z.pdf.approximate(.075, 20, ConstantFunction)
-        pdf_ = pdf_ * ConstantFunction(1 / pdf_.integrate())
-        print(len(z.pdf), len(pdf_))
-        z_ = Numeric().set(QuantileDistribution.from_pdf(pdf_))
-        z_.plot(view=True)
+        # Assert
+        self.assertAlmostEqual(
+            x.expectation() + y.expectation(),
+            z.expectation(),
+            places=10
+        )
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '(-∞,-2.0)': 0,
+                '[-2.0,2.0000000000000004)': .25,
+                '[2.0000000000000004,∞)': 0
+            }),
+            z.pdf
+        )
 
     def test_moment(self):
         pdf = PiecewiseFunction.zero().overwrite({

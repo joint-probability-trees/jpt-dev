@@ -1769,7 +1769,7 @@ cdef class PiecewiseFunction(Function):
 
     def approximate(
             self,
-            error_max: float = np.inf,
+            error_max: float = None,
             n_segments = None,
             replace_by: type = LinearFunction
     ) -> PiecewiseFunction:
@@ -1897,7 +1897,7 @@ class PLFApproximator:
 
     def run(
             self,
-            error_max: float = np.inf,
+            error_max: float = None,
             k = None,
     ) -> PiecewiseFunction:
         '''Compute an approximation of the function under consideration.'''
@@ -1905,6 +1905,7 @@ class PLFApproximator:
             raise ValueError(
                 'Minimum value for k is 3, got %s.' % k
             )
+        error_max = ifnone(error_max, np.inf)
         result = self.plf.copy()
         replacements = []
         # Loop through all pairs of consecutive function segments
