@@ -33,6 +33,7 @@ cimport cython
 import warnings
 
 from .cutils cimport DTYPE_t
+from .utils import Heap
 
 warnings.filterwarnings("ignore")
 
@@ -1768,7 +1769,7 @@ cdef class PiecewiseFunction(Function):
 
     def approximate(
             self,
-            mse_max: float = .0,
+            error_max: float = .0,
             k = None,
             replace_by: type = LinearFunction
     ) -> PiecewiseFunction:
@@ -1789,23 +1790,36 @@ class PLFApproximator:
             self.i: ContinuousSet = i
             self.f: Function = f
 
+        def __eq__(self, other):
+            return self.i == other.i and self.f == other.f
+
     class FunctionSegmentReplacement:
 
         def __init__(
                 self,
-                mse: float,
+                error: float,
                 left: 'PLFApproximator.FunctionSegment',
                 right: 'PLFApproximator.FunctionSegment',
                 new: 'PLFApproximator.FunctionSegment',
-                next_pair: Optional['PLFApproximator.FunctionSegmentReplacement'] = None,
-                prev_pair: Optional['PLFApproximator.FunctionSeqmentReplacement'] = None
+                next_repl: Optional['PLFApproximator.FunctionSegmentReplacement'] = None,
+                prev_repl: Optional['PLFApproximator.FunctionSegmentReplacement'] = None
         ):
             self.left = left
             self.right = right
-            self.next = next_pair
-            self.prev = prev_pair
-            self.mse = mse
+            self.next = next_repl
+            self.prev = prev_repl
+            self.error = error
             self.new = new
+
+        def __eq__(self, other):
+            if other is None:
+                return False
+            return all((
+                self.left == other.left,
+                self.right == other.right,
+                self.error == other.error,
+                self.new == other.new
+            ))
 
     def __init__(
             self,
@@ -1848,12 +1862,13 @@ class PLFApproximator:
                 'Unsupported type of replacement function: %s.' % self.replace_by.__name__
             )
 
-        # Estimate error induced by the replacement
+        # Estimate the error induced by the replacement
         error = self.plf.crop(i) - f
-        error_sq = error.mul(error)
-        mse = error_sq.integrate() / i.width
+        # error_sq = error.mul(error)
+        # mse = error_sq.integrate() / i.width
+        mae = PiecewiseFunction.abs(error).integrate() / i.width  # .maximize()[1]
         return PLFApproximator.FunctionSegmentReplacement(
-            mse,
+            mae,
             left,
             right,
             PLFApproximator.FunctionSegment(i, f)
@@ -1861,12 +1876,16 @@ class PLFApproximator:
 
     def run(
             self,
-            mse_max: float = .0,
+            error_max: float = np.inf,
             k = None,
     ) -> PiecewiseFunction:
         '''Compute an approximation of the function under consideration.'''
+        if k is not None and k < 3:
+            raise ValueError(
+                'Minimum value for k is 3, got %s.' % k
+            )
         result = self.plf.copy()
-        queue = []
+        replacements = []
         # Loop through all pairs of consecutive function segments
         for (i1, f1), (i2, f2) in pairwise(result.iter()):
             # We only consider finite, contiguous segments
@@ -1877,52 +1896,69 @@ class PLFApproximator:
                 PLFApproximator.FunctionSegment(i1, f1),
                 PLFApproximator.FunctionSegment(i2, f2)
             )
-            if queue:  # Update the double-linked list
-                replacement.prev = queue[-1]
-                queue[-1].next = replacement
-            queue.append(replacement)
-        queue.sort(key=attrgetter('mse'))
+            if replacements:  # Update the double-linked list
+                replacement.prev = replacements[-1]
+                replacements[-1].next = replacement
+            replacements.append(replacement)
 
+        queue = Heap(replacements, key=attrgetter('error'))
         # Keep replacing the contiguous segments until we
         # hit one of the abortion criteria
         while queue:
-            replacement = queue.pop(0)
+            replacement = queue.pop()
             # Abortion: either the maximal number of segments is hit
             # or we exceed the mse_max parameter
             if (
-                    len(result) <= ifnone(k, np.inf) and
-                    mse_max < replacement.mse
+                    len(result) <= ifnone(k, 3) or
+                    error_max < replacement.error
             ):
                 break
-            mse_min = np.inf
-            mse_min_segments = None
 
             # Remove the left and right segments of the replacement from the original function
             del result.intervals[result.intervals.index(replacement.left.i)]
             del result.functions[result.functions.index(replacement.left.f)]
             del result.intervals[result.intervals.index(replacement.right.i)]
             del result.functions[result.functions.index(replacement.right.f)]
+
             # Insert the new segment at the interval union of the former left and right segments
             result = result.overwrite_at(
                 replacement.new.i,
                 replacement.new.f
             )
+
             # Remove the "prev" and "next" replacements from the heap as one counterpart of
             # both their "left" and "right" segments has become obsolete.
             # Also, insert new replacement candidates given by the new segment and the "left" segment
             # of the "prev" replacement, and by the "new" segment and the "right" segment of
             # the "next" replacement
+            new_replacement_left = None
             if replacement.prev is not None:
                 del queue[queue.index(replacement.prev)]
-                heapq.heappush(
-                    queue,
-                    self._construct_replacement(replacement.prev.left, replacement.new)
+                new_replacement_left = self._construct_replacement(
+                    replacement.prev.left,
+                    replacement.new
                 )
+                if replacement.prev.prev is not None:
+                    replacement.prev.prev.next = new_replacement_left
+                    new_replacement_left.prev = replacement.prev.prev
+                queue.push(
+                    new_replacement_left
+                )
+            new_replacement_right = None
             if replacement.next is not None:
                 del queue[queue.index(replacement.next)]
-                heapq.heappush(
-                    queue,
-                    self._construct_replacement(replacement.new, replacement.next.right)
+                new_replacement_right = self._construct_replacement(
+                    replacement.new,
+                    replacement.next.right
                 )
+                if replacement.next.next is not None:
+                    replacement.next.next.prev = new_replacement_right
+                    new_replacement_right.next = replacement.next.next
+                queue.push(
+                    new_replacement_right
+                )
+            if None not in (new_replacement_left, new_replacement_right):
+                new_replacement_left.next = new_replacement_right
+                new_replacement_right.prev = new_replacement_left
 
         return result

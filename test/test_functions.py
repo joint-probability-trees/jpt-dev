@@ -5,7 +5,6 @@ from ddt import ddt, data, unpack
 from dnutils.tools import ifstr
 
 from jpt.base.constants import eps
-from jpt.distributions import Numeric
 from utils import gaussian_numeric
 
 try:
@@ -902,16 +901,52 @@ class PLFTest(TestCase):
 
 class PLFApproximatorTest(TestCase):
 
-    def test_approximation(self):
+    def test_approximation_linear_k(self):
+        for k in range(10, 2, -1):
+            # Arrange
+            plf: PiecewiseFunction = gaussian_numeric().cdf
+            approximator = PLFApproximator(
+                plf
+            )
+            # Act
+            approx = approximator.run(k=k)
+            # Assert
+            self.assertGreater(len(plf), k)
+            self.assertEqual(k, len(approx))
+
+    def test_approximation_constant_k(self):
+        for k in range(10, 2, -1):
+            # Arrange
+            plf: PiecewiseFunction = gaussian_numeric().pdf
+            approximator = PLFApproximator(
+                plf,
+                replace_by=ConstantFunction
+            )
+            # Act
+            approx = approximator.run(k=k)
+            # Assert
+            self.assertGreater(len(plf), k)
+            self.assertEqual(k, len(approx))
+
+    def test_approximation_constant_error(self):
         # Arrange
-        plf: PiecewiseFunction = gaussian_numeric().cdf
+        plf: PiecewiseFunction = gaussian_numeric().pdf
         approximator = PLFApproximator(
-            plf
+            plf,
+            replace_by=ConstantFunction
         )
         # Act
-        approx = approximator.run(k=10)
-
+        approx = approximator.run(error_max=.2)
         # Assert
-        print(approx)
+        self.assertGreater(len(plf), len(approx))
 
+    def test_invalid(self):
+        approximator = PLFApproximator(
+            None
+        )
+        self.assertRaises(
+            ValueError,
+            approximator.run,
+            k=2
+        )
 
