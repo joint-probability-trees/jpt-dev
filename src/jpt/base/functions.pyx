@@ -15,13 +15,14 @@ import itertools
 import numbers
 from collections import deque
 from operator import attrgetter
-from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any
+from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any, Optional
 
 from dnutils import ifnot, ifnone, pairwise, fst, last
 from dnutils.tools import ifstr, first
 from scipy import stats
 from scipy.stats import norm
 
+from jpt.base.functions import PLFApproximator
 from .constants import eps
 from .intervals cimport ContinuousSet, RealSet
 from .intervals import R, EMPTY, EXC, INC, NumberSet, ContinuousSet
@@ -1776,20 +1777,36 @@ cdef class PiecewiseFunction(Function):
 
 
 class PLFApproximator:
+    """
+    This class implements an algorithm for simplifying a `PiecewiseFunction`
+    by iteratively "merging" function segments of contiguous intervals by some
+    approximation. The algorithm maintains a heap of all pairwise consecutive
+    itervals ("FunctionSegments") and always chooses the replacement that
+    causes the minimal increase in the mean squared error.
+    """
 
     class FunctionSegment:
-        def __init__(self, i, f):
-            self.i = i
-            self.f = f
+        def __init__(self, i: ContinuousSet, f: Function):
+            self.i: ContinuousSet = i
+            self.f: Function = f
 
     class FunctionSegmentReplacement:
-        def __init__(self, mse, left, right, replacement, next_pair=None, prev_pair=None):
+
+        def __init__(
+                self,
+                mse: float,
+                left: 'PLFApproximator.FunctionSegment',
+                right: 'PLFApproximator.FunctionSegment',
+                new: 'PLFApproximator.FunctionSegment',
+                next_pair: Optional['PLFApproximator.FunctionSegmentReplacement'] = None,
+                prev_pair: Optional['PLFApproximator.FunctionSeqmentReplacement'] = None
+        ):
             self.left = left
             self.right = right
             self.next = next_pair
             self.prev = prev_pair
             self.mse = mse
-
+            self.new = new
 
     def __init__(
             self,
@@ -1881,14 +1898,32 @@ class PLFApproximator:
             mse_min = np.inf
             mse_min_segments = None
 
-            if np.isfinite(mse_min) and mse_min_segments is not None:
-                (i1, f1), (i2, f2), (i, f_) = mse_min_segments
-                del result.intervals[result.intervals.index(i1)]
-                del result.functions[result.functions.index(f1)]
-                del result.intervals[result.intervals.index(i2)]
-                del result.functions[result.functions.index(f2)]
-                result = result.overwrite_at(i, f_)
-            else:
-                break
+            # Remove the left and right segments of the replacement from the original function
+            del result.intervals[result.intervals.index(replacement.left.i)]
+            del result.functions[result.functions.index(replacement.left.f)]
+            del result.intervals[result.intervals.index(replacement.right.i)]
+            del result.functions[result.functions.index(replacement.right.f)]
+            # Insert the new segment at the interval union of the former left and right segments
+            result = result.overwrite_at(
+                replacement.new.i,
+                replacement.new.f
+            )
+            # Remove the "prev" and "next" replacements from the heap as one counterpart of
+            # both their "left" and "right" segments has become obsolete.
+            # Also, insert new replacement candidates given by the new segment and the "left" segment
+            # of the "prev" replacement, and by the "new" segment and the "right" segment of
+            # the "next" replacement
+            if replacement.prev is not None:
+                del queue[queue.index(replacement.prev)]
+                heapq.heappush(
+                    queue,
+                    self._construct_replacement(replacement.prev.left, replacement.new)
+                )
+            if replacement.next is not None:
+                del queue[queue.index(replacement.next)]
+                heapq.heappush(
+                    queue,
+                    self._construct_replacement(replacement.new, replacement.next.right)
+                )
 
         return result
