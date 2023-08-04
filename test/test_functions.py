@@ -892,4 +892,4 @@ class PLFTest(TestCase):
         plf = PiecewiseFunction.zero().overwrite({
             '[0,1[': .1
         })
-        print(plf.approx(.1, ConstantFunction))
+        print(plf.approximate(.1, ConstantFunction))

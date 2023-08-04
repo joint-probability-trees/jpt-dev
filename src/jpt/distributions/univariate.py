@@ -936,10 +936,10 @@ class Numeric(Distribution):
                 cumsum = cumsum + d
                 cumsum = cls().set(
                     params=QuantileDistribution.from_cdf(
-                        cumsum.cdf.approx(
-                            epsilon=epsilon,
+                        cumsum.cdf.approximate(
+                            error_max=epsilon,
                             k=k,
-                            replacement=LinearFunction
+                            replace_by=LinearFunction
                         )
                     )
                 )
@@ -983,10 +983,10 @@ class Numeric(Distribution):
     def approx(self, epsilon=None, k=None):
         return type(self)(**self.settings).set(
             QuantileDistribution.from_pdf(
-                self.pdf.approx(
-                    epsilon=epsilon,
+                self.pdf.approximate(
+                    error_max=epsilon,
                     k=k,
-                    replacement=ConstantFunction
+                    replace_by=ConstantFunction
                 )
             )
         )
@@ -1008,10 +1008,10 @@ class Numeric(Distribution):
     def approx(self, epsilon=None, k=None):
         return type(self)(**self.settings).set(
             QuantileDistribution.from_pdf(
-                self.pdf.approx(
-                    epsilon=epsilon,
+                self.pdf.approximate(
+                    error_max=epsilon,
                     k=k,
-                    replacement=ConstantFunction
+                    replace_by=ConstantFunction
                 )
             )
         )

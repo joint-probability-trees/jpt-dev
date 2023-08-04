@@ -6,6 +6,7 @@
 # cython: nonecheck=False
 __module__ = 'functions.pyx'
 
+import heapq
 from functools import cmp_to_key
 
 from itertools import chain
@@ -1765,41 +1766,120 @@ cdef class PiecewiseFunction(Function):
             f_max = f_
         return f_argmax, f_max
 
-    def approx(
+    def approximate(
             self,
-            epsilon: float = .0,
+            mse_max: float = .0,
             k = None,
-            replacement: type = LinearFunction
+            replace_by: type = LinearFunction
     ) -> PiecewiseFunction:
-        result = self.copy()
-        while 1:
+        pass
+
+
+class PLFApproximator:
+
+    class FunctionSegment:
+        def __init__(self, i, f):
+            self.i = i
+            self.f = f
+
+    class FunctionSegmentReplacement:
+        def __init__(self, mse, left, right, replacement, next_pair=None, prev_pair=None):
+            self.left = left
+            self.right = right
+            self.next = next_pair
+            self.prev = prev_pair
+            self.mse = mse
+
+
+    def __init__(
+            self,
+            plf: PiecewiseFunction,
+            replace_by: type = LinearFunction
+        ):
+        self.plf: PiecewiseFunction = plf
+        self.replace_by: type = replace_by
+
+    def _construct_replacement(
+            self,
+            left: FunctionSegment,
+            right: FunctionSegment
+    ) -> FunctionSegmentReplacement:
+        '''
+        Compute a function of type `replace_by` spanning the union
+        interval of i1 and i2 and estimate the mean sqaured error
+        induced by this new function segment.
+        '''
+        if not left.i.contiguous(right.i) or left.i.isninf() or right.i.ispinf():
+            raise ValueError(
+                'left and right must be finite, contiguous segments, got left.i=%s, right.i=%s.' % (
+                    left.i, right.i
+                )
+            )
+
+        # Create a replacement function segment spanning both intervals
+        i = ContinuousSet(left.i.lower, right.i.upper, left.i.left, right.i.right)
+        if self.replace_by is LinearFunction:
+            f = LinearFunction.from_points(
+                (i.lower, left.f(i.lower)),
+                (i.upper, right.f(i.upper))
+            )
+        elif self.replace_by is ConstantFunction:
+            f = ConstantFunction(
+                left.f(i.lower) * left.i.width / i.width + right.f(i.upper) * right.i.width / i.width
+            )
+        else:
+            raise TypeError(
+                'Unsupported type of replacement function: %s.' % self.replace_by.__name__
+            )
+
+        # Estimate error induced by the replacement
+        error = self.plf.crop(i) - f
+        error_sq = error.mul(error)
+        mse = error_sq.integrate() / i.width
+        return PLFApproximator.FunctionSegmentReplacement(
+            mse,
+            left,
+            right,
+            PLFApproximator.FunctionSegment(i, f)
+        )
+
+    def run(
+            self,
+            mse_max: float = .0,
+            k = None,
+    ) -> PiecewiseFunction:
+        '''Compute an approximation of the function under consideration.'''
+        result = self.plf.copy()
+        queue = []
+        # Loop through all pairs of consecutive function segments
+        for (i1, f1), (i2, f2) in pairwise(result.iter()):
+            # We only consider finite, contiguous segments
+            if not i1.contiguous(i2) or i1.isninf() or i2.ispinf():
+                continue
+            # Store admissible replacement candidates on the heap
+            replacement = self._construct_replacement(
+                PLFApproximator.FunctionSegment(i1, f1),
+                PLFApproximator.FunctionSegment(i2, f2)
+            )
+            if queue:  # Update the double-linked list
+                replacement.prev = queue[-1]
+                queue[-1].next = replacement
+            queue.append(replacement)
+        queue.sort(key=attrgetter('mse'))
+
+        # Keep replacing the contiguous segments until we
+        # hit one of the abortion criteria
+        while queue:
+            replacement = heapq.heappop(queue)
+            # Abortion: either the maximal number of segments is hit
+            # or we exceed the mse_max parameter
+            if (
+                    len(result) <= ifnone(k, np.inf) and
+                    mse_max < replacement.mse
+            ):
+                break
             mse_min = np.inf
             mse_min_segments = None
-            for (i1, f1), (i2, f2) in pairwise(list(result.iter())[1:-2]):
-                if not i1.contiguous(i2) or i1.isninf() or i2.ispinf():
-                    continue
-                i = ContinuousSet(i1.lower, i2.upper, i1.left, i2.right)
-                if replacement is LinearFunction:
-                    f_ = LinearFunction.from_points(
-                        (i.lower, f1(i.lower)),
-                        (i.upper, f2(i.upper))
-                    )
-                elif replacement is ConstantFunction:
-                    f_ = ConstantFunction(
-                        f1(i.lower) * i1.width / i.width + f2(i.upper) * i2.width / i.width
-                    )
-                else:
-                    raise TypeError(
-                        'Unsupported type of replacement function: %s.' % replacement.__name__
-                    )
-                delta = self.crop(i) - f_
-                # delta_2 = delta.mul(delta)
-                # mse = (delta_2 * ConstantFunction(1 / i.width)).integrate()
-                _, e_max = PiecewiseFunction.abs(delta).maximize()
-                if e_max < mse_min and (e_max <= epsilon or (False if k is None else k < len(result))):
-                    mse_min = e_max
-                    mse_min_segments = (i1, f1), (i2, f2), (i, f_)
-                    break
 
             if np.isfinite(mse_min) and mse_min_segments is not None:
                 (i1, f1), (i2, f2), (i, f_) = mse_min_segments
@@ -1810,4 +1890,5 @@ cdef class PiecewiseFunction(Function):
                 result = result.overwrite_at(i, f_)
             else:
                 break
+
         return result

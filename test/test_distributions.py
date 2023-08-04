@@ -434,7 +434,7 @@ class NumericDistributionTest(TestCase):
         print('E(z) =', z.expectation(), 'Var(z) =', z.variance())
 
         z.plot(view=True)
-        pdf_ = z.pdf.approx(.075, 20, ConstantFunction)
+        pdf_ = z.pdf.approximate(.075, 20, ConstantFunction)
         pdf_ = pdf_ * ConstantFunction(1 / pdf_.integrate())
         print(len(z.pdf), len(pdf_))
         z_ = Numeric().set(QuantileDistribution.from_pdf(pdf_))
