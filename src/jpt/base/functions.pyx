@@ -1769,12 +1769,33 @@ cdef class PiecewiseFunction(Function):
 
     def approximate(
             self,
-            error_max: float = .0,
-            k = None,
+            error_max: float = np.inf,
+            n_segments = None,
             replace_by: type = LinearFunction
     ) -> PiecewiseFunction:
-        pass
+        '''
+        Compute an approximation of this `PiecewiseFunction`, which comprises fewer
+        function segments than the original PLF.
 
+        This is done by iteratively replacing subsequent function
+        segments by an approximation thereof.
+
+        :param error_max:       the maximal error allowed for constructing an approximation
+        :param n_segments:      the desired number of function segments of the approximation result
+        :param replace_by:      (ConstantFunction, LinearFunction) the type of function to be used for
+                                the approximations
+        :return:
+        '''
+        return PLFApproximator(
+            self,
+            replace_by=replace_by
+        ).run(
+            error_max=error_max,
+            k=n_segments
+        )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class PLFApproximator:
     """

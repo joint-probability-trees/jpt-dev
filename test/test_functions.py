@@ -892,9 +892,23 @@ class PLFTest(TestCase):
 
     def test_approximate(self):
         plf = PiecewiseFunction.zero().overwrite({
-            '[0,1[': .1
+            '[0,.25[': .1,
+            '[.25,.5[': .5,
+            '[.5,.75[': .7
         })
-        print(plf.approximate(.1, ConstantFunction))
+        self.assertEqual(
+            5,
+            len(plf)
+        )
+        self.assertEqual(
+            3,
+            len(
+                plf.approximate(
+                    n_segments=3,
+                    replace_by=ConstantFunction
+                )
+            )
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
