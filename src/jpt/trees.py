@@ -1020,13 +1020,11 @@ class JPT:
 
         for leaf in self.apply(evidence_):
             p_m = 1
-            likelihoods = []
             for var in set(evidence_.keys()):
                 evidence_val = evidence_[var]
                 if var in leaf.path:  # var.numeric and
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 p_m *= leaf.distributions[var]._p(evidence_val)
-                likelihoods.append((var, evidence_val, leaf.distributions[var]._p(evidence_val)))
 
             w = leaf.prior
             p_m *= w
@@ -1035,7 +1033,7 @@ class JPT:
             if leaf.applies(query_):
                 for var in set(query_.keys()):
                     query_val = query_[var]
-                    if var.numeric and var in leaf.path:
+                    if var in leaf.path:
                         query_val = query_val.intersection(leaf.path[var])
                     p_m *= leaf.distributions[var]._p(query_val)
                 p_q += p_m
