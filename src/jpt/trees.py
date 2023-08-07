@@ -2025,9 +2025,11 @@ class JPT:
         while fringe:
             # get the next node to inspect
             node = fringe.popleft()
+            # clear the path of each node as we will re-construct it later
+            node._path = []
 
             # the node might have been deleted already
-            if node not in conditional_jpt.allnodes.values():
+            if node.idx not in conditional_jpt.allnodes:
                 continue
 
             # initialize remove as false
@@ -2037,7 +2039,7 @@ class JPT:
             if isinstance(node, DecisionNode):
 
                 # that has no children
-                if not node.children:
+                if len(node.children) <= 1:
 
                     # remove it and update flag
                     del conditional_jpt.innernodes[node.idx]
@@ -2056,7 +2058,7 @@ class JPT:
                 # calculate probability of this leaf being selected given the evidence
                 probability = leaf.probability(evidence_)
 
-                # if the leafs probability is 0 with the evidence
+                # if the leaf's probability is 0 with the evidence
                 if probability > 0:
                     leaf.prior *= probability
                 else:
@@ -2067,22 +2069,21 @@ class JPT:
             # if the node has been removed and the removed node as a parent
             if rm and node.parent is not None:
 
-                # if the nodes parent has children
+                # if the nodes' parent has children
                 if node.parent.children:
+                    # if the node has a child either
+                    if isinstance(node, DecisionNode) and len(node.children) == 1:
+                        # replace it by its child
+                        orphan = first(node.children)
+                        orphan.parent = node.parent
+                        node.parent.children[node.parent.children.index(node)] = orphan
+                    else:
+                        # delete this node from the parents children
+                        idx = node.parent.children.index(node)
+                        del node.parent.children[idx]
+                        del node.parent.splits[idx]
 
-                    # and the node has a child either
-                    # if isinstance(node, DecisionNode) and len(node.children) == 1:
-                    #
-                    #     # replace it by its child
-                    #     node.parent.children[node.parent.children.index(node)] = first(node.children)
-
-                    # delete this node from the parents children
-                    # else:
-                    idx = node.parent.children.index(node)
-                    del node.parent.children[idx]
-                    del node.parent.splits[idx]
-
-                # append the parent node the queue
+                # mark the parent node for further processing
                 fringe.append(node.parent)
 
             # if the resulting model is empty
@@ -2090,27 +2091,27 @@ class JPT:
 
                 if len(node.children) == 1:
                     conditional_jpt.root = first(node.children)
-
-                # raise an error if wanted
-                elif fail_on_unsatisfiability:
-                    raise Unsatisfiability(
-                        'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
-                    )
-
-                # return None if error is not wanted
+                    conditional_jpt.root.parent = None
+                elif node.children:
+                    conditional_jpt.root = None
                 else:
-                    return None
+                    raise RuntimeError(
+                        'This should never happen. JPT.conditional_jpt() seems to be broken :('
+                    )
 
         # calculate remaining probability mass
         probability_mass = sum(
             leaf.prior for leaf in conditional_jpt.leaves.values()
-        )
+        ) if conditional_jpt.root is not None else 0
 
         if not probability_mass:
+            # raise an error if wanted
             if fail_on_unsatisfiability:
                 raise Unsatisfiability(
-                    'JPT is unsatisfiable (all %d leaves have 0 prior probability)' % len(self.leaves)
+                    'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
                 )
+
+            # return None if error is not wanted
             else:
                 return None
 
@@ -2125,16 +2126,18 @@ class JPT:
                 # if variable.symbolic or variable.integer:
                 leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
 
-        # clean up not needed path restrictions
-        for node in conditional_jpt.allnodes.values():
-            for variable in evidence_.keys():
-                if variable in node.path.keys():
-                    del node.path[variable]
+        # reconstruct the path restrictions
+        queue = deque([conditional_jpt.root])
+        while queue:
+            node = queue.popleft()
+            if not isinstance(node, DecisionNode):
+                continue
+            for split, child in zip(node.splits, node.children):
+                child._path.append((node.variable, split))
+                queue.append(child)
 
         # recalculate the priors for the conditional jpt
-        priors = conditional_jpt.posterior(
-            evidence=evidence_
-        )
+        priors = conditional_jpt.posterior()
         conditional_jpt.priors = priors
 
         return conditional_jpt
