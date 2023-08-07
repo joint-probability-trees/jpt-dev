@@ -24,18 +24,29 @@ from .base.utils import list2interval, format_path, normalized
 from .base.utils import prod, setstr_int
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
-from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable, VariableAssignment, IntegerVariable, \
-    LabelAssignment, ValueAssignment
+from .distributions.quantile.quantiles import QuantileDistribution
+from .variables import (
+    VariableMap,
+    SymbolicVariable,
+    NumericVariable,
+    Variable,
+    VariableAssignment,
+    IntegerVariable,
+    LabelAssignment,
+    ValueAssignment
+)
 
 try:
     from .base.intervals import __module__
     from .learning.impurity import __module__
+    from .base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import Impurity
+    from .base.functions import PiecewiseFunction
 
 
 style.use(plotstyle)
@@ -1553,7 +1564,14 @@ class JPT:
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
-    def learn(self, data=None, rows=None, columns=None, keep_samples=False) -> 'JPT':
+    def learn(
+            self,
+            data: Optional[pd.DataFrame] = None,
+            rows: Optional[Union[np.ndarray, List]] = None,
+            columns: Optional[Union[np.ndarray, List]] = None,
+            keep_samples: bool = False,
+            close_convex_gaps: bool = True
+    ) -> 'JPT':
         """
         Fit the jpt to ``data``
         :param data:    The training examples (assumed in row-shape)
@@ -1564,6 +1582,7 @@ class JPT:
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
                         purposes only. Default is false.
+        :param close_convex_gaps:
         :return: the fitted model
         """
         # --------------------------------------------------------------------------------------------------------------
@@ -1651,7 +1670,8 @@ class JPT:
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
 
-        self.postprocess_leaves()
+        if close_convex_gaps:
+            self.postprocess_leaves()
 
         # ----------------------------------------------------------------------------------------------------------
         # Print the statistics
@@ -2187,8 +2207,11 @@ class JPT:
         return sum(l.samples for l in self.leaves.values())
 
     def postprocess_leaves(self) -> None:
-        """Postprocess leaves such that the convex hull that is postulated from this tree has likelihood > 0 for every
-        point inside the hull."""
+        """
+        Postprocess leaves such that the convex hull that is
+        postulated from this tree has likelihood > 0 for every
+        point inside the hull.
+        """
 
         # get total number of samples and use 1/total as default value
         total_samples = self.total_samples()
@@ -2197,7 +2220,7 @@ class JPT:
         for idx, leaf in self.leaves.items():
             # for numeric every distribution
             for variable, distribution in leaf.distributions.items():
-                if variable.numeric and variable in leaf.path.keys() and not distribution.is_dirac_impulse():
+                if variable.numeric and variable in leaf.path.keys():  # and not distribution.is_dirac_impulse():
 
                     left = None
                     right = None
@@ -2205,22 +2228,40 @@ class JPT:
                     # if the leaf is not the "lowest" in this dimension
                     if np.NINF < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
                         # create uniform distribution as bridge between the leaves
-                        interval = ContinuousSet(
+                        left = ContinuousSet(
                             leaf.path[variable].lower,
-                            distribution.cdf.intervals[0].upper
+                            distribution.cdf.intervals[0].upper,
                         )
-                        left = interval
 
                     # if the leaf is not the "highest" in this dimension
                     if np.PINF > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
                         # create uniform distribution as bridge between the leaves
-                        interval = ContinuousSet(
+                        right = ContinuousSet(
                             distribution.cdf.intervals[-2].upper,
-                            leaf.path[variable].upper
+                            leaf.path[variable].upper,
                         )
-                        right = interval
-
-                    distribution.insert_convex_fragments(left, right, total_samples)
+                    if distribution.is_dirac_impulse():
+                        # noinspection PyTypeChecker
+                        interval = ContinuousSet(
+                            left.lower if left is not None else distribution.cdf.intervals[0].upper,
+                            right.upper if right is not None else distribution.cdf.intervals[1].lower,
+                            INC,
+                            EXC
+                        )
+                        # noinspection PyTypeChecker
+                        distribution.set(
+                            QuantileDistribution.from_pdf(
+                                PiecewiseFunction.zero().overwrite({
+                                    interval: 1 / interval.width
+                                })
+                            )
+                        )
+                    else:
+                        distribution.insert_convex_fragments(
+                            left,
+                            right,
+                            total_samples
+                        )
 
     def number_of_parameters(self) -> int:
         """

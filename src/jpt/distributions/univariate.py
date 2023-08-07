@@ -900,9 +900,14 @@ class Numeric(Distribution):
     def type_from_json(cls, data):
         return cls
 
-    def insert_convex_fragments(self, left: ContinuousSet or None, right: ContinuousSet or None,
-                                number_of_samples: int):
-        """Insert fragments of distributions on the right and left part of this distribution. This should only be used
+    def insert_convex_fragments(
+            self,
+            left: Optional[ContinuousSet],
+            right: Optional[ContinuousSet],
+            number_of_samples: int
+    ):
+        """
+        Insert fragments of distributions on the right and left part of this distribution. This should only be used
         to create a convex hull around the JPTs domain which density is never 0.
 
         :param right: The right (lower) interval to add on if needed and None else
@@ -921,7 +926,7 @@ class Numeric(Distribution):
 
         points.append(np.PINF)
 
-        intervals = [ContinuousSet(a, b) for a, b in zip(points[:-1], points[1:])]
+        intervals = [ContinuousSet(a, b) for a, b in pairwise(points)]
 
         valid_arguments = [e for e in [left, right] if e is not None]
         number_of_intervals = len(valid_arguments)

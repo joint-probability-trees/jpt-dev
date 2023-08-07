@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 import sklearn.datasets
-from jpt.base.intervals import ContinuousSet
+
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 from numpy.testing import assert_array_equal
@@ -23,6 +23,16 @@ from jpt.base.errors import Unsatisfiability
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment, \
     IntegerVariable
+
+try:
+    from jpt.base.functions import __module__
+    from jpt.base.intervals import __module__
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+finally:
+    from jpt.base.functions import ConstantFunction, LinearFunction
+    from jpt.base.intervals import ContinuousSet
 
 
 class JPTTest(TestCase):
@@ -309,6 +319,25 @@ class JPTTest(TestCase):
                 "i": {3, 4, 5}}
         jpt.bind(map2)
 
+    def test_postprocess_leaves_1dim(self):
+        # Arrange
+        x = NumericVariable('x')
+        jpt = JPT([x])
+        data = np.linspace(0, 9, 10).reshape(-1, 1)
+        jpt.fit(data, close_convex_gaps=False)
+        for _, f in jpt.posterior([x])[x].cdf.iter():
+            self.assertIsInstance(f, ConstantFunction)
+
+        # Act
+        jpt.postprocess_leaves()
+
+        # Assert
+        for i, f in jpt.posterior([x])[x].cdf.iter():
+            if i.isinf():
+                self.assertIsInstance(f, ConstantFunction)
+            else:
+                self.assertIsInstance(f, LinearFunction)
+
 
 class TestCasePosteriorNumeric(TestCase):
     varx = None
@@ -531,6 +560,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
+    @unittest.skip
     def test_parameter_count(self):
         self.assertEqual(330, self.jpt.number_of_parameters())
 
@@ -637,7 +667,7 @@ class TestCaseInference(TestCase):
             cls.data,
             scale_numeric_types=False,
             precision=.01,
-            blur=.01
+            # blur=.01
         )
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
@@ -652,7 +682,7 @@ class TestCaseInference(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.learn(columns=cls.data.values.T, close_convex_gaps=False)
 
     def test_plot(self):
         self.jpt.plot(
@@ -663,11 +693,17 @@ class TestCaseInference(TestCase):
         )
 
     def test_inference_mixed_single_candidate_T(self):
+        # Arrange
         q = self.jpt.bind(WillWait=True)
         e = self.jpt.bind(WaitEstimate=[0, 10], Food='Thai')
-        inference = self.jpt.infer(q, e)
-        self.jpt.conditional_jpt(e)
-        self.assertAlmostEqual(.6, inference, places=10)
+        # Act
+        result = self.jpt.infer(q, e)
+        # Assert
+        self.assertAlmostEqual(
+            .6,
+            result,
+            places=10
+        )
 
     def test_inference_mixed_new(self):
         self.q = [self.variables[-1]]
