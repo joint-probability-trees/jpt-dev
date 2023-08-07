@@ -599,17 +599,9 @@ class Leaf(Node):
         result = self.copy()
 
         for variable, value in evidence.items():
-
             # adjust leaf distributions
-            if variable.symbolic or variable.integer:
-                result.distributions[variable] = result.distributions[variable]._crop(value)
-
-            # for numeric variables it's not as straight forward due to the value being polymorph
-            elif variable.numeric:
-                result.distributions[variable] = result.distributions[variable].crop(value)
-
-            else:
-                raise ValueError("Unknown variable type to crop. Type is %s" % type(variable))
+            # noinspection PyProtectedMember
+            result.distributions[variable] = result.distributions[variable]._crop(value)
 
         return result
 
@@ -1659,6 +1651,8 @@ class JPT:
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
 
+        self.postprocess_leaves()
+
         # ----------------------------------------------------------------------------------------------------------
         # Print the statistics
         JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
@@ -1991,19 +1985,20 @@ class JPT:
         :param evidence: A VariableAssignment mapping the observed variables to there observed values
          :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
         """
-
-        if not evidence:
-            evidence = LabelAssignment()
-
-        # Convert, if necessary, labels to internal value representations
+        if evidence is None:
+            evidence = {}
+        if isinstance(evidence, dict):
+            evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
-            evidence = evidence.value_assignment()
+            evidence_ = evidence.value_assignment()
+        else:
+            evidence_ = evidence
 
         # the new jpt that acts as conditional joint probability distribution
         conditional_jpt: JPT = self.copy()
 
         # skip if evidence is empty
-        if not evidence:
+        if not evidence_:
             return conditional_jpt
 
         # initialize exploration queue
@@ -2024,7 +2019,7 @@ class JPT:
             if isinstance(node, DecisionNode):
 
                 # that has no children
-                if len(node.children) <= 1:
+                if not node.children:
 
                     # remove it and update flag
                     del conditional_jpt.innernodes[node.idx]
@@ -2041,7 +2036,7 @@ class JPT:
                 leaf: Leaf = node
 
                 # calculate probability of this leaf being selected given the evidence
-                probability = leaf.probability(evidence)
+                probability = leaf.probability(evidence_)
 
                 # if the leafs probability is 0 with the evidence
                 if probability > 0:
@@ -2058,16 +2053,16 @@ class JPT:
                 if node.parent.children:
 
                     # and the node has a child either
-                    if isinstance(node, DecisionNode) and len(node.children) == 1:
-
-                        # replace it by its child
-                        node.parent.children[node.parent.children.index(node)] = first(node.children)
+                    # if isinstance(node, DecisionNode) and len(node.children) == 1:
+                    #
+                    #     # replace it by its child
+                    #     node.parent.children[node.parent.children.index(node)] = first(node.children)
 
                     # delete this node from the parents children
-                    else:
-                        idx = node.parent.children.index(node)
-                        del node.parent.children[idx]
-                        del node.parent.splits[idx]
+                    # else:
+                    idx = node.parent.children.index(node)
+                    del node.parent.children[idx]
+                    del node.parent.splits[idx]
 
                 # append the parent node the queue
                 fringe.append(node.parent)
@@ -2089,7 +2084,9 @@ class JPT:
                     return None
 
         # calculate remaining probability mass
-        probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
+        probability_mass = sum(
+            leaf.prior for leaf in conditional_jpt.leaves.values()
+        )
 
         if not probability_mass:
             if fail_on_unsatisfiability:
@@ -2105,27 +2102,21 @@ class JPT:
             # normalize probability
             leaf.prior /= probability_mass
 
-            for variable, value in evidence.items():
+            for variable, value in evidence_.items():
                 # adjust leaf distributions
-                if variable.symbolic or variable.integer:
-                    leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
-
-                # for numeric variables it's not as straight forward due to the value being polymorph
-                elif variable.numeric:
-                    leaf.distributions[variable] = leaf.distributions[variable].crop(value)
-
-                else:
-                    raise ValueError("Unknown variable type to crop. Type is %s" % type(variable))
+                # if variable.symbolic or variable.integer:
+                leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
 
         # clean up not needed path restrictions
         for node in conditional_jpt.allnodes.values():
-            for variable in evidence.keys():
+            for variable in evidence_.keys():
                 if variable in node.path.keys():
                     del node.path[variable]
 
         # recalculate the priors for the conditional jpt
         priors = conditional_jpt.posterior(
-            evidence=conditional_jpt.bind({v.name: e for v, e in evidence.label_assignment().items()}))
+            evidence=evidence_
+        )
         conditional_jpt.priors = priors
 
         return conditional_jpt
