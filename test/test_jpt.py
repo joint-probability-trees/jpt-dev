@@ -640,18 +640,29 @@ class TestCaseExpectation(TestCase):
             view=False)
 
     def test_expectation_mixed_single_candidate_T(self):
-        self.q = ['WillWait', 'Friday']
-        self.e = {'WaitEstimate': [10, 30],
-                  'Food': 'Thai'}
-        self.expectation = self.jpt.expectation(self.q, self.e)
-        self.assertEqual([{True}, {True}], [e for e in self.expectation.values()])
+        # Arrange
+        q = ['WillWait', 'Friday']
+        e = {
+            'WaitEstimate': [10, 30],
+            'Food': 'Thai'
+        }
+
+        # Act
+        expectation = self.jpt.expectation(q, e)
+
+        # Assert
+        self.assertEqual([{True}, {True}], list(expectation.values()))
 
     def test_expectation_mixed_unsatisfiable(self):
-        self.q = ['WillWait']
-        self.e = {'WaitEstimate': [70, 80],
-                  'Bar': True,
-                  'Food': 'French'}
-        self.assertRaises(Unsatisfiability, self.jpt.expectation, self.q, self.e)
+        # Arrange
+        q = ['WillWait']
+        e = {
+            'WaitEstimate': [70, 80],
+            'Bar': True,
+            'Food': 'French'
+        }
+        # Assert
+        self.assertRaises(Unsatisfiability, self.jpt.expectation, q, e)
 
 
 class TestCaseInference(TestCase):

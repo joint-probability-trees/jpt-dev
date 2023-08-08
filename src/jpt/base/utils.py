@@ -30,6 +30,13 @@ finally:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+# Type definitions
+
+Symbol = Union[str, int]
+Collections = (list, set, tuple)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 def pairwise(seq: Iterable[Any]) -> Iterable[Tuple[Any, Any]]:
     '''Iterate over all consecutive pairs in ``seq``.'''
@@ -260,14 +267,40 @@ def classproperty(func):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
-def list2interval(l):
+def list2interval(l: List[int]) -> ContinuousSet:
     '''
     Converts a list representation of an interval to an instance of type
     '''
     lower, upper = l
-    return ContinuousSet(np.NINF if lower in (np.NINF, -float('inf'), None, ...) else np.float64(lower),
-                         np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper))
+    return ContinuousSet(
+        np.NINF if lower in (np.NINF, -float('inf'), None, ...) else np.float64(lower),
+        np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper)
+    )
+
+
+def list2set(values: List[Symbol]) -> Set[str]:
+    """
+    Convert a list to a set.
+    """
+    return set(values)
+
+
+def list2intset(bounds: List[int]) -> Set[int]:
+    '''
+    Convert a 2-element list specifying a lower and an upper bound into a
+    integer set containing the admissible values of the corresponding interval
+    '''
+    if not len(bounds) == 2:
+        raise ValueError(
+            'Argument list must have length 2, got length %d.' % len(bounds)
+        )
+
+    # if bounds[0] < cls.lmin or bounds[1] > cls.lmax:
+    #     raise ValueError(
+    #         f'Argument must be in [%d, %d].' % (cls.lmin, cls.lmax)
+    #     )
+
+    return set(range(bounds[0], bounds[1] + 1))
 
 
 def normalized(

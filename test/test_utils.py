@@ -3,7 +3,8 @@ from unittest import TestCase
 import numpy as np
 
 from jpt.base.constants import eps
-from jpt.base.utils import mapstr, setstr_int, Heap
+from jpt.base.utils import mapstr, setstr_int, Heap, list2intset, list2set
+from jpt.distributions import IntegerType
 
 
 class UtilsTest(TestCase):
@@ -69,3 +70,15 @@ class HeapTest(TestCase):
 
         # Assert
         self.assertEqual([8, 5, 4], result)
+
+
+class ListConversionTest(TestCase):
+
+    def test_list2intset(self):
+        # Act
+        s = list2intset([2, 4])
+
+        # Assert
+        self.assertEqual({2, 3, 4}, s)
+        # self.assertRaises(ValueError, list2set, [7, 8])
+        # self.assertRaises(ValueError, list2set, [1])
