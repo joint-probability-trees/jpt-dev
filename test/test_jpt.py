@@ -526,10 +526,18 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         cls.jpt.learn(columns=cls.data.values.T)
 
     def test_plot(self):
-        self.jpt.plot(plotvars=['Food', 'WaitEstimate'], title='Restaurant-Mixed',
-                      filename='Restaurant-Mixed',
-                      directory=tempfile.gettempdir(),
-                      view=False)
+        # Act
+        path = self.jpt.plot(
+            plotvars=['Food', 'WaitEstimate'],
+            title='Restaurant-Mixed',
+            filename='Restaurant-Mixed',
+            # directory=tempfile.gettempdir(),
+            view=False
+        )
+        # Assert
+        self.assertTrue(
+            os.path.exists(path)
+        )
 
     def test_posterior_mixed_single_candidate_T(self):
         self.q = ['WillWait']
@@ -633,11 +641,17 @@ class TestCaseExpectation(TestCase):
         cls.jpt.learn(columns=cls.data.values.T)
 
     def test_plot(self):
-        self.jpt.plot(  # plotvars=['WaitEstimate'],
+        # Act
+        path = self.jpt.plot(
+            plotvars=['WaitEstimate'],
             title='Restaurant-Mixed',
             filename='Restaurant-Mixed',
-            directory=tempfile.gettempdir(),
-            view=False)
+            view=False
+        )
+        # Assert
+        self.assertTrue(
+            os.path.exists(path)
+        )
 
     def test_expectation_mixed_single_candidate_T(self):
         self.q = ['WillWait', 'Friday']
@@ -685,11 +699,16 @@ class TestCaseInference(TestCase):
         cls.jpt.learn(columns=cls.data.values.T, close_convex_gaps=False)
 
     def test_plot(self):
-        self.jpt.plot(
+        # Act
+        path = self.jpt.plot(
             title='Restaurant-Mixed',
             filename='Restaurant-Mixed',
-            directory=tempfile.gettempdir(),
+            # directory=tempfile.gettempdir(),
             view=False
+        )
+        # Assert
+        self.assertTrue(
+            os.path.exists(path)
         )
 
     def test_inference_mixed_single_candidate_T(self):

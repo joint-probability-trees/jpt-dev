@@ -1814,7 +1814,7 @@ class JPT:
              nodefill=None,
              leaffill=None,
              alphabet=False
-    ) -> None:
+    ) -> str:
         """
         Generates an SVG representation of the generated regression tree.
 
@@ -1828,10 +1828,14 @@ class JPT:
         :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
         :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
         probability (descending); default is False
+
+        :return:   (str) the path under which the renderd image has been saved.
         """
         if directory is None:
-            directory = tempfile.mkdtemp(prefix=f'{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")}-jpt_{title}-', dir=tempfile.gettempdir())
-            # print(f'Created directory {directory}')
+            directory = tempfile.mkdtemp(
+                prefix=f'jpt_{title}-{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")}',
+                dir=tempfile.gettempdir()
+            )
         else:
             if not os.path.exists(directory):
                 os.makedirs(directory)
@@ -1936,15 +1940,18 @@ class JPT:
         # create edges
         for idx, n in self.innernodes.items():
             for i, c in enumerate(n.children):
-                if c is None: continue
+                if c is None:
+                    continue
                 dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
 
         # show graph
-        JPT.logger.info(f'Saving rendered image to {os.path.join(directory, filename or title)}.svg')
+        filepath = '%s.svg' % os.path.join(directory, ifnone(filename, title))
+        JPT.logger.info(f'Saving rendered image to {filepath}.')
 
         # improve aspect ratio of graph having many leaves or disconnected nodes
         dot = dot.unflatten(stagger=3)
         dot.render(view=view, cleanup=False)
+        return filepath
 
     def pickle(self, fpath: str) -> None:
         """
