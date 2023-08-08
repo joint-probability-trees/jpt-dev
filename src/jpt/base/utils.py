@@ -1,3 +1,4 @@
+import heapq
 import logging
 import numbers
 import os
@@ -406,3 +407,91 @@ def save_plot(fig,  directory, fname, fmt='pdf'):
             f"Saving distributions plot to {os.path.join(directory, f'{fname}.png')}")
         plt.savefig(os.path.join(directory, f'{fname}.png'))
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def count(start: int = 0, inc: int = 1):
+    value = start
+    while 1:
+        yield value
+        value += inc
+
+
+class Heap:
+    '''
+    Implementation of a heap wrapper inspired by
+
+    https://stackoverflow.com/questions/8875706/heapq-with-custom-compare-predicate#8875823
+    '''
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    class Iterator:
+
+        def __init__(self, heap: 'Heap', reverse=False):
+            self.heap = heap
+            self._list_iterator = (reversed if reverse else iter)(self.heap._data)
+
+        def __next__(self):
+            return next(self._list_iterator)[2]
+
+        def __iter__(self):
+            return self
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def __init__(
+            self,
+            data: Iterable[Any] = None,
+            key: Callable = None,
+            inc: int = 1
+    ):
+        self._key = ifnone(key, lambda x: x)
+        self._index = 0
+        self._inc = inc
+        if data:
+            self._data = [(self._key(item), i, item) for i, item in zip(count(0, self._inc), data)]
+            self._index = len(self._data) * self._inc
+            heapq.heapify(self._data)
+        else:
+            self._data = []
+
+    def push(self, item):
+        heapq.heappush(
+            self._data,
+            (self._key(item), self._index, item)
+        )
+        self._index += self._inc
+
+    def pop(self):
+        return heapq.heappop(self._data)[2]
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, item: int):
+        return self._data[item][2]
+
+    def __delitem__(self, item: int):
+        del self._data[item]
+
+    def __bool__(self):
+        return bool(self._data)
+
+    def __repr__(self):
+        return '<Heap %s>' % [item for _, _, item in self._data]
+
+    def __iter__(self):
+        return Heap.Iterator(self)
+
+    def __reversed__(self):
+        return Heap.Iterator(self, reverse=True)
+
+    def index(self, item: Any) -> int:
+        for idx, (_, _, i) in enumerate(self._data):
+            if i == item:
+                return idx
+        else:
+            raise ValueError(
+                'Item %s not found.' % item
+            )

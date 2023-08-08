@@ -32,13 +32,13 @@ from .utils import Identity, OrderedDictProxy, DataScalerProxy, DataScaler
 try:
     from ..base.intervals import __module__
     from .quantile.quantiles import __module__
-    from ..base.functions import __module__, Undefined
+    from ..base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from ..base.intervals import R, ContinuousSet, RealSet, NumberSet
-    from ..base.functions import LinearFunction, ConstantFunction, PiecewiseFunction
+    from ..base.functions import LinearFunction, ConstantFunction, PiecewiseFunction, Undefined
     from .quantile.quantiles import QuantileDistribution
 
 
@@ -401,7 +401,6 @@ class Gaussian(Gaussian_):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
 class Distribution:
     '''
     Abstract supertype of all domains and distributions
@@ -482,10 +481,10 @@ class Distribution:
     def mpe(self):
         raise NotImplementedError()
 
-    def crop(self):
+    def crop(self, restriction: Set):
         raise NotImplementedError()
 
-    def _crop(self):
+    def _crop(self, restriction: Set):
         raise NotImplementedError()
 
     def merge(self):
@@ -605,7 +604,12 @@ class Numeric(Distribution):
     @classmethod
     def value2label(cls, value: Union[numbers.Real, NumberSet]) -> Union[numbers.Real, NumberSet]:
         if isinstance(value, ContinuousSet):
-            return ContinuousSet(cls.labels[value.lower], cls.labels[value.upper], value.left, value.right)
+            return ContinuousSet(
+                cls.labels[value.lower],
+                cls.labels[value.upper],
+                value.left,
+                value.right
+            )
         elif isinstance(value, RealSet):
             return RealSet([cls.value2label(i) for i in value.intervals])
         elif isinstance(value, numbers.Real):
@@ -617,9 +621,16 @@ class Numeric(Distribution):
     @classmethod
     def label2value(cls, label: Union[numbers.Real, NumberSet]) -> Union[numbers.Real, NumberSet]:
         if isinstance(label, ContinuousSet):
-            return ContinuousSet(cls.values[label.lower], cls.values[label.upper], label.left, label.right)
+            return ContinuousSet(
+                cls.values[label.lower],
+                cls.values[label.upper],
+                label.left,
+                label.right
+            )
         elif isinstance(label, RealSet):
-            return RealSet([cls.label2value(i) for i in label.intervals])
+            return RealSet(
+                [cls.label2value(i) for i in label.intervals]
+            )
         elif isinstance(label, numbers.Real):
             return cls.values[label]
         else:
@@ -699,8 +710,19 @@ class Numeric(Distribution):
         :return: The likelihood of the mpe as float and the mpe itself as RealSet
         """
         _max = max(f.value for f in self.pdf.functions)
-        return _max, self.value2label(RealSet([interval for interval, function in zip(self.pdf.intervals, self.pdf.functions)
-                              if function.value == _max]))
+        return (
+            _max,
+            self.value2label(
+                RealSet(
+                    [
+                        interval
+                        for interval, function
+                        in zip(self.pdf.intervals, self.pdf.functions)
+                        if function.value == _max
+                    ]
+                )
+            )
+        )
 
     def _fit(
             self,
@@ -746,10 +768,16 @@ class Numeric(Distribution):
         if isinstance(labels, ContinuousSet):
             return self._p(self.label2value(labels))
         elif isinstance(labels, RealSet):
-            return self._p(RealSet([ContinuousSet(self.values[i.lower],
-                                           self.values[i.upper],
-                                           i.left,
-                                           i.right) for i in labels.intervals]))
+            return self._p(
+                RealSet([
+                    ContinuousSet(
+                        self.values[i.lower],
+                        self.values[i.upper],
+                        i.left,
+                        i.right
+                    ) for i in labels.intervals
+                ])
+            )
         else:
             return self._p(self.values[labels])
 
@@ -802,13 +830,15 @@ class Numeric(Distribution):
         self._quantile = tmp._quantile
         return self
 
-    def _crop(self, interval):
-        dist = self.copy()
-        dist._quantile = self._quantile.crop(interval)
-        return dist
+    def crop(self, restriction: Union[NumberSet, numbers.Number]) -> 'Numeric':
+        return self._crop(self.label2value(restriction))
 
-    def crop(self, restriction: RealSet or ContinuousSet or numbers.Number):
-        """Apply a restriction to this distribution. The restricted distrubtion will only assign mass
+    def _crop(
+            self,
+            restriction: Union[NumberSet, numbers.Number]
+    ) -> 'Numeric':
+        """
+        Apply a restriction to this distribution. The restricted distrubtion will only assign mass
         to the given range and will preserve the relativity of the pdf.
 
         :param restriction: The range to limit this distribution (or singular value)
@@ -817,28 +847,34 @@ class Numeric(Distribution):
 
         # for real sets the result is a merge of the single ContinuousSet crops
         if isinstance(restriction, RealSet):
-
             distributions = []
 
             for idx, continuous_set in enumerate(restriction.intervals):
+                distributions.append(
+                    self._crop(continuous_set)
+                )
 
-                distributions.append(self.crop(continuous_set))
-
-            weights = np.full((len(distributions)), 1/len(distributions))
-
-            return self.merge(distributions, weights)
+            return self.merge(
+                distributions,
+                [1 / len(distributions)] * len(distributions)
+            )
 
         elif isinstance(restriction, ContinuousSet):
             if restriction.size() == 1:
-                return self.crop(restriction.lower)
+                return self._crop(restriction.lower)
             else:
-                return self._crop(restriction)
+                return type(self)().set(
+                    self._quantile.crop(restriction)
+                )
 
         elif isinstance(restriction, numbers.Number):
             return self.create_dirac_impulse(restriction)
 
         else:
-            raise ValueError("Unknown Datatype for cropping a numeric distribution, type is %s" % type(restriction))
+            raise ValueError(
+                "Unknown Datatype for cropping a numeric "
+                "distribution, type is %s" % type(restriction)
+            )
 
     @classmethod
     def type_to_json(cls):
@@ -864,9 +900,14 @@ class Numeric(Distribution):
     def type_from_json(cls, data):
         return cls
 
-    def insert_convex_fragments(self, left: ContinuousSet or None, right: ContinuousSet or None,
-                                number_of_samples: int):
-        """Insert fragments of distributions on the right and left part of this distribution. This should only be used
+    def insert_convex_fragments(
+            self,
+            left: Optional[ContinuousSet],
+            right: Optional[ContinuousSet],
+            number_of_samples: int
+    ):
+        """
+        Insert fragments of distributions on the right and left part of this distribution. This should only be used
         to create a convex hull around the JPTs domain which density is never 0.
 
         :param right: The right (lower) interval to add on if needed and None else
@@ -885,7 +926,7 @@ class Numeric(Distribution):
 
         points.append(np.PINF)
 
-        intervals = [ContinuousSet(a, b) for a, b in zip(points[:-1], points[1:])]
+        intervals = [ContinuousSet(a, b) for a, b in pairwise(points)]
 
         valid_arguments = [e for e in [left, right] if e is not None]
         number_of_intervals = len(valid_arguments)
@@ -916,13 +957,46 @@ class Numeric(Distribution):
             ]
         )
 
-    def moment(self, order=1, center=0):
+    @classmethod
+    def cumsum(
+            cls,
+            distributions: Iterable['Numeric'],
+            error_max: float = np.inf,
+            n_segments: int = None
+    ) -> Iterable['Numeric']:
+        '''
+        Generator yielding the distributions that correspond to the cumulative
+        sums of the passed distributions.
+
+        :param distributions:
+        :param error_max:
+        :param n_segments:
+        :return:
+        '''
+        cumsum = None
+        for d in distributions:
+            if cumsum is None:
+                cumsum = d
+            else:
+                cumsum = cumsum + d
+                cumsum = cls().set(
+                    params=QuantileDistribution.from_cdf(
+                        cumsum.cdf.approximate(
+                            error_max=error_max,
+                            n_segments=n_segments,
+                            replace_by=LinearFunction
+                        )
+                    )
+                )
+            yield cumsum
+
+    def moment(self, order: numbers.Integral = 1, center: numbers.Real = 0) -> numbers.Real:
         r"""Calculate the central moment of the r-th order almost everywhere.
 
         .. math:: \int (x-c)^{r} p(x)
 
         :param order: The order of the moment to calculate
-        :param center: The constant (c) to subtract in the basis of the exponent
+        :param center: The constant to subtract in the basis of the exponent
         """
         # We have to catch the special case in which the
         # PDF is an impulse function
@@ -936,10 +1010,35 @@ class Numeric(Distribution):
             interval_ = self.value2label(interval)
 
             function_value = function.value * interval.range() / interval_.range()
-            result += (
-                (pow(interval_.upper - center, order+1) - pow(interval_.lower - center, order+1))
-            ) * function_value / (order + 1)
+            result += ((
+                    pow(interval_.upper - center, order + 1)
+                    - pow(interval_.lower - center, order + 1)
+                )
+                * function_value / (order + 1)
+            )
         return result
+
+    def __add__(self, other: 'Numeric') -> 'Numeric':
+        result = type(self)(**self.settings)
+        result._quantile = QuantileDistribution.from_pdf(
+            self.pdf.convolution(other.pdf).rectify().simplify()
+        )
+        return result
+
+    def approximate(
+            self,
+            error_max: float = None,
+            n_segments: int = None
+    ) -> 'Numeric':
+        return type(self)(**self.settings).set(
+            QuantileDistribution.from_pdf(
+                self.pdf.approximate(
+                    error_max=error_max,
+                    n_segments=n_segments,
+                    replace_by=ConstantFunction
+                )
+            )
+        )
 
     @staticmethod
     def jaccard_similarity(
@@ -1021,6 +1120,7 @@ class Numeric(Distribution):
 
         if view:
             plt.show()
+            plt.close()
 
 
 class ScaledNumeric(Numeric):
@@ -1782,7 +1882,6 @@ class Integer(Distribution):
             result += pow(value - c, order) * probability
         return result
 
-
     @staticmethod
     def jaccard_similarity(
             d1: 'Integer',
@@ -1883,7 +1982,7 @@ class Integer(Distribution):
 # ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection PyPep8Naming
-def SymbolicType(name: str, labels: List[Any]) -> Type:
+def SymbolicType(name: str, labels: List[Any]) -> Type[Multinomial]:
     if len(labels) < 1:
         raise ValueError('At least one value is needed for a symbolic type.')
     if len(set(labels)) != len(labels):
@@ -1896,7 +1995,7 @@ def SymbolicType(name: str, labels: List[Any]) -> Type:
 
 
 # noinspection PyPep8Naming
-def NumericType(name: str, values: Iterable[float]) -> Type:
+def NumericType(name: str, values: Iterable[float]) -> Type[Numeric]:
     t = type(name, (ScaledNumeric,), {})
     if values is not None:
         values = np.array(list(none2nan(values)))
@@ -1909,7 +2008,7 @@ def NumericType(name: str, values: Iterable[float]) -> Type:
 
 
 # noinspection PyPep8Naming
-def IntegerType(name: str, lmin: int, lmax: int) -> Type:
+def IntegerType(name: str, lmin: int, lmax: int) -> Type[Integer]:
     if lmin > lmax:
         raise ValueError('Min label is greater tham max value: %s > %s' % (lmin, lmax))
     t = type(name, (Integer,), {})

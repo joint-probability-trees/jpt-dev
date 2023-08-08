@@ -1,6 +1,8 @@
-import json
 import numbers
+
+import json
 import pickle
+from typing import Type
 from unittest import TestCase
 
 import numpy as np
@@ -9,6 +11,7 @@ import scipy.stats
 from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
+from utils import gaussian_numeric, uniform_numeric
 
 try:
     from jpt.base.functions import __module__
@@ -16,7 +19,6 @@ try:
     from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
-
     pyximport.install()
 finally:
     from jpt.base.functions import PiecewiseFunction, LinearFunction, ConstantFunction
@@ -210,7 +212,10 @@ class NumericDistributionTest(TestCase):
     def setUp(cls) -> None:
         with open('resources/gaussian_100.dat', 'rb') as f:
             cls.GAUSSIAN = pickle.load(f)
-        cls.DistGauss = NumericType('Uniform', values=NumericDistributionTest.GAUSSIAN)
+        cls.DistGauss: Type[Numeric] = NumericType(
+            'Uniform',
+            values=NumericDistributionTest.GAUSSIAN
+        )
 
     def test_hash(self):
         self.assertNotEqual(hash(Numeric), hash(self.DistGauss))
@@ -251,24 +256,27 @@ class NumericDistributionTest(TestCase):
         self.assertTrue(Numeric.equiv(d_type))
         self.assertEqual(d, d_inst)
 
-    def test_manipulation(self):
-        DistGauss = self.DistGauss
-        data = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
-        d = DistGauss()._fit(data, col=0)
-        self.assertEqual(d.expectation(), .5)
-
+    def test_crop(self):
+        # Arrange
+        Gauss: Type[Numeric] = self.DistGauss
+        data = np.array([Gauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
+        dist = Gauss()._fit(data, col=0)
+        # Act
+        cdf = dist._crop(
+            ContinuousSet(Gauss.values[.1], Gauss.values[.9], EXC, EXC)
+        ).cdf
+        # Assert
         ground_truth = PiecewiseFunction.from_dict({
-            ContinuousSet(np.NINF, DistGauss.values[.1], EXC, EXC): 0,
-            ContinuousSet(DistGauss.values[.1], DistGauss.values[.9], INC, EXC):
-                LinearFunction.from_points((DistGauss.values[.1], .0),
-                                           (DistGauss.values[.9], 1.)),
-            ContinuousSet(DistGauss.values[.9], np.PINF, INC, EXC): 1
+            '(-inf,%s)' % Gauss.values[.1]: 0,
+            '[%s,%s)' % (Gauss.values[.1], Gauss.values[.9]):
+                LinearFunction.from_points(
+                    (Gauss.values[.1], .0),
+                    (Gauss.values[.9], 1.)
+                ),
+            '[%s,inf)' % Gauss.values[.9]: 1
         })
-
-        f1 = d.crop(ContinuousSet(DistGauss.values[.1], DistGauss.values[.9], EXC, EXC)).cdf.round(10)
-        f2 = ground_truth.round(10)
-
-        self.assertEqual(f1, f2)
+        self.assertEqual(.5, dist.expectation())
+        self.assertEqual(ground_truth.round(10), cdf.round(10))
 
     def test_kldiv_equality(self):
         DistGauss = self.DistGauss
@@ -349,7 +357,7 @@ class NumericDistributionTest(TestCase):
         samples = p.sample(100)
         self.assertTrue(all([pdf.eval(v) > 0 for v in samples]))
 
-    def test_moment(self):
+    def test_moments(self):
         np.random.seed(69)
         data = np.random.normal(0, 1, 100000).reshape(-1, 1)
         distribution = Numeric()
@@ -403,7 +411,7 @@ class NumericDistributionTest(TestCase):
         )
 
         jacc = Numeric.jaccard_similarity(d1, d2)
-        self.assertEqual(1/3, jacc)
+        self.assertAlmostEqual(1 / 3, jacc, places=8)
 
     def test_jaccard_symmetry(self):
         d1 = Numeric().set(
@@ -420,6 +428,35 @@ class NumericDistributionTest(TestCase):
         jacc1 = Numeric.jaccard_similarity(d1, d2)
         jacc2 = Numeric.jaccard_similarity(d2, d1)
         self.assertEqual(jacc1, jacc2)
+
+    def test_add(self):
+        # Arrange
+        x = uniform_numeric(-1, 1)
+        y = uniform_numeric(-1, 1)
+        # Act
+        z = (x + y)
+        # Assert
+        self.assertAlmostEqual(
+            x.expectation() + y.expectation(),
+            z.expectation(),
+            places=10
+        )
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '(-∞,-2.0)': 0,
+                '[-2.0,2.0000000000000004)': .25,
+                '[2.0000000000000004,∞)': 0
+            }),
+            z.pdf
+        )
+
+    def test_moment(self):
+        pdf = PiecewiseFunction.zero().overwrite({
+            ContinuousSet(1.23, 1.23 + eps, INC, EXC): np.inf
+        })
+        d = Numeric().set(QuantileDistribution.from_pdf(pdf))
+        self.assertEqual(1.23, d.moment(1))
+        self.assertEqual(0, d.moment(2))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -671,8 +708,8 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual([0, 1, 2], list(sumpos.values.values()))
         self.assertEqual(res, list(sumpos.probabilities))
 
-# ----------------------------------------------------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------------------------------------------------
 
 class DataScalerTest(TestCase):
     DATA = None

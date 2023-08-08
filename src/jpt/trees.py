@@ -24,18 +24,29 @@ from .base.utils import list2interval, format_path, normalized
 from .base.utils import prod, setstr_int
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
-from .variables import VariableMap, SymbolicVariable, NumericVariable, Variable, VariableAssignment, IntegerVariable, \
-    LabelAssignment, ValueAssignment
+from .distributions.quantile.quantiles import QuantileDistribution
+from .variables import (
+    VariableMap,
+    SymbolicVariable,
+    NumericVariable,
+    Variable,
+    VariableAssignment,
+    IntegerVariable,
+    LabelAssignment,
+    ValueAssignment
+)
 
 try:
     from .base.intervals import __module__
     from .learning.impurity import __module__
+    from .base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import Impurity
+    from .base.functions import PiecewiseFunction
 
 
 style.use(plotstyle)
@@ -599,17 +610,9 @@ class Leaf(Node):
         result = self.copy()
 
         for variable, value in evidence.items():
-
             # adjust leaf distributions
-            if variable.symbolic or variable.integer:
-                result.distributions[variable] = result.distributions[variable]._crop(value)
-
-            # for numeric variables it's not as straight forward due to the value being polymorph
-            elif variable.numeric:
-                result.distributions[variable] = result.distributions[variable].crop(value)
-
-            else:
-                raise ValueError("Unknown variable type to crop. Type is %s" % type(variable))
+            # noinspection PyProtectedMember
+            result.distributions[variable] = result.distributions[variable]._crop(value)
 
         return result
 
@@ -1017,13 +1020,11 @@ class JPT:
 
         for leaf in self.apply(evidence_):
             p_m = 1
-            likelihoods = []
             for var in set(evidence_.keys()):
                 evidence_val = evidence_[var]
                 if var in leaf.path:  # var.numeric and
                     evidence_val = evidence_val.intersection(leaf.path[var])
                 p_m *= leaf.distributions[var]._p(evidence_val)
-                likelihoods.append((var, evidence_val, leaf.distributions[var]._p(evidence_val)))
 
             w = leaf.prior
             p_m *= w
@@ -1032,7 +1033,7 @@ class JPT:
             if leaf.applies(query_):
                 for var in set(query_.keys()):
                     query_val = query_[var]
-                    if var.numeric and var in leaf.path:
+                    if var in leaf.path:
                         query_val = query_val.intersection(leaf.path[var])
                     p_m *= leaf.distributions[var]._p(query_val)
                 p_q += p_m
@@ -1561,7 +1562,14 @@ class JPT:
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
-    def learn(self, data=None, rows=None, columns=None, keep_samples=False) -> 'JPT':
+    def learn(
+            self,
+            data: Optional[pd.DataFrame] = None,
+            rows: Optional[Union[np.ndarray, List]] = None,
+            columns: Optional[Union[np.ndarray, List]] = None,
+            keep_samples: bool = False,
+            close_convex_gaps: bool = True
+    ) -> 'JPT':
         """
         Fit the jpt to ``data``
         :param data:    The training examples (assumed in row-shape)
@@ -1572,6 +1580,7 @@ class JPT:
         :type columns:  [[str or float or bool]]; (according to `self.variables`)
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
                         purposes only. Default is false.
+        :param close_convex_gaps:
         :return: the fitted model
         """
         # --------------------------------------------------------------------------------------------------------------
@@ -1658,6 +1667,9 @@ class JPT:
         ))
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
+
+        if close_convex_gaps:
+            self.postprocess_leaves()
 
         # ----------------------------------------------------------------------------------------------------------
         # Print the statistics
@@ -1997,19 +2009,20 @@ class JPT:
         :param evidence: A VariableAssignment mapping the observed variables to there observed values
          :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
         """
-
-        if not evidence:
-            evidence = LabelAssignment()
-
-        # Convert, if necessary, labels to internal value representations
+        if evidence is None:
+            evidence = {}
+        if isinstance(evidence, dict):
+            evidence = self.bind(evidence)
         if isinstance(evidence, LabelAssignment):
-            evidence = evidence.value_assignment()
+            evidence_ = evidence.value_assignment()
+        else:
+            evidence_ = evidence
 
         # the new jpt that acts as conditional joint probability distribution
         conditional_jpt: JPT = self.copy()
 
         # skip if evidence is empty
-        if not evidence:
+        if not evidence_:
             return conditional_jpt
 
         # initialize exploration queue
@@ -2018,9 +2031,11 @@ class JPT:
         while fringe:
             # get the next node to inspect
             node = fringe.popleft()
+            # clear the path of each node as we will re-construct it later
+            node._path = []
 
             # the node might have been deleted already
-            if node not in conditional_jpt.allnodes.values():
+            if node.idx not in conditional_jpt.allnodes:
                 continue
 
             # initialize remove as false
@@ -2047,9 +2062,9 @@ class JPT:
                 leaf: Leaf = node
 
                 # calculate probability of this leaf being selected given the evidence
-                probability = leaf.probability(evidence)
+                probability = leaf.probability(evidence_)
 
-                # if the leafs probability is 0 with the evidence
+                # if the leaf's probability is 0 with the evidence
                 if probability > 0:
                     leaf.prior *= probability
                 else:
@@ -2060,22 +2075,21 @@ class JPT:
             # if the node has been removed and the removed node as a parent
             if rm and node.parent is not None:
 
-                # if the nodes parent has children
+                # if the nodes' parent has children
                 if node.parent.children:
-
-                    # and the node has a child either
+                    # if the node has a child either
                     if isinstance(node, DecisionNode) and len(node.children) == 1:
-
                         # replace it by its child
-                        node.parent.children[node.parent.children.index(node)] = first(node.children)
-
-                    # delete this node from the parents children
+                        orphan = first(node.children)
+                        orphan.parent = node.parent
+                        node.parent.children[node.parent.children.index(node)] = orphan
                     else:
+                        # delete this node from the parents children
                         idx = node.parent.children.index(node)
                         del node.parent.children[idx]
                         del node.parent.splits[idx]
 
-                # append the parent node the queue
+                # mark the parent node for further processing
                 fringe.append(node.parent)
 
             # if the resulting model is empty
@@ -2083,25 +2097,27 @@ class JPT:
 
                 if len(node.children) == 1:
                     conditional_jpt.root = first(node.children)
-
-                # raise an error if wanted
-                elif fail_on_unsatisfiability:
-                    raise Unsatisfiability(
-                        'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
+                    conditional_jpt.root.parent = None
+                elif node.children:
+                    conditional_jpt.root = None
+                else:
+                    raise RuntimeError(
+                        'This should never happen. JPT.conditional_jpt() seems to be broken :('
                     )
 
-                # return None if error is not wanted
-                else:
-                    return None
-
         # calculate remaining probability mass
-        probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
+        probability_mass = sum(
+            leaf.prior for leaf in conditional_jpt.leaves.values()
+        ) if conditional_jpt.root is not None else 0
 
         if not probability_mass:
+            # raise an error if wanted
             if fail_on_unsatisfiability:
                 raise Unsatisfiability(
-                    'JPT is unsatisfiable (all %d leaves have 0 prior probability)' % len(self.leaves)
+                    'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
                 )
+
+            # return None if error is not wanted
             else:
                 return None
 
@@ -2111,27 +2127,23 @@ class JPT:
             # normalize probability
             leaf.prior /= probability_mass
 
-            for variable, value in evidence.items():
+            for variable, value in evidence_.items():
                 # adjust leaf distributions
-                if variable.symbolic or variable.integer:
-                    leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
+                # if variable.symbolic or variable.integer:
+                leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
 
-                # for numeric variables it's not as straight forward due to the value being polymorph
-                elif variable.numeric:
-                    leaf.distributions[variable] = leaf.distributions[variable].crop(value)
-
-                else:
-                    raise ValueError("Unknown variable type to crop. Type is %s" % type(variable))
-
-        # clean up not needed path restrictions
-        for node in conditional_jpt.allnodes.values():
-            for variable in evidence.keys():
-                if variable in node.path.keys():
-                    del node.path[variable]
+        # reconstruct the path restrictions
+        queue = deque([conditional_jpt.root])
+        while queue:
+            node = queue.popleft()
+            if not isinstance(node, DecisionNode):
+                continue
+            for split, child in zip(node.splits, node.children):
+                child._path.append((node.variable, split))
+                queue.append(child)
 
         # recalculate the priors for the conditional jpt
-        priors = conditional_jpt.posterior(
-            evidence=conditional_jpt.bind({v.name: e for v, e in evidence.label_assignment().items()}))
+        priors = conditional_jpt.posterior()
         conditional_jpt.priors = priors
 
         return conditional_jpt
@@ -2202,8 +2214,11 @@ class JPT:
         return sum(l.samples for l in self.leaves.values())
 
     def postprocess_leaves(self) -> None:
-        """Postprocess leaves such that the convex hull that is postulated from this tree has likelihood > 0 for every
-        point inside the hull."""
+        """
+        Postprocess leaves such that the convex hull that is
+        postulated from this tree has likelihood > 0 for every
+        point inside the hull.
+        """
 
         # get total number of samples and use 1/total as default value
         total_samples = self.total_samples()
@@ -2212,7 +2227,7 @@ class JPT:
         for idx, leaf in self.leaves.items():
             # for numeric every distribution
             for variable, distribution in leaf.distributions.items():
-                if variable.numeric and variable in leaf.path.keys() and not distribution.is_dirac_impulse():
+                if variable.numeric and variable in leaf.path.keys():  # and not distribution.is_dirac_impulse():
 
                     left = None
                     right = None
@@ -2220,22 +2235,40 @@ class JPT:
                     # if the leaf is not the "lowest" in this dimension
                     if np.NINF < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
                         # create uniform distribution as bridge between the leaves
-                        interval = ContinuousSet(
+                        left = ContinuousSet(
                             leaf.path[variable].lower,
-                            distribution.cdf.intervals[0].upper
+                            distribution.cdf.intervals[0].upper,
                         )
-                        left = interval
 
                     # if the leaf is not the "highest" in this dimension
                     if np.PINF > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
                         # create uniform distribution as bridge between the leaves
-                        interval = ContinuousSet(
+                        right = ContinuousSet(
                             distribution.cdf.intervals[-2].upper,
-                            leaf.path[variable].upper
+                            leaf.path[variable].upper,
                         )
-                        right = interval
-
-                    distribution.insert_convex_fragments(left, right, total_samples)
+                    if distribution.is_dirac_impulse():
+                        # noinspection PyTypeChecker
+                        interval = ContinuousSet(
+                            left.lower if left is not None else distribution.cdf.intervals[0].upper,
+                            right.upper if right is not None else distribution.cdf.intervals[1].lower,
+                            INC,
+                            EXC
+                        )
+                        # noinspection PyTypeChecker
+                        distribution.set(
+                            QuantileDistribution.from_pdf(
+                                PiecewiseFunction.zero().overwrite({
+                                    interval: 1 / interval.width
+                                })
+                            )
+                        )
+                    else:
+                        distribution.insert_convex_fragments(
+                            left,
+                            right,
+                            total_samples
+                        )
 
     def number_of_parameters(self) -> int:
         """

@@ -5,6 +5,7 @@ from ddt import ddt, data, unpack
 from dnutils.tools import ifstr
 
 from jpt.base.constants import eps
+from utils import gaussian_numeric
 
 try:
     from jpt.base.functions import __module__
@@ -19,7 +20,8 @@ finally:
         ConstantFunction,
         Undefined,
         Function,
-        PiecewiseFunction
+        PiecewiseFunction,
+        PLFApproximator
     )
     from jpt.base.intervals import ContinuousSet, EMPTY, R, EXC, INC, RealSet
 
@@ -842,5 +844,123 @@ class PLFTest(TestCase):
                 R: .5
             }),
             plf2.rectify()
+        )
+
+
+    @data(
+        (
+            PiecewiseFunction.zero().overwrite({
+                '[-2,-1)': 1,
+                '[1,2)': 1
+            }),
+            1,
+            RealSet(['[-2.0,-1.0)', '[1.0,2.0)']),
+        ),
+        (
+            PiecewiseFunction.zero().overwrite({
+                '[0,1)': '1x',
+                '[1,2)': '-1x+2'
+            }),
+            1,
+            '[1,1]'
+        ),
+        (
+            PiecewiseFunction.zero().overwrite({
+                '[-2,-1)': 1,
+                '[1,2)': 1.5
+            }),
+            1.5,
+            '[1,2)',
+        ),
+        (
+            PiecewiseFunction.from_dict({
+                R: '1x',
+            }),
+            np.inf,
+            ContinuousSet(np.inf, np.inf),
+        ),
+    )
+    @unpack
+    def test_maximize(self, f, f_max, f_argmax):
+        # Arrange
+        f_argmax = ifstr(f_argmax, ContinuousSet.parse)
+        # Act
+        argmax, max_ = f.maximize()
+        # Assert
+        self.assertEqual(f_argmax, argmax)
+        self.assertEqual(f_max, max_)
+
+    def test_approximate(self):
+        plf = PiecewiseFunction.zero().overwrite({
+            '[0,.25[': .1,
+            '[.25,.5[': .5,
+            '[.5,.75[': .7
+        })
+        self.assertEqual(
+            5,
+            len(plf)
+        )
+        self.assertEqual(
+            3,
+            len(
+                plf.approximate(
+                    n_segments=3,
+                    replace_by=ConstantFunction
+                )
+            )
+        )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class PLFApproximatorTest(TestCase):
+
+    def test_approximation_linear_k(self):
+        for k in range(10, 2, -1):
+            # Arrange
+            plf: PiecewiseFunction = gaussian_numeric().cdf
+            approximator = PLFApproximator(
+                plf
+            )
+            # Act
+            approx = approximator.run(k=k)
+            # Assert
+            self.assertGreater(len(plf), k)
+            self.assertEqual(k, len(approx))
+
+    def test_approximation_constant_k(self):
+        for k in range(10, 2, -1):
+            # Arrange
+            plf: PiecewiseFunction = gaussian_numeric().pdf
+            approximator = PLFApproximator(
+                plf,
+                replace_by=ConstantFunction
+            )
+            # Act
+            approx = approximator.run(k=k)
+            # Assert
+            self.assertGreater(len(plf), k)
+            self.assertEqual(k, len(approx))
+
+    def test_approximation_constant_error(self):
+        # Arrange
+        plf: PiecewiseFunction = gaussian_numeric().pdf
+        approximator = PLFApproximator(
+            plf,
+            replace_by=ConstantFunction
+        )
+        # Act
+        approx = approximator.run(error_max=.2)
+        # Assert
+        self.assertGreater(len(plf), len(approx))
+
+    def test_invalid(self):
+        approximator = PLFApproximator(
+            None
+        )
+        self.assertRaises(
+            ValueError,
+            approximator.run,
+            k=2
         )
 
