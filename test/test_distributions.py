@@ -63,6 +63,46 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(Dist123.values, OrderedDictProxy([(1, 0), (2, 1), (3, 2), (4, 3), (5, 4)]))
         self.assertEqual(Dist123.labels, OrderedDictProxy([(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]))
 
+    def test_label2value(self):
+        '''Test the conversion from label to value space'''
+        # Arrange
+        ABC = self.DistABC
+        # Act
+        value_singular = ABC.label2value('A')
+        value_set = ABC.label2value({'A', 'B', 'C'})
+        value_list = ABC.label2value(['B', 'C'])
+        value_tuple = ABC.label2value(('A', 'B', 'C'))
+        # Assert
+        self.assertEqual(0, value_singular)
+        self.assertEqual({0, 1, 2}, value_set)
+        self.assertEqual((0, 1, 2), value_tuple)
+        self.assertEqual([1, 2], value_list)
+        self.assertRaises(
+            ValueError,
+            ABC.label2value,
+            'D'
+        )
+
+    def test_value2label(self):
+        '''Test the conversion from value to label space'''
+        # Arrange
+        ABC = self.DistABC
+        # Act
+        label_singular = ABC.value2label(1)
+        label_set = ABC.value2label({0, 1, 2})
+        label_list = ABC.value2label([0, 1, 2])
+        label_tuple = ABC.value2label((0, 1, 2))
+        # Assert
+        self.assertEqual('B', label_singular)
+        self.assertEqual({'A', 'B', 'C'}, label_set)
+        self.assertEqual(('A', 'B', 'C'), label_tuple)
+        self.assertEqual(['A', 'B', 'C'], label_list)
+        self.assertRaises(
+            ValueError,
+            ABC.value2label,
+            'D'
+        )
+
     def test_fit(self):
         '''Fitting of multinomial distributions'''
         DistABC = self.DistABC
@@ -88,17 +128,56 @@ class MultinomialDistributionTest(TestCase):
         self.assertAlmostEqual(d1._p({1}), 3 / 10, 15)
         self.assertAlmostEqual(d1._p({2}), 2 / 10, 15)
 
-    def test_inference(self):
-        '''Posterior, MPE, Expectation'''
-        DistABC = self.DistABC
-        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+    def test_crop(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
 
-        self.assertEqual(d1.expectation(), {'A'})
-        self.assertEqual(d1.mpe(), (0.5, {'A'}))
-        self.assertEqual(d1.crop([0, 2]), DistABC().set([2 / 3, 0, 1 / 3]))
-        self.assertEqual(d1.crop([0, 1]), DistABC().set([2 / 3, 1 / 3, 0]))
-        self.assertRaises(Unsatisfiability, d1.crop, restriction=[])
-        # self.assertEqual(d1.crop(), d1)
+        # Act
+        result1 = abc.crop({'A', 'C'})
+        result2 = abc.crop('B')
+
+        # Assert
+        self.assertEqual([2 / 3, 0, 1 / 3], list(result1.probabilities))
+        self.assertEqual([0, 1, 0], list(result2.probabilities))
+        self.assertRaises(Unsatisfiability, abc.crop, ())
+
+    def test__crop(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        result1 = abc._crop({0, 2})
+        result2 = abc._crop(1)
+
+        # Assert
+        self.assertEqual([2 / 3, 0, 1 / 3], list(result1.probabilities))
+        self.assertEqual([0, 1, 0], list(result2.probabilities))
+        self.assertRaises(Unsatisfiability, abc._crop, ())
+
+    def test_mpe(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        result_unique = abc.mpe()
+        abc.set([1 / 3, 1 / 3, 1 / 3])
+        result_uniform = abc.mpe()
+
+        # Assert
+        self.assertEqual((1 / 2, {'A'}), result_unique)
+        self.assertEqual((1 / 3, {'A', 'B', 'C'}), result_uniform)
+
+    def test_expectation(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+        # Act
+        result = abc.expectation()
+        # Assert
+        self.assertEqual({'A'}, result)
 
     def test_domain_serialization(self):
         '''(De-)Serialization of Multinomial domains'''
@@ -463,6 +542,9 @@ class NumericDistributionTest(TestCase):
 
 class IntegerDistributionTest(TestCase):
 
+    def test_value2label(self):
+        ...
+
     def test_set(self):
         # Arrange
         dice = IntegerType('Dice', 1, 6)
@@ -622,18 +704,6 @@ class IntegerDistributionTest(TestCase):
         # Assert
         self.assertTrue(dice.equiv(dice_type))
         self.assertEqual(fair_dice_inst, fair_dice)
-
-    def test_list2set(self):
-        # Arrange
-        dice = IntegerType('Dice', 1, 6)
-
-        # Act
-        s = dice.list2set([2, 4])
-
-        # Assert
-        self.assertEqual({2, 3, 4}, s)
-        self.assertRaises(ValueError, dice.list2set, [7, 8])
-        self.assertRaises(ValueError, dice.list2set, [1])
 
     def test_moment(self):
         data = np.random.randint(0, 10, size=(1000, 1))

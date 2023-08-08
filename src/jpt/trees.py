@@ -20,7 +20,7 @@ from matplotlib import style, pyplot as plt
 
 from .base.constants import plotstyle, orange, green
 from .base.errors import Unsatisfiability
-from .base.utils import list2interval, format_path, normalized
+from .base.utils import list2interval, format_path, normalized, list2intset, list2set
 from .base.utils import prod, setstr_int
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
@@ -1320,11 +1320,17 @@ class JPT:
                     raise TypeError('Unknown type of variable value: %s' % type(arg).__name__)
             if var.symbolic or var.integer:
                 # Transform into internal values (symbolic values to their indices):
-                if type(arg) is list:
-                    arg = var.domain.list2set(arg)
+                if type(arg) is list and var.integer:
+                    arg = list2intset(arg)
+                if type(arg) is list and var.symbolic:
+                    arg = list2set(arg)
                 if type(arg) is tuple:
-                    raise TypeError('Illegal type for values of domain %s: %s'
-                                    % (var.domain.__name__, type(arg).__name__))
+                    raise TypeError(
+                        'Illegal type for values of domain %s: %s' % (
+                            var.domain.__name__,
+                            type(arg).__name__
+                        )
+                    )
                 if type(arg) is not set:
                     arg = {arg}
                 query_[var] = {v for v in arg}
