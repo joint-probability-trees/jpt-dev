@@ -8,6 +8,7 @@ from types import FunctionType
 from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Collection
 
 import numpy as np
+from deprecated import deprecated
 from dnutils import ifnone, project, first
 from matplotlib import pyplot as plt
 
@@ -231,6 +232,8 @@ class Multinomial(Distribution):
         '''
         if isinstance(event, numbers.Integral):
             event = {event}
+        elif not isinstance(event, set):
+            event = set(event)
         i1, i2 = tee(event, 2)
         if not all(isinstance(v, numbers.Integral) for v in i1):
             raise TypeError('All arguments must be integers.')
@@ -273,10 +276,12 @@ class Multinomial(Distribution):
             self._params
         )
 
+    @deprecated('Expectation is undefined in symbolic domains. Use Multinomial._mode() instead.')
     def _expectation(self) -> Set[int]:
         '''Returns the value with the highest probability for this variable'''
         return self._mpe()[1]
 
+    @deprecated('Expectation is undefined in symbolic domains. Use Multinomial._mode() instead.')
     def expectation(self) -> Set[Symbol]:
         """
         For symbolic variables the expectation is equal to the mpe.
@@ -306,6 +311,9 @@ class Multinomial(Distribution):
                 ) if p == _max]
             )
         )
+
+    mode = mpe
+    _mode = _mpe
 
     def kl_divergence(self, other: 'Multinomial') -> float:
         '''

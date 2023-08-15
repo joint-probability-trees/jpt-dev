@@ -226,9 +226,13 @@ class Integer(Distribution):
     def _p(self, values: Union[int, Iterable[int]]) -> float:
         if not isinstance(values, Iterable):
             values = {values}
+        elif not isinstance(values, set):
+            values = set(values)
         i1, i2 = tee(values, 2)
         if not all(isinstance(v, numbers.Integral) and self.vmin <= v <= self.vmax for v in i1):
-            raise ValueError('Arguments must be in %s' % setstr(self.values.values(), limit=5))
+            raise ValueError(
+                'Arguments must be in %s' % setstr(self.values.values(), limit=5)
+            )
 
         return sum(self._params[v] for v in i2)
 
@@ -261,6 +265,9 @@ class Integer(Distribution):
                 ) if p == p_max
              }
         )
+
+    mode = mpe
+    _mode = _mpe
 
     def crop(self, restriction: Union[Iterable[int], int]) -> 'Distribution':
         if isinstance(restriction, numbers.Integral):

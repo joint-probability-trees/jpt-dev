@@ -4,7 +4,7 @@ import numbers
 import os
 from collections import deque
 from operator import itemgetter
-from typing import Union, Iterable, Optional, Dict, Any, Type
+from typing import Union, Iterable, Optional, Dict, Any, Type, Callable
 
 import numpy as np
 from dnutils import ifnone, ifnot
@@ -67,8 +67,8 @@ class Numeric(Distribution):
     @classmethod
     def value2label(
             cls,
-            value: Union[numbers.Real, NumberSet]
-    ) -> Union[numbers.Real, NumberSet]:
+            value: Union[float, NumberSet]
+    ) -> Union[float, NumberSet]:
         if isinstance(value, ContinuousSet):
             return ContinuousSet(
                 cls.labels[value.lower],
@@ -146,21 +146,17 @@ class Numeric(Distribution):
         else:
             return len(self.cdf.intervals)
 
-    def _expectation(self) -> numbers.Real:
-        e = 0
-        singular = True  # In case the CDF is jump fct the expectation is where the jump happens
-        for i, f in zip(self.cdf.intervals, self.cdf.functions):
-            if i.lower == np.NINF or i.upper == np.PINF:
-                continue
-            e += (self.cdf.eval(i.upper) - self.cdf.eval(i.lower)) * (i.upper + i.lower) / 2
-            singular = False
-        return e if not singular else i.lower
+    def _expectation(self) -> float:
+        return self._moment(1, 0)
 
-    def expectation(self) -> numbers.Real:
-        return self.moment(1)
+    def _variance(self) -> float:
+        return self._moment(2, self._expectation())
 
-    def variance(self) -> numbers.Real:
-        return self.moment(2)
+    def expectation(self) -> float:
+        return self.moment(1, 0)
+
+    def variance(self) -> float:
+        return self.moment(2, self.expectation())
 
     def quantile(self, gamma: numbers.Real) -> numbers.Real:
         return self.ppf.eval(gamma)
@@ -180,14 +176,18 @@ class Numeric(Distribution):
         return len(self._quantile.cdf.intervals) == 2
 
     def mpe(self) -> (float, RealSet):
+        return self._mpe(self.value2label)
+
+    def _mpe(self, value_transform: Optional[Callable] = None) -> (float, NumberSet):
         """
         Calculate the most probable configuration of this quantile distribution.
         :return: The likelihood of the mpe as float and the mpe itself as RealSet
         """
+        value_transform = ifnone(value_transform, lambda _: _)
         _max = max(f.value for f in self.pdf.functions)
         return (
             _max,
-            self.value2label(
+            value_transform(
                 RealSet(
                     [
                         interval
@@ -195,7 +195,7 @@ class Numeric(Distribution):
                         in zip(self.pdf.intervals, self.pdf.functions)
                         if function.value == _max
                     ]
-                )
+                ).simplify()
             )
         )
 
@@ -223,6 +223,11 @@ class Numeric(Distribution):
         return self
 
     def _p(self, value: Union[numbers.Number, NumberSet]) -> numbers.Real:
+        if not isinstance(value, (NumberSet, numbers.Number)):
+            raise TypeError(
+                'Argument must be numbers.Number or '
+                'jpt.base.intervals.NumberSet (got %s).' % type(labels)
+            )
         if isinstance(value, numbers.Number):
             value = ContinuousSet(value, value)
         elif isinstance(value, RealSet):
@@ -230,36 +235,23 @@ class Numeric(Distribution):
         probspace = self.pdf.gt(0)
         if probspace.isdisjoint(value):
             return 0
-        probmass = ((self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
-                    (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.))
+        probmass = (
+            (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
+            (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+        )
         if not probmass:
             return probspace in value
         return probmass
 
     def p(self, labels: Union[numbers.Number, NumberSet]) -> numbers.Real:
-        if not isinstance(labels, (NumberSet, numbers.Number)):
-            raise TypeError('Argument must be numbers.Number or '
-                            'jpt.base.intervals.NumberSet (got %s).' % type(labels))
-        if isinstance(labels, ContinuousSet):
-            return self._p(self.label2value(labels))
-        elif isinstance(labels, RealSet):
-            return self._p(
-                RealSet([
-                    ContinuousSet(
-                        self.values[i.lower],
-                        self.values[i.upper],
-                        i.left,
-                        i.right
-                    ) for i in labels.intervals
-                ])
-            )
-        else:
-            return self._p(self.values[labels])
+        return self._p(self.label2value(labels))
 
     def kl_divergence(self, other: 'Numeric') -> numbers.Real:
         if type(other) is not type(self):
-            raise TypeError('Can only compute KL divergence between '
-                            'distributions of the same type, got %s' % type(other))
+            raise TypeError(
+                'Can only compute KL divergence between '
+                'distributions of the same type, got %s' % type(other)
+            )
         self_ = [(i.lower, f.value, None) for i, f in self.pdf.iter()]
         other_ = [(i.lower, None, f.value) for i, f in other.pdf.iter()]
         all_ = deque(sorted(self_ + other_, key=itemgetter(0)))
@@ -313,7 +305,10 @@ class Numeric(Distribution):
             raise ValueError('Weight must be in [0, 1]')
         if type(dist) is not type(self):
             raise TypeError('Can only update with distribution of the same type, got %s' % type(dist))
-        tmp = Numeric.merge([self, dist], normalized([1, weight]))
+        tmp = Numeric.merge(
+            [self, dist],
+            normalized([1, weight])
+        )
         self.values = tmp.values
         self.labels = tmp.labels
         self._quantile = tmp._quantile
@@ -487,16 +482,35 @@ class Numeric(Distribution):
 
     def moment(
             self,
-            order: int = 1,
-            center: float = 0
-    ) -> numbers.Real:
+            order: int,
+            center: float,
+    ) -> float:
+        return self._moment(
+            order,
+            center,
+            self.value2label
+        )
+
+    def _moment(
+            self,
+            order: int,
+            center: float,
+            value_transform: Optional[Callable] = None
+    ) -> float:
         r"""Calculate the central moment of the r-th order almost everywhere.
 
-        .. math:: \int (x-c)^{r} p(x)
+        .. math:: \int (x - c)^{r} p(x)
+
+        cf. https://en.wikipedia.org/wiki/Central_moment
+            https://gregorygundersen.com/blog/2020/04/11/moments/
 
         :param order: The order of the moment to calculate
         :param center: The constant to subtract in the basis of the exponent
+                       If `center` is 0, the result corresponds to the ``order``-th raw moment.
+                       If `center` is set to the distributions mean (ie its expectation, or self._moment(1, 0))
+                       the result is the central moment of the distribution.
         """
+        value_transform = ifnone(value_transform, lambda _: _)
         # We have to catch the special case in which the
         # PDF is an impulse function
         if self.pdf.is_impulse():
@@ -506,14 +520,14 @@ class Numeric(Distribution):
                 return 0
         result = 0
         for interval, function in zip(self.pdf.intervals[1:-1], self.pdf.functions[1:-1]):
-            interval_ = self.value2label(interval)
-
-            function_value = function.value * interval.range() / interval_.range()
-            result += ((
+            interval_ = value_transform(interval)
+            # We have to "stretch" the pdf value over the interval in label space:
+            function_value = function.value * interval.width / interval_.width
+            result += (
+                (
                     pow(interval_.upper - center, order + 1)
                     - pow(interval_.lower - center, order + 1)
-                )
-                * function_value / (order + 1)
+                ) * function_value / (order + 1)
             )
         return result
 

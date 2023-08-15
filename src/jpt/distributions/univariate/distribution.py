@@ -98,9 +98,6 @@ class Distribution:
     def _p(self, value):
         raise NotImplementedError()
 
-    def expectation(self) -> numbers.Real:
-        raise NotImplementedError()
-
     def mpe(self):
         raise NotImplementedError()
 
@@ -122,16 +119,6 @@ class Distribution:
             dist: 'Distribution',
             weight: float
     ) -> 'Distribution':
-        raise NotImplementedError()
-
-    def moment(self, order=1, c=0):
-        r"""Calculate the central moment of the r-th order almost everywhere.
-
-        .. math:: \int (x-c)^{r} p(x)
-
-        :param order: The order of the moment to calculate
-        :param c: The constant to subtract in the basis of the exponent
-        """
         raise NotImplementedError()
 
     def fit(self,

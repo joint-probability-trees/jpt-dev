@@ -7,6 +7,8 @@ from unittest import TestCase
 
 import numpy as np
 import scipy.stats
+from ddt import data, unpack, ddt
+from dnutils.tools import ifstr
 
 from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
@@ -174,10 +176,27 @@ class MultinomialDistributionTest(TestCase):
         # Arrange
         ABC = self.DistABC
         abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
         # Act
         result = abc.expectation()
+
         # Assert
         self.assertEqual({'A'}, result)
+
+    def test_inference(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        result_singular = abc.p('A')
+        result_set = abc.p({'A', 'C'})
+        result_list_duplicate = abc.p(['A', 'C', 'C'])
+
+        # Assert
+        self.assertEqual(.5, result_singular)
+        self.assertEqual(.75, result_set)
+        self.assertEqual(.75, result_list_duplicate)
 
     def test_domain_serialization(self):
         '''(De-)Serialization of Multinomial domains'''
@@ -282,6 +301,7 @@ class MultinomialDistributionTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+@ddt
 class NumericDistributionTest(TestCase):
     '''Test class for ``Numeric`` distributions'''
 
@@ -292,7 +312,7 @@ class NumericDistributionTest(TestCase):
         with open('resources/gaussian_100.dat', 'rb') as f:
             cls.GAUSSIAN = pickle.load(f)
         cls.DistGauss: Type[Numeric] = NumericType(
-            'Uniform',
+            'Normal',
             values=NumericDistributionTest.GAUSSIAN
         )
 
@@ -311,9 +331,27 @@ class NumericDistributionTest(TestCase):
         self.assertAlmostEqual(DistGauss.values.mean, .5, 1)
         self.assertAlmostEqual(DistGauss.values.scale, .6, 1)
 
+    def test_copy(self):
+        # Arrange
+        a, b = 2, 3
+        uniform = uniform_numeric(a, b)
+
+        # Act
+        uniform_ = uniform.copy()
+
+        # Assert
+        self.assertEqual(uniform, uniform_)
+        self.assertNotEqual(id(uniform_), id(uniform))
+
     def test_domain_serialization(self):
         DistGauss = self.DistGauss
-        self.assertTrue(DistGauss.equiv(DistGauss.type_from_json(DistGauss.type_to_json())))
+        self.assertTrue(
+            DistGauss.equiv(
+                DistGauss.type_from_json(
+                    DistGauss.type_to_json()
+                )
+            )
+        )
 
     def test_fit(self):
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
@@ -354,7 +392,7 @@ class NumericDistributionTest(TestCase):
                 ),
             '[%s,inf)' % Gauss.values[.9]: 1
         })
-        self.assertEqual(.5, dist.expectation())
+        self.assertAlmostEqual(.5, dist.expectation(), places=10)
         self.assertEqual(ground_truth.round(10), cdf.round(10))
 
     def test_kldiv_equality(self):
@@ -385,33 +423,100 @@ class NumericDistributionTest(TestCase):
         d1 = DistGauss()._fit(data1, col=0)
         self.assertRaises(TypeError, d1.kl_divergence, ...)
 
-    def test_value_conversion(self):
-        DistGauss = self.DistGauss
-        self.assertEqual(0, DistGauss.value2label(DistGauss.label2value(0)))
-        self.assertEqual(ContinuousSet(0, 1),
-                         DistGauss.value2label(DistGauss.label2value(ContinuousSet(0, 1))))
-        self.assertEqual(RealSet(['[0, 1]', '[2,3]']),
-                         DistGauss.value2label(DistGauss.label2value(RealSet(['[0, 1]', '[2,3]']))))
+    def test_value2label(self):
+        # Arrange
+        Gauss = self.DistGauss
 
-    def _test_label_inference(self):
-        raise NotImplementedError()
+        # Act
+        label_scalar = Gauss.value2label(0)
+        label_interval = Gauss.value2label(
+            ContinuousSet(0, 1)
+        )
 
-    def test_value_inference_normal(self):
-        '''Inference under "normal" circumstances.'''
-        dist = Numeric().set(
-            params=QuantileDistribution.from_cdf(
-                PiecewiseFunction.from_dict({
-                    ']-inf,0[': 0,
-                    '[0,1[': LinearFunction(1, 0),
-                    '[1,inf[': 1
-                })
+        # Assert
+        self.assertAlmostEqual(.5, label_scalar, places=2)
+        self.assertEqual(
+            0,
+            Gauss.value2label(
+                Gauss.label2value(0)
             )
         )
-        self.assertEqual(0, dist._p(-1))
-        self.assertEqual(0, dist._p(.5))
-        self.assertEqual(0, dist._p(2))
-        self.assertEqual(1, dist._p(R))
-        self.assertEqual(.5, dist._p(ContinuousSet.parse('[0,.5]')))
+        self.assertIsInstance(
+            label_interval,
+            ContinuousSet
+        )
+        self.assertEqual(
+            ContinuousSet(0.5, 1.1),
+            round(label_interval, 1)
+        )
+        self.assertEqual(
+            ContinuousSet(0, 1),
+            Gauss.value2label(
+                Gauss.label2value(
+                    ContinuousSet(0, 1)
+                )
+            )
+        )
+
+    def test_label2value(self):
+        # Arrange
+        Gauss = self.DistGauss
+
+        # Act
+        value_realset = Gauss.label2value(
+            RealSet(['[0,1]', '[2,3]'])
+        )
+        value_scalar = Gauss.label2value(.5)
+        value_interval = Gauss.label2value(
+            ContinuousSet(0, 1)
+        )
+
+        # Assert
+        self.assertEqual(
+            RealSet([
+                ContinuousSet(-.9, .9),
+                ContinuousSet(2.6, 4.3)
+            ]),
+            round(value_realset, 1)
+        )
+        self.assertAlmostEqual(
+            0,
+            value_scalar,
+            places=2
+        )
+        self.assertEqual(
+            ContinuousSet(-.9, .9),
+            round(value_interval, 1)
+        )
+
+    @data(
+        (-1, 0),
+        (.5, 0),
+        (2, 0),
+        (R, 1),
+        ('[0,.5]', .5),
+        ('(-inf, .5]', .5),
+        ('[.5,inf)', .5),
+        ('[.5,.5]', 0),
+        (RealSet([
+            '[0,.25]', '[.75,1]'
+        ]), .5)
+    )
+    @unpack
+    def test_inference(self, query, truth):
+        '''Inference under "normal" circumstances.'''
+        # Arrange
+        dist = uniform_numeric(0, 1)
+        query = ifstr(query, ContinuousSet.parse)
+
+        # Act
+        result = dist._p(query)
+
+        # Assert
+        self.assertEqual(
+            truth,
+            result
+        )
 
     def test_value_inference_singularity(self):
         '''PDF has a singularity like a Dirac impulse function.'''
@@ -529,21 +634,137 @@ class NumericDistributionTest(TestCase):
             z.pdf
         )
 
-    def test_moment(self):
-        pdf = PiecewiseFunction.zero().overwrite({
-            ContinuousSet(1.23, 1.23 + eps, INC, EXC): np.inf
-        })
-        d = Numeric().set(QuantileDistribution.from_pdf(pdf))
-        self.assertEqual(1.23, d.moment(1))
-        self.assertEqual(0, d.moment(2))
+    def test__expectation_uniform(self):
+        # Arrange
+        uniform = uniform_numeric(1, 2)
+
+        # Act
+        expectation = uniform._expectation()
+
+        # Assert
+        self.assertEqual(
+            1.5,
+            expectation
+        )
+        self.assertEqual(
+            expectation,
+            uniform.expectation()
+        )
+
+    def test__expectation_2uniform(self):
+        # Arrange
+        dist = Numeric().set(
+            QuantileDistribution.merge([
+                uniform_numeric(1, 2),
+                uniform_numeric(2, 4)
+            ])
+        )
+
+        # Act
+        expectation = dist._expectation()
+
+        # Assert
+        self.assertEqual(
+            2.25,
+            expectation
+        )
+        self.assertEqual(
+            expectation,
+            dist.expectation()
+        )
+
+    def test__moment_uniform(self):
+        # Arrange
+        a, b = 2, 3
+        uniform = uniform_numeric(a, b)
+
+        # Act
+        moment_0 = uniform._moment(0, 0)  # 1
+        moment_1_raw = uniform._moment(1, 0)  # Expectation
+        moment_1_central = uniform._moment(1, moment_1_raw)  # 0
+        moment_2_central = uniform._moment(2, moment_1_raw)  # Variance
+
+        # Assert
+        self.assertEqual(
+            1,
+            moment_0
+        )
+        self.assertEqual(
+            (a + b) / 2,
+            moment_1_raw
+        )
+        self.assertEqual(
+            0,
+            moment_1_central
+        )
+        self.assertEqual(
+            1 / 12 * (b - a) ** 2,
+            moment_2_central
+        )
+
+    def test_mpe(self):
+        # Arrange
+        dist = Numeric().set(
+            QuantileDistribution.merge([
+                uniform_numeric(0, 2),
+                uniform_numeric(2, 3),
+                uniform_numeric(3, 5),
+            ])
+        )
+
+        # Act
+        likelihood, mpe_state = dist.mpe()
+
+        # Assert
+        self.assertEqual(
+            (round(1 / 3, 10), ContinuousSet.parse('[2,3)')),
+            (round(likelihood, 10), mpe_state)
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 class IntegerDistributionTest(TestCase):
 
+    Die = IntegerType('Dice', 1, 6)
+
     def test_value2label(self):
-        ...
+        # Arrange
+        Die = self.Die
+
+        # Act
+        value_scalar = Die.value2label(0)
+        value_set = Die.value2label({0})
+        value_list = Die.value2label([0, 5])
+        value_tuple = Die.value2label((1,))
+
+        # Assert
+        self.assertEqual(1, value_scalar)
+        self.assertEqual({1}, value_set)
+        self.assertEqual([1, 6], value_list)
+        self.assertEqual((2,), value_tuple)
+        self.assertRaises(
+            ValueError,
+            Die.value2label,
+            6
+        )
+
+    def test_label2value(self):
+        # Arrange
+        Die = self.Die
+
+        # Act
+        label_scalar = Die.label2value(1)
+        label_set = Die.label2value({1})
+        label_list = Die.label2value([1, 6])
+        label_tuple = Die.label2value((2,))
+
+        # Assert
+        self.assertEqual(0, label_scalar)
+        self.assertEqual({0}, label_set)
+        self.assertEqual([0, 5], label_list)
+        self.assertEqual((1,), label_tuple)
+        self.assertRaises(ValueError, Die.label2value, 0)
 
     def test_set(self):
         # Arrange
@@ -626,12 +847,14 @@ class IntegerDistributionTest(TestCase):
         p_set_label = fair_dice.p({4, 5, 6})
         p_singular_value = fair_dice._p(0)
         p_set_values = fair_dice._p({0, 1, 2})
+        p_duplicate_labels = fair_dice.p([1, 2, 2])
 
         # Assert
         self.assertEqual(1 / 6, p_singular_label)
         self.assertEqual(1 / 6, p_singular_value)
         self.assertEqual(3 / 6, p_set_label)
         self.assertEqual(3 / 6, p_set_values)
+        self.assertEqual(2 / 6, p_duplicate_labels)
 
         self.assertRaises(ValueError, fair_dice.p, 0)
         self.assertRaises(ValueError, fair_dice.p, 7)

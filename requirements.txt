@@ -7,3 +7,4 @@ pandas>=2.0.1
 arff>=0.9
 fglib>=0.2.3
 factorgraph>=0.0.3
+deprecated
