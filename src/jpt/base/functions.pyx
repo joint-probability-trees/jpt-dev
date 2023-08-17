@@ -46,9 +46,6 @@ cdef class Function:
     Abstract base type of functions.
     """
 
-    def __call__(self, x):
-        return self.eval(x)
-
     cpdef DTYPE_t eval(self, DTYPE_t x):
         """
         Evaluate this function at position ``x``
@@ -56,6 +53,20 @@ cdef class Function:
         :return: f(x)
         """
         return np.nan
+
+    cpdef DTYPE_t[::1] multi_eval(self, DTYPE_t[::1] x, DTYPE_t[::1] result = None):
+        if result is None:
+            result = np.ndarray(shape=x.shape[0], dtype=np.float64)
+        cdef int i
+        for i in range(x.shape[0]):
+            result[i] = self.eval(x[i])
+        return result
+
+    def __call__(self, x):
+        if isinstance(x, np.ndarray):
+            return self.multi_eval(x)
+        else:
+            return self.eval(x)
 
     cpdef Function set(self, Function f):
         """
@@ -730,8 +741,19 @@ cdef class QuadraticFunction(Function):
     cpdef DTYPE_t eval(self, DTYPE_t x):
         return self.a * x * x + self.b * x + self.c
 
-    cpdef DTYPE_t root(self) except +:
-        raise NotImplementedError()
+    cpdef DTYPE_t[::1] roots(self):
+        cdef DTYPE_t det = self.b * self.b - 4. * self.a * self.c
+        cdef DTYPE_t[::1] result
+        if det > 0:
+            result = np.ndarray(shape=(2,), dtype=np.float64)
+            result[0] = (-self.b - np.sqrt(det)) / (2. * self.a)
+            result[1] = (-self.b + np.sqrt(det)) / (2. * self.a)
+        elif det == 0:
+            result = np.ndarray(shape=(1,), dtype=np.float64)
+            result[0] = -self.b / (2. * self.a)
+        else:
+            result = np.ndarray(shape=(0,), dtype=np.float64)
+        return result
 
     cpdef Function invert(self) except +:
         raise NotImplementedError()

@@ -128,6 +128,21 @@ class LinearFunctionTest(TestCase):
     def test_eval(self, f, x, y):
         self.assertEqual(y, f.eval(x))
 
+    def test_multieval(self):
+        # Arrange
+        x = np.array([1, 2, 3], dtype=np.float64)
+        result_buffer = np.array(x)
+        f = LinearFunction(1, 1)
+
+        # Act
+        result = f.multi_eval(x)
+        result_buffer_ = f.multi_eval(x, result=result_buffer)
+
+        # Assert
+        self.assertEqual([2, 3, 4], list(result))
+        self.assertEqual(list(result), list(result_buffer))
+        self.assertEqual(list(result_buffer_), list(result_buffer))
+
     @data(((0, 0), (0, 0)), ((1, 1), (1, 1)))
     @unpack
     def test_fit_integrity_check(self, p1, p2):
@@ -266,6 +281,44 @@ class QuadraticFunctionTest(TestCase):
     def test_add(self, f, a, r):
         self.assertEqual(r, f + a)
 
+    def test_roots_2_solutions(self):
+        # Arrange
+        f = QuadraticFunction(2, -8, 6)
+
+        # Act
+        roots = f.roots()
+
+        # Assert
+        self.assertEqual(
+            [1, 3],
+            list(roots)
+        )
+
+    def test_roots_1_solution(self):
+        # Arrange
+        f = QuadraticFunction(2, -8, 8)
+
+        # Act
+        roots = f.roots()
+
+        # Assert
+        self.assertEqual(
+            [2],
+            list(roots)
+        )
+
+    def test_roots_no_solution(self):
+        # Arrange
+        f = QuadraticFunction(2, -8, 11)
+
+        # Act
+        roots = f.roots()
+
+        # Assert
+        self.assertEqual(
+            [],
+            list(roots)
+        )
 
 # ----------------------------------------------------------------------------------------------------------------------
 
