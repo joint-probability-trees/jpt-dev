@@ -10,6 +10,7 @@ import scipy.stats
 from ddt import data, unpack, ddt
 from dnutils.tools import ifstr
 
+from jpt import SymbolicVariable
 from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
@@ -29,7 +30,7 @@ finally:
 
 from jpt.base.errors import Unsatisfiability
 from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
-    Distribution, ScaledNumeric
+    Distribution, ScaledNumeric, Bool
 
 
 class MultinomialDistributionTest(TestCase):
@@ -261,6 +262,22 @@ class MultinomialDistributionTest(TestCase):
             TypeError,
             d1.kl_divergence,
             Numeric()._fit(np.array([[1], [2], [3]], dtype=np.float64), col=0))
+
+    def test_plot(self):
+        DistABC = self.DistABC
+        d1 = DistABC().set(params=[.5, .25, .25])
+        d1.plot(
+            view=True,
+            horizontal=True
+        )
+
+    def test_plot(self):
+        fr = SymbolicVariable('BiasedCoin', Bool)
+        d1 = fr.distribution().set(5/12.)
+        d1.plot(
+            view=True,
+            horizontal=True
+        )
 
     def test_value_conversion(self):
         DistABC = self.DistABC
@@ -581,6 +598,12 @@ class NumericDistributionTest(TestCase):
 
         jacc = Numeric.jaccard_similarity(d1, d2)
         self.assertEqual(0., jacc)
+
+    def test_plot(self):
+        d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
+        d.plot(
+            view=True
+        )
 
     def test_jaccard_overlap(self):
         d1 = Numeric().set(
@@ -1002,7 +1025,17 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(res, list(sumpos.probabilities))
 
 
+    def test_plot(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([1 / 6] * 6)
+        d1.plot(
+            title="Test",
+            view=True,
+            horizontal=False
+        )
+
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 class DataScalerTest(TestCase):
     DATA = None

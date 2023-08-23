@@ -1867,7 +1867,7 @@ class JPT:
             rc = math.ceil(math.sqrt(len(plotvars)))
             img = ''
             for i, pvar in enumerate(plotvars):
-                img_name = html.escape(f'{pvar.name}-{n.idx}')
+                img_name = html.escape(f'{pvar.name}-{n.idx}.png')
 
                 params = {} if pvar.numeric else {
                     'horizontal': True,
@@ -1883,7 +1883,7 @@ class JPT:
                     **params
                 )
                 img += (f'''{"<TR>" if i % rc == 0 else ""}
-                        <TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
+                        <TD><IMG SCALE="TRUE" SRC="{img_name}"/></TD>
                         {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
                 ''')
 
