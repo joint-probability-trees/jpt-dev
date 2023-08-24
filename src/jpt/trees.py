@@ -616,7 +616,7 @@ class Leaf(Node):
 
         return result
 
-    def mpe(self, minimal_distances: VariableMap) -> (float, VariableMap):
+    def mpe(self, minimal_distances: VariableMap) -> (VariableMap, float):
         """
         Calculate the most probable explanation of this leaf as a fully factorized distribution.
         :return: the likelihood of the maximum as a float and the configuration as a VariableMap
@@ -630,7 +630,7 @@ class Leaf(Node):
         for variable, distribution in self.distributions.items():
 
             # calculate mpe of that distribution
-            likelihood, explanation = distribution.mpe()
+            explanation, likelihood = distribution.mpe()
 
             # apply upper cap for infinities
             likelihood = minimal_distances[variable] if likelihood == float("inf") else likelihood
@@ -642,7 +642,7 @@ class Leaf(Node):
             maximum[variable] = explanation
 
         # create mpe result
-        return result_likelihood, LabelAssignment(maximum.items())
+        return LabelAssignment(maximum.items()), result_likelihood
 
     def number_of_parameters(self) -> int:
         """
@@ -1235,13 +1235,13 @@ class JPT:
         maxima = [leaf.mpe(self.minimal_distances) for leaf in conditional_jpt.leaves.values()]
 
         # get the maximum of those maxima
-        highest_likelihood = max([m[0] for m in maxima])
+        highest_likelihood = max([m[1] for m in maxima])
 
         # create a list for all possible maximal occurrences
         results = []
 
         # for every leaf and its mpe
-        for leaf, (likelihood, mpe) in zip(conditional_jpt.leaves.values(), maxima):
+        for leaf, (mpe, likelihood) in zip(conditional_jpt.leaves.values(), maxima):
 
             if likelihood == highest_likelihood:
                 # append the argmax to the results

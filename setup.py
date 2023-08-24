@@ -114,4 +114,5 @@ setup(
     long_description=__description__,
     package_data={'jpt': ['.version']},
     include_package_data=True,
+    extras_require={'mlflow': ['mlflow >= 2.5.0']}
 )

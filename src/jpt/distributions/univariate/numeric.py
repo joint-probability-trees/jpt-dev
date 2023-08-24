@@ -20,6 +20,7 @@ try:
     from ...base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
+
     pyximport.install()
 finally:
     from ...base.intervals import R, ContinuousSet, RealSet, NumberSet
@@ -112,10 +113,10 @@ class Numeric(Distribution):
     @classmethod
     def equiv(cls, other):
         return (
-            issubclass(other, Numeric) and
-            cls.__name__ == other.__name__ and
-            cls.values == other.values and
-            cls.labels == other.labels
+                issubclass(other, Numeric) and
+                cls.__name__ == other.__name__ and
+                cls.values == other.values and
+                cls.labels == other.labels
         )
 
     @property
@@ -175,18 +176,17 @@ class Numeric(Distribution):
         """Checks if this distribution is a dirac impulse."""
         return len(self._quantile.cdf.intervals) == 2
 
-    def mpe(self) -> (float, RealSet):
+    def mpe(self) -> (RealSet, float):
         return self._mpe(self.value2label)
 
-    def _mpe(self, value_transform: Optional[Callable] = None) -> (float, NumberSet):
+    def _mpe(self, value_transform: Optional[Callable] = None) -> (NumberSet, float):
         """
         Calculate the most probable configuration of this quantile distribution.
-        :return: The likelihood of the mpe as float and the mpe itself as RealSet
+        :return: The mpe itself as RealSet and the likelihood of the mpe as float
         """
         value_transform = ifnone(value_transform, lambda _: _)
         _max = max(f.value for f in self.pdf.functions)
         return (
-            _max,
             value_transform(
                 RealSet(
                     [
@@ -196,7 +196,7 @@ class Numeric(Distribution):
                         if function.value == _max
                     ]
                 ).simplify()
-            )
+            ), _max
         )
 
     def _fit(
@@ -236,8 +236,8 @@ class Numeric(Distribution):
         if probspace.isdisjoint(value):
             return 0
         probmass = (
-            (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
-            (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+                (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
+                (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
         )
         if not probmass:
             return probspace in value
@@ -524,10 +524,10 @@ class Numeric(Distribution):
             # We have to "stretch" the pdf value over the interval in label space:
             function_value = function.value * interval.width / interval_.width
             result += (
-                (
-                    pow(interval_.upper - center, order + 1)
-                    - pow(interval_.lower - center, order + 1)
-                ) * function_value / (order + 1)
+                    (
+                            pow(interval_.upper - center, order + 1)
+                            - pow(interval_.lower - center, order + 1)
+                    ) * function_value / (order + 1)
             )
         return result
 

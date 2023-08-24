@@ -250,20 +250,19 @@ class Integer(Distribution):
         e = self._expectation()
         return sum((v - e) ** 2 * p for v, p in zip(self.values.values(), self.probabilities))
 
-    def mpe(self) -> (float, Set[int]):
-        p_max, lbls = self._mpe()
-        return p_max, self.value2label(lbls)
+    def mpe(self) -> (Set[int], float):
+        lbls, p_max = self._mpe()
+        return self.value2label(lbls), p_max
 
-    def _mpe(self) -> (float, Set[int]):
+    def _mpe(self) -> (Set[int], float):
         p_max = max(self.probabilities)
         return (
-            p_max,
             {
                 l for l, p in zip(
                     self.values.values(),
                     self.probabilities
                 ) if p == p_max
-             }
+             }, p_max
         )
 
     mode = mpe

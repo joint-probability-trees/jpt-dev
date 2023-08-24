@@ -169,8 +169,8 @@ class MultinomialDistributionTest(TestCase):
         result_uniform = abc.mpe()
 
         # Assert
-        self.assertEqual((1 / 2, {'A'}), result_unique)
-        self.assertEqual((1 / 3, {'A', 'B', 'C'}), result_uniform)
+        self.assertEqual(({'A'}, 1 / 2), result_unique)
+        self.assertEqual(({'A', 'B', 'C'}, 1 / 3), result_uniform)
 
     def test_expectation(self):
         # Arrange
@@ -713,7 +713,7 @@ class NumericDistributionTest(TestCase):
         )
 
         # Act
-        likelihood, mpe_state = dist.mpe()
+        mpe_state, likelihood = dist.mpe()
 
         # Assert
         self.assertEqual(
@@ -884,10 +884,10 @@ class IntegerDistributionTest(TestCase):
         biased_dice.set([0 / 6, 1 / 6, 2 / 6, 1 / 6, 1 / 6, 1 / 6])
 
         # Act
-        p_fair, fair_mpe = fair_dice.mpe()
-        _p_fair, _fair_mpe = fair_dice._mpe()
-        p_biased, biased_mpe = biased_dice.mpe()
-        _p_biased, _biased_mpe = biased_dice._mpe()
+        fair_mpe, p_fair = fair_dice.mpe()
+        _fair_mpe, _p_fair = fair_dice._mpe()
+        biased_mpe, p_biased = biased_dice.mpe()
+        _biased_mpe, _p_biased = biased_dice._mpe()
 
         # Assert
         self.assertEqual(set(range(1, 7)), fair_mpe)
