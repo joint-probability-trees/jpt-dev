@@ -279,7 +279,7 @@ class Multinomial(Distribution):
     @deprecated('Expectation is undefined in symbolic domains. Use Multinomial._mode() instead.')
     def _expectation(self) -> Set[int]:
         '''Returns the value with the highest probability for this variable'''
-        return self._mpe()[1]
+        return self._mpe()[0]
 
     @deprecated('Expectation is undefined in symbolic domains. Use Multinomial._mode() instead.')
     def expectation(self) -> Set[Symbol]:
@@ -291,25 +291,24 @@ class Multinomial(Distribution):
             self._expectation()
         )
 
-    def mpe(self) -> Tuple[float, Set[Symbol]]:
-        p_max, values = self._mpe()
-        return p_max, self.value2label(values)
+    def mpe(self) -> Tuple[Set[Symbol], float]:
+        values, p_max = self._mpe()
+        return self.value2label(values), p_max
 
-    def _mpe(self) -> Tuple[float, Set[int]]:
+    def _mpe(self) -> Tuple[Set[int], float]:
         """
         Calculate the most probable configuration of this distribution in value space.
 
-        :return: The likelihood of the mpe as float and the mpe itself as Set
+        :return: The likelihood of the mpe itself as Set and the likelihood of the mpe as float
         """
         _max = max(self.probabilities)
         return (
-            _max,
             set(
                 [label for label, p in zip(
                     self.values.values(),
                     self.probabilities
                 ) if p == _max]
-            )
+            ), _max
         )
 
     mode = mpe
