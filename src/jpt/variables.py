@@ -24,7 +24,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from .base.intervals import INC, EXC, ContinuousSet, RealSet, NumberSet
+    from .base.intervals import INC, EXC, ContinuousSet, RealSet, NumberSet, R
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -705,6 +705,35 @@ class VariableAssignment(VariableMap):
             copy[var] = var.assignment2set(val)
         return copy
 
+    def intersection(self, other: 'VariableAssignment') -> 'VariableAssignment':
+        """
+        Form the intersection of this event with another event.
+
+        :param other: The other event as VariableMap
+
+        :return: The intersection of both events
+        """
+        vars = self.variables.union(other.variables)
+        result = dict()
+        for var in vars:
+
+            restriction = None
+
+            if var.numeric:
+                restriction = R
+
+            elif var.symbolic or var.integer:
+                pass
+
+            if var in self:
+                restriction = restriction.intersection(self[var])
+
+            if var in other:
+                restriction = restriction.intersection(other[var])
+
+            result[var] = restriction
+
+        return type(self)(result.items())
 
 # ----------------------------------------------------------------------------------------------------------------------
 

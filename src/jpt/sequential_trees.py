@@ -249,16 +249,6 @@ class SequentialJPT:
 
         return bayes_network, conditional_trees, virtual_evidences
 
-    def infer(self, query: List[VariableAssignment], evidence: List[VariableAssignment]) -> Optional[float]:
-        """
-        Calculate the probability of sequence 'query' given sequence 'evidence'.
-
-        :param query: The query as a list of variable assignments
-        :param evidence: The evidence as a list of variable assignments
-        :return: probability (float)
-        """
-        raise NotImplementedError("Perhaps this is intractable.")
-
     def likelihood(self, queries: List[Union[np.ndarray, pd.DataFrame]], dirac_scaling: float = 2.,
                    min_distances: Dict = None) -> List[np.ndarray]:
         """
@@ -368,6 +358,54 @@ class SequentialJPT:
             conditional_jpt.multiply_by_leaf_prior(dict(zip(self.template_tree.leaves.keys(), factor.values)))
 
         return altered_jpts
+
+    def probability(self, event: List[Union[Dict[Union[Variable, str], Any], VariableAssignment]]) -> float:
+        """
+        Calculate the probability of an event.
+        :param event: The event as a list of VariableAssignment like objects
+        :return: The probability
+        """
+        probability = 1.
+
+        message = self.transition_model.sum(axis=1)
+
+        for event_ in event:
+            current_probability = 0.
+            for idx, leaf in enumerate(self.template_tree.leaves.values()):
+                leaf_probability = leaf.probability(event_)
+                current_probability += message[idx] * leaf.probability(event_)
+                message[idx] *= leaf_probability
+
+            probability *= current_probability
+            message = message@self.transition_model
+            message_sum = sum(message)
+
+            if message_sum == 0:
+                return  0.
+            else:
+                message /= message_sum
+
+            if probability == 0:
+                return probability
+        return probability
+
+    def infer(
+            self,
+            query: List[Union[Dict[Union[Variable, str], Any], VariableAssignment]],
+            evidence: List[Union[Dict[Union[Variable, str], Any], VariableAssignment]] = None,
+            fail_on_unsatisfiability: bool = True) -> Optional[float]:
+
+
+        p_evidence = self.probability(evidence)
+        if p_evidence == 0:
+            if fail_on_unsatisfiability:
+                raise Unsatisfiability()
+            else:
+                return None
+
+        query_and_evidence = [q.intersection(e) for q,e in zip(query, evidence)]
+        p_query_and_evidence = self.probability(query_and_evidence)
+        return p_query_and_evidence/p_evidence
 
     def mpe(self, evidence: List[Union[Dict[Union[Variable, str], Any], VariableAssignment]] = None,
             fail_on_unsatisfiability: bool = True) -> Optional[Tuple[List[LabelAssignment], float]]:

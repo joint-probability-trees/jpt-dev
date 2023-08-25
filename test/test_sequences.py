@@ -115,125 +115,77 @@ class UniformInferenceTest(unittest.TestCase):
         self.assertEqual(None, result)
         self.assertRaises(Unsatisfiability, self.sequence_tree.posterior, evidence)
 
-    def test_mpe_mid_hard_evidence(self):
-        evidence = [{}, {"X": [0.95, 1.05]}, {}]
-        evidence = self.sequence_tree.bind(evidence)
-
-        mpes, likelihood = self.sequence_tree.mpe(evidence)
-        self.assertEqual(len(mpes), len(evidence))
-        mpe_by_hand = [{"X": [-1.05, -0.95]}, {"X": [0.95, 1.05]}, {"X": [-1.05, -0.95]}]
-        mpe_by_hand = self.sequence_tree.bind(mpe_by_hand)
-
-        for mpe, mpe_bh in zip(mpes, mpe_by_hand):
-            for variable, state in mpe.items():
-                state = state.simplify()
-                self.assertAlmostEqual(state.lower, mpe_bh[variable].lower, delta=0.01)
-                self.assertAlmostEqual(state.upper, mpe_bh[variable].upper, delta=0.01)
-
-    def test_mpe_begin_hard_evidence(self):
-        evidence = [{"X": [0.95, 1.05]}, {}, {}]
-        evidence = self.sequence_tree.bind(evidence)
-
-        mpes, likelihood = self.sequence_tree.mpe(evidence)
-        self.assertEqual(len(mpes), len(evidence))
-        mpe_by_hand = [{"X": [0.95, 1.05]}, {"X": [-1.05, -0.95]}, {"X": [0.95, 1.05]}]
-        mpe_by_hand = self.sequence_tree.bind(mpe_by_hand)
-
-        for mpe, mpe_bh in zip(mpes, mpe_by_hand):
-            for variable, state in mpe.items():
-                state = state.simplify()
-                self.assertAlmostEqual(state.lower, mpe_bh[variable].lower, delta=0.01)
-                self.assertAlmostEqual(state.upper, mpe_bh[variable].upper, delta=0.01)
-
-    def test_mpe_end_hard_evidence(self):
-        evidence = [{}, {}, {"X": [0.95, 1.05]}]
-        evidence = self.sequence_tree.bind(evidence)
-
-        mpes, likelihood = self.sequence_tree.mpe(evidence)
-        self.assertEqual(len(mpes), len(evidence))
-        mpe_by_hand = [{"X": [0.95, 1.05]}, {"X": [-1.05, -0.95]}, {"X": [0.95, 1.05]}]
-        mpe_by_hand = self.sequence_tree.bind(mpe_by_hand)
-
-        for mpe, mpe_bh in zip(mpes, mpe_by_hand):
-            for variable, state in mpe.items():
-                state = state.simplify()
-                self.assertAlmostEqual(state.lower, mpe_bh[variable].lower, delta=0.01)
-                self.assertAlmostEqual(state.upper, mpe_bh[variable].upper, delta=0.01)
-
-    def test_mpe_multiple_evidence(self):
-        evidence = [{"X": [0.95, 1.05]}, {"X": [-1, -0.95]}, {"X": [0.95, 1.05]}]
-        evidence = self.sequence_tree.bind(evidence)
-        result, _ = self.sequence_tree.mpe(evidence)
-        for evi, mpe in zip(evidence, result):
-            for variable, state in mpe.items():
-                state = state.simplify()
-                self.assertAlmostEqual(state.lower, evi[variable].lower, delta=0.01)
-                self.assertAlmostEqual(state.upper, evi[variable].upper, delta=0.01)
-
-    def test_mpe_overlapping_evidence(self):
-        evidence = [{"X": [0.95, 1.05]}, {"X": [-1, 1]}, {"X": [0.95, 1.05]}]
-        evidence = self.sequence_tree.bind(evidence)
-        result, _ = self.sequence_tree.mpe(evidence)
-        for evi, mpe in zip(evidence, result):
-            for variable, state in mpe.items():
-                state = state.simplify()
-                self.assertAlmostEqual(state.lower, evi[variable].lower, delta=0.01)
-                self.assertTrue(state.upper < evi[variable].upper)
-
-    def test_mpe_overlapping_evidence_multiple_leaves(self):
-        evidence = [{"X": [-1, 1]}, {"X": [-1, 1]}, {"X": [-1, 1.05]}]
-        evidence = self.sequence_tree.bind(evidence)
-        result, _ = self.sequence_tree.mpe(evidence)
-
-        mpe_by_hand = [{"X": [0.95, 1.]}, {"X": [-1., -0.95]}, {"X": [0.95, 1.05]}]
-        mpe_by_hand = self.sequence_tree.bind(mpe_by_hand)
-
-        for mpe, mpe_bh in zip(result, mpe_by_hand):
-            for variable, state in mpe.items():
-                state = state.simplify()
-                self.assertAlmostEqual(state.lower, mpe_bh[variable].lower, delta=0.01)
-                self.assertAlmostEqual(state.upper, mpe_bh[variable].upper, delta=0.01)
-
-
-    @unittest.skip("Waiting for pgmpy to implement joint maxima.")
-    def test_mpe_impossible(self):
-        evidence = [{"X": [0, 1]}, {"X": [0, 1]}]
-        evidence = self.sequence_tree.bind(evidence)
-        result = self.sequence_tree.mpe(evidence, fail_on_unsatisfiability=False)
-        self.assertEqual(None, result)
-        self.assertRaises(Unsatisfiability, self.sequence_tree.mpe, evidence)
-
     def test_likelihood(self):
         likelihoods = self.sequence_tree.likelihood([self.data, self.data])
         self.assertTrue(all([np.all(l > 0) for l in likelihoods]))
 
-    @unittest.skip
     def test_probability_trivial(self):
         query = [{"X": [0.95, 1.05]}]
         query = self.sequence_tree.bind(query)
         result = self.sequence_tree.probability(query)
-        self.assertEqual(0.5, result)
+        self.assertAlmostEqual(0.5, result, delta=0.001)
 
-    @unittest.skip
     def test_probability_trivial_multiple_steps(self):
         query = [{}, {}, {"X": [0.95, 1.05]}]
         query = self.sequence_tree.bind(query)
         result = self.sequence_tree.probability(query)
-        self.assertEqual(0.5, result)
+        self.assertAlmostEqual(0.5, result, delta=0.001)
 
-    @unittest.skip
     def test_probability_multiple_steps(self):
         query = [{"X": [0.95, 1.05]}, {}, {"X": [0.95, 1.05]}]
         query = self.sequence_tree.bind(query)
         result = self.sequence_tree.probability(query)
-        self.assertEqual(0.5, result)
+        self.assertAlmostEqual(0.5, result, delta=0.001)
 
-    @unittest.skip
     def test_probability_multiple_steps_half(self):
         query = [{"X": [0.95, 1.05]}, {"X": [-1, -0.95]}, {"X": [0.95, 1.05]}]
         query = self.sequence_tree.bind(query)
         result = self.sequence_tree.probability(query)
-        self.assertEqual(0.25, result)
+        self.assertAlmostEqual(0.25, result, delta=0.001)
+
+    def test_probability_multiple_steps_multiple_leaves(self):
+        query = [{"X": [0.95, 1.05]}, {"X": [-1, 1]}, {"X": [0.95, 1.05]}]
+        query = self.sequence_tree.bind(query)
+        result = self.sequence_tree.probability(query)
+        self.assertAlmostEqual(0.25, result, delta=0.001)
+
+    def test_probability_impossible_multiple_steps(self):
+        query = [{"X": [0.95, 1.05]},{"X": [0.95, 1.05]}]
+        query = self.sequence_tree.bind(query)
+        result = self.sequence_tree.probability(query)
+        self.assertAlmostEqual(0., result, delta=0.001)
+
+    def test_probability_impossible_single_step(self):
+        query = [{"X": [10, 11]}]
+        query = self.sequence_tree.bind(query)
+        result = self.sequence_tree.probability(query)
+        self.assertAlmostEqual(0., result, delta=0.001)
+
+    def test_probability_impossible_multiple_steps_missing(self):
+        query = [{"X": [0.95, 1.05]},{}, {}, {"X": [0.95, 1.05]}]
+        query = self.sequence_tree.bind(query)
+        result = self.sequence_tree.probability(query)
+        self.assertAlmostEqual(0., result, delta=0.001)
+
+    def test_infer_tautology(self):
+        query = [{}, {}, {"X": [0.95, 1.05]}]
+        evidence = self.sequence_tree.bind([{"X": [0.95, 1.05]}, {}, {}])
+        query = self.sequence_tree.bind(query)
+        result = self.sequence_tree.infer(query, evidence)
+        self.assertAlmostEqual(1, result, delta=0.001)
+
+    def test_infer_unsatisfiable(self):
+        query = [{}, {"X": [0.95, 1.05]}]
+        evidence = self.sequence_tree.bind([{"X": [0.95, 1.05]}, {"X": [0.95, 1.05]}])
+        query = self.sequence_tree.bind(query)
+        self.assertRaises(Unsatisfiability, self.sequence_tree.infer, query, evidence)
+        self.assertIsNone(self.sequence_tree.infer(query, evidence, False))
+
+    def test_infer_zero(self):
+        query = [{}, {"X": [0.95, 1.05]}]
+        evidence = self.sequence_tree.bind([{"X": [0.95, 1.05]}, {}])
+        query = self.sequence_tree.bind(query)
+        self.assertAlmostEqual(self.sequence_tree.infer(query, evidence), 0)
 
 
 if __name__ == '__main__':
