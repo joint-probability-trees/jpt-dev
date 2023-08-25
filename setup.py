@@ -105,7 +105,14 @@ compiled = cythonize(
 
 setup(
     name='pyjpt',
-    packages=['jpt', 'jpt.learning', 'jpt.base', 'jpt.distributions', 'jpt.distributions.quantile'],
+    packages=[
+        'jpt',
+        'jpt.learning',
+        'jpt.base',
+        'jpt.distributions',
+        'jpt.distributions.quantile',
+        'jpt.distributions.univariate'
+    ],
     package_dir={'': 'src'},
     ext_modules=compiled,
     zip_safe=False,
@@ -114,4 +121,5 @@ setup(
     long_description=__description__,
     package_data={'jpt': ['.version']},
     include_package_data=True,
+    extras_require={'mlflow': ['mlflow >= 2.5.0']}
 )

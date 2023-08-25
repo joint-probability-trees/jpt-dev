@@ -202,6 +202,11 @@ cdef class RealSet(NumberSet):
         tmp = sorted(self.intervals, key=attrgetter('left'))
         return hash((RealSet, tuple(sorted(tmp, key=attrgetter('lower')))))
 
+    def __round__(self, n: int):
+        return RealSet(
+            [round(i, n) for i in self.intervals]
+        )
+
     def __setstate__(self, state):
         self.intervals = state
 
@@ -1146,6 +1151,14 @@ cdef class ContinuousSet(NumberSet):
         result.lower, result.upper = -result.upper, -result.lower
         result.left, result.right = result.right, result.left
         return result
+
+    def __round__(self, n: int = None):
+        return ContinuousSet(
+            round(self.lower, n),
+            round(self.upper, n),
+            self.left,
+            self.right
+        )
 
     def __contains__(self, x):
         try:

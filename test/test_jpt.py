@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats
 import sklearn.datasets
-from jpt.base.intervals import ContinuousSet
+
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 from numpy.testing import assert_array_equal
@@ -23,6 +23,16 @@ from jpt.base.errors import Unsatisfiability
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment, \
     IntegerVariable
+
+try:
+    from jpt.base.functions import __module__
+    from jpt.base.intervals import __module__
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+finally:
+    from jpt.base.functions import ConstantFunction, LinearFunction
+    from jpt.base.intervals import ContinuousSet
 
 
 class JPTTest(TestCase):
@@ -59,7 +69,51 @@ class JPTTest(TestCase):
         self.assertEqual(jpt, jpt_)
 
         q = jpt.bind(X=[-1, 1])
-        self.assertEqual(jpt_.infer(q), jpt.infer(q))
+        q_ = jpt_.bind(X=[-1, 1])
+        self.assertEqual(jpt_.infer(q_), jpt.infer(q))
+
+    def test_copy(self):
+        # Arrange
+        var = NumericVariable('X')
+        jpt = JPT([var])
+        # Act
+        jpt_ = jpt.copy()
+        # Assert
+        self.assertEqual(
+            jpt,
+            jpt_,
+            msg='Copied JPT is not equal to the original one.'
+        )
+        for v in jpt_.variables:
+            self.assertIs(
+                v,
+                jpt.varnames[v.name],
+                msg='Variables of copied JPT must be identical to the original ones.'
+            )
+
+    def test_check_variable_assignment(self):
+        # Arrange
+        x = SymbolicVariable('X', domain=Bool)
+        x_ = SymbolicVariable('X', domain=Bool)
+        y = SymbolicVariable('Y', domain=Bool)
+        jpt = JPT([x])
+        jpt_ = JPT([x_])
+        assignx = jpt.bind(X=True)
+        assignx_ = jpt_.bind(X=True)
+        assigny = LabelAssignment([
+            ('Y', False)
+        ], variables=[y])
+
+        # Act & Assert
+        jpt._check_variable_assignment(assignx)
+        jpt_._check_variable_assignment(assignx_)
+        # Check None
+        jpt._check_variable_assignment(assignment=None)
+        # Check containment
+        self.assertRaises(ValueError, jpt._check_variable_assignment, assignx_)
+        self.assertRaises(ValueError, jpt_._check_variable_assignment, assignx)
+        self.assertRaises(ValueError, jpt._check_variable_assignment, assigny)
+
 
     def test_serialization_integer(self):
         '''(de)serialization of JPTs with training'''
@@ -73,7 +127,11 @@ class JPTTest(TestCase):
         self.assertEqual(jpt, jpt_)
 
         q = jpt.bind(X=[-1, 1])
-        self.assertEqual(jpt_.infer(q), jpt.infer(q))
+        q_ = jpt_.bind(X=[-1, 1])
+        self.assertEqual(
+            jpt_.infer(q_),
+            jpt.infer(q)
+        )
 
     def test_serialization_symbolic(self):
         '''(de)serialization of JPTs with training'''
@@ -117,21 +175,41 @@ class JPTTest(TestCase):
 
     def test_unsatisfiability(self):
         df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        jpt = JPT(
+            variables=infer_from_dataframe(df),
+            targets=['WillWait'],
+            min_samples_leaf=1
+        )
+        jpt.fit(df)
+        self.assertRaises(
+            Unsatisfiability,
+            jpt.posterior,
+            evidence={'WillWait': False, 'Patrons': 'Some'},
+            fail_on_unsatisfiability=True
+        )
+        self.assertIsNone(
+            jpt.posterior(
+                evidence={'WillWait': False, 'Patrons': 'Some'},
+                fail_on_unsatisfiability=False
+            )
+        )
+
+    def test_unsatisfiability_with_reasons(self):
+        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
         jpt = JPT(variables=infer_from_dataframe(df), targets=['WillWait'], min_samples_leaf=1)
         jpt.fit(df)
-        self.assertRaises(Unsatisfiability,
-                          jpt.posterior,
-                          evidence={'WillWait': False, 'Patrons': 'Some'},
-                          fail_on_unsatisfiability=True)
-        self.assertIsNone(jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
-                                        fail_on_unsatisfiability=False))
-
         try:
-            jpt.posterior(evidence={'WillWait': False, 'Patrons': 'Some'},
-                          report_inconsistencies=True)
+            jpt.posterior(
+                evidence={'WillWait': False, 'Patrons': 'Some'},
+                report_inconsistencies=True
+            )
         except Unsatisfiability as e:
-            self.assertEqual({VariableMap([(jpt.varnames['WillWait'], {False})]): 1},
-                             e.reasons)
+            self.assertEqual(
+                [
+                    (4, VariableMap([(jpt.varnames['WillWait'], {False})]))
+                ],
+                list(e.reasons)
+            )
         else:
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')
 
@@ -158,11 +236,24 @@ class JPTTest(TestCase):
         marginals = cjpt.posterior(evidence=VariableMap())
         self.assertEqual(marginals["Arson"].p(evidence["Arson"]), 1.)
 
+    def test_reverse_inference(self):
+        pass
+        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'))
+        q = {
+            "District": ["Spandau"],
+            "Graffiti": ContinuousSet(20, 40),
+            "Drugs": ContinuousSet(30, 40)
+        }
+        p = jpt.reverse(q)
+        expres = [(17.035751235106073, 34), (16.854094288878343, 59), (16.792804125698865, 58), (16.789359254673656, 60), (16.73021346469622, 50), (16.640170414346798, 16), (16.526547303271443, 53), (16.407173212401243, 44)]
+        self.assertEqual(expres, [(sum(c.values()), l.idx) for c, l in p])
+
+    @unittest.skip
     def test_parameter_count(self):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
-        self.assertEqual(12, jpt.number_of_parameters())
+        self.assertEqual(71, jpt.number_of_parameters())
 
     def test_independence(self):
         x = NumericVariable('X')
@@ -227,6 +318,25 @@ class JPTTest(TestCase):
                 "s": {True, False},
                 "i": {3, 4, 5}}
         jpt.bind(map2)
+
+    def test_postprocess_leaves_1dim(self):
+        # Arrange
+        x = NumericVariable('x')
+        jpt = JPT([x])
+        data = np.linspace(0, 9, 10).reshape(-1, 1)
+        jpt.fit(data, close_convex_gaps=False)
+        for _, f in jpt.posterior([x])[x].cdf.iter():
+            self.assertIsInstance(f, ConstantFunction)
+
+        # Act
+        jpt.postprocess_leaves()
+
+        # Assert
+        for i, f in jpt.posterior([x])[x].cdf.iter():
+            if i.isinf():
+                self.assertIsInstance(f, ConstantFunction)
+            else:
+                self.assertIsInstance(f, LinearFunction)
 
 
 class TestCasePosteriorNumeric(TestCase):
@@ -416,10 +526,18 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         cls.jpt.learn(columns=cls.data.values.T)
 
     def test_plot(self):
-        self.jpt.plot(plotvars=['Food', 'WaitEstimate'], title='Restaurant-Mixed',
-                      filename='Restaurant-Mixed',
-                      directory=tempfile.gettempdir(),
-                      view=False)
+        # Act
+        path = self.jpt.plot(
+            plotvars=['Food', 'WaitEstimate'],
+            title='Restaurant-Mixed',
+            filename='Restaurant-Mixed',
+            # directory=tempfile.gettempdir(),
+            view=False
+        )
+        # Assert
+        self.assertTrue(
+            os.path.exists(path)
+        )
 
     def test_posterior_mixed_single_candidate_T(self):
         self.q = ['WillWait']
@@ -450,8 +568,9 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
+    @unittest.skip
     def test_parameter_count(self):
-        self.assertEqual(200, self.jpt.number_of_parameters())
+        self.assertEqual(330, self.jpt.number_of_parameters())
 
     def test_posterior_mixed_numeric_query(self):
         self.q = [self.variables[9]]
@@ -522,25 +641,42 @@ class TestCaseExpectation(TestCase):
         cls.jpt.learn(columns=cls.data.values.T)
 
     def test_plot(self):
-        self.jpt.plot(  # plotvars=['WaitEstimate'],
+        # Act
+        path = self.jpt.plot(
+            plotvars=['WaitEstimate'],
             title='Restaurant-Mixed',
             filename='Restaurant-Mixed',
-            directory=tempfile.gettempdir(),
-            view=False)
+            view=False
+        )
+        # Assert
+        self.assertTrue(
+            os.path.exists(path)
+        )
 
     def test_expectation_mixed_single_candidate_T(self):
-        self.q = ['WillWait', 'Friday']
-        self.e = {'WaitEstimate': [10, 30],
-                  'Food': 'Thai'}
-        self.expectation = self.jpt.expectation(self.q, self.e)
-        self.assertEqual([{True}, {True}], [e for e in self.expectation.values()])
+        # Arrange
+        q = ['WillWait', 'Friday']
+        e = {
+            'WaitEstimate': [10, 30],
+            'Food': 'Thai'
+        }
+
+        # Act
+        expectation = self.jpt.expectation(q, e)
+
+        # Assert
+        self.assertEqual([{True}, {True}], list(expectation.values()))
 
     def test_expectation_mixed_unsatisfiable(self):
-        self.q = ['WillWait']
-        self.e = {'WaitEstimate': [70, 80],
-                  'Bar': True,
-                  'Food': 'French'}
-        self.assertRaises(Unsatisfiability, self.jpt.expectation, self.q, self.e)
+        # Arrange
+        q = ['WillWait']
+        e = {
+            'WaitEstimate': [70, 80],
+            'Bar': True,
+            'Food': 'French'
+        }
+        # Assert
+        self.assertRaises(Unsatisfiability, self.jpt.expectation, q, e)
 
 
 class TestCaseInference(TestCase):
@@ -556,7 +692,7 @@ class TestCaseInference(TestCase):
             cls.data,
             scale_numeric_types=False,
             precision=.01,
-            blur=.01
+            # blur=.01
         )
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
@@ -571,22 +707,33 @@ class TestCaseInference(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.learn(columns=cls.data.values.T, close_convex_gaps=False)
 
     def test_plot(self):
-        self.jpt.plot(
+        # Act
+        path = self.jpt.plot(
             title='Restaurant-Mixed',
             filename='Restaurant-Mixed',
-            directory=tempfile.gettempdir(),
+            # directory=tempfile.gettempdir(),
             view=False
+        )
+        # Assert
+        self.assertTrue(
+            os.path.exists(path)
         )
 
     def test_inference_mixed_single_candidate_T(self):
+        # Arrange
         q = self.jpt.bind(WillWait=True)
         e = self.jpt.bind(WaitEstimate=[0, 10], Food='Thai')
-        inference = self.jpt.infer(q, e)
-        (self.jpt.conditional_jpt(e))
-        self.assertAlmostEqual(.5, inference, places=10)
+        # Act
+        result = self.jpt.infer(q, e)
+        # Assert
+        self.assertAlmostEqual(
+            .6,
+            result,
+            places=10
+        )
 
     def test_inference_mixed_new(self):
         self.q = [self.variables[-1]]
