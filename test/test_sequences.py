@@ -187,6 +187,9 @@ class UniformInferenceTest(unittest.TestCase):
         query = self.sequence_tree.bind(query)
         self.assertAlmostEqual(self.sequence_tree.infer(query, evidence), 0)
 
+    def test_mpe(self):
+        self.sequence_tree.mpe([{},{}])
+
 
 if __name__ == '__main__':
     unittest.main()

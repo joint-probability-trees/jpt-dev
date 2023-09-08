@@ -410,29 +410,43 @@ class SequentialJPT:
     def mpe(self, evidence: List[Union[Dict[Union[Variable, str], Any], VariableAssignment]] = None,
             fail_on_unsatisfiability: bool = True) -> Optional[Tuple[List[LabelAssignment], float]]:
 
-        # preprocess evidence
-        evidence_ = []
-        for e in evidence:
-            if e is None or isinstance(e, dict):
-                e = self.template_tree.bind(e, allow_singular_values=False)
-            if isinstance(e, LabelAssignment):
-                e = e.value_assignment()
-            evidence_.append(e)
+        # initialize the trellis for backtracking
+        trellis = []
 
-        # ground factor graph
-        bayes_network, altered_jpts, virtual_evidences = self.ground(evidence_)
+        # initialize message as unity
+        message = np.ones(len(self.template_tree.leaves))
 
-        # run belief propagation
-        belief_propagation = pgmpy.inference.BeliefPropagation(bayes_network)
-        result = belief_propagation.map_query(list(bayes_network.nodes), virtual_evidence=virtual_evidences)
-        mpes = []
+        for evidence_ in evidence:
 
-        for state, conditional_jpt in zip(result.values(), altered_jpts):
-            leaf_index = list(self.template_tree.leaves.keys())[state]
-            likelihood, mpe = conditional_jpt.leaves[leaf_index].mpe(self.template_tree.minimal_distances)
-            mpes.append(mpe)
+            # apply evidence
+            conditional_tree = self.template_tree.conditional_jpt(evidence_,
+                                                                  fail_on_unsatisfiability=fail_on_unsatisfiability)
+            # if the evidence is impossible return None
+            if conditional_tree is None:
+                return None
 
-        return mpes, 0
+            # get message from leaves
+            tree_prior = self.priors_of_tree(conditional_tree)
+
+            leaf_mpe_likelihoods = np.zeros(len(self.template_tree.leaves))
+            trellis_state = dict()
+
+            # mpe state likelihoods for every possible leaf state
+            for leaf in self.template_tree.leaves.values():
+                mpe, likelihood = leaf.mpe(self.template_tree.minimal_distances)
+                leaf_mpe_likelihoods[self.leaf_idx_to_transition_idx(leaf.idx)] = likelihood * leaf.prior
+                trellis_state[leaf.idx] = mpe
+
+
+
+
+            trellis.append(trellis_state)
+
+
+
+
+        return None
+
 
     def to_json(self):
         return {
