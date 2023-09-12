@@ -188,8 +188,30 @@ class UniformInferenceTest(unittest.TestCase):
         self.assertAlmostEqual(self.sequence_tree.infer(query, evidence), 0)
 
     def test_mpe(self):
-        self.sequence_tree.mpe([{},{}])
+        state, likelihood = self.sequence_tree.mpe([{}, {}, {}])
+        mpe_by_hand = np.array([[[-1], [1], [-1]]])
+        mpe_likelihood_by_hand = self.sequence_tree.likelihood(mpe_by_hand)
+        self.assertEqual(np.prod(mpe_likelihood_by_hand), likelihood)
 
+        wrong_mpe_by_hand = np.array([[[1], [-1], [1]]])
+        wrong_mpe_likelihood_by_hand = self.sequence_tree.likelihood(wrong_mpe_by_hand)
+        self.assertLess(np.prod(wrong_mpe_likelihood_by_hand), likelihood)
+
+    def test_conditional_mpe(self):
+        evidence = self.sequence_tree.bind([{"X": [0.95, 1.05]}, {}, {}])
+        mpe, likelihood = self.sequence_tree.mpe(evidence)
+        self.assertIsNotNone(mpe)
+        self.assertGreater(likelihood, 0)
+
+    def test_conditional_mpe_impossible(self):
+        evidence = self.sequence_tree.bind([{"X": [0.95, 1.05]}, {"X": [0.95, 1.05]}, {}])
+        result = self.sequence_tree.mpe(evidence, fail_on_unsatisfiability=False)
+        self.assertIsNone(result)
+
+    def test_conditional_mpe_impossible_multistep(self):
+        evidence = self.sequence_tree.bind([{"X": [0.95, 1.05]}, {}, {}, {"X": [0.95, 1.05]}, {}])
+        result = self.sequence_tree.mpe(evidence, fail_on_unsatisfiability=False)
+        self.assertIsNone(result)
 
 if __name__ == '__main__':
     unittest.main()

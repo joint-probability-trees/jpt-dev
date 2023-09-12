@@ -1,4 +1,3 @@
-import datetime
 from typing import List, Dict, Union, Optional, Tuple, Any
 
 import numpy as np
@@ -15,31 +14,11 @@ from .variables import LabelAssignment, VariableAssignment, VariableMap, Variabl
 from .base.errors import Unsatisfiability
 from .base.utils import format_path
 
-class JPTFactor(pgmpy.factors.discrete.TabularCPD):
-    """
-    A pgmpy factor represented by a JPT.
-    """
-
-    def __init__(self,
-                 variable,
-                 variable_card,
-                 values,
-                 evidence=None,
-                 evidence_card=None,
-                 state_names=None, tree: Optional[JPT] = None):
-        if state_names is None:
-            state_names = {}
-        super().__init__(variable, variable_card, values, evidence, evidence_card, state_names)
-
-        assert tree is not None
-
-        self.tree = tree.copy()
-
-
 class SequentialJPT:
     logger = getlogger('/jpt/seq')
 
     def __init__(self, template_tree: JPT):
+
         self.template_tree: JPT = template_tree
         """
         The JPT used as emission template in the timesteps.
@@ -48,7 +27,7 @@ class SequentialJPT:
         self.transition_model: Optional[np.array] = None
         """
         The transition model used to transfer from one leaf of the template tree to another leaf of the template tree
-        in the next timestep. The rows enumerate the first timestep, the enumerate the second timestep.
+        in the next timestep. The rows enumerate the first timestep, the columns enumerate the second timestep.
         """
 
     def fit(self, sequences: List[np.ndarray], timesteps: int = 2):
@@ -56,7 +35,10 @@ class SequentialJPT:
          with respect to the variables in the next timestep and then marginalizes them.
 
          :param sequences: The sequences to learn from
-         :param timesteps: The timesteps to jointly model (minimum of 2 required) """
+         :param timesteps: The timesteps to jointly model (only 2 supported for now) """
+
+        if timesteps != 2:
+            raise ValueError("Only jointly modelling 2 timesteps is supported.")
 
         # extract copies of variables for the expanded tree
         expanded_variables = [var.copy() for var in self.template_tree.variables]
@@ -209,7 +191,36 @@ class SequentialJPT:
 
     @property
     def conditional_transition_model(self):
-        return self.transition_model / self.transition_model.sum(axis=0).T
+        """
+        :return: The conditional probability distribution P(timestep_1 | timestep_0)
+        The rows enumerate over the states of timestep 0, the column over the states of timestep 1
+        """
+        return (self.transition_model.T / self.transition_model.sum(axis=1)).T
+
+    def maximum_encoding(self, tree: Optional[JPT] = None, use_leaf_prior = False) -> Tuple[Dict[float, int],
+                                                                                            Dict[int, Optional[LabelAssignment]]]:
+        """
+        Map the index of each leaf in the template tree to the likelihood of its mpe state.
+
+        :param tree: The tree to get the likelihoods from
+        :param use_leaf_prior: Rather to use the prior of the leaf for the maxima or to cancel it
+
+        :return: The sorted dictionary with the mapping
+        """
+        result = {leaf.idx: 0. for leaf in self.template_tree.leaves.values()}
+        states = {leaf.idx: None for leaf in self.template_tree.leaves.values()}
+        if tree is None:
+            tree = self.template_tree
+
+        for leaf in tree.leaves.values():
+            state, likelihood = leaf.mpe(self.template_tree.minimal_distances)
+            states[leaf.idx] = state
+            result[leaf.idx] = likelihood
+            if not use_leaf_prior:
+                result[leaf.idx] /= leaf.prior
+
+        return dict(sorted(result.items())), dict(sorted(states.items()))
+
 
     def ground(self, evidence: List[VariableAssignment], fail_on_unsatisfiability: bool = True) -> \
             Tuple[pgmpy.models.BayesianNetwork, List[JPT], List[pgmpy.factors.discrete.TabularCPD]]:
@@ -411,42 +422,82 @@ class SequentialJPT:
             fail_on_unsatisfiability: bool = True) -> Optional[Tuple[List[LabelAssignment], float]]:
 
         # initialize the trellis for backtracking
-        trellis = []
+        trellis = np.full((len(evidence) - 1, len(self.template_tree.leaves),), -1, dtype=int)
+        mpe_states = []
 
         # initialize message as unity
-        message = np.ones(len(self.template_tree.leaves))
+        message = None
 
-        for evidence_ in evidence:
+        for timestep, evidence_ in enumerate(evidence):
 
             # apply evidence
             conditional_tree = self.template_tree.conditional_jpt(evidence_,
                                                                   fail_on_unsatisfiability=fail_on_unsatisfiability)
+
             # if the evidence is impossible return None
             if conditional_tree is None:
                 return None
 
-            # get message from leaves
-            tree_prior = self.priors_of_tree(conditional_tree)
+            # if it's the first iteration
+            if timestep == 0:
 
-            leaf_mpe_likelihoods = np.zeros(len(self.template_tree.leaves))
-            trellis_state = dict()
+                # get maximum likelihoods and respective states
+                maxima, states = self.maximum_encoding(conditional_tree, use_leaf_prior=True)
 
-            # mpe state likelihoods for every possible leaf state
-            for leaf in self.template_tree.leaves.values():
-                mpe, likelihood = leaf.mpe(self.template_tree.minimal_distances)
-                leaf_mpe_likelihoods[self.leaf_idx_to_transition_idx(leaf.idx)] = likelihood * leaf.prior
-                trellis_state[leaf.idx] = mpe
+                # append states for reconstruction
+                mpe_states.append(states)
 
+                # initialize the message
+                message = np.array(list(maxima.values()))
+                continue
 
+            # if it's not the first iteration
+            # get maximum likelihoods and respective states without leave priors
+            maxima, states = self.maximum_encoding(conditional_tree)
 
+            # append states for reconstruction
+            mpe_states.append(states)
 
-            trellis.append(trellis_state)
+            # calculate conditional transition matrix P(t_1 | argmax(t_0))
+            conditional_transition = self.conditional_transition_model * message
 
+            # get the maxima of the current timestep
+            maxima = np.array(list(maxima.values()))
 
+            # multiply them with the maxima of each leaf
+            joint_distribution = (maxima * conditional_transition.T).T
 
+            # get the maximum for the new message
+            message = joint_distribution.max(axis=1)
 
-        return None
+            # save the argmax into the trellis
+            trellis[timestep-1, :] = joint_distribution.argmax(axis=1)
 
+            # quite the MPE if it becomes impossible
+            if max(message) == 0:
+                if fail_on_unsatisfiability:
+                    raise Unsatisfiability()
+                else:
+                    return None
+
+        # get most probable state sequence
+        previous_mpe_state = message.argmax()
+
+        # reconstruct most probable path
+        most_probable_sequence = [previous_mpe_state]
+
+        # reverse through trellis to get the mpe
+        for trellis_step in reversed(trellis):
+            previous_mpe_state = trellis_step[previous_mpe_state]
+            most_probable_sequence.append(previous_mpe_state)
+
+        # flip to the correct order
+        most_probable_sequence.reverse()
+
+        # replace indices with events
+        result = [list(state.values())[r_] for r_, state in zip(most_probable_sequence, mpe_states)]
+
+        return result, max(message)
 
     def to_json(self):
         return {
