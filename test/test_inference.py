@@ -9,6 +9,8 @@ from jpt import SymbolicVariable, JPT, NumericVariable, infer_from_dataframe
 from jpt.base.intervals import ContinuousSet, RealSet, EXC, INC
 from jpt.distributions import Bool
 
+from jpt.variables import LabelAssignment
+
 
 class JPTInferenceSymbolic(unittest.TestCase):
 
@@ -87,3 +89,17 @@ class JPTInferenceInteger(unittest.TestCase):
             result,
             places=13
         )
+
+    def test_mpe_serialization(self):
+        data = pd.DataFrame(np.array([list(range(-10, 10))]).T, columns=["X"])
+        variables = infer_from_dataframe(data, scale_numeric_types=False)
+        tree = JPT(variables, min_samples_leaf=.1)
+        tree.fit(data)
+        # Creating json maxima infos
+        maxima, likelihood = tree.mpe()
+        maxima_json = [m.to_json() for m in maxima]
+
+        # Trying to recreate the maxima Variables from json
+        for maxi_json in maxima_json:
+            maxi = LabelAssignment.from_json(variables=tree.variables, d=maxi_json)
+            self.assertIsInstance(maxi, LabelAssignment)

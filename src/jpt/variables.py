@@ -2,6 +2,7 @@
 © Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import hashlib
+import json
 import math
 import numbers
 import uuid
@@ -704,6 +705,27 @@ class VariableAssignment(VariableMap):
         for var, val in copy.items():
             copy[var] = var.assignment2set(val)
         return copy
+
+    @classmethod
+    def from_json(cls,
+                  variables: Iterable[Variable],
+                  d: Dict[str, Any],
+                  typ=None,
+                  args=()) -> 'VariableMap':
+        vmap = cls()
+        var_by_name = {var.name: var for var in variables}
+        for v_name, value in d.items():
+            variable = var_by_name[v_name]
+
+            if variable.symbolic or variable.integer:
+                value_ = set(value)
+            elif variable.numeric:
+                value_ = ContinuousSet.from_json(value)
+            else:
+                raise NotImplementedError('Unknown variable type: %s' % variable.__class__.__name__)
+
+            vmap[variable] = value_
+        return vmap
 
 
 # ----------------------------------------------------------------------------------------------------------------------

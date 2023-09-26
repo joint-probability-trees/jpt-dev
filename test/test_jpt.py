@@ -215,18 +215,31 @@ class JPTTest(TestCase):
 
     def test_exact_mpe_discrete(self):
         df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
-        jpt = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
-        jpt.fit(df)
+        tree = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
+        tree.fit(df)
 
-        mpe, likelihood = jpt.mpe()
+        mpe, likelihood = tree.mpe()
         self.assertEqual(len(mpe), 1)
+
+    def test_mpe_serialization(self):
+        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        tree = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
+        tree.fit(df)
+        # Creating json maxima infos
+        maxima, likelihood = tree.mpe()
+        maxima_json = [m.to_json() for m in maxima]
+
+        # Trying to recreate the maxima Variables from json
+        for maxi_json in maxima_json:
+            maxi = LabelAssignment.from_json(variables=tree.variables, d=maxi_json)
+            self.assertIsInstance(maxi, LabelAssignment)
 
     def test_exact_mpe_continuous(self):
         var = NumericVariable('X')
-        jpt = JPT([var], min_samples_leaf=.1)
-        jpt.learn(self.data.reshape(-1, 1))
+        tree = JPT([var], min_samples_leaf=.1)
+        tree.learn(self.data.reshape(-1, 1))
 
-        mpe, likelihood = jpt.mpe()
+        mpe, likelihood = tree.mpe()
         self.assertEqual(len(mpe), 1)
 
     def test_conditional_jpt(self):
@@ -814,6 +827,16 @@ class TestGaussianConditionalJPT(TestCase):
     def test_mpe(self):
         mpe, likelihood = self.tree.mpe()
         self.assertEqual(len(mpe), 1)
+
+    def test_mpe_serialization(self):
+        # Creating json maxima infos
+        maxima, likelihood = self.tree.mpe()
+        maxima_json = [m.to_json() for m in maxima]
+
+        # Trying to recreate the maxima Variables from json
+        for maxi_json in maxima_json:
+            maxi = LabelAssignment.from_json(variables=self.tree.variables, d=maxi_json)
+            self.assertIsInstance(maxi, LabelAssignment)
 
     def test_conditioning_chain(self):
         cjpt = self.tree.conditional_jpt()
