@@ -1,8 +1,10 @@
 import unittest
+from typing import List
+
 import numpy as np
 import jpt.variables
-import jpt.trees
 import jpt.sequential_trees
+import jpt.trees
 from jpt.base.errors import Unsatisfiability
 import jpt.base.intervals
 
@@ -172,7 +174,7 @@ class UniformInferenceTest(unittest.TestCase):
         evidence = self.sequence_tree.bind([{"X": [0.95, 1.05]}, {}, {}])
         query = self.sequence_tree.bind(query)
         result = self.sequence_tree.infer(query, evidence)
-        self.assertAlmostEqual(1, result, delta=0.001)
+        self.assertAlmostEqual(1., result, delta=0.001)
 
     def test_infer_unsatisfiable(self):
         query = [{}, {"X": [0.95, 1.05]}]
@@ -212,6 +214,42 @@ class UniformInferenceTest(unittest.TestCase):
         evidence = self.sequence_tree.bind([{"X": [0.95, 1.05]}, {}, {}, {"X": [0.95, 1.05]}, {}])
         result = self.sequence_tree.mpe(evidence, fail_on_unsatisfiability=False)
         self.assertIsNone(result)
+
+
+class ComplexSequenceTestCase(unittest.TestCase):
+
+    data: np.ndarray
+    variables: List[jpt.variables.NumericVariable]
+    model: jpt.sequential_trees.SequentialJPT
+
+    @classmethod
+    def setUpClass(cls):
+        covariance = np.random.rand(4, 4)
+        covariance = covariance @ covariance.T
+        data = np.random.multivariate_normal(np.zeros(4), covariance, 1000)
+        cls.data = data
+        cls.variables = [jpt.variables.NumericVariable("X"), jpt.variables.NumericVariable("Y"),
+                         jpt.variables.NumericVariable("A"), jpt.variables.NumericVariable("B")]
+        cls.model = jpt.sequential_trees.SequentialJPT(jpt.trees.JPT(cls.variables, min_samples_leaf=50))
+        cls.model.fit([cls.data, cls.data])
+
+    def test_posterior(self):
+        evidence = [{}, {}, {}, {}]
+        evidence = self.model.bind(evidence)
+        result = self.model.posterior(evidence)
+        self.assertEqual(len(evidence), len(result))
+
+    def test_mpe(self):
+        evidence = [{}, {}, {}, {}]
+        evidence = self.model.bind(evidence)
+        result, likelihood = self.model.mpe(evidence)
+        self.assertEqual(len(evidence), len(result))
+
+    def test_infer(self):
+        evidence = [{}, {}, {}, {}]
+        evidence = self.model.bind(evidence)
+        result = self.model.infer(evidence, evidence)
+        self.assertEqual(1., result)
 
 if __name__ == '__main__':
     unittest.main()

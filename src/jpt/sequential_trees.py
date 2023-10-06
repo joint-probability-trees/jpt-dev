@@ -1,18 +1,16 @@
 from typing import List, Dict, Union, Optional, Tuple, Any
 
+import fglib
 import numpy as np
 import numpy.lib.stride_tricks
 import pandas as pd
-import pgmpy
-import pgmpy.factors.discrete
-import pgmpy.inference
-import pgmpy.models
 from dnutils import getlogger
+from fglib import graphs, nodes, rv, inference
 
-from . import JPT
-from .variables import LabelAssignment, VariableAssignment, VariableMap, Variable
 from .base.errors import Unsatisfiability
-from .base.utils import format_path
+from .trees import JPT
+from .variables import LabelAssignment, VariableAssignment, VariableMap, Variable
+
 
 class SequentialJPT:
     logger = getlogger('/jpt/seq')
@@ -97,6 +95,8 @@ class SequentialJPT:
         # create template tree from learnt joint tree
         self.template_tree.root = expanded_template_tree.root
         self.template_tree.innernodes = expanded_template_tree.innernodes
+        self.template_tree.minimal_distances = VariableMap([(variable, value) for variable, value in
+                                                            expanded_template_tree.minimal_distances.items() if variable.name in self.template_tree.varnames.keys()])
         for idx, leaf in expanded_template_tree.leaves.items():
             leaf.distributions = VariableMap([(v, d) for v, d in leaf.distributions.items()
                                               if v.name in self.template_tree.varnames.keys()])
@@ -197,8 +197,8 @@ class SequentialJPT:
         """
         return (self.transition_model.T / self.transition_model.sum(axis=1)).T
 
-    def maximum_encoding(self, tree: Optional[JPT] = None, use_leaf_prior = False) -> Tuple[Dict[float, int],
-                                                                                            Dict[int, Optional[LabelAssignment]]]:
+    def maximum_encoding(self, tree: Optional[JPT] = None, use_leaf_prior=False) -> Tuple[Dict[float, int],
+    Dict[int, Optional[LabelAssignment]]]:
         """
         Map the index of each leaf in the template tree to the likelihood of its mpe state.
 
@@ -221,44 +221,57 @@ class SequentialJPT:
 
         return dict(sorted(result.items())), dict(sorted(states.items()))
 
+    def ground(self, evidence: List[VariableAssignment]) -> Tuple[fglib.graphs.FactorGraph, List[JPT]]:
+        """Ground a factor graph where inference can be done. The factor graph is grounded with
+        one variable for each timestep, one prior node as factor for each timestep and one factor node for each
+        transition.
 
-    def ground(self, evidence: List[VariableAssignment], fail_on_unsatisfiability: bool = True) -> \
-            Tuple[pgmpy.models.BayesianNetwork, List[JPT], List[pgmpy.factors.discrete.TabularCPD]]:
+        @param evidence: A list of VariableMaps that describe evidence in the given timesteps.
+        """
 
-        # convert evidence
-        evidence = [e.value_assignment() if isinstance(e, LabelAssignment) else e for e in evidence]
+        # create factorgraph
+        factor_graph = graphs.FactorGraph()
 
-        # create names for timesteps
-        timesteps = [f"t{t}" for t in range(len(evidence))]
+        # add variable nodes for timesteps
+        timesteps = ["t%s" % t for t in range(len(evidence))]
+        fg_variables = [nodes.VNode(t, rv.Discrete) for t in timesteps]
+        factor_graph.set_nodes(fg_variables)
 
-        bayes_network = pgmpy.models.BayesianNetwork([*zip(timesteps[:-1], timesteps[1:])])
+        # for each transition
+        for idx in range(len(evidence) - 1):
+            # create factor with values from transition model
+            current_factor = nodes.FNode("P(%s,%s)" % ("t%s" % idx, "t%s" % (idx + 1)),
+                                         rv.Discrete(self.transition_model.T,
+                                                     fg_variables[idx], fg_variables[idx + 1]))
+            factor_graph.set_node(current_factor)
+            factor_graph.set_edge(fg_variables[idx], current_factor)
+            factor_graph.set_edge(fg_variables[idx + 1], current_factor)
 
-        cpd_tables = \
-            [pgmpy.factors.discrete.TabularCPD(variable="t0",
-                                               variable_card=len(self.template_tree.leaves),
-                                               values=np.array([self.priors_of_tree(self.template_tree)]).T)] + \
-            [pgmpy.factors.discrete.TabularCPD(variable=curr,
-                                               variable_card=len(self.template_tree.leaves),
-                                               values=self.conditional_transition_model,
-                                               evidence=[prev], evidence_card=[len(self.template_tree.leaves)]) for
-             prev, curr in zip(timesteps[:-1], timesteps[1:])]
+        altered_jpts = []
 
-        bayes_network.add_cpds(*cpd_tables)
+        # create prior factors
+        for fg_variable, e in zip(fg_variables, evidence):
 
-        conditional_trees = []
-        virtual_evidences = []
+            # apply the evidence
+            conditional_jpt = self.template_tree.conditional_jpt(e)
 
-        for index, evidence_ in enumerate(evidence):
-            conditional_tree = self.template_tree.conditional_jpt(evidence_)
-            conditional_trees.append(conditional_tree)
+            # append altered jpt
+            altered_jpts.append(conditional_jpt)
 
-            virtual_evidence = pgmpy.factors.discrete.TabularCPD(variable=timesteps[index],
-                                                                 variable_card=len(self.template_tree.leaves),
-                                                                 values=np.array(
-                                                                     [self.priors_of_tree(conditional_tree)]).T)
-            virtual_evidences.append(virtual_evidence)
+            # create the prior distribution from the conditional tree
+            prior = np.zeros((len(self.template_tree.leaves),))
 
-        return bayes_network, conditional_trees, virtual_evidences
+            # fill the distribution with the correct values
+            for idx, leaf_idx in enumerate(self.template_tree.leaves.keys()):
+                if leaf_idx in conditional_jpt.leaves.keys():
+                    prior[idx] = conditional_jpt.leaves[leaf_idx].prior
+
+            # create a factor from it
+            current_factor = nodes.FNode("P(%s)" % str(fg_variable), rv.Discrete(prior, fg_variable))
+            factor_graph.set_node(current_factor)
+            factor_graph.set_edge(fg_variable, current_factor)
+
+        return factor_graph, altered_jpts
 
     def likelihood(self, queries: List[Union[np.ndarray, pd.DataFrame]], dirac_scaling: float = 2.,
                    min_distances: Dict = None) -> List[np.ndarray]:
@@ -331,9 +344,10 @@ class SequentialJPT:
         return self.transition_model[transition_index_1, transition_index_2] / \
             np.sum(self.transition_model[transition_index_1, :])
 
-    def posterior(self, evidence: List[LabelAssignment or Dict], fail_on_unsatisfiability: bool = True,) -> \
+    def posterior(self, evidence: List[LabelAssignment or Dict], fail_on_unsatisfiability: bool = True, ) -> \
             Optional[List[JPT]]:
-        """ Return the independent marginal distributions of all variables in this sequence along all
+        """
+        Return the independent marginal distributions of all variables in this sequence along all
         timesteps.
 
         :param evidence: The evidence observed in every timesteps. The length of this list determines the length
@@ -351,24 +365,28 @@ class SequentialJPT:
             evidence_.append(e)
 
         # ground factor graph
-        bayes_network, altered_jpts, virtual_evidences = self.ground(evidence_)
+        factor_graph, altered_jpts = self.ground(evidence)
+
+        # create result list
+        result = []
 
         # Run belief propagation
+        inference.belief_propagation(factor_graph)
 
-        belief_propagation = pgmpy.inference.BeliefPropagation(bayes_network)
-        result = belief_propagation.query(list(bayes_network.nodes), virtual_evidence=virtual_evidences, joint=False)
+        # transform trees
+        for (variable, tree) in zip(sorted(factor_graph.get_vnodes(), key=lambda x: str(x)), altered_jpts):
+            distribution = variable.belief().pmf
 
-        # calculate the new priors
-        for (variable, factor), conditional_jpt in zip(result.items(), altered_jpts):
-            if np.any(np.isnan(factor.values)):
+            if any(np.isnan(distribution)):
                 if fail_on_unsatisfiability:
-                    raise Unsatisfiability('Evidence %s is unsatisfiable.' % [format_path(e) for e in evidence_],)
+                    raise Unsatisfiability()
                 else:
                     return None
+            prior = dict(zip(self.template_tree.leaves.keys(), distribution))
+            adjusted_tree = tree.multiply_by_leaf_prior(prior)
+            result.append(adjusted_tree)
 
-            conditional_jpt.multiply_by_leaf_prior(dict(zip(self.template_tree.leaves.keys(), factor.values)))
-
-        return altered_jpts
+        return result
 
     def probability(self, event: List[Union[Dict[Union[Variable, str], Any], VariableAssignment]]) -> float:
         """
@@ -388,11 +406,11 @@ class SequentialJPT:
                 message[idx] *= leaf_probability
 
             probability *= current_probability
-            message = message@self.transition_model
+            message = message @ self.transition_model
             message_sum = sum(message)
 
             if message_sum == 0:
-                return  0.
+                return 0.
             else:
                 message /= message_sum
 
@@ -406,7 +424,6 @@ class SequentialJPT:
             evidence: List[Union[Dict[Union[Variable, str], Any], VariableAssignment]] = None,
             fail_on_unsatisfiability: bool = True) -> Optional[float]:
 
-
         p_evidence = self.probability(evidence)
         if p_evidence == 0:
             if fail_on_unsatisfiability:
@@ -414,9 +431,9 @@ class SequentialJPT:
             else:
                 return None
 
-        query_and_evidence = [q.intersection(e) for q,e in zip(query, evidence)]
+        query_and_evidence = [q.intersection(e) for q, e in zip(query, evidence)]
         p_query_and_evidence = self.probability(query_and_evidence)
-        return p_query_and_evidence/p_evidence
+        return p_query_and_evidence / p_evidence
 
     def mpe(self, evidence: List[Union[Dict[Union[Variable, str], Any], VariableAssignment]] = None,
             fail_on_unsatisfiability: bool = True) -> Optional[Tuple[List[LabelAssignment], float]]:
@@ -440,7 +457,6 @@ class SequentialJPT:
 
             # if it's the first iteration
             if timestep == 0:
-
                 # get maximum likelihoods and respective states
                 maxima, states = self.maximum_encoding(conditional_tree, use_leaf_prior=True)
 
@@ -471,7 +487,7 @@ class SequentialJPT:
             message = joint_distribution.max(axis=1)
 
             # save the argmax into the trellis
-            trellis[timestep-1, :] = joint_distribution.argmax(axis=1)
+            trellis[timestep - 1, :] = joint_distribution.argmax(axis=1)
 
             # quite the MPE if it becomes impossible
             if max(message) == 0:
