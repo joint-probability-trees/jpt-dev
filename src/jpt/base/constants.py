@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib
 
 sepcomma = ',\n'
 sepsemi = ';\n'
@@ -30,7 +31,20 @@ dorange = '#ffbe49ff'
 dred = '#FF4A49ff'
 
 plotcolormap = 'cividis'  # or viridis
-plotstyle = 'seaborn-deep'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Fix different style names in matplotlib versions
+matplotlib_version = matplotlib.__version_info__.major * 10 + matplotlib.__version_info__.minor
+
+if matplotlib_version > 37:
+    plotstyle = 'seaborn-v0_8-deep'
+else:
+    plotstyle = 'seaborn-deep'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 avalailable_colormaps = [
     'Accent', 'Accent_r', 'Blues', 'Blues_r', 'BrBG', 'BrBG_r', 'BuGn', 'BuGn_r', 'BuPu',
     'BuPu_r', 'CMRmap', 'CMRmap_r', 'Dark2', 'Dark2_r', 'GnBu', 'GnBu_r', 'Greens', 'Greens_r',

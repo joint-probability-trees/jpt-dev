@@ -49,11 +49,19 @@ finally:
     from .base.functions import PiecewiseFunction
 
 
-style.use(plotstyle)
+try:
+    style.use(plotstyle)
+except OSError:
+    import logging
+    logging.warning(
+        f'Style "{plotstyle}" not found. Falling back to "default".'
+    )
+    style.use('default')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Global constants
+
 DISCRIMINATIVE = 'discriminative'
 GENERATIVE = 'generative'
 
