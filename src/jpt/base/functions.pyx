@@ -6,6 +6,7 @@
 # cython: nonecheck=False
 __module__ = 'functions.pyx'
 
+import heapq
 from functools import cmp_to_key
 
 from itertools import chain
@@ -14,7 +15,7 @@ import itertools
 import numbers
 from collections import deque
 from operator import attrgetter
-from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any
+from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any, Optional
 
 from dnutils import ifnot, ifnone, pairwise, fst, last
 from dnutils.tools import ifstr, first
@@ -32,6 +33,7 @@ cimport cython
 import warnings
 
 from .cutils cimport DTYPE_t
+from .utils import Heap
 
 warnings.filterwarnings("ignore")
 
@@ -44,9 +46,6 @@ cdef class Function:
     Abstract base type of functions.
     """
 
-    def __call__(self, x):
-        return self.eval(x)
-
     cpdef DTYPE_t eval(self, DTYPE_t x):
         """
         Evaluate this function at position ``x``
@@ -54,6 +53,20 @@ cdef class Function:
         :return: f(x)
         """
         return np.nan
+
+    cpdef DTYPE_t[::1] multi_eval(self, DTYPE_t[::1] x, DTYPE_t[::1] result = None):
+        if result is None:
+            result = np.ndarray(shape=x.shape[0], dtype=np.float64)
+        cdef int i
+        for i in range(x.shape[0]):
+            result[i] = self.eval(x[i])
+        return result
+
+    def __call__(self, x):
+        if isinstance(x, np.ndarray):
+            return self.multi_eval(x)
+        else:
+            return self.eval(x)
 
     cpdef Function set(self, Function f):
         """
@@ -164,6 +177,9 @@ cdef class Undefined(Function):
         return Undefined()
 
     cpdef Function copy(self):
+        return Undefined()
+
+    cpdef Function xshift(self, DTYPE_t delta):
         return Undefined()
 
 
@@ -322,7 +338,7 @@ cdef class ConstantFunction(Function):
             )
 
     cpdef Function mul(self, Function f):
-        cpdef DTYPE_t v = np.nan
+        cdef DTYPE_t v = np.nan
         if isinstance(f, ConstantFunction):
             if not self.value or not f.value:
                 v = 0
@@ -725,8 +741,19 @@ cdef class QuadraticFunction(Function):
     cpdef DTYPE_t eval(self, DTYPE_t x):
         return self.a * x * x + self.b * x + self.c
 
-    cpdef DTYPE_t root(self) except +:
-        raise NotImplementedError()
+    cpdef DTYPE_t[::1] roots(self):
+        cdef DTYPE_t det = self.b * self.b - 4. * self.a * self.c
+        cdef DTYPE_t[::1] result
+        if det > 0:
+            result = np.ndarray(shape=(2,), dtype=np.float64)
+            result[0] = (-self.b - np.sqrt(det)) / (2. * self.a)
+            result[1] = (-self.b + np.sqrt(det)) / (2. * self.a)
+        elif det == 0:
+            result = np.ndarray(shape=(1,), dtype=np.float64)
+            result[0] = -self.b / (2. * self.a)
+        else:
+            result = np.ndarray(shape=(0,), dtype=np.float64)
+        return result
 
     cpdef Function invert(self) except +:
         raise NotImplementedError()
@@ -1235,7 +1262,7 @@ cdef class PiecewiseFunction(Function):
         for i, f in self.iter():
             intersect = interval & i
             if intersect:
-                area += f.integrate(intersect.min, intersect.max)
+                area += f.integrate(intersect.lower, intersect.upper)
         return area
 
     cpdef ensure_left(self, Function left, DTYPE_t x):
@@ -1654,6 +1681,10 @@ cdef class PiecewiseFunction(Function):
         :return:
         '''
         f = self
+        if f.is_impulse():
+            return g.copy()
+        elif g.is_impulse():
+            return f.copy()
         for func in itertools.chain(f.functions, g.functions):
             if (not isinstance(func, (ConstantFunction, Undefined)) and
                     isinstance(func, LinearFunction) and func.m != 0):
@@ -1692,7 +1723,6 @@ cdef class PiecewiseFunction(Function):
             if (z, integral) not in support_points:
                 support_points.append((z, integral))
             iteration += 1
-
         domain = f.domain().union(g.domain())
         if isinstance(domain, ContinuousSet):
             domain = RealSet([domain])
@@ -1750,7 +1780,7 @@ cdef class PiecewiseFunction(Function):
             f = self.functions[idx]
             i = self.intervals[idx]
             f_ = f(b)
-            if not np.isnan(f_max) and f_max > f_:
+            if np.isnan(f_) or not np.isnan(f_max) and f_max > f_:
                 continue
             if isinstance(f, LinearFunction):
                 argmax = ContinuousSet(b, b)
@@ -1770,40 +1800,218 @@ cdef class PiecewiseFunction(Function):
 
     def approximate(
             self,
-            epsilon: float = .01,
-            replacement: type = LinearFunction
+            error_max: float = None,
+            n_segments = None,
+            replace_by: type = LinearFunction
     ) -> PiecewiseFunction:
-        result = self.copy()
-        while 1:
-            mse_min = np.inf
-            mse_min_segments = None
-            for (i1, f1), (i2, f2) in pairwise(result.iter()):
-                if not i1.contiguous(i2) or i1.isninf() or i2.ispinf():
-                    continue
-                i = ContinuousSet(i1.lower, i2.upper, i1.left, i2.right)
-                if replacement is LinearFunction:
-                    f_ = LinearFunction.from_points(
-                        (i.lower, f1(i.lower)),
-                        (i.upper, f2(i.upper))
-                    )
-                elif replacement is ConstantFunction:
-                    f_ = ConstantFunction(
-                        f1(i.lower) * i1.width / i.width + f2(i.upper) * i2.width / i.width
-                    )
-                delta = (self.crop(i) - f_)
-                mse = ((delta * delta) * ConstantFunction(1 / i.size())).integrate()
-                _, e_max = PiecewiseFunction.abs(delta).maximize()
-                if mse < mse_min and e_max <= epsilon:
-                    mse_min = mse
-                    mse_min_segments = (i1, f1), (i2, f2), (i, f_)
+        '''
+        Compute an approximation of this `PiecewiseFunction`, which comprises fewer
+        function segments than the original PLF.
 
-            if mse_min_segments is not None:
-                (i1, f1), (i2, f2), (i, f_) = mse_min_segments
-                del result.intervals[result.intervals.index(i1)]
-                del result.functions[result.functions.index(f1)]
-                del result.intervals[result.intervals.index(i2)]
-                del result.functions[result.functions.index(f2)]
-                result = result.overwrite_at(i, f_)
-            else:
+        This is done by iteratively replacing subsequent function
+        segments by an approximation thereof.
+
+        :param error_max:       the maximal error allowed for constructing an approximation
+        :param n_segments:      the desired number of function segments of the approximation result
+        :param replace_by:      (ConstantFunction, LinearFunction) the type of function to be used for
+                                the approximations
+        :return:
+        '''
+        return PLFApproximator(
+            self,
+            replace_by=replace_by
+        ).run(
+            error_max=error_max,
+            k=n_segments
+        )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class PLFApproximator:
+    """
+    This class implements an algorithm for simplifying a `PiecewiseFunction`
+    by iteratively "merging" function segments of contiguous intervals by some
+    approximation. The algorithm maintains a heap of all pairwise consecutive
+    itervals ("FunctionSegments") and always chooses the replacement that
+    causes the minimal increase in the mean squared error.
+    """
+
+    class FunctionSegment:
+        def __init__(self, i: ContinuousSet, f: Function):
+            self.i: ContinuousSet = i
+            self.f: Function = f
+
+        def __eq__(self, other):
+            return self.i == other.i and self.f == other.f
+
+    class FunctionSegmentReplacement:
+
+        def __init__(
+                self,
+                error: float,
+                left: 'PLFApproximator.FunctionSegment',
+                right: 'PLFApproximator.FunctionSegment',
+                new: 'PLFApproximator.FunctionSegment',
+                next_repl: Optional['PLFApproximator.FunctionSegmentReplacement'] = None,
+                prev_repl: Optional['PLFApproximator.FunctionSegmentReplacement'] = None
+        ):
+            self.left = left
+            self.right = right
+            self.next = next_repl
+            self.prev = prev_repl
+            self.error = error
+            self.new = new
+
+        def __eq__(self, other):
+            if other is None:
+                return False
+            return all((
+                self.left == other.left,
+                self.right == other.right,
+                self.error == other.error,
+                self.new == other.new
+            ))
+
+    def __init__(
+            self,
+            plf: PiecewiseFunction,
+            replace_by: type = LinearFunction
+        ):
+        self.plf: PiecewiseFunction = plf
+        self.replace_by: type = replace_by
+
+    def _construct_replacement(
+            self,
+            left: FunctionSegment,
+            right: FunctionSegment
+    ) -> FunctionSegmentReplacement:
+        '''
+        Compute a function of type `replace_by` spanning the union
+        interval of i1 and i2 and estimate the mean sqaured error
+        induced by this new function segment.
+        '''
+        if not left.i.contiguous(right.i) or left.i.isninf() or right.i.ispinf():
+            raise ValueError(
+                'left and right must be finite, contiguous segments, got left.i=%s, right.i=%s.' % (
+                    left.i, right.i
+                )
+            )
+
+        # Create a replacement function segment spanning both intervals
+        i = ContinuousSet(left.i.lower, right.i.upper, left.i.left, right.i.right)
+        if self.replace_by is LinearFunction:
+            f = LinearFunction.from_points(
+                (i.lower, left.f(i.lower)),
+                (i.upper, right.f(i.upper))
+            )
+        elif self.replace_by is ConstantFunction:
+            f = ConstantFunction(
+                left.f(i.lower) * left.i.width / i.width + right.f(i.upper) * right.i.width / i.width
+            )
+        else:
+            raise TypeError(
+                'Unsupported type of replacement function: %s.' % self.replace_by.__name__
+            )
+
+        # Estimate the error induced by the replacement
+        error = self.plf.crop(i) - f
+        # error_sq = error.mul(error)
+        # mse = error_sq.integrate() / i.width
+        mae = PiecewiseFunction.abs(error).integrate() / i.width  # .maximize()[1]
+        return PLFApproximator.FunctionSegmentReplacement(
+            mae,
+            left,
+            right,
+            PLFApproximator.FunctionSegment(i, f)
+        )
+
+    def run(
+            self,
+            error_max: float = None,
+            k = None,
+    ) -> PiecewiseFunction:
+        '''Compute an approximation of the function under consideration.'''
+        if k is not None and k < 3:
+            raise ValueError(
+                'Minimum value for k is 3, got %s.' % k
+            )
+        error_max = ifnone(error_max, np.inf)
+        result = self.plf.copy()
+        replacements = []
+        # Loop through all pairs of consecutive function segments
+        for (i1, f1), (i2, f2) in pairwise(result.iter()):
+            # We only consider finite, contiguous segments
+            if not i1.contiguous(i2) or i1.isninf() or i2.ispinf():
+                continue
+            # Store admissible replacement candidates on the heap
+            replacement = self._construct_replacement(
+                PLFApproximator.FunctionSegment(i1, f1),
+                PLFApproximator.FunctionSegment(i2, f2)
+            )
+            if replacements:  # Update the double-linked list
+                replacement.prev = replacements[-1]
+                replacements[-1].next = replacement
+            replacements.append(replacement)
+
+        queue = Heap(replacements, key=attrgetter('error'))
+        # Keep replacing the contiguous segments until we
+        # hit one of the abortion criteria
+        while queue:
+            replacement = queue.pop()
+            # Abortion: either the maximal number of segments is hit
+            # or we exceed the mse_max parameter
+            if (
+                    len(result) <= ifnone(k, 3) or
+                    error_max < replacement.error
+            ):
                 break
+
+            # Remove the left and right segments of the replacement from the original function
+            del result.intervals[result.intervals.index(replacement.left.i)]
+            del result.functions[result.functions.index(replacement.left.f)]
+            del result.intervals[result.intervals.index(replacement.right.i)]
+            del result.functions[result.functions.index(replacement.right.f)]
+
+            # Insert the new segment at the interval union of the former left and right segments
+            result = result.overwrite_at(
+                replacement.new.i,
+                replacement.new.f
+            )
+
+            # Remove the "prev" and "next" replacements from the heap as one counterpart of
+            # both their "left" and "right" segments has become obsolete.
+            # Also, insert new replacement candidates given by the new segment and the "left" segment
+            # of the "prev" replacement, and by the "new" segment and the "right" segment of
+            # the "next" replacement
+            new_replacement_left = None
+            if replacement.prev is not None:
+                del queue[queue.index(replacement.prev)]
+                new_replacement_left = self._construct_replacement(
+                    replacement.prev.left,
+                    replacement.new
+                )
+                if replacement.prev.prev is not None:
+                    replacement.prev.prev.next = new_replacement_left
+                    new_replacement_left.prev = replacement.prev.prev
+                queue.push(
+                    new_replacement_left
+                )
+            new_replacement_right = None
+            if replacement.next is not None:
+                del queue[queue.index(replacement.next)]
+                new_replacement_right = self._construct_replacement(
+                    replacement.new,
+                    replacement.next.right
+                )
+                if replacement.next.next is not None:
+                    replacement.next.next.prev = new_replacement_right
+                    new_replacement_right.next = replacement.next.next
+                queue.push(
+                    new_replacement_right
+                )
+            if None not in (new_replacement_left, new_replacement_right):
+                new_replacement_left.next = new_replacement_right
+                new_replacement_right.prev = new_replacement_left
+
         return result

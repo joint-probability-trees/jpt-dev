@@ -583,6 +583,21 @@ class ContinuousSetTest(unittest.TestCase):
         self.assertEqual(r.min , -i.max)
         self.assertEqual(r.max, -i.min)
 
+    def test_round(self):
+        # Arrange
+        i = ContinuousSet(0.1234, 5.6789, INC, EXC)
+        print(i)
+        # Act
+        i_ = round(i, 2)
+
+        # Assert
+        self.assertEqual(
+            ContinuousSet(0.12, 5.68, INC, EXC),
+            i_
+        )
+
+
+
 
 @ddt
 class RealSetTest(unittest.TestCase):
@@ -812,6 +827,25 @@ class RealSetTest(unittest.TestCase):
                 '(-3,-2]', '[-1,1)'
             ]),
             s_
+        )
+
+    def test_round(self):
+        # Arrange
+        i = RealSet([
+            ContinuousSet(0.1234, 5.6789, INC, EXC),
+            ContinuousSet(3.456, 7.89, INC, EXC),
+        ])
+
+        # Act
+        i_ = round(i, 1)
+
+        # Assert
+        self.assertEqual(
+            RealSet([
+                ContinuousSet(0.1, 5.7, INC, EXC),
+                ContinuousSet(3.5, 7.9, INC, EXC),
+            ]),
+            i_
         )
 
     @data(

@@ -29,6 +29,8 @@ cdef class Function:
 
     cpdef DTYPE_t eval(self, DTYPE_t x)
 
+    cpdef DTYPE_t[::1] multi_eval(self, DTYPE_t[::1] x, DTYPE_t[::1] result=*)
+
     cpdef Function set(self, Function f)
 
     cpdef Function mul(self, Function f)
@@ -48,6 +50,8 @@ cdef class Undefined(Function):
     '''
     This class represents an undefined function.
     '''
+    cpdef Function xshift(self, DTYPE_t delta)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -189,7 +193,7 @@ cdef class QuadraticFunction(Function):
 
     # Class methods
 
-    cpdef DTYPE_t root(self) except +
+    cpdef DTYPE_t[::1] roots(self)
 
     cpdef Function invert(self) except +
 
@@ -218,8 +222,6 @@ cdef class PiecewiseFunction(Function):
     cdef public list functions
 
     # Class methods
-
-    cpdef DTYPE_t[::1] multi_eval(self, DTYPE_t[::1] x, DTYPE_t[::1] result=*)
 
     cpdef Function at(self, DTYPE_t x)
 

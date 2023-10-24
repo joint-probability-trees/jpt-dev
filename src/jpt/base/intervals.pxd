@@ -70,6 +70,7 @@ cdef class RealSet(NumberSet):
 
     cpdef inline np.int32_t ispinf(self)
 
+    cpdef inline np.int32_t isinf(self)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -138,3 +139,5 @@ cdef class ContinuousSet(NumberSet):
     cpdef inline np.int32_t isninf(ContinuousSet self)
 
     cpdef inline np.int32_t ispinf(ContinuousSet self)
+
+    cpdef inline np.int32_t isinf(ContinuousSet self)

@@ -202,6 +202,11 @@ cdef class RealSet(NumberSet):
         tmp = sorted(self.intervals, key=attrgetter('left'))
         return hash((RealSet, tuple(sorted(tmp, key=attrgetter('lower')))))
 
+    def __round__(self, n: int):
+        return RealSet(
+            [round(i, n) for i in self.intervals]
+        )
+
     def __setstate__(self, state):
         self.intervals = state
 
@@ -313,6 +318,16 @@ cdef class RealSet(NumberSet):
         """
         for i in self.intervals:
             if i.ispinf():
+                return True
+        return False
+
+    cpdef inline np.int32_t isinf(RealSet self):
+        """
+        Check if this ``RealSet`` is infinite to the right OR the left (negative OR positive infty).
+        :return: 
+        """
+        for i in self.intervals:
+            if i.ispinf() or i. isninf():
                 return True
         return False
 
@@ -659,6 +674,13 @@ cdef class ContinuousSet(NumberSet):
         :return: 
         """
         return np.isinf(self.upper)
+
+    cpdef inline np.int32_t isinf(ContinuousSet self):
+        """
+        Check if this interval is infinite to the right (positive infty)
+        :return: 
+        """
+        return self.ispinf() or self.isninf()
 
     @staticmethod
     cdef inline ContinuousSet c_emptyset():
@@ -1151,6 +1173,14 @@ cdef class ContinuousSet(NumberSet):
         result.lower, result.upper = -result.upper, -result.lower
         result.left, result.right = result.right, result.left
         return result
+
+    def __round__(self, n: int = None):
+        return ContinuousSet(
+            round(self.lower, n),
+            round(self.upper, n),
+            self.left,
+            self.right
+        )
 
     def __contains__(self, x):
         try:

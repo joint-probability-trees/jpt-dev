@@ -1,4 +1,4 @@
-PKG_NAME=jpt
+PKG_NAME=pyjpt
 PKG_VERSION=$(shell cat src/jpt/.version)
 PYTHON_PATH=/usr/bin/python3.8
 PYTHON_VERSION=$(shell ${PYTHON_PATH} -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))")
@@ -25,7 +25,7 @@ bdist: virtualenv versioncheck
 	@(echo "Build ${PKG_NAME} bdist package...")
 	@(. ${ENV_NAME}/bin/activate && pip install -r requirements-dev.txt && python setup.py bdist)
 
-wheel: virtualenv versioncheck
+wheel: virtualenv
 	@(echo "Build ${PKG_NAME} bdist_wheel package...")
 	@(. ${ENV_NAME}/bin/activate && pip install wheel)
 	@(. ${ENV_NAME}/bin/activate && pip install -r requirements-dev.txt && python setup.py bdist_wheel)
@@ -42,7 +42,7 @@ all: clean virtualenv versioncheck tests sdist bdist wheel
 tests: wheel
 	@(echo "Running all tests...")
 	@(. ${ENV_NAME}/bin/activate &&\
-	pip install dist/${PKG_NAME}-${PKG_VERSION}-cp38-cp38-linux_x86_64.whl &&\
+	pip install dist/${PKG_NAME}-0.0.0-cp38-cp38-linux_x86_64.whl &&\
 	cd test &&\
 	python -m unittest)
 

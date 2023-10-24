@@ -30,6 +30,13 @@ finally:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+# Type definitions
+
+Symbol = Union[str, int]
+Collections = (list, set, tuple)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 def pairwise(seq: Iterable[Any]) -> Iterable[Tuple[Any, Any]]:
     '''Iterate over all consecutive pairs in ``seq``.'''
@@ -164,12 +171,15 @@ def to_json(obj):
     return obj
 
 
-def format_path(path):
+def format_path(path, **kwargs):
     '''
     Returns a readable string representation of a conjunction of variable assignments,
-    given by the dictionary ``path``.
+    given by the dictionary ``path``. The ``kwargs`` are passed to the jpt.variables.Variable.str function to allow
+    customized formatting.
     '''
-    return ' ^ '.join([var.str(val, fmt='logic') for var, val in path.items()])
+    if 'fmt' not in kwargs:
+        kwargs['fmt'] = 'logic'
+    return ' ^ '.join([var.str(val, **kwargs) for var, val in path.items()])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -257,14 +267,40 @@ def classproperty(func):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-
-def list2interval(l):
+def list2interval(l: List[int]) -> ContinuousSet:
     '''
     Converts a list representation of an interval to an instance of type
     '''
     lower, upper = l
-    return ContinuousSet(np.NINF if lower in (np.NINF, -float('inf'), None, ...) else np.float64(lower),
-                         np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper))
+    return ContinuousSet(
+        np.NINF if lower in (np.NINF, -float('inf'), None, ...) else np.float64(lower),
+        np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper)
+    )
+
+
+def list2set(values: List[Symbol]) -> Set[str]:
+    """
+    Convert a list to a set.
+    """
+    return set(values)
+
+
+def list2intset(bounds: List[int]) -> Set[int]:
+    '''
+    Convert a 2-element list specifying a lower and an upper bound into a
+    integer set containing the admissible values of the corresponding interval
+    '''
+    if not len(bounds) == 2:
+        raise ValueError(
+            'Argument list must have length 2, got length %d.' % len(bounds)
+        )
+
+    # if bounds[0] < cls.lmin or bounds[1] > cls.lmax:
+    #     raise ValueError(
+    #         f'Argument must be in [%d, %d].' % (cls.lmin, cls.lmax)
+    #     )
+
+    return set(range(bounds[0], bounds[1] + 1))
 
 
 def normalized(
@@ -466,8 +502,11 @@ class Heap:
     def __len__(self):
         return len(self._data)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: int):
         return self._data[item][2]
+
+    def __delitem__(self, item: int):
+        del self._data[item]
 
     def __bool__(self):
         return bool(self._data)
@@ -480,3 +519,12 @@ class Heap:
 
     def __reversed__(self):
         return Heap.Iterator(self, reverse=True)
+
+    def index(self, item: Any) -> int:
+        for idx, (_, _, i) in enumerate(self._data):
+            if i == item:
+                return idx
+        else:
+            raise ValueError(
+                'Item %s not found.' % item
+            )

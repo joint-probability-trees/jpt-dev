@@ -1,14 +1,19 @@
-import json
 import numbers
+
+import json
 import pickle
+from typing import Type
 from unittest import TestCase
 
 import numpy as np
 import scipy.stats
+from ddt import data, unpack, ddt
+from dnutils.tools import ifstr
 
 from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
+from utils import gaussian_numeric, uniform_numeric
 
 try:
     from jpt.base.functions import __module__
@@ -16,7 +21,6 @@ try:
     from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
-
     pyximport.install()
 finally:
     from jpt.base.functions import PiecewiseFunction, LinearFunction, ConstantFunction
@@ -61,6 +65,46 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(Dist123.values, OrderedDictProxy([(1, 0), (2, 1), (3, 2), (4, 3), (5, 4)]))
         self.assertEqual(Dist123.labels, OrderedDictProxy([(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]))
 
+    def test_label2value(self):
+        '''Test the conversion from label to value space'''
+        # Arrange
+        ABC = self.DistABC
+        # Act
+        value_singular = ABC.label2value('A')
+        value_set = ABC.label2value({'A', 'B', 'C'})
+        value_list = ABC.label2value(['B', 'C'])
+        value_tuple = ABC.label2value(('A', 'B', 'C'))
+        # Assert
+        self.assertEqual(0, value_singular)
+        self.assertEqual({0, 1, 2}, value_set)
+        self.assertEqual((0, 1, 2), value_tuple)
+        self.assertEqual([1, 2], value_list)
+        self.assertRaises(
+            ValueError,
+            ABC.label2value,
+            'D'
+        )
+
+    def test_value2label(self):
+        '''Test the conversion from value to label space'''
+        # Arrange
+        ABC = self.DistABC
+        # Act
+        label_singular = ABC.value2label(1)
+        label_set = ABC.value2label({0, 1, 2})
+        label_list = ABC.value2label([0, 1, 2])
+        label_tuple = ABC.value2label((0, 1, 2))
+        # Assert
+        self.assertEqual('B', label_singular)
+        self.assertEqual({'A', 'B', 'C'}, label_set)
+        self.assertEqual(('A', 'B', 'C'), label_tuple)
+        self.assertEqual(['A', 'B', 'C'], label_list)
+        self.assertRaises(
+            ValueError,
+            ABC.value2label,
+            'D'
+        )
+
     def test_fit(self):
         '''Fitting of multinomial distributions'''
         DistABC = self.DistABC
@@ -86,17 +130,73 @@ class MultinomialDistributionTest(TestCase):
         self.assertAlmostEqual(d1._p({1}), 3 / 10, 15)
         self.assertAlmostEqual(d1._p({2}), 2 / 10, 15)
 
-    def test_inference(self):
-        '''Posterior, MPE, Expectation'''
-        DistABC = self.DistABC
-        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+    def test_crop(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
 
-        self.assertEqual(d1.expectation(), {'A'})
-        self.assertEqual(d1.mpe(), (0.5, {'A'}))
-        self.assertEqual(d1.crop([0, 2]), DistABC().set([2 / 3, 0, 1 / 3]))
-        self.assertEqual(d1.crop([0, 1]), DistABC().set([2 / 3, 1 / 3, 0]))
-        self.assertRaises(Unsatisfiability, d1.crop, restriction=[])
-        # self.assertEqual(d1.crop(), d1)
+        # Act
+        result1 = abc.crop({'A', 'C'})
+        result2 = abc.crop('B')
+
+        # Assert
+        self.assertEqual([2 / 3, 0, 1 / 3], list(result1.probabilities))
+        self.assertEqual([0, 1, 0], list(result2.probabilities))
+        self.assertRaises(Unsatisfiability, abc.crop, ())
+
+    def test__crop(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        result1 = abc._crop({0, 2})
+        result2 = abc._crop(1)
+
+        # Assert
+        self.assertEqual([2 / 3, 0, 1 / 3], list(result1.probabilities))
+        self.assertEqual([0, 1, 0], list(result2.probabilities))
+        self.assertRaises(Unsatisfiability, abc._crop, ())
+
+    def test_mpe(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        result_unique = abc.mpe()
+        abc.set([1 / 3, 1 / 3, 1 / 3])
+        result_uniform = abc.mpe()
+
+        # Assert
+        self.assertEqual(({'A'}, 1 / 2), result_unique)
+        self.assertEqual(({'A', 'B', 'C'}, 1 / 3), result_uniform)
+
+    def test_expectation(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        result = abc.expectation()
+
+        # Assert
+        self.assertEqual({'A'}, result)
+
+    def test_inference(self):
+        # Arrange
+        ABC = self.DistABC
+        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        result_singular = abc.p('A')
+        result_set = abc.p({'A', 'C'})
+        result_list_duplicate = abc.p(['A', 'C', 'C'])
+
+        # Assert
+        self.assertEqual(.5, result_singular)
+        self.assertEqual(.75, result_set)
+        self.assertEqual(.75, result_list_duplicate)
 
     def test_domain_serialization(self):
         '''(De-)Serialization of Multinomial domains'''
@@ -188,8 +288,35 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(k_mpe[0], d1.mpe())
         self.assertEqual(k_mpe[1][0], 1/4)
 
+    def test_jaccard_identity(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        jacc = Multinomial.jaccard_similarity(d1, d1)
+        self.assertEqual(1., jacc)
+
+    def test_jaccard_disjoint(self):
+        d1 = self.DistABC().set([0., 0., 1.])
+        d2 = self.DistABC().set([1., 0., 0.])
+        jacc = Multinomial.jaccard_similarity(d1, d2)
+        self.assertEqual(0., jacc)
+
+    def test_jaccard_overlap(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        d2 = self.DistABC().set([.2, .4, .4])
+
+        jacc = Multinomial.jaccard_similarity(d1, d2)
+        self.assertAlmostEqual(9/11, jacc, places=8)
+
+    def test_jaccard_symmetry(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        d2 = self.DistABC().set([.2, .4, .4])
+        jacc1 = Multinomial.jaccard_similarity(d1, d2)
+        jacc2 = Multinomial.jaccard_similarity(d2, d1)
+        self.assertEqual(jacc1, jacc2)
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 
+@ddt
 class NumericDistributionTest(TestCase):
     '''Test class for ``Numeric`` distributions'''
 
@@ -199,7 +326,10 @@ class NumericDistributionTest(TestCase):
     def setUp(cls) -> None:
         with open('resources/gaussian_100.dat', 'rb') as f:
             cls.GAUSSIAN = pickle.load(f)
-        cls.DistGauss = NumericType('Uniform', values=NumericDistributionTest.GAUSSIAN)
+        cls.DistGauss: Type[Numeric] = NumericType(
+            'Normal',
+            values=NumericDistributionTest.GAUSSIAN
+        )
 
     def test_hash(self):
         self.assertNotEqual(hash(Numeric), hash(self.DistGauss))
@@ -216,9 +346,27 @@ class NumericDistributionTest(TestCase):
         self.assertAlmostEqual(DistGauss.values.mean, .5, 1)
         self.assertAlmostEqual(DistGauss.values.scale, .6, 1)
 
+    def test_copy(self):
+        # Arrange
+        a, b = 2, 3
+        uniform = uniform_numeric(a, b)
+
+        # Act
+        uniform_ = uniform.copy()
+
+        # Assert
+        self.assertEqual(uniform, uniform_)
+        self.assertNotEqual(id(uniform_), id(uniform))
+
     def test_domain_serialization(self):
         DistGauss = self.DistGauss
-        self.assertTrue(DistGauss.equiv(DistGauss.type_from_json(DistGauss.type_to_json())))
+        self.assertTrue(
+            DistGauss.equiv(
+                DistGauss.type_from_json(
+                    DistGauss.type_to_json()
+                )
+            )
+        )
 
     def test_fit(self):
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
@@ -240,24 +388,27 @@ class NumericDistributionTest(TestCase):
         self.assertTrue(Numeric.equiv(d_type))
         self.assertEqual(d, d_inst)
 
-    def test_manipulation(self):
-        DistGauss = self.DistGauss
-        data = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
-        d = DistGauss()._fit(data, col=0)
-        self.assertEqual(d.expectation(), .5)
-
+    def test_crop(self):
+        # Arrange
+        Gauss: Type[Numeric] = self.DistGauss
+        data = np.array([Gauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
+        dist = Gauss()._fit(data, col=0)
+        # Act
+        cdf = dist._crop(
+            ContinuousSet(Gauss.values[.1], Gauss.values[.9], EXC, EXC)
+        ).cdf
+        # Assert
         ground_truth = PiecewiseFunction.from_dict({
-            ContinuousSet(np.NINF, DistGauss.values[.1], EXC, EXC): 0,
-            ContinuousSet(DistGauss.values[.1], DistGauss.values[.9], INC, EXC):
-                LinearFunction.from_points((DistGauss.values[.1], .0),
-                                           (DistGauss.values[.9], 1.)),
-            ContinuousSet(DistGauss.values[.9], np.PINF, INC, EXC): 1
+            '(-inf,%s)' % Gauss.values[.1]: 0,
+            '[%s,%s)' % (Gauss.values[.1], Gauss.values[.9]):
+                LinearFunction.from_points(
+                    (Gauss.values[.1], .0),
+                    (Gauss.values[.9], 1.)
+                ),
+            '[%s,inf)' % Gauss.values[.9]: 1
         })
-
-        f1 = d.crop(ContinuousSet(DistGauss.values[.1], DistGauss.values[.9], EXC, EXC)).cdf.round(10)
-        f2 = ground_truth.round(10)
-
-        self.assertEqual(f1, f2)
+        self.assertAlmostEqual(.5, dist.expectation(), places=10)
+        self.assertEqual(ground_truth.round(10), cdf.round(10))
 
     def test_kldiv_equality(self):
         DistGauss = self.DistGauss
@@ -287,13 +438,71 @@ class NumericDistributionTest(TestCase):
         d1 = DistGauss()._fit(data1, col=0)
         self.assertRaises(TypeError, d1.kl_divergence, ...)
 
-    def test_value_conversion(self):
-        DistGauss = self.DistGauss
-        self.assertEqual(0, DistGauss.value2label(DistGauss.label2value(0)))
-        self.assertEqual(ContinuousSet(0, 1),
-                         DistGauss.value2label(DistGauss.label2value(ContinuousSet(0, 1))))
-        self.assertEqual(RealSet(['[0, 1]', '[2,3]']),
-                         DistGauss.value2label(DistGauss.label2value(RealSet(['[0, 1]', '[2,3]']))))
+    def test_value2label(self):
+        # Arrange
+        Gauss = self.DistGauss
+
+        # Act
+        label_scalar = Gauss.value2label(0)
+        label_interval = Gauss.value2label(
+            ContinuousSet(0, 1)
+        )
+
+        # Assert
+        self.assertAlmostEqual(.5, label_scalar, places=2)
+        self.assertEqual(
+            0,
+            Gauss.value2label(
+                Gauss.label2value(0)
+            )
+        )
+        self.assertIsInstance(
+            label_interval,
+            ContinuousSet
+        )
+        self.assertEqual(
+            ContinuousSet(0.5, 1.1),
+            round(label_interval, 1)
+        )
+        self.assertEqual(
+            ContinuousSet(0, 1),
+            Gauss.value2label(
+                Gauss.label2value(
+                    ContinuousSet(0, 1)
+                )
+            )
+        )
+
+    def test_label2value(self):
+        # Arrange
+        Gauss = self.DistGauss
+
+        # Act
+        value_realset = Gauss.label2value(
+            RealSet(['[0,1]', '[2,3]'])
+        )
+        value_scalar = Gauss.label2value(.5)
+        value_interval = Gauss.label2value(
+            ContinuousSet(0, 1)
+        )
+
+        # Assert
+        self.assertEqual(
+            RealSet([
+                ContinuousSet(-.9, .9),
+                ContinuousSet(2.6, 4.3)
+            ]),
+            round(value_realset, 1)
+        )
+        self.assertAlmostEqual(
+            0,
+            value_scalar,
+            places=2
+        )
+        self.assertEqual(
+            ContinuousSet(-.9, .9),
+            round(value_interval, 1)
+        )
 
     def test_mpe(self):
         np.random.seed(69)
@@ -311,22 +520,34 @@ class NumericDistributionTest(TestCase):
     def _test_label_inference(self):
         raise NotImplementedError()
 
-    def test_value_inference_normal(self):
+    @data(
+        (-1, 0),
+        (.5, 0),
+        (2, 0),
+        (R, 1),
+        ('[0,.5]', .5),
+        ('(-inf, .5]', .5),
+        ('[.5,inf)', .5),
+        ('[.5,.5]', 0),
+        (RealSet([
+            '[0,.25]', '[.75,1]'
+        ]), .5)
+    )
+    @unpack
+    def test_inference(self, query, truth):
         '''Inference under "normal" circumstances.'''
-        dist = Numeric().set(
-            params=QuantileDistribution.from_cdf(
-                PiecewiseFunction.from_dict({
-                    ']-inf,0[': 0,
-                    '[0,1[': LinearFunction(1, 0),
-                    '[1,inf[': 1
-                })
-            )
+        # Arrange
+        dist = uniform_numeric(0, 1)
+        query = ifstr(query, ContinuousSet.parse)
+
+        # Act
+        result = dist._p(query)
+
+        # Assert
+        self.assertEqual(
+            truth,
+            result
         )
-        self.assertEqual(0, dist._p(-1))
-        self.assertEqual(0, dist._p(.5))
-        self.assertEqual(0, dist._p(2))
-        self.assertEqual(1, dist._p(R))
-        self.assertEqual(.5, dist._p(ContinuousSet.parse('[0,.5]')))
 
     def test_value_inference_singularity(self):
         '''PDF has a singularity like a Dirac impulse function.'''
@@ -351,7 +572,7 @@ class NumericDistributionTest(TestCase):
         samples = p.sample(100)
         self.assertTrue(all([pdf.eval(v) > 0 for v in samples]))
 
-    def test_moment(self):
+    def test_moments(self):
         np.random.seed(69)
         data = np.random.normal(0, 1, 100000).reshape(-1, 1)
         distribution = Numeric()
@@ -367,10 +588,214 @@ class NumericDistributionTest(TestCase):
             dist_moment = distribution.moment(order, dist_mean)
             self.assertAlmostEqual(empirical_moment, dist_moment, delta=np.power(0.9, -order))
 
+    def test_jaccard_identity(self):
+        d1 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+            )
+        )
+
+        jacc = Numeric.jaccard_similarity(d1, d1)
+        self.assertEqual(1., jacc)
+
+    def test_jaccard_disjoint(self):
+        d1 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+            )
+        )
+        d2 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(2, 3), ConstantFunction(1))
+            )
+        )
+
+        jacc = Numeric.jaccard_similarity(d1, d2)
+        self.assertEqual(0., jacc)
+
+    def test_jaccard_overlap(self):
+        d1 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+            )
+        )
+        d2 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0.5, 1.5), ConstantFunction(1))
+            )
+        )
+
+        jacc = Numeric.jaccard_similarity(d1, d2)
+        self.assertAlmostEqual(1 / 3, jacc, places=8)
+
+    def test_jaccard_symmetry(self):
+        d1 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+            )
+        )
+        d2 = Numeric().set(
+            params=QuantileDistribution.from_pdf(
+                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0.5, 1.5), ConstantFunction(1))
+            )
+        )
+
+        jacc1 = Numeric.jaccard_similarity(d1, d2)
+        jacc2 = Numeric.jaccard_similarity(d2, d1)
+        self.assertEqual(jacc1, jacc2)
+
+    def test_add(self):
+        # Arrange
+        x = uniform_numeric(-1, 1)
+        y = uniform_numeric(-1, 1)
+        # Act
+        z = (x + y)
+        # Assert
+        self.assertAlmostEqual(
+            x.expectation() + y.expectation(),
+            z.expectation(),
+            places=10
+        )
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '(-∞,-2.0)': 0,
+                '[-2.0,2.0000000000000004)': .25,
+                '[2.0000000000000004,∞)': 0
+            }),
+            z.pdf
+        )
+
+    def test__expectation_uniform(self):
+        # Arrange
+        uniform = uniform_numeric(1, 2)
+
+        # Act
+        expectation = uniform._expectation()
+
+        # Assert
+        self.assertEqual(
+            1.5,
+            expectation
+        )
+        self.assertEqual(
+            expectation,
+            uniform.expectation()
+        )
+
+    def test__expectation_2uniform(self):
+        # Arrange
+        dist = Numeric().set(
+            QuantileDistribution.merge([
+                uniform_numeric(1, 2),
+                uniform_numeric(2, 4)
+            ])
+        )
+
+        # Act
+        expectation = dist._expectation()
+
+        # Assert
+        self.assertEqual(
+            2.25,
+            expectation
+        )
+        self.assertEqual(
+            expectation,
+            dist.expectation()
+        )
+
+    def test__moment_uniform(self):
+        # Arrange
+        a, b = 2, 3
+        uniform = uniform_numeric(a, b)
+
+        # Act
+        moment_0 = uniform._moment(0, 0)  # 1
+        moment_1_raw = uniform._moment(1, 0)  # Expectation
+        moment_1_central = uniform._moment(1, moment_1_raw)  # 0
+        moment_2_central = uniform._moment(2, moment_1_raw)  # Variance
+
+        # Assert
+        self.assertEqual(
+            1,
+            moment_0
+        )
+        self.assertEqual(
+            (a + b) / 2,
+            moment_1_raw
+        )
+        self.assertEqual(
+            0,
+            moment_1_central
+        )
+        self.assertEqual(
+            1 / 12 * (b - a) ** 2,
+            moment_2_central
+        )
+
+    def test_mpe(self):
+        # Arrange
+        dist = Numeric().set(
+            QuantileDistribution.merge([
+                uniform_numeric(0, 2),
+                uniform_numeric(2, 3),
+                uniform_numeric(3, 5),
+            ])
+        )
+
+        # Act
+        mpe_state, likelihood = dist.mpe()
+
+        # Assert
+        self.assertEqual(
+            (round(1 / 3, 10), ContinuousSet.parse('[2,3)')),
+            (round(likelihood, 10), mpe_state)
+        )
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 class IntegerDistributionTest(TestCase):
+
+    Die = IntegerType('Dice', 1, 6)
+
+    def test_value2label(self):
+        # Arrange
+        Die = self.Die
+
+        # Act
+        value_scalar = Die.value2label(0)
+        value_set = Die.value2label({0})
+        value_list = Die.value2label([0, 5])
+        value_tuple = Die.value2label((1,))
+
+        # Assert
+        self.assertEqual(1, value_scalar)
+        self.assertEqual({1}, value_set)
+        self.assertEqual([1, 6], value_list)
+        self.assertEqual((2,), value_tuple)
+        self.assertRaises(
+            ValueError,
+            Die.value2label,
+            6
+        )
+
+    def test_label2value(self):
+        # Arrange
+        Die = self.Die
+
+        # Act
+        label_scalar = Die.label2value(1)
+        label_set = Die.label2value({1})
+        label_list = Die.label2value([1, 6])
+        label_tuple = Die.label2value((2,))
+
+        # Assert
+        self.assertEqual(0, label_scalar)
+        self.assertEqual({0}, label_set)
+        self.assertEqual([0, 5], label_list)
+        self.assertEqual((1,), label_tuple)
+        self.assertRaises(ValueError, Die.label2value, 0)
 
     def test_set(self):
         # Arrange
@@ -453,12 +878,14 @@ class IntegerDistributionTest(TestCase):
         p_set_label = fair_dice.p({4, 5, 6})
         p_singular_value = fair_dice._p(0)
         p_set_values = fair_dice._p({0, 1, 2})
+        p_duplicate_labels = fair_dice.p([1, 2, 2])
 
         # Assert
         self.assertEqual(1 / 6, p_singular_label)
         self.assertEqual(1 / 6, p_singular_value)
         self.assertEqual(3 / 6, p_set_label)
         self.assertEqual(3 / 6, p_set_values)
+        self.assertEqual(2 / 6, p_duplicate_labels)
 
         self.assertRaises(ValueError, fair_dice.p, 0)
         self.assertRaises(ValueError, fair_dice.p, 7)
@@ -488,10 +915,10 @@ class IntegerDistributionTest(TestCase):
         biased_dice.set([0 / 6, 1 / 6, 2 / 6, 1 / 6, 1 / 6, 1 / 6])
 
         # Act
-        p_fair, fair_mpe = fair_dice.mpe()
-        _p_fair, _fair_mpe = fair_dice._mpe()
-        p_biased, biased_mpe = biased_dice.mpe()
-        _p_biased, _biased_mpe = biased_dice._mpe()
+        fair_mpe, p_fair = fair_dice.mpe()
+        _fair_mpe, _p_fair = fair_dice._mpe()
+        biased_mpe, p_biased = biased_dice.mpe()
+        _biased_mpe, _p_biased = biased_dice._mpe()
 
         # Assert
         self.assertEqual(set(range(1, 7)), fair_mpe)
@@ -552,18 +979,6 @@ class IntegerDistributionTest(TestCase):
         self.assertTrue(dice.equiv(dice_type))
         self.assertEqual(fair_dice_inst, fair_dice)
 
-    def test_list2set(self):
-        # Arrange
-        dice = IntegerType('Dice', 1, 6)
-
-        # Act
-        s = dice.list2set([2, 4])
-
-        # Assert
-        self.assertEqual({2, 3, 4}, s)
-        self.assertRaises(ValueError, dice.list2set, [7, 8])
-        self.assertRaises(ValueError, dice.list2set, [1])
-
     def test_moment(self):
         data = np.random.randint(0, 10, size=(1000, 1))
 
@@ -579,6 +994,63 @@ class IntegerDistributionTest(TestCase):
             empirical_moment = scipy.stats.moment(data, order)[0]
             dist_moment = distribution.moment(order, dist_mean)
             self.assertAlmostEqual(empirical_moment, dist_moment, delta=0.01)
+
+    def test_jaccard_identity(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([1 / 6] * 6)
+        jacc = Integer.jaccard_similarity(d1, d1)
+        self.assertEqual(1., jacc)
+
+    def test_jaccard_disjoint(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([0., 0., 0., 0., 0., 1.])
+        d2 = dice().set([1., 0., 0., 0., 0., 0.])
+        jacc = Integer.jaccard_similarity(d1, d2)
+        self.assertEqual(0., jacc)
+
+    def test_jaccard_overlap(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([2/6, 0/6, 1/6, 1/6, 1/6, 1/6])
+        d2 = dice().set([0/6, 2/6, 1/6, 1/6, 1/6, 1/6])
+        jacc = Integer.jaccard_similarity(d1, d2)
+        self.assertEqual(.5, jacc)
+
+    def test_jaccard_symmetry(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([2/6, 0/6, 1/6, 1/6, 1/6, 1/6])
+        d2 = dice().set([0/6, 2/6, 1/6, 1/6, 1/6, 1/6])
+        jacc1 = Integer.jaccard_similarity(d1, d2)
+        jacc2 = Integer.jaccard_similarity(d2, d1)
+        self.assertEqual(jacc1, jacc2)
+
+    def test_add(self):
+        pos = IntegerType('Pos', 0, 6)
+        posx = pos()
+        posx.set([0, 0, 1, 0, 0, 0, 0])
+
+        delta = IntegerType('Delta', -1, 1)
+        deltax = delta()
+        deltax.set([0, 0, 1])
+
+        sumpos = posx.add(deltax)
+
+        self.assertEqual(list(sumpos.labels.values()), [-1, 0, 1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(list(sumpos.values.values()), [0, 1, 2, 3, 4, 5, 6, 7, 8])
+        self.assertEqual(list(sumpos.probabilities), [0, 0, 0, 0, 1, 0, 0, 0, 0])
+
+    def test_add_bernoulli(self):
+        coin = IntegerType('Coin', 0, 1)
+        d1 = coin().set([1 / 2, 1 / 2])
+
+        sumpos = d1.add(d1)
+
+        res = []
+        for _, l in sumpos.items():
+            res.append(scipy.special.binom(2, l) * d1.p(1)**l * (1-d1.p(1))**(2-l))
+
+        self.assertEqual([0, 1, 2], list(sumpos.labels.values()))
+        self.assertEqual([0, 1, 2], list(sumpos.values.values()))
+        self.assertEqual(res, list(sumpos.probabilities))
 
 
 # ----------------------------------------------------------------------------------------------------------------------

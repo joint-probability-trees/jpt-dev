@@ -4,13 +4,16 @@ import unittest
 from unittest import TestCase
 
 import numpy as np
+import pandas as pd
 from dnutils import out
 
-from jpt import SymbolicVariable, JPT, NumericVariable, SymbolicType
+from jpt import SymbolicVariable, JPT, NumericVariable, infer_from_dataframe
 from jpt.base.intervals import ContinuousSet, RealSet, EXC, INC
 from jpt.distributions import Bool, Numeric
-from jpt.trees import MPEState, MPESolver
-from jpt.variables import VariableMap, ValueAssignment
+from jpt.trees import MPESolver
+from jpt.variables import VariableMap
+
+from jpt.variables import LabelAssignment
 
 
 class JPTInferenceSymbolic(unittest.TestCase):
@@ -72,6 +75,40 @@ class JPTInferenceNumeric(unittest.TestCase):
         r1 = self.jpt.infer(query={'x': RealSet(['[-1,0.5]', '[1,inf['])})
         r2 = self.jpt.infer(query={'x': ContinuousSet(.5, 1, EXC, INC)})
         self.assertAlmostEqual(r1, 1 - r2, places=10)
+
+
+class JPTInferenceInteger(unittest.TestCase):
+
+    def test_infer_integers_only(self):
+        '''Inference with Integer variables only'''
+        # Arrange
+        data = pd.DataFrame(np.array([list(range(-10, 10))]).T, columns=["X"])
+        variables = infer_from_dataframe(data, scale_numeric_types=False)
+        jpt = JPT(variables, min_samples_leaf=.1)
+        jpt.fit(data)
+        q = jpt.bind(X=[-1, 1])
+        # Act
+        result = jpt.infer(q)
+        # Assert
+        self.assertAlmostEqual(
+            .15,
+            result,
+            places=13
+        )
+
+    def test_mpe_serialization(self):
+        data = pd.DataFrame(np.array([list(range(-10, 10))]).T, columns=["X"])
+        variables = infer_from_dataframe(data, scale_numeric_types=False)
+        tree = JPT(variables, min_samples_leaf=.1)
+        tree.fit(data)
+        # Creating json maxima infos
+        maxima, likelihood = tree.mpe()
+        maxima_json = [m.to_json() for m in maxima]
+
+        # Trying to recreate the maxima Variables from json
+        for maxi_json in maxima_json:
+            maxi = LabelAssignment.from_json(variables=tree.variables, d=maxi_json)
+            self.assertIsInstance(maxi, LabelAssignment)
 
 
 class MPESolverTest(TestCase):

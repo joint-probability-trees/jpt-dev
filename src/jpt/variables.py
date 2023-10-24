@@ -2,6 +2,7 @@
 © Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import hashlib
+import json
 import math
 import numbers
 import uuid
@@ -16,7 +17,7 @@ from jpt.base.utils import mapstr, to_json, list2interval, setstr, setstr_int
 from jpt.base.constants import SYMBOL
 
 from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType, Integer, \
-    IntegerType
+    IntegerType, Bool
 
 try:
     from .base.intervals import __module__
@@ -267,6 +268,7 @@ class NumericVariable(Variable):
         '''
         fmt = kwargs.get('fmt', 'set')
         precision = kwargs.get('precision', 3)
+        prec = '%%s = %%.%df' % precision
         lower = '%%.%df %%s ' % precision
         upper = ' %%s %%.%df' % precision
 
@@ -287,7 +289,7 @@ class NumericVariable(Variable):
         if isinstance(assignment, ContinuousSet):
             assignment = RealSet([assignment])
         if isinstance(assignment, numbers.Number):
-            return '%s = %s' % (self.name, self.domain.labels[assignment])
+            return prec % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
             return f'{self.name} {SYMBOL.IN} {str(assignment)}'
         elif fmt == 'logic':
@@ -476,6 +478,8 @@ def infer_from_dataframe(df,
         if dtype in (str, object, bool):
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
+            elif dtype in (bool, np.bool_):
+                dom = Bool
             else:
                 dom = SymbolicType(
                     '%s%s_TYPE_S' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
@@ -544,8 +548,12 @@ class VariableMap:
                 self[var] = value
 
     @property
-    def variables(self):
-        return self._variables.values()
+    def variables(self) -> Set[Variable]:
+        return set(self._variables.values())
+
+    @property
+    def varnames(self) -> Dict[str, Variable]:
+        return {v.name: v for v in self.variables}
 
     @property
     def map(self) -> {}:
@@ -706,6 +714,27 @@ class VariableAssignment(VariableMap):
         for var, val in copy.items():
             copy[var] = var.assignment2set(val)
         return copy
+
+    @classmethod
+    def from_json(cls,
+                  variables: Iterable[Variable],
+                  d: Dict[str, Any],
+                  typ=None,
+                  args=()) -> 'VariableMap':
+        vmap = cls()
+        var_by_name = {var.name: var for var in variables}
+        for v_name, value in d.items():
+            variable = var_by_name[v_name]
+
+            if variable.symbolic or variable.integer:
+                value_ = set(value)
+            elif variable.numeric:
+                value_ = ContinuousSet.from_json(value)
+            else:
+                raise NotImplementedError('Unknown variable type: %s' % variable.__class__.__name__)
+
+            vmap[variable] = value_
+        return vmap
 
 
 # ----------------------------------------------------------------------------------------------------------------------
