@@ -922,27 +922,53 @@ class KMPELeafTest(TestCase):
         df["plant"] = target
 
         cls.data = df
-        cls.model = JPT(infer_from_dataframe(cls.data, scale_numeric_types=False, precision=0.05),
-                        min_samples_leaf=0.9)
+        cls.model = JPT(
+            variables=infer_from_dataframe(
+                cls.data,
+                scale_numeric_types=False,
+                precision=0.05
+            ),
+            min_samples_leaf=0.9
+        )
         cls.model.fit(cls.data)
 
     def test_k_mpe_trivial(self):
-        k_mpe = list(self.model.kmpe(k=3))
-        self.assertEqual(len(k_mpe), 3)
+        k_mpe = list(
+            self.model.kmpe(k=3)
+        )
+        self.assertEqual(
+            len(k_mpe),
+            3
+        )
 
     def test_k_mpe_brute(self):
-        leaf = next(iter(self.model.leaves.values()))
+        # Arrange
+        leaf = next(
+            iter(self.model.leaves.values())
+        )
 
         # calculate likelihood wise unique solutions
-        k_mpes = [[l for l, _ in dist.k_mpe(dist.number_of_parameters())] for dist in leaf.distributions.values()]
+        k_mpes = [
+            [l for l, _ in dist.k_mpe(dist.number_of_parameters())]
+            for dist in leaf.distributions.values()
+        ]
         combined_likelihoods = set(prod(e) for e in itertools.product(*k_mpes))
 
-        k_mpe = list(self.model.kmpe(k=len(combined_likelihoods) + 1000))
+        k_mpe = list(
+            self.model.kmpe(k=len(combined_likelihoods) + 1000)
+        )
 
-        self.assertTrue(all(k_mpe[i][0] > k_mpe[i + 1][0] for i in range(len(k_mpe) - 1)),
-                        msg="Not all solutions are ordered by descending likelihood")
-        self.assertEqual(len(combined_likelihoods), len(k_mpe), msg="These should be equal to the number of solutions"
-                                                                    "that produce different likelihoods (set-wise),"
-                                                                    "which is 72 for this experiment. 216 (current)"
-                                                                    "is the number of unique solutions iff sets are not"
-                                                                    "regarded.")
+        # Assert
+        self.assertTrue(
+            all(k_mpe[i][0] > k_mpe[i + 1][0] for i in range(len(k_mpe) - 1)),
+            msg="Not all solutions are ordered by descending likelihood"
+        )
+        self.assertEqual(
+            len(combined_likelihoods),
+            len(k_mpe),
+            msg="These should be equal to the number of solutions"
+                "that produce different likelihoods (set-wise),"
+                "which is 72 for this experiment. 216 (current)"
+                "is the number of unique solutions iff sets are not"
+                "regarded."
+        )
