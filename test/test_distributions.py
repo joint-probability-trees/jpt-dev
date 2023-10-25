@@ -158,18 +158,15 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual([0, 1, 0], list(result2.probabilities))
         self.assertRaises(Unsatisfiability, abc._crop, ())
 
-    def test_mpe(self):
+    def test_mpe_uniform(self):
         # Arrange
         ABC = self.DistABC
-        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+        abc = ABC().set(params=[1 / 3, 1 / 3, 1 / 3])
 
         # Act
-        result_unique = abc.mpe()
-        abc.set([1 / 3, 1 / 3, 1 / 3])
         result_uniform = abc.mpe()
 
         # Assert
-        self.assertEqual(({'A'}, 1 / 2), result_unique)
         self.assertEqual(({'A', 'B', 'C'}, 1 / 3), result_uniform)
 
     def test_expectation(self):
@@ -274,19 +271,30 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual({'C', 'B'}, DistABC.value2label({2, 1}))
 
     def test_mpe(self):
+        # Arrange
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
-        l, m = d1.mpe()
-        self.assertEqual(0.5, l)
-        self.assertEqual({"A"}, m)
+
+        # Act
+        state, likelhood = d1.mpe()
+
+        # Assert
+        self.assertEqual(0.5, likelhood)
+        self.assertEqual({"A"}, state)
 
     def test_k_mpe(self):
+        # Arrange
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
         k_mpe = d1.k_mpe(3)
-        self.assertEqual(len(k_mpe), 2)
-        self.assertEqual(k_mpe[0], d1.mpe())
-        self.assertEqual(k_mpe[1][0], 1/4)
+
+        # Assert
+        self.assertEqual(
+            [({'A'}, 1/2), ({'B', 'C'}, 1/4)],
+            k_mpe
+        )
 
     def test_jaccard_identity(self):
         d1 = self.DistABC().set([.1, .4, .5])
@@ -511,11 +519,23 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(max(f.value for f in d.pdf.functions), likelihood)
 
     def test_k_mpe(self):
-        np.random.seed(69)
-        d = Numeric()._fit(np.random.normal(size=(100, 1)), col=0)
+        # Arrange
+        d = Numeric(precision=0)._fit(
+            np.array([[1.], [2.5], [3.]]),
+            col=0
+        )
+
+        # Act
         k_mpe = d.k_mpe(3)
-        likelihoods = list(sorted([f.value for f in d.pdf.functions], reverse=True))[:3]
-        self.assertEqual(likelihoods, [l for l, _ in k_mpe])
+
+        # Assert
+        self.assertEqual(
+            [
+                (ContinuousSet(2.5, 3), 1.),
+                (ContinuousSet(1, 2.5, INC, EXC), 1/3)
+            ],
+            k_mpe
+        )
 
     def _test_label_inference(self):
         raise NotImplementedError()
@@ -936,20 +956,23 @@ class IntegerDistributionTest(TestCase):
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
         fair_dice.set([1 / 6] * 6)
-
         biased_dice = dice()
         biased_dice.set([0 / 6, 1 / 6, 2 / 6, 1 / 6, 1 / 6, 1 / 6])
 
         # Act
         fair_k_mpe = fair_dice.k_mpe(3)
         biased_k_mpe = biased_dice.k_mpe(3)
-        self.assertEqual(fair_k_mpe[0][0], 1/6)
-        self.assertEqual(len(fair_k_mpe), 1)
 
-        self.assertEqual(len(biased_k_mpe), 3)
-        self.assertEqual(biased_k_mpe[0][0], 2/6)
-        self.assertEqual(biased_k_mpe[1][0], 1 / 6)
-        self.assertEqual(biased_k_mpe[2][0], 0)
+        # Assert
+        self.assertEqual(
+            fair_k_mpe,
+            [({1, 2, 3, 4, 5, 6}, 1 / 6)]
+        )
+
+        self.assertEqual(
+        [({3}, 0.3333333333333333), ({2, 4, 5, 6}, 0.16666666666666666)],
+            biased_k_mpe
+        )
 
     def test_merge(self):
         # Arrange
