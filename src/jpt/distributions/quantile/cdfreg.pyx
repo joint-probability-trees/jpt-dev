@@ -17,7 +17,7 @@ cdef class CDFRegressor:
     '''Experimental quantile regression.'''
 
     def __init__(self, eps: float = None, max_splits: int = None):
-        self.eps = ifnone(eps, .000)
+        self.eps = ifnone(eps, .000, lambda _: _ * _)
         self.max_splits = ifnone(max_splits, -1)
         self.data = None
 
