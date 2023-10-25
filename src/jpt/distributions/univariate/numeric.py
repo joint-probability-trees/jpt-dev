@@ -4,10 +4,10 @@ import numbers
 import os
 from collections import deque
 from operator import itemgetter
-from typing import Union, Iterable, Optional, Dict, Any, Type, Callable
+from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, Tuple
 
 import numpy as np
-from dnutils import ifnone, ifnot
+from dnutils import ifnone, ifnot, first
 from matplotlib import pyplot as plt
 
 from ..utils import Identity, DataScaler, DataScalerProxy
@@ -188,27 +188,58 @@ class Numeric(Distribution):
         return len(self._quantile.cdf.intervals) == 2
 
     def mpe(self) -> (RealSet, float):
-        return self._mpe(self.value2label)
+        state, likelihood = self._mpe()
+        return self.value2label(state), likelihood
 
     def _mpe(self, value_transform: Optional[Callable] = None) -> (NumberSet, float):
         """
         Calculate the most probable configuration of this quantile distribution.
+
         :return: The mpe itself as RealSet and the likelihood of the mpe as float
         """
-        value_transform = ifnone(value_transform, lambda _: _)
-        _max = max(f.value for f in self.pdf.functions)
-        return (
-            value_transform(
-                RealSet(
-                    [
+        return first(self._k_mpe(k=1))
+
+    def _k_mpe(self, k: Optional[int] = None) -> List[Tuple[NumberSet, float]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+
+        :param k: The number of solutions to generate, defaults to the maximum possible number.
+        :return: A list containing a tuple containing the likelihood and state in descending order.
+        """
+        likelihoods = [f.value for f in self.pdf.functions if f.value and not np.isnan(f.value)]
+        sorted_likelihood = sorted(
+            likelihoods,
+            reverse=True
+        )[:ifnone(k, len(likelihoods))]
+
+        result = []
+        for likelihood in sorted_likelihood:
+            result.append(
+                (
+                    RealSet([
                         interval
-                        for interval, function
-                        in zip(self.pdf.intervals, self.pdf.functions)
-                        if function.value == _max
-                    ]
-                ).simplify()
-            ), _max
-        )
+                        for interval, function in zip(self.pdf.intervals, self.pdf.functions)
+                        if function.value == likelihood
+                    ]).simplify(),
+                    likelihood
+                )
+            )
+
+        return result
+
+    def k_mpe(self, k: Optional[int] = None) -> List[Tuple[NumberSet, float]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+
+        :param k: The number of solutions to generate, defaults to the maximum possible number.
+        :return: A list containing a tuple containing the likelihood and state in descending order.
+        """
+        return [
+            (
+                self.value2label(state),
+                likelihood
+            ) for state, likelihood in self._k_mpe(k=k)
+        ]
 
     def _fit(
             self,

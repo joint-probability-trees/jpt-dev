@@ -247,7 +247,7 @@ class Multinomial(Distribution):
             event = set(event)
         i1, i2 = tee(event, 2)
         if not all(isinstance(v, numbers.Integral) for v in i1):
-            raise TypeError('All arguments must be integers.')
+            raise TypeError('All arguments must be integers: %s' % event)
 
         return sum(
             self.probabilities[v] for v in i2
@@ -303,8 +303,8 @@ class Multinomial(Distribution):
         )
 
     def mpe(self) -> Tuple[Set[Symbol], float]:
-        values, p_max = self._mpe()
-        return self.value2label(values), p_max
+        states, p_max = self._mpe()
+        return self.value2label(states), p_max
 
     def _mpe(self) -> Tuple[Set[int], float]:
         """
@@ -312,15 +312,33 @@ class Multinomial(Distribution):
 
         :return: The likelihood of the mpe itself as Set and the likelihood of the mpe as float
         """
-        _max = max(self.probabilities)
-        return (
-            set(
-                [label for label, p in zip(
-                    self.values.values(),
-                    self.probabilities
-                ) if p == _max]
-            ), _max
-        )
+        return first(self._k_mpe(k=1))
+
+    def _k_mpe(self, k: int = None) -> List[Tuple[Set[Symbol], float]]:
+        likelihoods = {p for p in self.probabilities if p}
+        sorted_likelihood = sorted(
+            likelihoods,
+            reverse=True
+        )[:ifnone(k, len(likelihoods))]
+        result = []
+
+        for likelihood in sorted_likelihood:
+            result.append(
+                (
+                    {value for value, p in zip(self.values.values(), self.probabilities) if p == likelihood},
+                    likelihood
+                )
+            )
+
+        return result
+
+    def k_mpe(self, k: Optional[int] = None) -> List[Tuple[Set[Symbol], float]]:
+        return [
+            (
+                self.value2label(state),
+                likelihood
+            ) for state, likelihood in self._k_mpe(k=k)
+        ]
 
     mode = mpe
     _mode = _mpe

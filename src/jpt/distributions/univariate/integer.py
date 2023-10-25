@@ -4,7 +4,7 @@ import re
 from itertools import tee
 from operator import itemgetter
 from types import FunctionType
-from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple
+from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple, List
 
 import numpy as np
 from dnutils import edict, ifnone, project, first
@@ -263,20 +263,41 @@ class Integer(Distribution):
         e = self._expectation()
         return sum((v - e) ** 2 * p for v, p in zip(self.values.values(), self.probabilities))
 
+    def _k_mpe(self, k: Optional[int] = None) -> List[Tuple[Set[int], float]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+
+        :param k: The number of solutions to generate
+        :return: An list containing a tuple containing the likelihood and state in descending order.
+        """
+        likelihoods = {p for p in self.probabilities if p}
+        sorted_likelihood = sorted(
+            likelihoods,
+            reverse=True
+        )[:ifnone(k, len(likelihoods))]
+        result = []
+
+        for likelihood in sorted_likelihood:
+            result.append(
+                (
+                    {value for value, p in zip(self.values.values(), self.probabilities) if p == likelihood},
+                    likelihood
+                )
+            )
+
+        return result
+
+    def k_mpe(self, k: int = None) -> List[Tuple[Set[int], float]]:
+        return [
+            (self.value2label(state), likelihood) for state, likelihood in self._k_mpe(k=k)
+        ]
+
     def mpe(self) -> (Set[int], float):
-        lbls, p_max = self._mpe()
-        return self.value2label(lbls), p_max
+        state, p_max = self._mpe()
+        return self.value2label(state), p_max
 
     def _mpe(self) -> (Set[int], float):
-        p_max = max(self.probabilities)
-        return (
-            {
-                l for l, p in zip(
-                    self.values.values(),
-                    self.probabilities
-                ) if p == p_max
-             }, p_max
-        )
+        return first(self._k_mpe(k=1))
 
     mode = mpe
     _mode = _mpe
