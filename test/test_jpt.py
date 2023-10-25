@@ -6,13 +6,16 @@ import statistics
 import tempfile
 import unittest
 from math import prod
+from operator import itemgetter
 from unittest import TestCase
 
 import numpy as np
 import pandas as pd
 import scipy.stats
 import sklearn.datasets
+from dnutils import project
 
+from jpt.base.utils import pairwise
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 from numpy.testing import assert_array_equal
@@ -116,16 +119,28 @@ class JPTTest(TestCase):
         self.assertRaises(ValueError, jpt_._check_variable_assignment, assignx)
         self.assertRaises(ValueError, jpt._check_variable_assignment, assigny)
 
-
     def test_serialization_integer(self):
         '''(de)serialization of JPTs with training'''
-        data = pd.DataFrame(np.array([list(range(-10, 10))]).T, columns=["X"])
+        # Arrange
+        data = pd.DataFrame(
+            np.array([list(range(-10, 10))]).T,
+            columns=["X"]
+        )
         variables = infer_from_dataframe(data, scale_numeric_types=False)
         jpt = JPT(variables, min_samples_leaf=.1)
         jpt.fit(data)
 
+        # Act
+        jpt_ = JPT.from_json(
+            json.loads(
+                json.dumps(
+                    jpt.to_json()
+                )
+            )
+        )
+
+        # Assert
         self.assertIsNone(jpt.root.parent)
-        jpt_ = JPT.from_json(json.loads(json.dumps(jpt.to_json())))
         self.assertEqual(jpt, jpt_)
 
         q = jpt.bind(X=[-1, 1])
@@ -176,7 +191,10 @@ class JPTTest(TestCase):
         self.assertTrue(all(probs > 0))
 
     def test_unsatisfiability(self):
-        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        df = pd.read_csv(
+            os.path.join('..', 'examples', 'data', 'restaurant.csv'),
+            na_filter=False
+        )
         jpt = JPT(
             variables=infer_from_dataframe(df),
             targets=['WillWait'],
@@ -197,7 +215,10 @@ class JPTTest(TestCase):
         )
 
     def test_unsatisfiability_with_reasons(self):
-        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        df = pd.read_csv(
+            os.path.join('..', 'examples', 'data', 'restaurant.csv'),
+            na_filter=False
+        )
         jpt = JPT(variables=infer_from_dataframe(df), targets=['WillWait'], min_samples_leaf=1)
         jpt.fit(df)
         try:
@@ -216,22 +237,36 @@ class JPTTest(TestCase):
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')
 
     def test_exact_mpe_discrete(self):
-        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        # Arrange
+        df = pd.read_csv(
+            os.path.join('..', 'examples', 'data', 'restaurant.csv'),
+            na_filter=False
+        )
         tree = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
         tree.fit(df)
 
+        # Act
         mpe, likelihood = tree.mpe()
+
+        # Assert
         self.assertEqual(len(mpe), 1)
 
     def test_mpe_serialization(self):
-        df = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        # Arrange
+        df = pd.read_csv(
+            os.path.join('..', 'examples', 'data', 'restaurant.csv'),
+            na_filter=False
+        )
         tree = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
         tree.fit(df)
-        # Creating json maxima infos
-        maxima, likelihood = tree.mpe()
-        maxima_json = [m.to_json() for m in maxima]
 
+        # Act
+        maxima, likelihood = tree.mpe()
+
+        # Assert
         # Trying to recreate the maxima Variables from json
+        maxima_json = [m.to_json() for m in maxima]
+        # Creating json maxima infos
         for maxi_json in maxima_json:
             maxi = LabelAssignment.from_json(variables=tree.variables, d=maxi_json)
             self.assertIsInstance(maxi, LabelAssignment)
@@ -1192,40 +1227,96 @@ class KMPELeafTest(TestCase):
         )
         cls.model.fit(cls.data)
 
-    def test_k_mpe_trivial(self):
+    def test_k3_mpe(self):
+        # Arrange
+        # Act
         k_mpe = list(
             self.model.kmpe(k=3)
+        )
+
+        # Assert
+        s1 = (
+            LabelAssignment({
+                'sepal length (cm)': ContinuousSet.parse('[4.300,6.900)'),
+                'sepal width (cm)': ContinuousSet.parse('[2.500,3.500)'),
+                'petal width (cm)': ContinuousSet.parse('[0.100,0.200)'),
+                'petal length (cm)': ContinuousSet.parse('[1.000,1.700)'),
+                'plant': {'versicolor', 'virginica', 'setosa'},
+            }, variables=self.model.variables),
+            0.07714629444766113
+        )
+        s2 = (
+            LabelAssignment({
+                'sepal length (cm)': ContinuousSet.parse('[4.300,6.900)'),
+                'sepal width (cm)': ContinuousSet.parse('[2.500,3.500)'),
+                'petal width (cm)': ContinuousSet.parse('[0.100,0.200)'),
+                'petal length (cm)': ContinuousSet.parse('[3.300,6.100)'),
+                'plant': {'versicolor', 'virginica', 'setosa'},
+            }, variables=self.model.variables),
+            0.037342089333708306
+        )
+        s3 = (
+            LabelAssignment({
+                'sepal length (cm)': ContinuousSet.parse('[4.300,6.900)'),
+                'sepal width (cm)': ContinuousSet.parse('[2.000,2.500)'),
+                'petal width (cm)': ContinuousSet.parse('[0.100,0.200)'),
+                'petal length (cm)': ContinuousSet.parse('[1.000,1.700)'),
+                'plant': {'versicolor', 'virginica', 'setosa'},
+            }, variables=self.model.variables),
+            0.024797023215319652
         )
         self.assertEqual(
             len(k_mpe),
             3
         )
+        self.assertEqual(
+            [s1, s2, s3],
+            k_mpe
+        )
 
     def test_k_mpe_brute(self):
         # Arrange
+        assert len(self.model.leaves) == 1
         leaf = next(
             iter(self.model.leaves.values())
         )
 
         # calculate likelihood wise unique solutions
-        k_mpes = [
-            [l for l, _ in dist.k_mpe(dist.number_of_parameters())]
-            for dist in leaf.distributions.values()
+        all_states = [list(d.k_mpe()) for d in leaf.distributions.values()]
+        all_joint_states = [
+            (project(pair, 0), prod(project(pair, 1))) for pair in itertools.product(*all_states)
         ]
-        combined_likelihoods = set(prod(e) for e in itertools.product(*k_mpes))
+        sorted_joint_states = list(
+            sorted(
+                all_joint_states,
+                reverse=True,
+                key=itemgetter(1)
+            )
+        )
+        sorted_joint_states = [
+            (LabelAssignment((var, val) for var, val in zip(self.model.variables, s)), l) for s, l in sorted_joint_states
+        ]
 
+        # Act
         k_mpe = list(
-            self.model.kmpe(k=len(combined_likelihoods) + 1000)
+            self.model.kmpe(k=len(all_joint_states) + 1000)
         )
 
         # Assert
         self.assertTrue(
-            all(k_mpe[i][0] > k_mpe[i + 1][0] for i in range(len(k_mpe) - 1)),
+            all([l1 > l2 for (_, l1), (_, l2) in pairwise(k_mpe)]),
             msg="Not all solutions are ordered by descending likelihood"
         )
+
         self.assertEqual(
-            len(combined_likelihoods),
-            len(k_mpe),
+            project(sorted_joint_states, 0),
+            project(k_mpe, 0),
+            msg='MPE state sequences differ from the brute force solution.'
+        )
+
+        self.assertEqual(
+            [round(v, 8) for v in project(sorted_joint_states, 1)],
+            [round(v, 8) for v in project(k_mpe, 1)],
             msg="These should be equal to the number of solutions"
                 "that produce different likelihoods (set-wise),"
                 "which is 72 for this experiment. 216 (current)"

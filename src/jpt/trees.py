@@ -1,6 +1,5 @@
 """© Copyright 2021, Mareike Picklum, Daniel Nyga."""
 import datetime
-import heapq
 import html
 import json
 import math
@@ -27,6 +26,7 @@ from .base.utils import prod, setstr_int
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
 from .distributions.quantile.quantiles import QuantileDistribution
+from .inference import MPESolver
 from .variables import (
     VariableMap,
     SymbolicVariable,
@@ -782,7 +782,7 @@ class JPT:
 
     @property
     def variables(self) -> Tuple[Variable]:
-        return self._variables
+        return tuple(self._variables)
 
     @property
     def targets(self) -> List[Variable]:
@@ -912,6 +912,19 @@ class JPT:
         self.__dict__ = JPT.from_json(state).__dict__
 
     def __eq__(self, o) -> bool:
+        eq = (
+            isinstance(o, JPT),
+            self.innernodes == o.innernodes,
+            self.leaves == o.leaves,
+            self.priors == o.priors,
+            self.min_samples_leaf == o.min_samples_leaf,
+            self.min_impurity_improvement == o.min_impurity_improvement,
+            self.targets == o.targets,
+            self.variables == o.variables,
+            self.max_depth == o.max_depth,
+            self.max_leaves == o.max_leaves,
+            self.dependencies == o.dependencies
+        )
         return all((
             isinstance(o, JPT),
             self.innernodes == o.innernodes,
@@ -1271,7 +1284,7 @@ class JPT:
             evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
             fail_on_unsatisfiability: bool = True,
             k: int = 0
-    ) -> Iterator[Tuple[float, LabelAssignment]] or None:
+    ) -> Iterator[Tuple[LabelAssignment, float]] or None:
         """
         Perform a k-MPE inference on this JPT under the given evidence.
 
@@ -1297,28 +1310,33 @@ class JPT:
         for leaf in conditional_jpt.leaves.values():
             for var, dist in leaf.distributions.items():
                 if isinstance(dist, Numeric):
-                    likelihood_max, _ = dist.mpe()
-                    likelihoods.append(likelihood_max)
+                    _, likelihood_max = dist._mpe()
+                    if not np.isnan(likelihood_max) and not np.isinf(likelihood_max):
+                        likelihoods.append(likelihood_max)
+        likelihood_max = ifnot(likelihoods, 1, max)
         mpe_solvers = [
             MPESolver(
                 distributions=leaf.distributions,
-                likelihood_divisor=max(likelihoods) if likelihoods else None
+                likelihood_divisor=likelihood_max if likelihoods else None
             ).solve() for leaf in conditional_jpt.leaves.values()
         ]
 
         mpe_candidates = Heap(
             data=[(*next(solver), solver) for solver in mpe_solvers],
-            key=itemgetter(0)
+            key=itemgetter(1)
         )
 
         count = 0
         while mpe_candidates and (not k or count < k):
-            cost, solution, solver = mpe_candidates.pop()
-            values = LabelAssignment([(variable, value if variable.numeric else set(value))
-                                     for variable, value in solution.items()])
-            # if isinstance(evidence, LabelAssignment):
-            # values = values.label_assignment()
-            yield np.exp(-cost), values
+            solution, likelihood, solver = mpe_candidates.pop()
+            values = ValueAssignment(
+                [
+                    (variable, value if variable.numeric else set(value))
+                    for variable, value in solution.items()
+                ]
+            )
+            values = values.label_assignment()
+            yield values, likelihood
             try:
                 mpe_candidates.push((*next(solver), solver))
             except StopIteration:
@@ -1895,7 +1913,7 @@ class JPT:
              title: str = "unnamed",
              filename: str or None = None,
              directory: str = None,
-             plotvars: List[Variable] = None,
+             plotvars: Iterable[Variable] = None,
              view: bool = True,
              max_symb_values: int = 10,
              nodefill=None,
@@ -2507,236 +2525,3 @@ class JPT:
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
-class MPEState:
-
-    def __init__(
-            self,
-            assignment: VariableMap,
-    ):
-        self.assignment = assignment
-        self.latest_variable = None
-
-    def copy(self):
-        return MPEState(
-            assignment=self.assignment.copy(deep=True),
-        )
-
-    def assign(self, variable: Variable or str, value: Any) -> 'MPEState':
-        state_ = self.copy()
-        state_.assignment[variable] = value
-        state_.latest_variable = variable
-        return state_
-
-    def __repr__(self):
-        return '<MPESearchStat assignment: %s>' % (
-            self.assignment
-        )
-
-
-class BnBNode:
-
-    def __init__(self, solver, state, actual_cost):
-        self.solver: MPESolver = solver
-        self.old_state: MPEState = state
-        self.variable: Variable = first(self.solver.variable_order(state))
-        self.values: Iterator[Any] = iter(
-            self.solver.constraints[self.variable].keys() if self.variable is not None else iter([])
-        )
-        self.actual_cost = actual_cost
-        self.step_cost = 0
-        self.state: MPEState = self._generate_next()
-
-    def _generate_next(self):
-        try:
-            value = next(self.values)
-        except StopIteration:
-            return None
-        else:
-            self.step_cost = self.solver.constraints[self.variable][value]
-            return self.old_state.assign(self.variable, value)
-
-    def pop(self):
-        solution_node = None
-        if not self.free_variables:
-            solution_node = BnBSolution(
-                self.state,
-                self.cost
-            )
-        cost = self.actual_cost + self.step_cost
-        state = self.state
-        self.state = self._generate_next()
-        if solution_node is not None:
-            return solution_node
-        return BnBNode(
-            self.solver,
-            state,
-            cost
-        )
-
-    @property
-    def cost(self):
-        return self.actual_cost + self.step_cost + self.solver.lb.get(self.variable, 0)
-
-    @property
-    def free_variables(self):
-        return set(self.solver.constraints.keys()).difference(self.state.assignment.keys())
-
-
-class BnBSolution:
-
-    def __init__(self, state, cost):
-        self.state = state
-        self.cost = cost
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-class MPESolver:
-    '''
-    Solver for k-MPE inference about n independent variables
-
-    This algorithm iteratively constructs all ``k`` most probable explanations
-    in descending order by performing a branch-and-bound search in the space of
-    atomic areas of the respective distributions. In constrast to classic BnB search,
-    we do not throw away the pruned states but save them in a priority queue, where
-    we can continue the search for the subsequent 2nd, 3rd, ..., k-th best solution.
-    '''
-
-    def __init__(
-            self,
-            distributions: VariableMap,
-            likelihood_divisor: float = None
-    ):
-
-        # save the distributions
-        self.distributions: VariableMap = distributions
-
-        # Set up the WCSP variables and their domains and constraints.
-        self.domains = VariableMap(variables=self.distributions.variables)
-        self.constraints = VariableMap(variables=self.distributions.variables)
-
-        likelihoods = []
-
-        # fill domains and constraints
-        for var, dist in self.distributions.items():
-            k_mpe = dist.k_mpe()
-            self.domains[var] = [state for _, state in k_mpe]
-
-            if isinstance(dist, Numeric):
-                likelihood_max, _ = dist.mpe()
-                likelihoods.append(likelihood_max)
-
-            self.constraints[var] = OrderedDict(
-                sorted([
-                    (
-                        state if isinstance(dist, Numeric) else frozenset(state),
-                        likelihood
-                    )
-                    for idx, (likelihood, state) in enumerate(k_mpe)],
-                    key=itemgetter(1)
-                )
-            )
-
-        # Build the unary constraints given by the log of
-        # an events probability
-        self.likelihood_divisor = ifnone(
-            likelihood_divisor,
-            max(likelihoods) if likelihoods else 1
-        )
-
-        # Ensure node consistency, i.e. remove values with infinite costs
-        for var, constraints in self.constraints.items():
-            for val, cost in list(constraints.items()):
-                if np.isinf(cost):
-                    del constraints[val]
-        # Construct the local lower bounds
-        self.lb = {
-            v: c_min for v, c_min in zip(
-                self.variable_order(),
-                list(
-                    np.cumsum(
-                        [min(self.constraints[var].values()) for var in reversed(list(self.variable_order()))]
-                    )[:-1][::-1]
-                ) + [0]
-            )
-        }
-
-    def is_goal_state(self, state: MPEState) -> bool:
-        return not set(
-            self.constraints.keys()
-        ).difference(
-            state.assignment.keys()
-        )
-
-    def variable_order(self, state: MPEState = None) -> Iterator[Variable]:
-        """
-        :param state: The state to start from
-        :return: An iterator over free variables for a state sorted by number of different possible states
-        (lowest amount of values first).
-        """
-        if state is not None:
-            for var in self.variable_order():  # min([(var, len(dom)) for var, dom in state.domains.items()], key=itemgetter(1))[0]
-                if var not in state.assignment:
-                    yield var
-            return
-        yield from project(
-            sorted([(var, len(constraints)) for var, constraints in self.constraints.items()], key=itemgetter(1)),
-            0
-        )
-
-    def solve(
-            self,
-            k: int = 0
-    ) -> Iterator[List[ValueAssignment]]:
-        '''
-        Generate ``k`` MPE states with decreasing probability.
-
-        :return:
-        '''
-        ub = np.inf  # Global upper bound
-        solutions = Heap(key=attrgetter('cost'))  # Buffer for all solutions
-        pruned = Heap(key=attrgetter('cost'))  # Buffer for pruned nodes for later continuation
-        fringe = deque([  # FIFO queue for depth-first search
-            BnBNode(
-                self,
-                MPEState(
-                    VariableMap(variables=self.constraints.keys())
-                ),
-                0
-            )]
-        )
-        count = 0
-
-        while fringe or solutions:
-            while fringe:
-                node = fringe.popleft()
-
-                if self.is_goal_state(node.state):
-                    if node.cost <= ub:
-                        ub = node.cost
-                        solutions.push(node.pop())
-                        if node.state is not None:  # We can encounter equivalent solutions, but no better ones
-                            fringe.appendleft(node)
-                    elif node.state is not None:
-                        pruned.push(node)
-                else:
-                    if ub < node.cost < np.inf:
-                        pruned.push(node)
-                    else:
-                        new_node = node.pop()
-                        if node.state is not None:
-                            fringe.appendleft(node)
-                        fringe.appendleft(
-                            new_node,
-                        )
-            while solutions and solutions[0].cost == ub:
-                solution = solutions.pop()
-                count += 1
-                yield solution.cost, solution.state.assignment
-                if k and count >= k:
-                    return
-            ub = solutions[0].cost if solutions else np.inf
-
-            while pruned:  # Continue the search at the states that have been pruned
-                fringe.append(pruned.pop())

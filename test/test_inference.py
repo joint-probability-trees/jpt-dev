@@ -5,10 +5,11 @@ from unittest import TestCase
 
 import numpy as np
 import pandas as pd
-from dnutils import out
+from dnutils import project
 
 from jpt import SymbolicVariable, JPT, NumericVariable, infer_from_dataframe
 from jpt.base.intervals import ContinuousSet, RealSet, EXC, INC
+from jpt.base.utils import pairwise
 from jpt.distributions import Bool, Numeric
 from jpt.trees import MPESolver
 from jpt.variables import VariableMap
@@ -111,28 +112,34 @@ class JPTInferenceInteger(unittest.TestCase):
             self.assertIsInstance(maxi, LabelAssignment)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class MPESolverTest(TestCase):
 
-    GAUSSIAN = None
-
-    @classmethod
-    def setUp(cls) -> None:
-        with open('resources/gaussian_100.dat', 'rb') as f:
-            cls.GAUSSIAN = pickle.load(f).reshape(-1, 1)
-
     def test_mpe_numeric(self):
-        dist1 = Numeric().fit(self.GAUSSIAN)
-        dist2 = Numeric().fit(self.GAUSSIAN)
-
+        # Arrange
+        data = np.array([[1], [2], [8], [9]], dtype=np.float64)
+        dist1 = Numeric().fit(data)
+        dist2 = Numeric().fit(data)
         v1 = NumericVariable('X')
         v2 = NumericVariable('Y')
-
         mpe = MPESolver(
             VariableMap({
                 v1: dist1,
                 v2: dist2
             })
         )
-        for mpe in mpe.solve(10):
-            out(mpe)
-        dist1.plot(view=True)
+
+        # Act
+        solutions = list(mpe.solve())
+
+        # Assert
+        self.assertEqual(
+            9,
+            len(solutions)
+        )
+        self.assertTrue(
+            all(
+                l1 >= l2 for l1, l2 in pairwise(project(solutions, 1))
+            )
+        )

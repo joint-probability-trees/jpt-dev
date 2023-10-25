@@ -108,6 +108,7 @@ setup(
     packages=[
         'jpt',
         'jpt.learning',
+        'jpt.inference',
         'jpt.base',
         'jpt.distributions',
         'jpt.distributions.quantile',
