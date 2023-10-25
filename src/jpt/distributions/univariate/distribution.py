@@ -66,6 +66,10 @@ class Distribution:
             else:
                 raise
 
+    @classmethod
+    def hash(cls):
+        raise NotImplementedError()
+
     def __hash__(self):
         return hash((type(self), self.values, self.labels))
 

@@ -47,6 +47,17 @@ class Numeric(Distribution):
         self._quantile: QuantileDistribution = None
         self.to_json = self.inst_to_json
 
+    @classmethod
+    def hash(cls):
+        return hash((
+            cls.__qualname__,
+            cls.values,
+            cls.labels,
+            tuple(
+                sorted(cls.SETTINGS.items())
+            )
+        ))
+
     def __str__(self):
         return self.cdf.pfmt()
 

@@ -36,7 +36,18 @@ class Multinomial(Distribution):
         self._params: Optional[np.ndarray] = None
         self.to_json: FunctionType = self.inst_to_json
 
-        # noinspection DuplicatedCode
+    @classmethod
+    def hash(cls):
+        return hash((
+            cls.__qualname__,
+            cls.values,
+            cls.labels,
+            tuple(
+                sorted(cls.SETTINGS.items())
+            )
+        ))
+
+    # noinspection DuplicatedCode
     @classmethod
     def value2label(
             cls,

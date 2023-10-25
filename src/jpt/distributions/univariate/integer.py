@@ -54,6 +54,19 @@ class Integer(Distribution):
         self._params: Optional[np.ndarray] = None
         self.to_json: FunctionType = self.inst_to_json
 
+    @classmethod
+    def hash(cls):
+        return hash((
+            cls.__qualname__,
+            cls.lmin,
+            cls.lmax,
+            cls.vmin,
+            cls.vmax,
+            tuple(
+                sorted(cls.SETTINGS.items())
+            )
+        ))
+
     def __add__(
             self,
             other: 'Integer'
