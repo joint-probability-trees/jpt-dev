@@ -14,7 +14,7 @@ from itertools import tee
 from operator import attrgetter
 
 import math
-from typing import Iterable, Any, Tuple, List
+from typing import Iterable, Any, Tuple, List, Dict
 
 import numpy as np
 cimport numpy as np
@@ -212,6 +212,22 @@ cdef class RealSet(NumberSet):
 
     def __getstate__(self):
         return self.intervals
+
+    def any_point(self) -> numbers.Real:
+        for i in self.intervals:
+            if not i.isempty():
+                return i.any_point()
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            'intervals': i.to_json() for i in self.intervals
+        }
+
+    @staticmethod
+    def from_json(data: Dict[str, Any]) -> 'RealSet':
+        return RealSet(
+            intervals=[ContinuousSet.from_json(d) for d in data['intervals']]
+        )
 
     cpdef DTYPE_t size(RealSet self):
         """
