@@ -44,7 +44,7 @@ class Variable:
     def __init__(
             self,
             name: str,
-            domain: Optional[type[Distribution]] = None,
+            domain: Optional[Type[Distribution]] = None,
             **settings
     ):
         '''
