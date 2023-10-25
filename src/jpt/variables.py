@@ -349,7 +349,7 @@ class IntegerVariable(Variable):
     def __init__(
             self,
             name: str,
-            domain: Optional[type[Integer]],
+            domain: Optional[Type[Integer]],
             min_impurity_improvement: Optional[float] = None
     ):
         settings = {
@@ -410,7 +410,7 @@ class SymbolicVariable(Variable):
     def __init__(
             self,
             name: str,
-            domain: Optional[type[Multinomial]],
+            domain: Optional[Type[Multinomial]],
             min_impurity_improvement: Optional[float] = None,
             invert_impurity: Optional[bool] = None
     ):
