@@ -150,7 +150,8 @@ class HashableOrderedDict(OrderedDict):
 
     def __hash__(self):
         return hash((
-            tuple(sorted(self.items())),
+            HashableOrderedDict,
+            tuple(self.items())
         ))
 
 
@@ -184,9 +185,10 @@ class OrderedDictProxy:
         return self._dict[arg]
 
     def __hash__(self):
-        return hash(
+        return hash((
+            OrderedDictProxy,
             self._dict
-        )
+        ))
 
     def __len__(self):
         return len(self._dict)
