@@ -2,12 +2,11 @@
 © Copyright 2021, Mareike Picklum, Daniel Nyga.
 '''
 import hashlib
-import json
 import math
 import numbers
 import uuid
 
-from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable, Type
+from typing import List, Tuple, Any, Union, Dict, Iterator, Set, Iterable, Type, Optional
 import collections.abc
 
 import numpy as np
@@ -42,7 +41,12 @@ class Variable:
         MIN_IMPURITY_IMPROVEMENT: 0
     }
 
-    def __init__(self, name: str, domain: type = None, **settings):
+    def __init__(
+            self,
+            name: str,
+            domain: Optional[type[Distribution]] = None,
+            **settings
+    ):
         '''
         :param name:    name of the variable
         :type name:     str
@@ -54,8 +58,9 @@ class Variable:
         self._name = name
         self._domain = domain
         if not issubclass(type(self), Variable) or type(self) is Variable:
-            raise TypeError(f'Instantiation of abstract class '
-                            f'{type(self).__name__} is not allowed!')
+            raise TypeError(
+                f'Instantiation of abstract class {type(self).__name__} is not allowed!'
+            )
         self.settings = type(self).SETTINGS.copy()
         for attr in type(self).SETTINGS:
             try:
@@ -63,13 +68,21 @@ class Variable:
             except AttributeError:
                 pass
             else:
-                raise AttributeError('Attribute ambiguity: Object of type "%s" '
-                                     'already has an attribute with name "%s"' % (type(self).__name__,
-                                                                                  attr))
+                raise AttributeError(
+                    'Attribute ambiguity: Object of type "%s" '
+                    'already has an attribute with name "%s"' % (
+                        type(self).__name__,
+                        attr
+                    )
+                )
         for attr, value in settings.items():
             if attr not in self.settings:
-                raise AttributeError('Unknown settings "%s": '
-                                     'expected one of {%s}' % (attr, setstr(type(self).SETTINGS)))
+                raise AttributeError(
+                    'Unknown settings "%s": expected one of {%s}' % (
+                        attr,
+                        setstr(type(self).SETTINGS)
+                    )
+                )
             if value is not None:
                 self.settings[attr] = value
 
@@ -111,14 +124,26 @@ class Variable:
         return str(self)
 
     def __eq__(self, other):
-        return (type(self) == type(other) and
-                self.name == other.name and
-                self.domain.equiv(other.domain) and
-                self.settings == other.settings and
-                self.min_impurity_improvement == other.min_impurity_improvement)
+        return (
+            type(self) == type(other)
+            and self.name == other.name
+            and self.domain.equiv(other.domain)
+            and self.settings == other.settings
+        )
 
     def __hash__(self):
-        return hash((hashlib.md5(self.name.encode()).hexdigest(), self.domain))
+        return hash((
+            type(self),
+            hashlib.md5(
+                self.name.encode()
+            ).hexdigest(),
+            tuple(
+                sorted(
+                    self.settings.items()
+                )
+            ),
+            self.domain.hash() if self.domain is not None else None
+        ))
 
     @property
     def symbolic(self) -> bool:
@@ -196,37 +221,26 @@ class NumericVariable(Variable):
         PRECISION: .01
     }
 
-    def __init__(self,
-                 name: str,
-                 domain: Type = Numeric,
-                 min_impurity_improvement: float = None,
-                 blur: float = None,
-                 max_std: float = None,
-                 precision: float = None):
+    def __init__(
+            self,
+            name: str,
+            domain: Optional[Type[Numeric]] = Numeric,
+            min_impurity_improvement: Optional[float] = None,
+            blur: Optional[float] = None,
+            max_std: Optional[float] = None,
+            precision: Optional[float] = None
+    ):
         settings = {
-            Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement
+            Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement,
+            NumericVariable.BLUR: blur,
+            NumericVariable.MAX_STDEV: max_std,
+            NumericVariable.PRECISION: precision
         }
-        if blur is not None:
-            settings[NumericVariable.BLUR] = blur
-        if max_std is not None:
-            settings[NumericVariable.MAX_STDEV] = max_std
-        if precision is not None:
-            settings[NumericVariable.PRECISION] = precision
-        super().__init__(name, domain, **settings)
-
-    def __eq__(self, o):
-        return (super().__eq__(o) and
-                self.blur == o.blur and
-                self.max_std_lbl == o.max_std_lbl and
-                self.precision == o.precision)
-
-    def __hash__(self):
-        return hash((NumericVariable,
-                     hashlib.md5(self.name.encode()).hexdigest(),
-                     self.domain,
-                     self.blur,
-                     self.max_std,
-                     self.precision))
+        super().__init__(
+            name,
+            domain,
+            **settings
+        )
 
     def to_json(self) -> Dict[str, Any]:
         return edict(super().to_json()) + {
@@ -257,7 +271,11 @@ class NumericVariable(Variable):
         return self.max_std_lbl
 
     # noinspection PyIncorrectDocstring
-    def str(self, assignment: Union[List, Set, numbers.Number, NumberSet], **kwargs) -> str:
+    def str(
+        self,
+        assignment: Union[List, Set, numbers.Number, NumberSet],
+        **kwargs
+    ) -> str:
         '''
         Construct a pretty-formatted string representation of the respective
         variable assignment.
@@ -296,21 +314,28 @@ class NumericVariable(Variable):
             s = []
             for i in assignment.intervals:
                 if i.size() == 1:
-                    s.append('%s = %s' % (self.name, self.domain.labels[i.lower]))
+                    s.append(
+                        '%s = %s' % (self.name, self.domain.labels[i.lower])
+                    )
                 else:
-                    s.append('%s%s%s' % (lower % (self.domain.labels[i.lower], {INC: SYMBOL.LTE,
-                                                  EXC: SYMBOL.LT}[i.left]) if i.lower != np.NINF else '',
-                                         self.name,
-                                         upper % ({INC: SYMBOL.LTE,
-                                                  EXC: SYMBOL.LT}[i.right],
-                                                  self.domain.labels[i.upper]) if i.upper != np.PINF else ''))
+                    s.append(
+                        '%s%s%s' % (lower % (
+                            self.domain.labels[i.lower],
+                            {INC: SYMBOL.LTE, EXC: SYMBOL.LT}[i.left]) if i.lower != np.NINF else '',
+                             self.name,
+                             upper % (
+                                 {INC: SYMBOL.LTE, EXC: SYMBOL.LT}[i.right],
+                                 self.domain.labels[i.upper]
+                             ) if i.upper != np.PINF else ''
+                        )
+                    )
             return ' v '.join(s)
         else:
             raise ValueError('Unknown format for numeric variable: %s.' % fmt)
 
     def assignment2set(self, assignment: Union[float, NumberSet]) -> NumberSet:
         if isinstance(assignment, numbers.Number):
-            return ContinuousSet(assignment)
+            return ContinuousSet(assignment, assignment)
         return assignment
 
 
@@ -321,7 +346,12 @@ class IntegerVariable(Variable):
     Represents an integer-valued variable.
     '''
 
-    def __init__(self, name: str, domain: Type, min_impurity_improvement: float = None,):
+    def __init__(
+            self,
+            name: str,
+            domain: Optional[type[Integer]],
+            min_impurity_improvement: Optional[float] = None
+    ):
         settings = {
             Variable.MIN_IMPURITY_IMPROVEMENT: min_impurity_improvement
         }
@@ -346,13 +376,6 @@ class IntegerVariable(Variable):
         if isinstance(assignment, numbers.Integral):
             return {assignment}
         return assignment
-
-    def __hash__(self):
-        return hash((
-            IntegerVariable,
-            hashlib.md5(self.name.encode()).hexdigest(),
-            self.domain
-        ))
 
     @staticmethod
     def from_json(data: Dict[str, Any]) -> 'IntegerVariable':
@@ -384,11 +407,13 @@ class SymbolicVariable(Variable):
         INVERT_IMPURITY: False,
     }
 
-    def __init__(self,
-                 name: str,
-                 domain: type,
-                 min_impurity_improvement: float = None,
-                 invert_impurity: bool = None):
+    def __init__(
+            self,
+            name: str,
+            domain: Optional[type[Multinomial]],
+            min_impurity_improvement: Optional[float] = None,
+            invert_impurity: Optional[bool] = None
+    ):
         super().__init__(
             name,
             domain,
@@ -603,8 +628,8 @@ class VariableMap:
     def __eq__(self, o: 'VariableMap'):
         return (
             type(o) is type(self) and
-            self._map.items() == o._map.items() and
-            list(self._variables.items()) == list(o._variables.items())
+            self._map == o._map and
+            self.variables == o.variables
         )
 
     def __hash__(self):
