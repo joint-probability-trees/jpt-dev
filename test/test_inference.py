@@ -1,13 +1,20 @@
 import os
 import pickle
 import unittest
+from unittest import TestCase
 
 import numpy as np
 import pandas as pd
+from dnutils import project
 
 from jpt import SymbolicVariable, JPT, NumericVariable, infer_from_dataframe
 from jpt.base.intervals import ContinuousSet, RealSet, EXC, INC
-from jpt.distributions import Bool
+from jpt.base.utils import pairwise
+from jpt.distributions import Bool, Numeric
+from jpt.trees import MPESolver
+from jpt.variables import VariableMap
+
+from jpt.variables import LabelAssignment
 
 
 class JPTInferenceSymbolic(unittest.TestCase):
@@ -26,8 +33,10 @@ class JPTInferenceSymbolic(unittest.TestCase):
         with open(os.path.join('..', 'examples', 'data', 'alarm.pkl'), 'rb') as f:
             cls.data = np.array(pickle.load(f))
 
-        cls.jpt = JPT(variables=[cls.E, cls.B, cls.A, cls.M, cls.J],
-                      min_impurity_improvement=0).learn(rows=cls.data)
+        cls.jpt = JPT(
+            variables=[cls.E, cls.B, cls.A, cls.M, cls.J],
+            min_impurity_improvement=0
+        ).learn(rows=cls.data)
         cls.jpt.learn(rows=cls.data)
 
     def test_infer_alarm_given_mary(self):
@@ -86,4 +95,51 @@ class JPTInferenceInteger(unittest.TestCase):
             .15,
             result,
             places=13
+        )
+
+    def test_mpe_serialization(self):
+        data = pd.DataFrame(np.array([list(range(-10, 10))]).T, columns=["X"])
+        variables = infer_from_dataframe(data, scale_numeric_types=False)
+        tree = JPT(variables, min_samples_leaf=.1)
+        tree.fit(data)
+        # Creating json maxima infos
+        maxima, likelihood = tree.mpe()
+        maxima_json = [m.to_json() for m in maxima]
+
+        # Trying to recreate the maxima Variables from json
+        for maxi_json in maxima_json:
+            maxi = LabelAssignment.from_json(variables=tree.variables, d=maxi_json)
+            self.assertIsInstance(maxi, LabelAssignment)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class MPESolverTest(TestCase):
+
+    def test_mpe_numeric(self):
+        # Arrange
+        data = np.array([[1], [2], [8], [9]], dtype=np.float64)
+        dist1 = Numeric().fit(data)
+        dist2 = Numeric().fit(data)
+        v1 = NumericVariable('X')
+        v2 = NumericVariable('Y')
+        mpe = MPESolver(
+            VariableMap({
+                v1: dist1,
+                v2: dist2
+            })
+        )
+
+        # Act
+        solutions = list(mpe.solve())
+
+        # Assert
+        self.assertEqual(
+            9,
+            len(solutions)
+        )
+        self.assertTrue(
+            all(
+                l1 >= l2 for l1, l2 in pairwise(project(solutions, 1))
+            )
         )

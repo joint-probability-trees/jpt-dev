@@ -5,7 +5,6 @@ from unittest import TestCase
 
 import numpy as np
 import pandas as pd
-from dnutils import out
 
 from jpt import NumericType, SymbolicType
 from jpt.base.intervals import ContinuousSet
@@ -213,17 +212,20 @@ class LabelValueAssignmentTest(TestCase):
         solution = {"D": set(['zero', 'one'])}
         self.assertEqual(a_json, solution)
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 class VariableTest(TestCase):
     '''Test basic functionality of Variable classes.'''
 
-    TEST_DATA = [NumericVariable('A'),
-                 NumericVariable('B'),
-                 SymbolicVariable('C', Bool)]
+    TEST_DATA = [
+        NumericVariable('A'),
+        NumericVariable('B'),
+        SymbolicVariable('C', Bool)
+    ]
 
     def test_hash(self):
-        '''Custom has value calculation.'''
+        '''Custom hash value calculation.'''
         h1 = hash(NumericVariable('bar'))
         h2 = hash(SymbolicVariable('baz', domain=Bool))
         h3 = hash(NumericVariable('bar'))
@@ -267,6 +269,21 @@ class SymbolicVariableTest(TestCase):
         v = SymbolicVariable('var', domain=symbolicType, invert_impurity=True)
         self.assertTrue(v.invert_impurity)
 
+    def test_hash(self):
+        # Arrange
+        x1 = SymbolicVariable('x', domain=SymbolicType('BOOL', ['T', 'F']))
+        x2 = SymbolicVariable('x', domain=SymbolicType('BOOL', ['T', 'F']))
+
+        # Act
+        hash_1 = hash(x1)
+        hash_2 = hash(x2)
+
+        # Assert
+        self.assertEqual(
+            hash_1,
+            hash_2
+        )
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -275,11 +292,20 @@ class IntegerVariableTest(TestCase):
     dice = IntegerType('Dice', lmin=1, lmax=6)
 
     def test_hash(self):
+        # Arrange
         toss1 = IntegerVariable('Toss', domain=self.dice)
         toss2 = IntegerVariable('Toss', domain=self.dice)
         baz = IntegerVariable('baz', domain=self.dice)
-        self.assertEqual(hash(toss1), hash(toss2))
-        self.assertNotEqual(hash(toss1), hash(baz))
+
+        # Act
+        print(hasattr(toss1, '__hash__'), toss1.__hash__)
+        hash_1 = hash(toss1)
+        hash_2 = hash(toss2)
+        hash_3 = hash(baz)
+
+        # Assert
+        self.assertEqual(hash_1, hash_2)
+        self.assertNotEqual(hash_2, hash_3)
 
     def test_serialization(self):
         toss = IntegerVariable('Toss', domain=self.dice)
@@ -288,6 +314,26 @@ class IntegerVariableTest(TestCase):
     def test_pickle(self):
         toss = IntegerVariable('Toss', domain=self.dice)
         self.assertEqual(toss, pickle.loads(pickle.dumps(toss)))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class NumericVariableTest(TestCase):
+
+    def test_hash(self):
+        # Arrange
+        x1 = NumericVariable('x')
+        x2 = NumericVariable('x')
+
+        # Act
+        hash_1 = hash(x1)
+        hash_2 = hash(x2)
+
+        # Assert
+        self.assertEqual(
+            hash_1,
+            hash_2
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------

@@ -37,7 +37,18 @@ class Multinomial(Distribution):
         self._params: Optional[np.ndarray] = None
         self.to_json: FunctionType = self.inst_to_json
 
-        # noinspection DuplicatedCode
+    @classmethod
+    def hash(cls):
+        return hash((
+            cls.__qualname__,
+            cls.values,
+            cls.labels,
+            tuple(
+                sorted(cls.SETTINGS.items())
+            )
+        ))
+
+    # noinspection DuplicatedCode
     @classmethod
     def value2label(
             cls,
@@ -237,7 +248,7 @@ class Multinomial(Distribution):
             event = set(event)
         i1, i2 = tee(event, 2)
         if not all(isinstance(v, numbers.Integral) for v in i1):
-            raise TypeError('All arguments must be integers.')
+            raise TypeError('All arguments must be integers: %s' % event)
 
         return sum(
             self.probabilities[v] for v in i2
@@ -280,7 +291,7 @@ class Multinomial(Distribution):
     @deprecated('Expectation is undefined in symbolic domains. Use Multinomial._mode() instead.')
     def _expectation(self) -> Set[int]:
         '''Returns the value with the highest probability for this variable'''
-        return self._mpe()[1]
+        return self._mpe()[0]
 
     @deprecated('Expectation is undefined in symbolic domains. Use Multinomial._mode() instead.')
     def expectation(self) -> Set[Symbol]:
@@ -292,26 +303,43 @@ class Multinomial(Distribution):
             self._expectation()
         )
 
-    def mpe(self) -> Tuple[float, Set[Symbol]]:
-        p_max, values = self._mpe()
-        return p_max, self.value2label(values)
+    def mpe(self) -> Tuple[Set[Symbol], float]:
+        states, p_max = self._mpe()
+        return self.value2label(states), p_max
 
-    def _mpe(self) -> Tuple[float, Set[int]]:
+    def _mpe(self) -> Tuple[Set[int], float]:
         """
         Calculate the most probable configuration of this distribution in value space.
 
-        :return: The likelihood of the mpe as float and the mpe itself as Set
+        :return: The likelihood of the mpe itself as Set and the likelihood of the mpe as float
         """
-        _max = max(self.probabilities)
-        return (
-            _max,
-            set(
-                [label for label, p in zip(
-                    self.values.values(),
-                    self.probabilities
-                ) if p == _max]
+        return first(self._k_mpe(k=1))
+
+    def _k_mpe(self, k: int = None) -> List[Tuple[Set[Symbol], float]]:
+        likelihoods = {p for p in self.probabilities if p}
+        sorted_likelihood = sorted(
+            likelihoods,
+            reverse=True
+        )[:ifnone(k, len(likelihoods))]
+        result = []
+
+        for likelihood in sorted_likelihood:
+            result.append(
+                (
+                    {value for value, p in zip(self.values.values(), self.probabilities) if p == likelihood},
+                    likelihood
+                )
             )
-        )
+
+        return result
+
+    def k_mpe(self, k: Optional[int] = None) -> List[Tuple[Set[Symbol], float]]:
+        return [
+            (
+                self.value2label(state),
+                likelihood
+            ) for state, likelihood in self._k_mpe(k=k)
+        ]
 
     mode = mpe
     _mode = _mpe

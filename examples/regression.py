@@ -57,7 +57,7 @@ def main(visualize=True):
     # jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
 
     jpt.learn(df)
-    print(len(jpt.leaves))
+
     # jpt.plot(view=visualize)
 
     # Apply the JPT model

@@ -16,8 +16,8 @@ cdef DTYPE_t pinf = np.PINF
 cdef class CDFRegressor:
     '''Experimental quantile regression.'''
 
-    def __init__(self, eps=None, max_splits=None):
-        self.eps = ifnone(eps, .000, lambda x: x * x)
+    def __init__(self, eps: float = None, max_splits: int = None):
+        self.eps = ifnone(eps, .000, lambda _: _ * _)
         self.max_splits = ifnone(max_splits, -1)
         self.data = None
 
@@ -35,12 +35,23 @@ cdef class CDFRegressor:
         if n_samples > 1:
             self._points.push(n_samples - 1)
 
-            self._queue.push_back((0, n_samples - 1, -1, 0))
+            self._queue.push_back((
+                0,
+                n_samples - 1,
+                -1,
+                0
+            ))
 
             while self._queue.size():
                 args = self._queue.front()
                 self._queue.pop_front()
-                self._forward(args[0], args[1], args[2], args[3])
+                self._forward(
+                    args[0],
+                    args[1],
+                    args[2],
+                    args[3]
+                )
+
         self._backward()
 
     def verify(self, data):
@@ -49,12 +60,14 @@ cdef class CDFRegressor:
             cdfy = cdf.eval(dx)
             assert abs(cdfy - dy) > self.eps
 
-    cdef inline void _forward(CDFRegressor self,
-                              SIZE_t start,
-                              SIZE_t end,
-                              DTYPE_t mse,
-                              SIZE_t depth) nogil:
-        if end - start < 3 or 0 < self.max_splits <= depth:
+    cdef inline void _forward(
+            self,
+            SIZE_t start,
+            SIZE_t end,
+            DTYPE_t mse,
+            SIZE_t depth
+    ) nogil:
+        if end - start < 2 or 0 < self.max_splits <= depth:
             return
 
         cdef:
@@ -131,9 +144,9 @@ cdef class CDFRegressor:
 
         self._points.push(best_split)
 
-        if best_mse1 > self.eps:
+        if best_mse1 >= self.eps:
             self._queue.push_back((start, best_split, best_mse1, depth + 1))
-        if best_mse2 > self.eps:
+        if best_mse2 >= self.eps:
             self._queue.push_back((best_split, end, best_mse2, depth + 1))
 
     cdef void _backward(self) nogil:
@@ -164,7 +177,7 @@ cdef class CDFRegressor:
                 # printf('%d, top: %d, lx=%.4f\n', pos, self._points.top(), lx)
                 err += (m * data[0, pos] + c - data[1, pos]) ** 2
                 pos -= 1
-            if err / <DTYPE_t> (start - pos) > self.eps:
+            if err / <DTYPE_t> (start - pos) >= self.eps:
                 self.points.push_front(p)
                 pos = p
             else:

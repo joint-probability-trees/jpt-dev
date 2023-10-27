@@ -9,22 +9,24 @@ import pickle
 import tempfile
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from itertools import zip_longest
-from operator import attrgetter
+from operator import attrgetter, itemgetter
 from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional
 
 import numpy as np
 import pandas as pd
-from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs
+from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs, project
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
 from .base.constants import plotstyle, orange, green
 from .base.errors import Unsatisfiability
 from .base.utils import list2interval, format_path, normalized, list2intset, list2set
+from .base.utils import list2interval, format_path, normalized, Heap
 from .base.utils import prod, setstr_int
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
 from .distributions.quantile.quantiles import QuantileDistribution
+from .inference import MPESolver
 from .variables import (
     VariableMap,
     SymbolicVariable,
@@ -49,11 +51,19 @@ finally:
     from .base.functions import PiecewiseFunction
 
 
-style.use(plotstyle)
+try:
+    style.use(plotstyle)
+except OSError:
+    import logging
+    logging.warning(
+        f'Style "{plotstyle}" not found. Falling back to "default".'
+    )
+    style.use('default')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Global constants
+
 DISCRIMINATIVE = 'discriminative'
 GENERATIVE = 'generative'
 
@@ -616,7 +626,7 @@ class Leaf(Node):
 
         return result
 
-    def mpe(self, minimal_distances: VariableMap) -> (float, VariableMap):
+    def mpe(self, minimal_distances: VariableMap) -> (VariableMap, float):
         """
         Calculate the most probable explanation of this leaf as a fully factorized distribution.
         :return: the likelihood of the maximum as a float and the configuration as a VariableMap
@@ -630,7 +640,7 @@ class Leaf(Node):
         for variable, distribution in self.distributions.items():
 
             # calculate mpe of that distribution
-            likelihood, explanation = distribution.mpe()
+            explanation, likelihood = distribution.mpe()
 
             # apply upper cap for infinities
             likelihood = minimal_distances[variable] if likelihood == float("inf") else likelihood
@@ -642,7 +652,14 @@ class Leaf(Node):
             maximum[variable] = explanation
 
         # create mpe result
-        return result_likelihood, LabelAssignment(maximum.items())
+        return LabelAssignment(maximum.items()), result_likelihood
+
+    def k_mpe(self) -> Iterator[LabelAssignment]:
+        '''
+        Compute the ``k`` most probable explanations of this leaf.
+        :return:
+        '''
+        ...
 
     def number_of_parameters(self) -> int:
         """
@@ -765,7 +782,7 @@ class JPT:
 
     @property
     def variables(self) -> Tuple[Variable]:
-        return self._variables
+        return tuple(self._variables)
 
     @property
     def targets(self) -> List[Variable]:
@@ -895,6 +912,19 @@ class JPT:
         self.__dict__ = JPT.from_json(state).__dict__
 
     def __eq__(self, o) -> bool:
+        eq = (
+            isinstance(o, JPT),
+            self.innernodes == o.innernodes,
+            self.leaves == o.leaves,
+            self.priors == o.priors,
+            self.min_samples_leaf == o.min_samples_leaf,
+            self.min_impurity_improvement == o.min_impurity_improvement,
+            self.targets == o.targets,
+            self.variables == o.variables,
+            self.max_depth == o.max_depth,
+            self.max_leaves == o.max_leaves,
+            self.dependencies == o.dependencies
+        )
         return all((
             isinstance(o, JPT),
             self.innernodes == o.innernodes,
@@ -1202,8 +1232,7 @@ class JPT:
 
     def mpe(
             self,
-            evidence: Union[Dict[Union[Variable, str], Any],
-            VariableAssignment] = None,
+            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
             fail_on_unsatisfiability: bool = True
     ) -> (List[LabelAssignment], float) or None:
         """
@@ -1235,13 +1264,13 @@ class JPT:
         maxima = [leaf.mpe(self.minimal_distances) for leaf in conditional_jpt.leaves.values()]
 
         # get the maximum of those maxima
-        highest_likelihood = max([m[0] for m in maxima])
+        highest_likelihood = max([m[1] for m in maxima])
 
         # create a list for all possible maximal occurrences
         results = []
 
         # for every leaf and its mpe
-        for leaf, (likelihood, mpe) in zip(conditional_jpt.leaves.values(), maxima):
+        for leaf, (mpe, likelihood) in zip(conditional_jpt.leaves.values(), maxima):
 
             if likelihood == highest_likelihood:
                 # append the argmax to the results
@@ -1249,6 +1278,70 @@ class JPT:
 
         # return the results
         return results, highest_likelihood
+
+    def kmpe(
+            self,
+            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            fail_on_unsatisfiability: bool = True,
+            k: int = 0
+    ) -> Iterator[Tuple[LabelAssignment, float]] or None:
+        """
+        Perform a k-MPE inference on this JPT under the given evidence.
+
+        k-MPE yields the ``k`` most probable explanation states in decreasing order.
+
+        :param evidence: The evidence to apply
+        :param fail_on_unsatisfiability: Rather to raise an Unsatisfiability Error on impossible evidence or not.
+        :param k: the number of solutions to return
+        :return: An iterator with states ordered by likelihood.
+        """
+        if isinstance(evidence, LabelAssignment):
+            evidence_ = evidence.value_assignment()
+        else:
+            evidence_ = evidence
+
+        # apply the evidence given
+        conditional_jpt = self.conditional_jpt(evidence_, fail_on_unsatisfiability)
+        if conditional_jpt is None:
+            return None
+
+        # Determine the maximal likelihood in numeric distributions
+        likelihoods = []
+        for leaf in conditional_jpt.leaves.values():
+            for var, dist in leaf.distributions.items():
+                if isinstance(dist, Numeric):
+                    _, likelihood_max = dist._mpe()
+                    if not np.isnan(likelihood_max) and not np.isinf(likelihood_max):
+                        likelihoods.append(likelihood_max)
+        likelihood_max = ifnot(likelihoods, 1, max)
+        mpe_solvers = [
+            MPESolver(
+                distributions=leaf.distributions,
+                likelihood_divisor=likelihood_max if likelihoods else None
+            ).solve() for leaf in conditional_jpt.leaves.values()
+        ]
+
+        mpe_candidates = Heap(
+            data=[(*next(solver), solver) for solver in mpe_solvers],
+            key=itemgetter(1)
+        )
+
+        count = 0
+        while mpe_candidates and (not k or count < k):
+            solution, likelihood, solver = mpe_candidates.pop()
+            values = ValueAssignment(
+                [
+                    (variable, value if variable.numeric else set(value))
+                    for variable, value in solution.items()
+                ]
+            )
+            values = values.label_assignment()
+            yield values, likelihood
+            try:
+                mpe_candidates.push((*next(solver), solver))
+            except StopIteration:
+                pass
+            count += 1
 
     def _preprocess_query(self,
                           query: Union[dict, VariableMap],
@@ -1373,13 +1466,15 @@ class JPT:
         # -> return leaf that matches query
         yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
 
-    def c45(self,
+    def c45(
+            self,
             data: np.ndarray,
             start: int,
             end: int,
             parent: DecisionNode,
             child_idx: int,
-            depth: int) -> None:
+            depth: int
+    ) -> None:
         """
         Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
         ``indices``. The created node is put as a child with index ``child_idx`` to the children of
@@ -1422,15 +1517,19 @@ class JPT:
             self.innernodes[node.idx] = node
 
             if split_var.symbolic:  # Symbolic domain ------------------------------------------------------------------
-                split_value = int(data[self.indices[start + split_pos], split_var_idx])
+                split_value = int(
+                    data[self.indices[start + split_pos], split_var_idx]
+                )
                 splits = [
                     {split_value},
                     set(split_var.domain.values.values()) - {split_value}
                 ]
 
             elif split_var.numeric:  # Numeric domain ------------------------------------------------------------------
-                split_value = (data[self.indices[start + split_pos], split_var_idx] +
-                               data[self.indices[start + split_pos + 1], split_var_idx]) / 2
+                split_value = (
+                    data[self.indices[start + split_pos], split_var_idx] +
+                    data[self.indices[start + split_pos + 1], split_var_idx]
+                ) / 2
                 splits = [
                     Interval(np.NINF, split_value, EXC, EXC),
                     Interval(split_value, np.PINF, INC, EXC)
@@ -1814,7 +1913,7 @@ class JPT:
              title: str = "unnamed",
              filename: str or None = None,
              directory: str = None,
-             plotvars: List[Variable] = None,
+             plotvars: Iterable[Variable] = None,
              view: bool = True,
              max_symb_values: int = 10,
              nodefill=None,
@@ -2134,6 +2233,18 @@ class JPT:
             else:
                 return None
 
+        # calculate remaining probability mass
+        probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
+
+        if not probability_mass:
+            raise Unsatisfiability(
+                'JPT is unsatisfiable (all %d leaves have '
+                '0 prior probability with evidence: %s)' % (
+                    len(self.leaves),
+                    format_path(evidence)
+                )
+            )
+
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
 
@@ -2411,3 +2522,6 @@ class JPT:
         hyperparameters["max_depth"] = self.max_depth
 
         return hyperparameters
+
+
+# ----------------------------------------------------------------------------------------------------------------------

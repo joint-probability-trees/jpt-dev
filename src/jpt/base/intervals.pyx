@@ -14,7 +14,7 @@ from itertools import tee
 from operator import attrgetter
 
 import math
-from typing import Iterable, Any, Tuple, List
+from typing import Iterable, Any, Tuple, List, Dict
 
 import numpy as np
 cimport numpy as np
@@ -212,6 +212,22 @@ cdef class RealSet(NumberSet):
 
     def __getstate__(self):
         return self.intervals
+
+    def any_point(self) -> numbers.Real:
+        for i in self.intervals:
+            if not i.isempty():
+                return i.any_point()
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            'intervals': i.to_json() for i in self.intervals
+        }
+
+    @staticmethod
+    def from_json(data: Dict[str, Any]) -> 'RealSet':
+        return RealSet(
+            intervals=[ContinuousSet.from_json(d) for d in data['intervals']]
+        )
 
     cpdef DTYPE_t size(RealSet self):
         """
@@ -728,13 +744,35 @@ cdef class ContinuousSet(NumberSet):
         cdef DTYPE_t lower = self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
 
         if result is None:
-            result = np.random.uniform(max(np.finfo(np.float64).min, lower),
-                                       min(np.finfo(np.float64).max, upper), k)
+            result = np.random.uniform(
+                max(np.finfo(np.float64).min, lower),
+                min(np.finfo(np.float64).max, upper),
+                k
+            )
 
         else:
-            result[...] = np.random.uniform(max(np.finfo(np.float64).min, lower),
-                                            min(np.finfo(np.float64).max, upper), k)
+            result[...] = np.random.uniform(
+                max(np.finfo(np.float64).min, lower),
+                min(np.finfo(np.float64).max, upper),
+                k
+            )
         return result
+
+    def any_point(self) -> numbers.Real:
+        '''
+        Returns an arbitrary point that lies in this ``ContinuousSet``.
+
+        The difference to ``ContinuousSet.sample()`` is that ``any()`` does also return
+        a value for infinite intervals and is deterministic.
+        :return:
+        '''
+        if self.ispinf() and self.isninf():
+            return 0
+        elif self.isninf():
+            return self.max - eps
+        elif self.ispinf():
+            return self.min + eps
+        return (self.min + self.max) * .5
 
     cpdef DTYPE_t[::1] linspace(ContinuousSet self,
                                      np.int32_t num,

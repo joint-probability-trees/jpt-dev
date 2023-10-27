@@ -848,6 +848,14 @@ class RealSetTest(unittest.TestCase):
             i_
         )
 
+    @data(
+        R, '[0,1]', '(-inf,-1)', '[0,inf]'
+    )
+    def test_any_point(self, i):
+        i = ifstr(i, ContinuousSet.parse)
+        p = i.any_point()
+        self.assertTrue(i.contains_value(p))
+
 
 class ContinuousSetOperatorTest(TestCase):
 

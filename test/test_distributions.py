@@ -159,19 +159,16 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual([0, 1, 0], list(result2.probabilities))
         self.assertRaises(Unsatisfiability, abc._crop, ())
 
-    def test_mpe(self):
+    def test_mpe_uniform(self):
         # Arrange
         ABC = self.DistABC
-        abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+        abc = ABC().set(params=[1 / 3, 1 / 3, 1 / 3])
 
         # Act
-        result_unique = abc.mpe()
-        abc.set([1 / 3, 1 / 3, 1 / 3])
         result_uniform = abc.mpe()
 
         # Assert
-        self.assertEqual((1 / 2, {'A'}), result_unique)
-        self.assertEqual((1 / 3, {'A', 'B', 'C'}), result_uniform)
+        self.assertEqual(({'A', 'B', 'C'}, 1 / 3), result_uniform)
 
     def test_expectation(self):
         # Arrange
@@ -289,6 +286,32 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual('C', DistABC.value2label(2))
         self.assertEqual({0, 2}, DistABC.label2value({'A', 'C'}))
         self.assertEqual({'C', 'B'}, DistABC.value2label({2, 1}))
+
+    def test_mpe(self):
+        # Arrange
+        DistABC = self.DistABC
+        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        state, likelhood = d1.mpe()
+
+        # Assert
+        self.assertEqual(0.5, likelhood)
+        self.assertEqual({"A"}, state)
+
+    def test_k_mpe(self):
+        # Arrange
+        DistABC = self.DistABC
+        d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        k_mpe = d1.k_mpe(3)
+
+        # Assert
+        self.assertEqual(
+            [({'A'}, 1/2), ({'B', 'C'}, 1/4)],
+            k_mpe
+        )
 
     def test_jaccard_identity(self):
         d1 = self.DistABC().set([.1, .4, .5])
@@ -505,6 +528,34 @@ class NumericDistributionTest(TestCase):
             ContinuousSet(-.9, .9),
             round(value_interval, 1)
         )
+
+    def test_mpe(self):
+        np.random.seed(69)
+        d = Numeric()._fit(np.random.normal(size=(100, 1)), col=0)
+        likelihood, state = d.mpe()
+        self.assertEqual(max(f.value for f in d.pdf.functions), likelihood)
+
+    def test_k_mpe(self):
+        # Arrange
+        d = Numeric(precision=0)._fit(
+            np.array([[1.], [2.5], [3.]]),
+            col=0
+        )
+
+        # Act
+        k_mpe = d.k_mpe(3)
+
+        # Assert
+        self.assertEqual(
+            [
+                (ContinuousSet(2.5, 3), 1.),
+                (ContinuousSet(1, 2.5, INC, EXC), 1/3)
+            ],
+            k_mpe
+        )
+
+    def _test_label_inference(self):
+        raise NotImplementedError()
 
     @data(
         (-1, 0),
@@ -736,7 +787,7 @@ class NumericDistributionTest(TestCase):
         )
 
         # Act
-        likelihood, mpe_state = dist.mpe()
+        mpe_state, likelihood = dist.mpe()
 
         # Assert
         self.assertEqual(
@@ -907,10 +958,10 @@ class IntegerDistributionTest(TestCase):
         biased_dice.set([0 / 6, 1 / 6, 2 / 6, 1 / 6, 1 / 6, 1 / 6])
 
         # Act
-        p_fair, fair_mpe = fair_dice.mpe()
-        _p_fair, _fair_mpe = fair_dice._mpe()
-        p_biased, biased_mpe = biased_dice.mpe()
-        _p_biased, _biased_mpe = biased_dice._mpe()
+        fair_mpe, p_fair = fair_dice.mpe()
+        _fair_mpe, _p_fair = fair_dice._mpe()
+        biased_mpe, p_biased = biased_dice.mpe()
+        _biased_mpe, _p_biased = biased_dice._mpe()
 
         # Assert
         self.assertEqual(set(range(1, 7)), fair_mpe)
@@ -922,6 +973,29 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(2 / 6, p_biased)
         self.assertEqual({2}, _biased_mpe)
         self.assertEqual(2 / 6, _p_biased)
+
+    def test_k_mpe(self):
+        # Arrange
+        dice = IntegerType('Dice', 1, 6)
+        fair_dice = dice()
+        fair_dice.set([1 / 6] * 6)
+        biased_dice = dice()
+        biased_dice.set([0 / 6, 1 / 6, 2 / 6, 1 / 6, 1 / 6, 1 / 6])
+
+        # Act
+        fair_k_mpe = fair_dice.k_mpe(3)
+        biased_k_mpe = biased_dice.k_mpe(3)
+
+        # Assert
+        self.assertEqual(
+            fair_k_mpe,
+            [({1, 2, 3, 4, 5, 6}, 1 / 6)]
+        )
+
+        self.assertEqual(
+        [({3}, 0.3333333333333333), ({2, 4, 5, 6}, 0.16666666666666666)],
+            biased_k_mpe
+        )
 
     def test_merge(self):
         # Arrange

@@ -4,10 +4,10 @@ import numbers
 import os
 from collections import deque
 from operator import itemgetter
-from typing import Union, Iterable, Optional, Dict, Any, Type, Callable
+from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, Tuple
 
 import numpy as np
-from dnutils import ifnone, ifnot
+from dnutils import ifnone, ifnot, first
 from plotly.graph_objs import Figure
 import plotly.graph_objects as go
 
@@ -21,6 +21,7 @@ try:
     from ...base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
+
     pyximport.install()
 finally:
     from ...base.intervals import R, ContinuousSet, RealSet, NumberSet
@@ -46,6 +47,17 @@ class Numeric(Distribution):
         super().__init__(**settings)
         self._quantile: QuantileDistribution = None
         self.to_json = self.inst_to_json
+
+    @classmethod
+    def hash(cls):
+        return hash((
+            cls.__qualname__,
+            cls.values,
+            cls.labels,
+            tuple(
+                sorted(cls.SETTINGS.items())
+            )
+        ))
 
     def __str__(self):
         return self.cdf.pfmt()
@@ -113,10 +125,10 @@ class Numeric(Distribution):
     @classmethod
     def equiv(cls, other):
         return (
-            issubclass(other, Numeric) and
-            cls.__name__ == other.__name__ and
-            cls.values == other.values and
-            cls.labels == other.labels
+                issubclass(other, Numeric) and
+                cls.__name__ == other.__name__ and
+                cls.values == other.values and
+                cls.labels == other.labels
         )
 
     @property
@@ -176,29 +188,59 @@ class Numeric(Distribution):
         """Checks if this distribution is a dirac impulse."""
         return len(self._quantile.cdf.intervals) == 2
 
-    def mpe(self) -> (float, RealSet):
-        return self._mpe(self.value2label)
+    def mpe(self) -> (RealSet, float):
+        state, likelihood = self._mpe()
+        return self.value2label(state), likelihood
 
-    def _mpe(self, value_transform: Optional[Callable] = None) -> (float, NumberSet):
+    def _mpe(self, value_transform: Optional[Callable] = None) -> (NumberSet, float):
         """
         Calculate the most probable configuration of this quantile distribution.
-        :return: The likelihood of the mpe as float and the mpe itself as RealSet
+
+        :return: The mpe itself as RealSet and the likelihood of the mpe as float
         """
-        value_transform = ifnone(value_transform, lambda _: _)
-        _max = max(f.value for f in self.pdf.functions)
-        return (
-            _max,
-            value_transform(
-                RealSet(
-                    [
+        return first(self._k_mpe(k=1))
+
+    def _k_mpe(self, k: Optional[int] = None) -> List[Tuple[NumberSet, float]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+
+        :param k: The number of solutions to generate, defaults to the maximum possible number.
+        :return: A list containing a tuple containing the likelihood and state in descending order.
+        """
+        likelihoods = [f.value for f in self.pdf.functions if f.value and not np.isnan(f.value)]
+        sorted_likelihood = sorted(
+            likelihoods,
+            reverse=True
+        )[:ifnone(k, len(likelihoods))]
+
+        result = []
+        for likelihood in sorted_likelihood:
+            result.append(
+                (
+                    RealSet([
                         interval
-                        for interval, function
-                        in zip(self.pdf.intervals, self.pdf.functions)
-                        if function.value == _max
-                    ]
-                ).simplify()
+                        for interval, function in zip(self.pdf.intervals, self.pdf.functions)
+                        if function.value == likelihood
+                    ]).simplify(),
+                    likelihood
+                )
             )
-        )
+
+        return result
+
+    def k_mpe(self, k: Optional[int] = None) -> List[Tuple[NumberSet, float]]:
+        """
+        Calculate the ``k`` most probable explanation states.
+
+        :param k: The number of solutions to generate, defaults to the maximum possible number.
+        :return: A list containing a tuple containing the likelihood and state in descending order.
+        """
+        return [
+            (
+                self.value2label(state),
+                likelihood
+            ) for state, likelihood in self._k_mpe(k=k)
+        ]
 
     def _fit(
             self,
@@ -237,8 +279,8 @@ class Numeric(Distribution):
         if probspace.isdisjoint(value):
             return 0
         probmass = (
-            (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
-            (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+                (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
+                (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
         )
         if not probmass:
             return probspace in value
@@ -525,10 +567,10 @@ class Numeric(Distribution):
             # We have to "stretch" the pdf value over the interval in label space:
             function_value = function.value * interval.width / interval_.width
             result += (
-                (
-                    pow(interval_.upper - center, order + 1)
-                    - pow(interval_.lower - center, order + 1)
-                ) * function_value / (order + 1)
+                    (
+                            pow(interval_.upper - center, order + 1)
+                            - pow(interval_.lower - center, order + 1)
+                    ) * function_value / (order + 1)
             )
         return result
 
