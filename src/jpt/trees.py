@@ -1650,12 +1650,12 @@ class JPT:
                     'Unknown variable names: %s'
                     % ', '.join(mapstr(set(self.varnames).symmetric_difference(set(data.columns))))
                 )
-
             # Check if the order of columns in the data frame is the same
             # as the order of the variables.
             if not all(c == v for c, v in zip_longest(data.columns, self.varnames)):
-                raise ValueError('Columns in DataFrame must coincide with variable order: %s' %
-                                 ', '.join(mapstr(self.varnames)))
+                raise ValueError(
+                    'Columns in DataFrame must coincide with variable order: %s' % ', '.join(mapstr(self.varnames))
+                )
             transformations = {v: self.varnames[v].domain.values.transformer() for v in data.columns}
             try:
                 data_[:] = data.transform(transformations).values
@@ -2004,10 +2004,10 @@ class JPT:
             element = ' \u2208 '
 
             # content for node labels
-            title = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
+            leaf_label = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
             nodelabel = f'''
             <TR>
-                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{title}</B><BR/>{html.escape(n.str_node)}</TD>
+                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(n.str_node)}</TD>
             </TR>'''
 
             nodelabel = f'''{nodelabel}{imgs}
@@ -2522,6 +2522,9 @@ class JPT:
         hyperparameters["max_depth"] = self.max_depth
 
         return hyperparameters
+
+    def prune(self, similarity_threshold: float = .01) -> 'JPT':
+        return self.copy()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
