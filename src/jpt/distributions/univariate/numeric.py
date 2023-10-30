@@ -555,7 +555,7 @@ class Numeric(Distribution):
         value_transform = ifnone(value_transform, lambda _: _)
         # We have to catch the special case in which the
         # PDF is an impulse function
-        if self.pdf.is_impulse():
+        if self.is_dirac_impulse():
             if order == 1:
                 return self.pdf.gt(0).min
             elif order >= 2:
@@ -563,6 +563,8 @@ class Numeric(Distribution):
         result = 0
         for interval, function in zip(self.pdf.intervals[1:-1], self.pdf.functions[1:-1]):
             interval_ = value_transform(interval)
+            if interval_.width == 0:
+                continue
             # We have to "stretch" the pdf value over the interval in label space:
             function_value = function.value * interval.width / interval_.width
             result += (
