@@ -2,6 +2,7 @@ import itertools
 import json
 import os
 import pickle
+import random
 import statistics
 import tempfile
 import unittest
@@ -25,7 +26,7 @@ from scipy.stats import norm
 import jpt.variables
 from jpt import SymbolicType
 from jpt.base.errors import Unsatisfiability
-from jpt.trees import JPT
+from jpt.trees import JPT, Leaf
 from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment, \
     IntegerVariable
 
@@ -953,6 +954,8 @@ class TestConstantColumns(unittest.TestCase):
         self.assertTrue(len(model.leaves) > 1)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class PreprocessingTest(TestCase):
 
     # noinspection PyMethodMayBeStatic
@@ -1010,6 +1013,8 @@ class PreprocessingTest(TestCase):
             data_
         )
 
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 class ConditionalJPTTest(TestCase):
     data: pd.DataFrame
@@ -1124,6 +1129,8 @@ class ConditionalJPTTest(TestCase):
             self.assertAlmostEqual(1, l_.probability(evidence))
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class TestCaseTargetLearning(TestCase):
     data: pd.DataFrame
 
@@ -1198,7 +1205,6 @@ class TestCaseTargetLearning(TestCase):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
 
 class KMPELeafTest(TestCase):
     data: pd.DataFrame
@@ -1323,3 +1329,46 @@ class KMPELeafTest(TestCase):
                 "is the number of unique solutions iff sets are not"
                 "regarded."
         )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class PruningTest(TestCase):
+
+    def test_pruning(self):
+        # Arrange
+        n = 1000
+        random.seed(42)
+        data = np.array([
+            [random.random() for _ in range(n)],
+            [random.random() for _ in range(n)]
+        ])
+
+        jpt = JPT(
+            variables=[NumericVariable('x'), NumericVariable('y')],
+            min_samples_leaf=100
+        ).learn(rows=data.T)
+        # jpt.plot(plotvars=jpt.variables, view=True)
+
+        # Act
+        pruned_jpt = jpt.prune(.6)
+        # pruned_jpt.plot(plotvars=pruned_jpt.variables, view=True)
+
+        # Assert
+        self.assertEqual(
+            1,
+            len(pruned_jpt.leaves)
+        )
+
+        self.assertIsInstance(
+            pruned_jpt.root,
+            Leaf
+        )
+
+        self.assertAlmostEqual(
+            1,
+            pruned_jpt.root.prior,
+            places=8
+        )
+
+
