@@ -234,6 +234,12 @@ class Integer(Distribution):
     def sample_one(self) -> int:
         return self.value2label(self._sample_one())
 
+    def _pdf(self, value: int) -> float:
+        return self._p(value)
+
+    def pdf(self, label: int) -> float:
+        return self.p(label)
+
     def p(self, labels: Union[int, Iterable[int]]) -> float:
         return self._p(self.label2value(labels))
 

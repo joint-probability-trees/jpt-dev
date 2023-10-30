@@ -1650,12 +1650,12 @@ class JPT:
                     'Unknown variable names: %s'
                     % ', '.join(mapstr(set(self.varnames).symmetric_difference(set(data.columns))))
                 )
-
             # Check if the order of columns in the data frame is the same
             # as the order of the variables.
             if not all(c == v for c, v in zip_longest(data.columns, self.varnames)):
-                raise ValueError('Columns in DataFrame must coincide with variable order: %s' %
-                                 ', '.join(mapstr(self.varnames)))
+                raise ValueError(
+                    'Columns in DataFrame must coincide with variable order: %s' % ', '.join(mapstr(self.varnames))
+                )
             transformations = {v: self.varnames[v].domain.values.transformer() for v in data.columns}
             try:
                 data_[:] = data.transform(transformations).values
@@ -2004,10 +2004,10 @@ class JPT:
             element = ' \u2208 '
 
             # content for node labels
-            title = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
+            leaf_label = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
             nodelabel = f'''
             <TR>
-                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{title}</B><BR/>{html.escape(n.str_node)}</TD>
+                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(n.str_node)}</TD>
             </TR>'''
 
             nodelabel = f'''{nodelabel}{imgs}
@@ -2522,6 +2522,76 @@ class JPT:
         hyperparameters["max_depth"] = self.max_depth
 
         return hyperparameters
+
+    def prune(self, similarity_threshold: float) -> 'JPT':
+        '''
+        Prune this tree by repeatedly merging leaves with very similiar
+        distributions.
+
+        :param similarity_threshold: the average similarity of distributions in [0, 1] that two
+                                     leaves must exhibit in order to be considered for a merge.
+        :return:
+        '''
+        jpt = self.copy()
+        queue: deque[DecisionNode] = deque(list(jpt.innernodes.values()))
+        while queue:
+            node: DecisionNode = queue.popleft()
+            left, right = node.children
+            if (
+                    node.idx not in jpt.innernodes
+                    or not isinstance(left, Leaf)
+                    or not isinstance(right, Leaf)
+            ):
+                continue
+
+            similarities = []
+            for variable in (set(self.variables) - {node.variable}):
+                # Compute the similarity between two leaves
+                similarities.append(
+                    variable.domain.jaccard_similarity(
+                        left.distributions[variable],
+                        right.distributions[variable]
+                    )
+                )
+
+            similarity = np.mean(similarities)
+
+            self.logger.debug(
+                'Leaf #%d ~ Leaf #%d = %f' % (left.idx, right.idx, similarity)
+            )
+
+            if similarity < similarity_threshold:  # below threshold continue
+                continue
+
+            # Merge the two leaves by merging their distributions
+            leaf = Leaf(
+                max(jpt.allnodes) + 1,
+                node.parent,
+                left.prior + right.prior
+            )
+
+            for variable in self.variables:
+                leaf.distributions[variable] = variable.domain.merge(
+                    [left.distributions[variable], right.distributions[variable]],
+                    normalized([left.prior, right.prior])
+                )
+            leaf.samples = left.samples + right.samples
+
+            del jpt.leaves[left.idx]
+            del jpt.leaves[right.idx]
+            del jpt.innernodes[node.idx]
+            jpt.leaves[leaf.idx] = leaf
+
+            if node.parent is not None:
+                node.parent.set_child(
+                    node.parent.children.index(node),
+                    leaf
+                )
+                queue.append(leaf.parent)
+            else:
+                jpt.root = leaf
+
+        return jpt
 
 
 # ----------------------------------------------------------------------------------------------------------------------

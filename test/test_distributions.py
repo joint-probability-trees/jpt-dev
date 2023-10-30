@@ -687,6 +687,29 @@ class NumericDistributionTest(TestCase):
         jacc2 = Numeric.jaccard_similarity(d2, d1)
         self.assertEqual(jacc1, jacc2)
 
+    def test_jaccard_singularity(self):
+        # Arrange
+        d1 = Numeric().set(
+            QuantileDistribution.from_pdf(
+                PiecewiseFunction
+                .zero()
+                .overwrite_at(
+                    ContinuousSet(0, 0 + eps, INC, EXC),
+                    ConstantFunction(np.inf)
+                )
+            )
+        )
+        d2 = d1.copy()
+
+        # Act
+        similarity = Numeric.jaccard_similarity(d1, d2)
+
+        # Assert
+        self.assertEqual(
+            1,
+            similarity
+        )
+
     def test_add(self):
         # Arrange
         x = uniform_numeric(-1, 1)

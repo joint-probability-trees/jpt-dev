@@ -94,12 +94,18 @@ cdef class Function:
 
     def __add__(self, other):
         if isinstance(other, numbers.Real):
-            return self.add(ConstantFunction(other)).simplify()
+            return self.add(
+                ConstantFunction(other)
+            ).simplify()
         elif isinstance(other, Function):
             return self.add(other).simplify()
         else:
-            raise TypeError('Unsupported operand type(s) for +: %s and %s' % (type(self).__name__,
-                                                                              type(other).__name__))
+            raise TypeError(
+                'Unsupported operand type(s) for +: %s and %s' % (
+                    type(self).__name__,
+                    type(other).__name__
+                )
+            )
 
     def __mul__(self, other: Union[float, Function]) -> 'Function':
         if isinstance(other, numbers.Real):
@@ -126,6 +132,9 @@ cdef class Function:
 
     def __rmul__(self, other):
         return other * self
+
+    def __eq__(self, other):
+        raise NotImplementedError()
 
     cpdef Function simplify(self):
         """
@@ -164,6 +173,10 @@ cdef class Undefined(Function):
 
     def __eq__(self, other):
         if isinstance(other, Undefined):
+            return True
+        elif isinstance(other, ConstantFunction) and np.isnan(other.value):
+            return True
+        elif isinstance(other, LinearFunction) and any(np.isnan(other.m), np.isnan(other.c)):
             return True
         return False
 
@@ -321,10 +334,21 @@ cdef class ConstantFunction(Function):
 
     def __eq__(self, other):
         if not isinstance(other, Function):
-            raise TypeError('Cannot compare object of type %s to %s.' % (type(self).__name__,
-                                                                         type(other).__name__))
-        if isinstance(other, (LinearFunction, ConstantFunction)):
-            return self.m == other.m and self.c == other.c
+            raise TypeError(
+                'Cannot compare object of type %s to %s.' % (
+                    type(self).__name__,
+                    type(other).__name__
+                )
+            )
+        if isinstance(other, ConstantFunction):
+            return np.isnan(self.value) and np.isnan(other.value) or self.value == other.value
+        elif isinstance(other, LinearFunction):
+            return (
+                (other.m == 0 and self.value == other.c)
+                or (np.isnan(self.value) and (np.isnan(other.c) or np.isnan(other.m)))
+            )
+        elif isinstance(other, Undefined) and np.isnan(self.value):
+            return True
         return False
 
     cpdef Function set(self, Function f):
@@ -582,8 +606,18 @@ cdef class LinearFunction(Function):
         return self.set(self * other)
 
     def __eq__(self, other):
-        if isinstance(other, (ConstantFunction, LinearFunction)):
-            return self.m == other.m and self.c == other.c
+        if isinstance(other, LinearFunction):
+            return (
+                ((np.isnan(self.c) or np.isnan(self.m)) and (np.isnan(other.c) or np.isnan(other.m)))
+                or (self.m == other.m and self.c == other.c)
+            )
+        elif isinstance(other, ConstantFunction):
+            return (
+                (self.m == 0 and other.value == self.c)
+                or (np.isnan(self.c) or np.isnan(self.m)) and np.isnan(other.value)
+            )
+        elif isinstance(other, Undefined) and (np.isnan(self.c) or np.isnan(self.m)):
+            return True
         elif isinstance(other, Function):
             return False
         else:

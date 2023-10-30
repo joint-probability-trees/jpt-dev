@@ -66,7 +66,7 @@ class Numeric(Distribution):
         return self.p(value)
 
     def __eq__(self, o: 'Numeric'):
-        if not issubclass(type(o), Numeric):
+        if not issubclass(type(o), Numeric) and not type(o) is Numeric:
             raise TypeError(
                 'Cannot compare object of type %s '
                 'with other object of type %s' % (
@@ -556,7 +556,7 @@ class Numeric(Distribution):
         value_transform = ifnone(value_transform, lambda _: _)
         # We have to catch the special case in which the
         # PDF is an impulse function
-        if self.pdf.is_impulse():
+        if self.is_dirac_impulse():
             if order == 1:
                 return self.pdf.gt(0).min
             elif order >= 2:
@@ -564,6 +564,8 @@ class Numeric(Distribution):
         result = 0
         for interval, function in zip(self.pdf.intervals[1:-1], self.pdf.functions[1:-1]):
             interval_ = value_transform(interval)
+            if interval_.width == 0:
+                continue
             # We have to "stretch" the pdf value over the interval in label space:
             function_value = function.value * interval.width / interval_.width
             result += (
@@ -601,7 +603,25 @@ class Numeric(Distribution):
             d1: 'Numeric',
             d2: 'Numeric',
     ) -> float:
-        return PiecewiseFunction.jaccard_similarity(d1.pdf, d2.pdf)
+        if d1 == d2:
+            return 1
+        points = list(
+            sorted(
+                set(d1.pdf.boundaries()) | set(d2.pdf.boundaries())
+            )
+        )
+        intersection = 0
+        union = 0
+        for p1, p2 in pairwise(points):
+            v1 = d1.pdf.eval(
+                ContinuousSet(p1, p2).any_point()
+            )
+            v2 = d2.pdf.eval(
+                ContinuousSet(p1, p2).any_point()
+            )
+            intersection += min(v1, v2) * (p2 - p1)
+            union += max(v1, v2) * (p2 - p1)
+        return intersection / union
 
     def plot(
             self,

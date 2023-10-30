@@ -96,6 +96,44 @@ class ConstantFunctionTest(TestCase):
     def test_integrate(self, f, x, i):
         self.assertEqual(i, f.integrate(x[0], x[1]))
 
+    @data(
+        (ConstantFunction(0), ConstantFunction(0)),
+        (ConstantFunction(np.nan), ConstantFunction(np.nan)),
+        (ConstantFunction(1), LinearFunction(0, 1)),
+        (ConstantFunction(np.nan), LinearFunction(0, np.nan)),
+        (ConstantFunction(np.nan), Undefined())
+    )
+    @unpack
+    def test_equal(self, f1, f2):
+        self.assertEqual(
+            f1,
+            f2
+        )
+        self.assertEqual(
+            f2,
+            f1
+        )
+
+    @data(
+        (ConstantFunction(0), ConstantFunction(1)),
+        (ConstantFunction(np.nan), ConstantFunction(1)),
+        (ConstantFunction(1), LinearFunction(.01, 1)),
+        (ConstantFunction(1), LinearFunction(0, 0)),
+        (ConstantFunction(1), LinearFunction(0, np.nan)),
+        (ConstantFunction(1), LinearFunction(np.nan, 1)),
+        (ConstantFunction(1), Undefined())
+    )
+    @unpack
+    def test_unequal(self, f1, f2):
+        self.assertNotEqual(
+            f1,
+            f2
+        )
+        self.assertNotEqual(
+            f2,
+            f1
+        )
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -148,15 +186,37 @@ class LinearFunctionTest(TestCase):
     def test_fit_integrity_check(self, p1, p2):
         self.assertRaises(ValueError, LinearFunction.from_points, p1, p2)
 
-    def test_equality(self):
-        f1 = LinearFunction(1, 1)
-        f2 = ConstantFunction(1)
-        f3 = LinearFunction(0, 1)
+    @data(
+        (LinearFunction(0, 1), ConstantFunction(1)),
+        (LinearFunction(0, 1), LinearFunction(0, 1)),
+        (LinearFunction(np.nan, np.nan), ConstantFunction(np.nan)),
+        (LinearFunction(np.nan, 0), ConstantFunction(np.nan)),
+        (LinearFunction(0, np.nan), ConstantFunction(np.nan)),
+    )
+    @unpack
+    def test_equality(self, f1, f2):
+        self.assertEqual(f1, f2)
+        self.assertEqual(f2, f1)
+        self.assertEqual(f1, f1)
+        self.assertEqual(f2, f2)
 
-        self.assertTrue(f1 == LinearFunction(1, 1))
-        self.assertTrue(f2 == ConstantFunction(1))
-        self.assertTrue(f3 == LinearFunction(0, 1))
-        self.assertEqual(f2, f3)
+    @data(
+        (LinearFunction(1, 1), ConstantFunction(1)),
+        (LinearFunction(1, 1), LinearFunction(1, 0)),
+        (LinearFunction(1, 1), LinearFunction(0, 1)),
+        (LinearFunction(1, 1), LinearFunction(2, 2)),
+        (LinearFunction(np.nan, 1), LinearFunction(2, 2)),
+        (LinearFunction(np.nan, np.nan), LinearFunction(2, 2)),
+    )
+    @unpack
+    def test_inequality(self, f1, f2):
+        self.assertNotEqual(
+            f1,
+            f2
+        )
+        self.assertEqual(f1, f1)
+        self.assertEqual(f2, f2)
+
 
     def test_serialization(self):
         f1 = LinearFunction(1, 1)
@@ -434,6 +494,7 @@ class PLFTest(TestCase):
         self.assertEqual(res, plf1 + f)
 
     def test_add_linear(self):
+        # Arrange
         plf1 = PiecewiseFunction.from_dict({
             ']-∞,0[': 0,
             '[0,1[': str(LinearFunction.from_points((0, 0), (1, .5))),
@@ -442,14 +503,21 @@ class PLFTest(TestCase):
             '[3,∞[': 1
         })
         f = LinearFunction(2.5, 3.5)
-        res = PiecewiseFunction.from_dict({
-            ']-∞,0[': '2.5x + 3.5',
-            '[0,1[': '3.0x + 3.5',
-            '[1,2[': '2.5x + 4',
-            '[2,3[': '3x + 3',
-            '[3,∞[': '2.5x + 4.5'
-        })
-        self.assertEqual(res, plf1 + f)
+
+        # Act
+        result = plf1 + f
+
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                ']-∞,0[': '2.5x + 3.5',
+                '[0,1[': '3.0x + 3.5',
+                '[1,2[': '2.5x + 4',
+                '[2,3[': '3x + 3',
+                '[3,∞[': '2.5x + 4.5'
+            }),
+            result
+        )
 
     def test_add_plf(self):
         plf1 = PiecewiseFunction.from_dict({

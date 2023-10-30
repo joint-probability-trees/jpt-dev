@@ -207,6 +207,12 @@ class Multinomial(Distribution):
     def copy(self):
         return type(self)(**self.settings).set(params=self._params)
 
+    def _pdf(self, value: int) -> float:
+        return self._p(value)
+
+    def pdf(self, label: Symbol) -> float:
+        return self.p(label)
+
     def p(
         self,
         event: Union[Symbol, Set[Symbol], List[Symbol], Tuple[Symbol], np.ndarray]

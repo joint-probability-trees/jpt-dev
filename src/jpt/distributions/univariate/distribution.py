@@ -97,10 +97,10 @@ class Distribution:
     def sample_one(self) -> Any:
         return self.value2label(self._sample_one())
 
-    def p(self, value):
+    def p(self, value) -> float:
         raise NotImplementedError()
 
-    def _p(self, value):
+    def _p(self, value) -> float:
         raise NotImplementedError()
 
     def mpe(self):
