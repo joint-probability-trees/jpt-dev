@@ -602,7 +602,25 @@ class Numeric(Distribution):
             d1: 'Numeric',
             d2: 'Numeric',
     ) -> float:
-        return PiecewiseFunction.jaccard_similarity(d1.pdf, d2.pdf)
+        if d1 == d2:
+            return 1
+        points = list(
+            sorted(
+                set(d1.pdf.boundaries()) | set(d2.pdf.boundaries())
+            )
+        )
+        intersection = 0
+        union = 0
+        for p1, p2 in pairwise(points):
+            v1 = d1.pdf.eval(
+                ContinuousSet(p1, p2).any_point()
+            )
+            v2 = d2.pdf.eval(
+                ContinuousSet(p1, p2).any_point()
+            )
+            intersection += min(v1, v2) * (p2 - p1)
+            union += max(v1, v2) * (p2 - p1)
+        return intersection / union
 
     def plot(
             self,
