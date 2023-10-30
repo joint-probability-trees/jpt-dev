@@ -65,7 +65,7 @@ class Numeric(Distribution):
         return self.p(value)
 
     def __eq__(self, o: 'Numeric'):
-        if not issubclass(type(o), Numeric):
+        if not issubclass(type(o), Numeric) and not type(o) is Numeric:
             raise TypeError(
                 'Cannot compare object of type %s '
                 'with other object of type %s' % (
