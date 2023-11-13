@@ -386,22 +386,13 @@ cdef class Impurity:
         self.max_impurity_improvement = 0
 
         # initialize array of indices of the numeric targets
-        self.numeric_vars = np.array([
-            <int> i for i, v in enumerate(tree.variables)
-            if (v.numeric or v.integer) and v in tree.targets
-        ], dtype=np.int64)
+        self.numeric_vars = self.get_indices_of_numeric_targets_from_tree(tree)
 
         # initialize array of indices of the symbolic targets
-        self.symbolic_vars = np.array([
-            <int> i for i, v in enumerate(tree.variables)
-            if v.symbolic and v in tree.targets
-        ], dtype=np.int64)
+        self.symbolic_vars = self.get_indices_of_symbolic_targets_from_tree(tree)
 
         # store impurity inversion
-        self.invert_impurity = np.array([
-            v.invert_impurity for v in tree.variables
-            if v.symbolic and v in tree.targets
-        ], dtype=np.int64)
+        self.invert_impurity = self.get_invert_impurity_from_tree(tree)
 
         # get the number of symbolic targets
         self.n_sym_vars = len(self.symbolic_vars)
@@ -410,10 +401,10 @@ cdef class Impurity:
         self.n_num_vars = len(self.numeric_vars)
 
         # get the number of all symbolic variables
-        self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
+        self.n_sym_vars_total = self.count_symbolic_variables_total_from_tree(tree)
 
         # get the number of all numeric and integer variables
-        self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric or _.integer])
+        self.n_num_vars_total = self.count_numeric_variables_total_from_tree(tree)
 
         # get indices of all targets
         self.all_vars = np.concatenate((self.numeric_vars, self.symbolic_vars))
@@ -425,16 +416,10 @@ cdef class Impurity:
         self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
 
         # get the indices of numeric features
-        self.numeric_features = np.array([
-            i for i, v in enumerate(tree.variables)
-            if (v.numeric or v.integer) and v in tree.features
-        ], dtype=np.int64)
+        self.numeric_features = self.get_indices_of_numeric_features_from_tree(tree)
 
         # get the indices of symbolic features
-        self.symbolic_features = np.array([
-            i for i, v in enumerate(tree.variables)
-            if v.symbolic and v in tree.features
-        ], dtype=np.int64)
+        self.symbolic_features = self.get_indices_of_symbolic_features_from_tree(tree)
 
         # construct all feature indices
         self.features = np.concatenate((self.numeric_features, self.symbolic_features))
@@ -561,6 +546,50 @@ cdef class Impurity:
             if indices.shape[0]:  # ... and store them in the numeric dependency matrix.
                 self.symbolic_dependency_matrix[idx_var, :indices.shape[0]] = indices
 
+    def get_indices_of_numeric_targets_from_tree(self, tree):
+        """
+        Get the indices of the numeric targets from a tree.
+        """
+        return np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if (v.numeric or v.integer) and v in tree.targets
+        ], dtype=np.int64)
+
+    def get_indices_of_symbolic_targets_from_tree(self, tree):
+        """
+        Get the indices of the symbolic targets from a tree.
+        """
+        return np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if v.symbolic and v in tree.targets
+        ], dtype=np.int64)
+
+    def get_invert_impurity_from_tree(self, tree):
+        """
+        Get the impurity inversion from a tree.
+        """
+        return np.array([
+            <int> v.invert_impurity for v in tree.variables
+            if v.symbolic and v in tree.targets
+        ], dtype=np.int64)
+
+    def count_symbolic_variables_total_from_tree(self, tree) -> int:
+        return len([_ for _ in tree.variables if _.symbolic])
+
+    def count_numeric_variables_total_from_tree(self, tree):
+        return len([_ for _ in tree.variables if _.numeric or _.integer])
+
+    def get_indices_of_numeric_features_from_tree(self, tree):
+        return np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if (v.numeric or v.integer) and v in tree.features
+        ], dtype=np.int64)
+
+    def get_indices_of_symbolic_features_from_tree(self, tree):
+        return np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if v.symbolic and v in tree.features
+        ], dtype=np.int64)
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
         """
@@ -1172,4 +1201,6 @@ cdef class Impurity:
             len(self.numeric_features),
             ','.join(mapstr(self.numeric_features))
         ]))
+
+# cpdef class PCImpurity(Impurity)
 

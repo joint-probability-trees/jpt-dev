@@ -8,3 +8,4 @@ arff>=0.9
 fglib>=0.2.3
 factorgraph>=0.0.3
 deprecated
+probabilistic-model>=1.2.6
