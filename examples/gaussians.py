@@ -2,18 +2,13 @@ import logging
 from functools import reduce
 
 import numpy as np
-from matplotlib._color_data import BASE_COLORS
-
-from dnutils import out, first, ifnone
+import plotly.graph_objects as go
+from dnutils import first
 from pandas import DataFrame
 
-from jpt.base.utils import format_path
 from jpt.distributions import Gaussian, Numeric, SymbolicType
-from matplotlib import pyplot as plt
-
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable, VariableMap
-
 
 visualize = True
 
@@ -29,27 +24,51 @@ def plot_gaussian(gaussians):
         Z += 1 / len(gaussians) * gaussian.pdf(xy)
     Z = Z.reshape(X.shape)
 
-    ax = plt.axes(projection='3d')
-    ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none')
+    mainfig = go.Figure()
+    mainfig.add_trace(
+        go.Surface(
+            x=X,
+            y=Y,
+            z=Z,
+            colorscale='dense',
+            contours_z=dict(
+                show=True,
+                usecolormap=True,
+                highlightcolor="limegreen",
+                project_z=True
+            ),
+            showscale=False
+        ),
+    )
+
+    mainfig.update_layout(
+        width=1000,
+        height=1000
+    )
+
+    mainfig.show(
+        config=dict(
+            displaylogo=False,
+            toImageButtonOptions=dict(
+                format='svg',  # one of png, svg, jpeg, webp
+                scale=1
+            )
+        )
+    )
 
 
 def generate_gaussian_samples(gaussians, n):
     per_gaussian = int(n / len(gaussians))
     data = [g.sample(per_gaussian) for g in gaussians]
-    colors = [[c] * per_gaussian for c in list(BASE_COLORS.keys())[:len(gaussians)]]
+    colors = [[c] * per_gaussian for c in ['rgb(134, 129, 177)', 'rgb(0, 104, 180)'][:len(gaussians)]]
 
     all_data = np.vstack(data)
-    for d, c in zip(data, colors):
-        plt.scatter(d[:, 0], d[:, 1], color=c, marker='x')
-    # plt.scatter(gauss2_data[:, 0], gauss2_data[:, 1], color='b', marker='x')
-    # all_data = np.hstack([all_data, reduce(list.__add__, colors)])
 
     df = DataFrame({'X': all_data[:, 0], 'Y': all_data[:, 1], 'Color': reduce(list.__add__, colors)})
     return df
 
 
 def main(verbose=True):
-    plt.close()
     global visualize
     visualize = verbose
 
@@ -66,6 +85,21 @@ def main(verbose=True):
     jpt = JPT([varx, vary, varcolor], min_samples_leaf=.1)
     jpt.learn(df)
 
+    mainfig = go.Figure()
+    mainfig.add_trace(
+        go.Scatter(
+            x=df['X'].values,
+            y=df['Y'].values,
+            marker=dict(
+                symbol='x',
+                color=df['Color'].values,
+                size=10,
+            ),
+            mode='markers',
+            showlegend=False
+        )
+    )
+
     for leaf in jpt.leaves.values():
         xlower = varx.domain.labels[leaf.path[varx].lower if varx in leaf.path else -np.inf]
         xupper = varx.domain.labels[leaf.path[varx].upper if varx in leaf.path else np.inf]
@@ -81,19 +115,44 @@ def main(verbose=True):
             hlines.append(ylower)
         if yupper != np.PINF:
             hlines.append(yupper)
-        plt.vlines(vlines, max(ylower, -2), min(yupper, 2),
-                   color={0: 'r', 1: 'b', None: 'gray'}[first(leaf.path[varcolor])
-                   if varcolor in leaf.path else None])
-        plt.hlines(hlines, max(xlower, -2.5), min(xupper, 2.5),
-                   color={0: 'r', 1: 'b', None: 'gray'}[first(leaf.path[varcolor])
-                   if varcolor in leaf.path else None])
+
+        print(first(leaf.path[varcolor]))
+        for hl in hlines:
+            mainfig.add_hline(
+                y=hl,
+                line_color={0: 'rgb(134, 129, 177)', 1: 'rgb(0, 104, 180)', None: 'gray'}[first(leaf.path[varcolor]) if varcolor in leaf.path else None])
+        for vl in vlines:
+            mainfig.add_vline(
+                x=vl,
+                line_color={0: 'rgb(134, 129, 177)', 1: 'rgb(0, 104, 180)', None: 'gray'}[first(leaf.path[varcolor]) if varcolor in leaf.path else None])
+
     if visualize:
-        plt.show()
+        mainfig.update_layout(
+            width=1000,
+            height=1000
+        )
 
-    print('10-MPE states:')
-    for mpe in jpt.kmpe(k=10):
-        print('  ', mpe)
+        mainfig.show(
+            config=dict(
+                displaylogo=False,
+                toImageButtonOptions=dict(
+                    format='svg',  # one of png, svg, jpeg, webp
+                    scale=1
+                )
+            )
+        )
 
+    jpt.plot(
+        nodefill='#768ABE',
+        leaffill='#CCDAFF',
+        view=True,
+        plotvars=[varx, vary, varcolor],
+    )
+
+    # _data = jpt._preprocess_data(df)
+    # dec = DecisionTreeClassifier(min_samples_leaf=.1)
+    # dec.fit(_data[:, :-1], _data[:, -1:])
+    # plot_tree(dec)
     plot_conditional(jpt, varx, vary)
     plot_gaussian([gauss1, gauss2])
     # plot_conditional(jpt, varx, vary, {varcolor: 'R'})
@@ -108,16 +167,37 @@ def plot_conditional(jpt, qvarx, qvary, evidence=None, title=None):
     Z = np.array([jpt.pdf(VariableMap([(qvarx, x),
                                        (qvary, y)])) for x, y, in zip(X.ravel(), Y.ravel())]).reshape(X.shape)
 
-    ax = plt.axes(projection='3d')
-    ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none')
-    ax.set_title(ifnone(title, 'P(%s, %s|%s)' % (qvarx.name,
-                                                 qvary.name,
-                                                 format_path(evidence) if evidence else r'$\emptyset$')))
-    if visualize:
-        plt.show()
-    plt.plot(x, np.array([jpt.pdf(VariableMap([(qvary, x_)])) for x_ in x]))
-    if visualize:
-        plt.show()
+    mainfig = go.Figure()
+    mainfig.add_trace(
+        go.Surface(
+            x=X,
+            y=Y,
+            z=Z,
+            colorscale='dense',
+            contours_z=dict(
+                show=True,
+                usecolormap=True,
+                highlightcolor="limegreen",
+                project_z=True
+            ),
+            showscale=False
+        ),
+    )
+
+    mainfig.update_layout(
+        width=1000,
+        height=1000
+    )
+
+    mainfig.show(
+        config=dict(
+            displaylogo=False,
+            toImageButtonOptions=dict(
+                format='svg',  # one of png, svg, jpeg, webp
+                scale=1
+            )
+        )
+    )
 
 
 if __name__ == '__main__':
