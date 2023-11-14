@@ -1348,11 +1348,11 @@ class PruningTest(TestCase):
             variables=[NumericVariable('x'), NumericVariable('y')],
             min_samples_leaf=100
         ).learn(rows=data.T)
-        # jpt.plot(plotvars=jpt.variables, view=True)
+        jpt.plot(plotvars=jpt.variables, view=False)
 
         # Act
         pruned_jpt = jpt.prune(.6)
-        # pruned_jpt.plot(plotvars=pruned_jpt.variables, view=True)
+        pruned_jpt.plot(plotvars=pruned_jpt.variables, view=False)
 
         # Assert
         self.assertEqual(
