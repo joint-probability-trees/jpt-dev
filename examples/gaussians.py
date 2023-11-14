@@ -46,15 +46,16 @@ def plot_gaussian(gaussians):
         height=1000
     )
 
-    mainfig.show(
-        config=dict(
-            displaylogo=False,
-            toImageButtonOptions=dict(
-                format='svg',  # one of png, svg, jpeg, webp
-                scale=1
+    if visualize:
+        mainfig.show(
+            config=dict(
+                displaylogo=False,
+                toImageButtonOptions=dict(
+                    format='svg',  # one of png, svg, jpeg, webp
+                    scale=1
+                )
             )
         )
-    )
 
 
 def generate_gaussian_samples(gaussians, n):
@@ -145,7 +146,7 @@ def main(verbose=True):
     jpt.plot(
         nodefill='#768ABE',
         leaffill='#CCDAFF',
-        view=True,
+        view=visualize,
         plotvars=[varx, vary, varcolor],
     )
 
@@ -189,15 +190,16 @@ def plot_conditional(jpt, qvarx, qvary, evidence=None, title=None):
         height=1000
     )
 
-    mainfig.show(
-        config=dict(
-            displaylogo=False,
-            toImageButtonOptions=dict(
-                format='svg',  # one of png, svg, jpeg, webp
-                scale=1
+    if visualize:
+        mainfig.show(
+            config=dict(
+                displaylogo=False,
+                toImageButtonOptions=dict(
+                    format='svg',  # one of png, svg, jpeg, webp
+                    scale=1
+                )
             )
         )
-    )
 
 
 if __name__ == '__main__':

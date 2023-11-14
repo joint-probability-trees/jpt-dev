@@ -143,7 +143,7 @@ def main(visualize=False):
         # plotvars=tree.variables,
         nodefill='#768ABE',
         leaffill='#CCDAFF',
-        view=False,
+        view=visualize,
     )
 
 

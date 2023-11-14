@@ -176,17 +176,20 @@ def main(visualize=True):
         include_plotlyjs="cdn"
     )
 
-    mainfig.show(
-        config=dict(
-            displaylogo=False,
-            toImageButtonOptions=dict(
-                format='svg',  # one of png, svg, jpeg, webp
-                filename=fname,
-                scale=1
+    if visualize:
+        mainfig.show(
+            config=dict(
+                displaylogo=False,
+                toImageButtonOptions=dict(
+                    format='svg',  # one of png, svg, jpeg, webp
+                    filename=fname,
+                    scale=1
+                )
             )
         )
-    )
+
+    return mainfig
 
 
 if __name__ == '__main__':
-    main()
+    main(visualize=True)
