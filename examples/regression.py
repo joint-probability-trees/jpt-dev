@@ -1,11 +1,12 @@
+import logging
+import os
+
 import numpy as np
 import pandas as pd
-
-from matplotlib import pyplot as plt
+import plotly.graph_objects as go
 
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, VariableMap
-import logging
+from jpt.variables import NumericVariable
 
 logging.getLogger("/jpt").setLevel(0)
 
@@ -40,7 +41,6 @@ def generate_data(func, x_lower, x_upper, n):
 
 
 def main(visualize=True):
-    plt.close()
     df = generate_data(f, -20, 10, 1000)
 
     # Mesh the input space for evaluations of the real function,
@@ -68,28 +68,124 @@ def main(visualize=True):
     y_lower_ = [(p[vary].ppf.eval((1 - conf_level) / 2) if p is not None else None) for p in my_predictions]
     y_upper_ = [(p[vary].ppf.eval(1 - (1 - conf_level) / 2) if p is not None else None) for p in my_predictions]
 
-    # posterior = jpt.posterior([varx], {vary: 0})
+    title = r'$\text{2D Regression Example: }(\vartheta=%.2f\%%)$' % (confidence * 100)
+    fname = "Regression-Example"
+    directory = '/tmp'
+    mainfig = go.Figure()
 
-    # Plot the function, the prediction and the 90% confidence interval based on the MSE
-    plt.plot(xx, f(xx), color='black', linestyle=':', linewidth='2', label=r'$f(x) = x\,\sin(x)$')
-    plt.plot(df['x'].values, df['y'].values, '.', color='gray', markersize=5, label='Training data')
-    plt.plot(xx, y_pred_, 'm-', label='JPT Prediction', linewidth=2)
-    plt.plot(xx, y_lower_, 'y--', label='%.1f%% Confidence bands' % (confidence * 100))
-    plt.plot(xx, y_upper_, 'y--')
-    # plt.plot(xx, np.asarray(posterior.distributions[varx].pdf.multi_eval(xx.ravel().astype(np.float64))),
-    #          label='Posterior')
-    plt.plot(xx, np.array([jpt.pdf(VariableMap([(varx, x_), (vary, 0)])) for x_ in xx.ravel().astype(np.float64)]),
-             label='Posterior')
+    # scatter x sin(x) function
+    mainfig.add_trace(
+        go.Scatter(
+            x=xx.reshape(-1),
+            y=f(xx).reshape(-1),
+            line=dict(
+                color='black',
+                width=2,
+                dash='dot'
+            ),
+            mode='lines',
+            name=r'$f(x) = x\,\sin(x)$'
+        )
+    )
 
-    plt.xlabel('$x$')
-    plt.ylabel('$f(x)$')
-    plt.ylim(-10, 20)
-    plt.xlim(-25, 15)
-    plt.legend(loc='upper left')
-    plt.title(r'2D Regression Example ($\vartheta=%.2f\%%$)' % (confidence * 100))
-    plt.grid()
-    if visualize:
-        plt.show()
+    # scatter training data
+    mainfig.add_trace(
+        go.Scatter(
+            x=df['x'].values,
+            y=df['y'].values,
+            marker=dict(
+                symbol='circle',
+                color='gray',
+                size=5,
+            ),
+            mode='markers',
+            name="Training data",
+        )
+    )
+
+    mainfig.add_trace(
+        go.Scatter(
+            x=xx.reshape(-1),
+            y=y_pred_,
+            line=dict(
+                color='#C800C8',
+                width=2,
+                dash='solid'
+            ),
+            mode='lines',
+            name=r'JPT Prediction'
+        )
+    )
+
+    mainfig.add_trace(
+        go.Scatter(
+            x=xx.reshape(-1),
+            y=y_lower_,
+            line=dict(
+                color='#D5A33F',
+                width=2,
+                dash='dash'
+            ),
+            mode='lines',
+            name='%.1f%% Confidence bands' % (confidence * 100)
+        )
+    )
+
+    mainfig.add_trace(
+        go.Scatter(
+            x=xx.reshape(-1),
+            y=y_upper_,
+            line=dict(
+                color='#D5A33F',
+                width=2,
+                dash='dash'
+            ),
+            mode='lines',
+            showlegend=False
+        )
+    )
+
+    mainfig.update_layout(
+        width=1200,
+        height=1000,
+        xaxis=dict(
+            title='x',
+            side='bottom',
+            range=[-20, 15]
+        ),
+        yaxis=dict(
+            title='f(x)',
+            range=[-20, 20]
+        ),
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=.8
+        ),
+        # title=title
+    )
+
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    fpath = os.path.join(directory, fname)
+
+    mainfig.write_html(
+        fpath,
+        include_plotlyjs="cdn"
+    )
+
+    mainfig.show(
+        config=dict(
+            displaylogo=False,
+            toImageButtonOptions=dict(
+                format='svg',  # one of png, svg, jpeg, webp
+                filename=fname,
+                scale=1
+            )
+        )
+    )
 
 
 if __name__ == '__main__':
