@@ -1,6 +1,5 @@
-import numbers
-
 import json
+import numbers
 import pickle
 from typing import Type
 from unittest import TestCase
@@ -14,7 +13,7 @@ from jpt import SymbolicVariable
 from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.utils import OrderedDictProxy, DataScaler
-from utils import gaussian_numeric, uniform_numeric
+from utils import uniform_numeric
 
 try:
     from jpt.base.functions import __module__
@@ -264,15 +263,15 @@ class MultinomialDistributionTest(TestCase):
         DistABC = self.DistABC
         d1 = DistABC().set(params=[.5, .25, .25])
         d1.plot(
-            view=True,
+            view=False,
             horizontal=True
         )
 
-    def test_plot(self):
+    def test_plot_coin(self):
         fr = SymbolicVariable('BiasedCoin', Bool)
         d1 = fr.distribution().set(5/12.)
         d1.plot(
-            view=True,
+            view=False,
             horizontal=True
         )
 
@@ -653,7 +652,13 @@ class NumericDistributionTest(TestCase):
     def test_plot(self):
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         d.plot(
-            view=True
+            view=False,
+            title="Fancy Title",
+            xlabel='my value',
+            # color="#800080",
+            color="#8000804D",
+            # color='rgb(128, 0, 128)'
+            # color='rgba(128, 0, 128, 179)'
         )
 
     def test_jaccard_overlap(self):
@@ -716,6 +721,10 @@ class NumericDistributionTest(TestCase):
         y = uniform_numeric(-1, 1)
         # Act
         z = (x + y)
+
+        x.plot(view=False)
+        y.plot(view=False)
+        z.plot(view=False)
         # Assert
         self.assertAlmostEqual(
             x.expectation() + y.expectation(),
@@ -1121,13 +1130,23 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual([0, 1, 2], list(sumpos.values.values()))
         self.assertEqual(res, list(sumpos.probabilities))
 
+        d1.plot(
+            view=False,
+            color="rgb(0,104,180)"
+        )
+
+        sumpos.plot(
+            view=False,
+            color="rgb(0,104,180)"
+        )
+
 
     def test_plot(self):
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([1 / 6] * 6)
         d1.plot(
             title="Test",
-            view=True,
+            view=False,
             horizontal=False
         )
 
