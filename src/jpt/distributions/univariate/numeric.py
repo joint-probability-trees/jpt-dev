@@ -630,6 +630,7 @@ class Numeric(Distribution):
             xlabel: str = 'value',
             directory: str = '/tmp',
             view: bool = False,
+            color: str = 'rgb(15,21,110)',
             **kwargs
     ) -> Figure:
         '''
@@ -641,6 +642,12 @@ class Numeric(Distribution):
         :param xlabel:      the label of the x-axis
         :param directory:   the directory to store the generated plot files
         :param view:        whether to display generated plots, default False (only stores files)
+        :param color:       the color of the plot traces; accepts str of form:
+                            * rgb(r,g,b) with r,g,b being int or float
+                            * rgba(r,g,b,a) with r,g,b being int or float, a being float
+                            * #f0c (as short form of #ff00cc) or #f0cf (as short form of #ff00ccff)
+                            * #ff00cc
+                            * #ff00ccff
         :return:            plotly.graph_objs.Figure
         '''
 
@@ -667,10 +674,42 @@ class Numeric(Distribution):
         X_ = np.array([self.labels[x] for x in X])
         Y = np.array(self.cdf.multi_eval(X))
 
+        # hacky workaround to clip very small numbers close to zero
+        X_[abs(X_) < 5.e-306] = 0
+
         bounds = np.array([i.upper for i in self.cdf.intervals[:-1]])
         bounds_ = np.array([self.labels[b] for b in bounds])
 
         mainfig = go.Figure()
+
+
+        # MOVE THIS TO PLOTLY LIBRARY UTILS
+        def hextorgb(col):
+            h = col.strip("#")
+            l = len(h)
+            if l == 3 or l == 4:  # e.g. "#fff"
+                return hextorgb(f'{"".join([(v)*2 for v in h],)}')
+            if l == 6:  # e.g. "#2D6E0F"
+                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+            if l == 8:  # e.g. "#2D6E0F33"
+                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) + (round(int(h[6:8], 16)/255, 2),)
+
+        def to_rgb(color, opacity=.6):
+            if color.startswith('#'):
+                color = hextorgb(color)
+                if len(color) == 4:
+                    opacity = color[-1]
+                    color = color[:-1]
+            elif color.startswith('rgba'):
+                color = tuple(map(float, color[5:-1].split(',')))
+                opacity = color[-1]
+                color = color[:-1]
+            elif color.startswith('rgb'):
+                color = tuple(map(float, color[4:-1].split(',')))
+            return f'rgb{*color,}', f'rgba{*color+(opacity,),}'
+
+        # extract rgb colors from given hex, rgb or rgba string
+        rgb, rgba = to_rgb(color)
 
         # plot dashed CDF
         mainfig.add_trace(
@@ -680,7 +719,7 @@ class Numeric(Distribution):
                 mode='lines',
                 name='Piecewise linear CDF from bounds',
                 line=dict(
-                    color='cornflowerblue',
+                    color=rgb,
                     width=4,
                     dash='dash'
                 )
@@ -694,10 +733,10 @@ class Numeric(Distribution):
                 y=np.asarray(self.cdf.multi_eval(bounds)),
                 marker=dict(
                     symbol='circle',
-                    color='rgba(15,21,110,0.6)',
+                    color=rgba,
                     size=15,
                     line=dict(
-                        color='rgba(15,21,110,1.0)',
+                        color=rgb,
                         width=2
                     ),
                 ),

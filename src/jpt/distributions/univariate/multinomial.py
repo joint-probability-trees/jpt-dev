@@ -530,6 +530,7 @@ class Multinomial(Distribution):
             horizontal: bool = False,
             max_values: int = None,
             alphabet: bool = False,
+            color: str = 'rgb(15,21,110)',
             **kwargs
     ) -> Figure:
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
@@ -542,6 +543,12 @@ class Multinomial(Distribution):
         :param max_values:  maximum number of values to plot
         :param alphabet:    whether the bars are sorted in alphabetical order of the variable names. If False, the bars
                             are sorted by probability (descending); default is False
+        :param color:       the color of the plot traces; accepts str of form:
+                            * rgb(r,g,b) with r,g,b being int or float
+                            * rgba(r,g,b,a) with r,g,b being int or float, a being float
+                            * #f0c (as short form of #ff00cc) or #f0cf (as short form of #ff00ccff)
+                            * #ff00cc
+                            * #ff00ccff
         :return:            plotly.graph_objs.Figure
         '''
 
@@ -564,28 +571,56 @@ class Multinomial(Distribution):
         probs = project(pairs, 0)
         labels = project(pairs, 1)
 
+        # MOVE THIS TO PLOTLY LIBRARY UTILS
+        def hextorgb(col):
+            h = col.strip("#")
+            l = len(h)
+            if l == 3 or l == 4:  # e.g. "#fff"
+                return hextorgb(f'{"".join([(v)*2 for v in h],)}')
+            if l == 6:  # e.g. "#2D6E0F"
+                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+            if l == 8:  # e.g. "#2D6E0F33"
+                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) + (round(int(h[6:8], 16)/255, 2),)
+
+        def to_rgb(color, opacity=.6):
+            if color.startswith('#'):
+                color = hextorgb(color)
+                if len(color) == 4:
+                    opacity = color[-1]
+                    color = color[:-1]
+            elif color.startswith('rgba'):
+                color = tuple(map(float, color[5:-1].split(',')))
+                opacity = color[-1]
+                color = color[:-1]
+            elif color.startswith('rgb'):
+                color = tuple(map(float, color[4:-1].split(',')))
+            return f'rgb{*color,}', f'rgba{*color+(opacity,),}'
+
+        # extract rgb colors from given hex, rgb or rgba string
+        rgb, rgba = to_rgb(color)
+
         mainfig = go.Figure(
             [
                 go.Bar(
                     x=probs if horizontal else labels,  # labels if horizontal else probs,
                     y=labels if horizontal else probs, # probs if horizontal else x,
-                    name="Integer Distribution",
+                    name=title or "Multinomial Distribution",
                     text=probs,
                     orientation='h' if horizontal else 'v',
                     marker=dict(
-                        color='rgba(15,21,110,0.6)',
-                        line=dict(color='rgba(15,21,110,1.0)', width=3)
+                        color=rgba,
+                        line=dict(color=rgb, width=3)
                     )
                 )
             ]
         )
         mainfig.update_layout(
             xaxis=dict(
-                title='p' if horizontal else 'label',
+                title='$P(\\text{label})$' if horizontal else '$\\text{label}$',
                 range=[0, 1] if horizontal else None
             ),
             yaxis=dict(
-                title='label' if horizontal else 'p',
+                title='$\\text{label}$' if horizontal else '$P(\\text{label})$',
                 range=None if horizontal else [0, 1]
             ),
             title=f'{title or f"Distribution of {self._cl}"}'
