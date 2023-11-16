@@ -1742,7 +1742,7 @@ class JPT:
         self._keep_samples = keep_samples
 
         # Initialize the impurity calculation
-        self.impurity = Impurity(self)
+        self.impurity = Impurity.from_tree(self)
         self.impurity.setup(_data, self.indices)
         self.impurity.min_samples_leaf = min_samples_leaf
 

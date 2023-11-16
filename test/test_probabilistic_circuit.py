@@ -10,6 +10,14 @@ from random_events.variables import Symbolic, Integer
 
 import jpt.probabilistic_circuit
 
+try:
+    from jpt.learning.impurity import Impurity
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+finally:
+    from jpt.learning.impurity import Impurity
+
 
 class VariableTestCase(unittest.TestCase):
     variable: jpt.probabilistic_circuit.ScaledContinuous = jpt.probabilistic_circuit.ScaledContinuous('x', 2, 3)
@@ -65,9 +73,9 @@ class InferFromDataFrameTestCase(unittest.TestCase):
         cls.data = data
 
     def test_types(self):
-        self.assertEqual(self.data.dtypes[0], float)
-        self.assertEqual(self.data.dtypes[1], int)
-        self.assertEqual(self.data.dtypes[2], object)
+        self.assertEqual(self.data.dtypes.iloc[0], float)
+        self.assertEqual(self.data.dtypes.iloc[1], int)
+        self.assertEqual(self.data.dtypes.iloc[2], object)
 
     def test_infer_from_dataframe_with_scaling(self):
         real, integer, symbol = jpt.probabilistic_circuit.infer_variables_from_dataframe(self.data)
@@ -122,6 +130,9 @@ class JPTTestCase(unittest.TestCase):
             else:
                 variable.decode_many(column)
 
+    def test_construct_impurity(self):
+        impurity = self.model.construct_impurity()
+        self.assertIsInstance(impurity, Impurity)
 
 
 if __name__ == '__main__':
