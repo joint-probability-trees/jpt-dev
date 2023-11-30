@@ -359,16 +359,40 @@ cdef class Impurity:
     # 2D integer array describing all dependencies that are considered under symbolic variables
     cdef SIZE_t[:, ::1] symbolic_dependency_matrix
 
-    def __init__(self, tree):
+    @classmethod
+    def from_tree(cls, tree):
         """
-        Construct the impurity
+        Construct the impurity from a tree
 
         :param tree: the tree to take the parameters from
         :type tree: jpt.trees.JPT
+        :return: the constructed impurity
+        :rtype: Impurity
+        """
+        min_samples_leaf = tree.min_samples_leaf
+        numeric_vars = Impurity.get_indices_of_numeric_targets_from_tree(tree)
+        symbolic_vars = Impurity.get_indices_of_symbolic_targets_from_tree(tree)
+        invert_impurity = Impurity.get_invert_impurity_from_tree(tree)
+        n_sym_vars_total = Impurity.count_symbolic_variables_total_from_tree(tree)
+        n_num_vars_total = Impurity.count_numeric_variables_total_from_tree(tree)
+        numeric_features = Impurity.get_indices_of_numeric_features_from_tree(tree)
+        symbolic_features = Impurity.get_indices_of_symbolic_features_from_tree(tree)
+        symbols = Impurity.get_size_of_symbolic_variables_domain_from_tree(tree)
+        max_variances = Impurity.get_max_variances_from_tree(tree)
+        dependency_indices = Impurity.get_dependency_indices_from_tree(tree)
+        return cls(min_samples_leaf, numeric_vars, symbolic_vars, invert_impurity,
+                   n_sym_vars_total, n_num_vars_total, numeric_features, symbolic_features,
+                   symbols, max_variances, dependency_indices)
+
+    def __init__(self, min_samples_leaf, numeric_vars, symbolic_vars, invert_impurity,
+                   n_sym_vars_total, n_num_vars_total, numeric_features, symbolic_features,
+                   symbols, max_variances, dependency_indices):
+        """
+        Construct the impurity
         """
 
         # copy min_samples_leaf
-        self.min_samples_leaf = tree.min_samples_leaf
+        self.min_samples_leaf = min_samples_leaf
 
         # initialize data, features, index buffer and indices as None
         self.data = self.feat = self.index_buffer = self.indices = None
@@ -386,22 +410,13 @@ cdef class Impurity:
         self.max_impurity_improvement = 0
 
         # initialize array of indices of the numeric targets
-        self.numeric_vars = np.array([
-            <int> i for i, v in enumerate(tree.variables)
-            if (v.numeric or v.integer) and v in tree.targets
-        ], dtype=np.int64)
+        self.numeric_vars = numeric_vars
 
         # initialize array of indices of the symbolic targets
-        self.symbolic_vars = np.array([
-            <int> i for i, v in enumerate(tree.variables)
-            if v.symbolic and v in tree.targets
-        ], dtype=np.int64)
+        self.symbolic_vars = symbolic_vars
 
         # store impurity inversion
-        self.invert_impurity = np.array([
-            v.invert_impurity for v in tree.variables
-            if v.symbolic and v in tree.targets
-        ], dtype=np.int64)
+        self.invert_impurity = invert_impurity
 
         # get the number of symbolic targets
         self.n_sym_vars = len(self.symbolic_vars)
@@ -410,10 +425,10 @@ cdef class Impurity:
         self.n_num_vars = len(self.numeric_vars)
 
         # get the number of all symbolic variables
-        self.n_sym_vars_total = len([_ for _ in tree.variables if _.symbolic])
+        self.n_sym_vars_total = n_sym_vars_total
 
         # get the number of all numeric and integer variables
-        self.n_num_vars_total = len([_ for _ in tree.variables if _.numeric or _.integer])
+        self.n_num_vars_total = n_num_vars_total
 
         # get indices of all targets
         self.all_vars = np.concatenate((self.numeric_vars, self.symbolic_vars))
@@ -425,16 +440,10 @@ cdef class Impurity:
         self.n_vars_total = self.n_sym_vars_total + self.n_num_vars_total
 
         # get the indices of numeric features
-        self.numeric_features = np.array([
-            i for i, v in enumerate(tree.variables)
-            if (v.numeric or v.integer) and v in tree.features
-        ], dtype=np.int64)
+        self.numeric_features = numeric_features
 
         # get the indices of symbolic features
-        self.symbolic_features = np.array([
-            i for i, v in enumerate(tree.variables)
-            if v.symbolic and v in tree.features
-        ], dtype=np.int64)
+        self.symbolic_features = symbolic_features
 
         # construct all feature indices
         self.features = np.concatenate((self.numeric_features, self.symbolic_features))
@@ -446,10 +455,7 @@ cdef class Impurity:
             # Thread-invariant buffers
 
             # get the size of each symbolic variables domain
-            self.symbols = np.array([
-                v.domain.n_values
-                for v in tree.variables if v.symbolic
-            ], dtype=np.int64)
+            self.symbols = symbols
 
             # get the maximum size of symbolic domains
             self.max_sym_domain = max(self.symbols)
@@ -507,10 +513,7 @@ cdef class Impurity:
             self.variances_total = np.ndarray(self.n_num_vars, dtype=np.float64)
 
             # calculate the prior variance of every variable
-            self.max_variances = np.array(
-                [v._max_std ** 2 for v in tree.variables if v.numeric],
-                dtype=np.float64
-            )
+            self.max_variances = max_variances
 
             # buffers for left and right splits, similar to symbolic stuff
             self.sums_left = np.ndarray(self.n_num_vars, dtype=np.float64)
@@ -525,16 +528,11 @@ cdef class Impurity:
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
         # construct the dependency structure
-        cdef dict dependency_indices = {}
+        dependency_indices = dependency_indices
         cdef int idx_var
         cdef list idc_dep
         cdef SIZE_t[::1] indices
-        # convert variable dependency structure to index dependency structure for easy interpretation in cython
-        for variable, dep_vars in tree.dependencies.items():
-            # get the index version of the dependent variables and store them
-            idx_var = tree.variables.index(variable)
-            idc_dep = [tree.variables.index(var) for var in dep_vars]
-            dependency_indices[idx_var] = idc_dep
+
 
         # create numeric and symbolic dependency matrix.
         cdef SIZE_t n = self.n_vars_total
@@ -561,6 +559,86 @@ cdef class Impurity:
             if indices.shape[0]:  # ... and store them in the numeric dependency matrix.
                 self.symbolic_dependency_matrix[idx_var, :indices.shape[0]] = indices
 
+    @classmethod
+    def get_indices_of_numeric_targets_from_tree(cls, tree):
+        """
+        Get the indices of the numeric targets from a tree.
+        """
+        return np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if (v.numeric or v.integer) and v in tree.targets
+        ], dtype=np.int64)
+
+    @classmethod
+    def get_indices_of_symbolic_targets_from_tree(cls, tree):
+        """
+        Get the indices of the symbolic targets from a tree.
+        """
+        return np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if v.symbolic and v in tree.targets
+        ], dtype=np.int64)
+
+    @classmethod
+    def get_invert_impurity_from_tree(cls, tree):
+        """
+        Get the impurity inversion from a tree.
+        """
+        return np.array([
+            <int> v.invert_impurity for v in tree.variables
+            if v.symbolic and v in tree.targets
+        ], dtype=np.int64)
+
+    @classmethod
+    def count_symbolic_variables_total_from_tree(cls, tree) -> int:
+        return len([_ for _ in tree.variables if _.symbolic])
+
+    @classmethod
+    def count_numeric_variables_total_from_tree(cls, tree):
+        return len([_ for _ in tree.variables if _.numeric or _.integer])
+
+    @classmethod
+    def get_indices_of_numeric_features_from_tree(cls, tree):
+        return np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if (v.numeric or v.integer) and v in tree.features
+        ], dtype=np.int64)
+
+    @classmethod
+    def get_indices_of_symbolic_features_from_tree(cls, tree):
+        return np.array([
+            <int> i for i, v in enumerate(tree.variables)
+            if v.symbolic and v in tree.features
+        ], dtype=np.int64)
+
+    @classmethod
+    def get_size_of_symbolic_variables_domain_from_tree(cls, tree):
+        return np.array([
+            v.domain.n_values
+            for v in tree.variables if v.symbolic
+        ], dtype=np.int64)
+
+    @classmethod
+    def get_max_variances_from_tree(cls, tree):
+        return np.array(
+                [v._max_std ** 2 for v in tree.variables if v.numeric],
+                dtype=np.float64
+            )
+
+    @classmethod
+    def get_dependency_indices_from_tree(cls, tree):
+        # construct the dependency structure
+        cdef dict dependency_indices = {}
+        cdef int idx_var
+        cdef list idc_dep
+        cdef SIZE_t[::1] indices
+        # convert variable dependency structure to index dependency structure for easy interpretation in cython
+        for variable, dep_vars in tree.dependencies.items():
+            # get the index version of the dependent variables and store them
+            idx_var = tree.variables.index(variable)
+            idc_dep = [tree.variables.index(var) for var in dep_vars]
+            dependency_indices[idx_var] = idc_dep
+        return dependency_indices
 
     cdef inline int check_max_variances(self, DTYPE_t[::1] variances) nogil:
         """
@@ -1172,4 +1250,6 @@ cdef class Impurity:
             len(self.numeric_features),
             ','.join(mapstr(self.numeric_features))
         ]))
+
+# cpdef class PCImpurity(Impurity)
 

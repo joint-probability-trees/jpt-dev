@@ -60,7 +60,7 @@ class ImpurityTest(TestCase):
             targets=[self.wa]
         )
         data = jpt._preprocess_data(self.data)
-        impurity = Impurity(jpt)
+        impurity = Impurity.from_tree(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
         impurity.setup(data, np.array(list(range(data.shape[0]))))
         impurity.compute_best_split(0, data.shape[0])
@@ -75,7 +75,7 @@ class ImpurityTest(TestCase):
 
     def test_col_is_constant(self):
         jpt = JPT(variables=[NumericVariable('x1', domain=Numeric), NumericVariable('x2', domain=Numeric)])
-        impurity = Impurity(jpt)
+        impurity = Impurity.from_tree(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
 
         data = np.array([[1, 0, np.nan], [1, 1, 0]], dtype=np.float64)
@@ -89,11 +89,11 @@ class ImpurityTest(TestCase):
 
     def test_has_numeric_vars(self):
         jpt = JPT(variables=[NumericVariable('x1', domain=Numeric), NumericVariable('x2', domain=Numeric)])
-        impurity = Impurity(jpt)
+        impurity = Impurity.from_tree(jpt)
         self.assertTrue(impurity.has_numeric_vars_())
         self.assertTrue(impurity.has_numeric_vars_(0))
         jpt = JPT(variables=[NumericVariable('x1', domain=Numeric)])
-        impurity = Impurity(jpt)
+        impurity = Impurity.from_tree(jpt)
         self.assertTrue(impurity.has_numeric_vars_())
         self.assertFalse(impurity.has_numeric_vars_(0))
 
@@ -418,7 +418,7 @@ class VarianceImprovementTest(TestCase):
         indices[0] = 0
         np.cumsum(indices, out=indices)
 
-        impurity = Impurity(t)
+        impurity = Impurity.from_tree(t)
         impurity.setup(_data, indices)
         impurity.min_samples_leaf = 1
 

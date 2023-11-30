@@ -79,7 +79,7 @@ extensions = [
     Extension("impurity", sources=[os.path.join(basedir, pyxfiles[4]), os.path.join(basedir, pyxfiles[0])],
               include_dirs=[numpy.get_include()],
               extra_compile_args=["-O3"],
-              language="c++")
+              language="c++"),
 ]
 
 
