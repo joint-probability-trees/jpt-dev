@@ -53,7 +53,6 @@ pyxfiles = [
     "jpt/distributions/quantile/quantiles.pyx",
     "jpt/distributions/quantile/cdfreg.pyx",
     "jpt/learning/impurity.pyx",
-    "jpt/learning/pc_impurity.pyx"
 ]
 
 extensions = [
@@ -81,10 +80,6 @@ extensions = [
               include_dirs=[numpy.get_include()],
               extra_compile_args=["-O3"],
               language="c++"),
-    Extension("pc_impurity", sources=[os.path.join(basedir, pyxfiles[6]), os.path.join(basedir, pyxfiles[0])],
-              include_dirs=[numpy.get_include()],
-              extra_compile_args=["-O3"],
-              language="c++")
 ]
 
 
