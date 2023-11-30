@@ -7,6 +7,9 @@ import pandas as pd
 import portion
 from probabilistic_model.probabilistic_circuit.units import DeterministicSumUnit, DecomposableProductUnit
 from probabilistic_model.probabilistic_model import ProbabilisticModel
+from probabilistic_model.probabilistic_circuit.distributions import SymbolicDistribution, IntegerDistribution, \
+    DiracDeltaDistribution
+from probabilistic_model.learning.nyga_distribution import NygaDistribution
 from random_events.events import VariableMap
 from random_events.variables import Variable, Continuous as REContinuous, Integer as REInteger, Symbolic
 
@@ -105,11 +108,24 @@ class Continuous(REContinuous):
     Standard Deviation of the random variable.
     """
 
-    def __init__(self, name: str, mean: float, std: float, minimal_distance: float = 1.):
+    min_likelihood_improvement: float
+    """
+    The minimum likelihood improvement passed to the Nyga Distributions.
+    """
+
+    min_samples_per_quantile: int
+    """
+    The minimum number of samples per quantile passed to the Nyga Distributions.
+    """
+
+    def __init__(self, name: str, mean: float, std: float, minimal_distance: float = 1.,
+                 min_likelihood_improvement: float = 0.1, min_samples_per_quantile: int = 10):
         super().__init__(name)
         self.mean = mean
         self.std = std
         self.minimal_distance = minimal_distance
+        self.min_likelihood_improvement = min_likelihood_improvement
+        self.min_samples_per_quantile = min_samples_per_quantile
 
 
 class ScaledContinuous(Continuous):
@@ -154,8 +170,7 @@ class DecisionNode(DeterministicSumUnit):
         self.criterion = criterion
 
 
-class JPT(ProbabilisticModel):
-    circuit: Optional[DeterministicSumUnit] = None
+class JPT(DeterministicSumUnit):
 
     targets: Tuple[Variable]
     """
@@ -201,13 +216,14 @@ class JPT(ProbabilisticModel):
     indices: Optional[np.ndarray] = None
     impurity: Optional[Impurity] = None
     c45queue: deque = deque()
+    weights: List[float]
 
     def __init__(self, variables: Iterable[Variable], targets: Optional[Iterable[Variable]] = None,
                  features: Optional[Iterable[Variable]] = None, min_samples_leaf: Union[int, float] = 1,
                  min_impurity_improvement: float = 0.0, max_leaves: Union[int, float] = float("inf"),
                  max_depth: Union[int, float] = float("inf"), dependencies: Optional[VariableMap] = None, ):
 
-        super().__init__(variables)
+        super().__init__(variables, weights=[])
         self.set_targets_and_features(targets, features)
         self._min_samples_leaf = min_samples_leaf
         self.min_impurity_improvement = min_impurity_improvement
@@ -255,6 +271,15 @@ class JPT(ProbabilisticModel):
             else:
                 self.targets = tuple(sorted(set(targets)))
                 self.features = tuple(sorted(set(features)))
+
+    def __eq__(self, other):
+        return (isinstance(other, JPT) and
+                self.variables == other.variables and
+                self.targets == other.targets and
+                self.features == other.features and
+                self.children == other.children and
+                self.min_impurity_improvement == other.min_impurity_improvement and
+                self.max_depth == other.max_depth)
 
     @property
     def min_samples_leaf(self):
@@ -315,42 +340,86 @@ class JPT(ProbabilisticModel):
         :return: The fitted model.
         """
 
-        data = self.preprocess_data(data)
+        preprocessed_data = self.preprocess_data(data)
 
-        self.total_samples = len(data)
+        self.total_samples = len(preprocessed_data)
 
+        self.indices = np.ascontiguousarray(np.arange(preprocessed_data.shape[0], dtype=np.int64))
         self.impurity = self.construct_impurity()
-        self.indices = np.arange(data.shape[0], dtype=np.int64)
+        self.impurity.setup(preprocessed_data, self.indices)
 
-        self.c45queue.append((data, 0, len(data)))
+        self.c45queue.append((preprocessed_data, 0, len(preprocessed_data), 0))
 
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
 
         return self
 
-    def c45(self, data: np.ndarray, start: int, end: int) -> Optional[Union[DecisionNode, DecomposableProductUnit]]:
+    def c45(self, data: np.ndarray, start: int, end: int, depth: int):
         """
         Construct a DecisionNode or DecomposableProductNode from the data.
 
         :param data: The data to calculate the impurity from.
         :param start: Starting index in the data.
         :param end: Ending index in the data.
+        :param depth: The current depth of the induction
         :return: The constructed decision tree node
         """
         number_of_samples = end - start
 
-        # calculate the best gain possible
-        max_gain = self.impurity.compute_best_split(start, end)
+        # if the inducing in this step would result in inadmissible nodes, skip the impurity calculation
+        if depth >= self.max_depth or number_of_samples < self.min_samples_leaf:
+            max_gain = -float("inf")
+        else:
+            max_gain = self.impurity.compute_best_split(start, end)
 
-        if max_gain < self.min_impurity_improvement:
+        # if the max gain is insufficient
+        if max_gain <= self.min_impurity_improvement:
+
             # create decomposable product node
-            return self.create_leaf_node()
+            leaf_node = self.create_leaf_node(data[self.indices[start:end]])
+            self.weights.append(number_of_samples/len(data))
+            leaf_node.parent = self
 
-        return None
+            # terminate the induction
+            return
 
-    def create_leaf_node(self) -> DecomposableProductUnit:
-        ...
+        # if the max gain is sufficient
+        split_pos = self.impurity.best_split_pos
+
+        # increase the depth
+        new_depth = depth + 1
+
+        # append the new induction steps
+        self.c45queue.append((data, start, start + split_pos + 1, new_depth))
+        self.c45queue.append((data, start + split_pos + 1, end, new_depth))
+
+    def create_leaf_node(self, data: np.ndarray) -> DecomposableProductUnit:
+        result = DecomposableProductUnit(self.variables)
+
+        for index, variable in enumerate(self.variables):
+            if isinstance(variable, Continuous):
+                distribution = NygaDistribution(variable,
+                                                min_likelihood_improvement=variable.min_likelihood_improvement,
+                                                min_samples_per_quantile=variable.min_samples_per_quantile)
+                distribution._fit(data[:, index].tolist())
+
+                if isinstance(distribution.children[0], DiracDeltaDistribution):
+                    distribution.children[0].density_cap = 1/variable.minimal_distance
+
+            elif isinstance(variable, Symbolic):
+                distribution = SymbolicDistribution(variable, weights=[1/len(variable.domain)]*len(variable.domain))
+                distribution._fit(data[:, index].tolist())
+
+            elif isinstance(variable, Integer):
+                distribution = IntegerDistribution(variable, weights=[1/len(variable.domain)]*len(variable.domain))
+                distribution._fit(data[:, index].tolist())
+            else:
+                raise ValueError(f"Variable {variable} is not supported.")
+
+            distribution.parent = result
+
+        return result
 
     def construct_impurity(self) -> Impurity:
         min_samples_leaf = self.min_samples_leaf
