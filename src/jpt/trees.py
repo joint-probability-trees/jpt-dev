@@ -785,12 +785,12 @@ class JPT:
         return tuple(self._variables)
 
     @property
-    def targets(self) -> List[Variable]:
-        return self._targets
+    def targets(self) -> Tuple[Variable]:
+        return tuple(self._targets)
 
     @property
-    def features(self) -> List[Variable]:
-        return self._features
+    def features(self) -> Tuple[Variable]:
+        return tuple(self._features)
 
     @property
     def numeric_variables(self) -> List[Variable]:
