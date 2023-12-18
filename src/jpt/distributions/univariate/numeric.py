@@ -14,6 +14,7 @@ import plotly.graph_objects as go
 from ..utils import Identity, DataScaler, DataScalerProxy
 from ...base.utils import save_plot, pairwise, normalized, none2nan
 from . import Distribution
+from ...plotting.helpers import color_to_rgb
 
 try:
     from ...base.intervals import __module__
@@ -142,6 +143,17 @@ class Numeric(Distribution):
     @property
     def ppf(self):
         return self._quantile.ppf
+
+    def approximate_fast(self, eps: float):
+        return type(self)(**self.settings).set(
+            QuantileDistribution(
+                eps
+            ).fit(
+                np.ascontiguousarray(self.cdf.boundaries().reshape(-1, 1)),
+                None,
+                0
+            )
+        )
 
     def _sample(self, n):
         return self._quantile.sample(n)
@@ -583,6 +595,18 @@ class Numeric(Distribution):
         )
         return result
 
+    def __sub__(self, other: 'Numeric') -> 'Numeric':
+        result = type(other)(**other.settings)
+
+        # multiply with -1, i.e. mirror at y-axis
+        iv_rev = [ContinuousSet(-i.upper, -i.lower, i.right, i.left) for i in reversed(other.pdf.intervals)]
+        result._quantile = QuantileDistribution.from_pdf(
+            PiecewiseFunction.from_dict({i: f for i, f in zip(iv_rev, other.pdf.functions)})
+        )
+
+        # then add other
+        return self + result
+
     def approximate(
             self,
             error_max: float = None,
@@ -623,9 +647,15 @@ class Numeric(Distribution):
             union += max(v1, v2) * (p2 - p1)
         return intersection / union
 
+    def similarity(
+            self,
+            other: 'Numeric'
+    ) -> float:
+        return Numeric.jaccard_similarity(self, other)
+
     def plot(
             self,
-            title: str = None,
+            title: Union[str, bool] = None,
             fname: str = None,
             xlabel: str = 'value',
             directory: str = '/tmp',
@@ -637,7 +667,8 @@ class Numeric(Distribution):
         Generates a plot of the piecewise linear function representing
         the variable's cumulative distribution function
 
-        :param title:       the name of the variable this distribution represents
+        :param title:       the title of the plot. defaults to the type of this distribution, can be left
+                            empty by passing `False`.
         :param fname:       the name of the file to be stored. Available file formats: png, svg, jpeg, webp, html
         :param xlabel:      the label of the x-axis
         :param directory:   the directory to store the generated plot files
@@ -682,34 +713,8 @@ class Numeric(Distribution):
 
         mainfig = go.Figure()
 
-
-        # MOVE THIS TO PLOTLY LIBRARY UTILS
-        def hextorgb(col):
-            h = col.strip("#")
-            l = len(h)
-            if l == 3 or l == 4:  # e.g. "#fff"
-                return hextorgb(f'{"".join([(v)*2 for v in h],)}')
-            if l == 6:  # e.g. "#2D6E0F"
-                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
-            if l == 8:  # e.g. "#2D6E0F33"
-                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) + (round(int(h[6:8], 16)/255, 2),)
-
-        def to_rgb(color, opacity=.6):
-            if color.startswith('#'):
-                color = hextorgb(color)
-                if len(color) == 4:
-                    opacity = color[-1]
-                    color = color[:-1]
-            elif color.startswith('rgba'):
-                color = tuple(map(float, color[5:-1].split(',')))
-                opacity = color[-1]
-                color = color[:-1]
-            elif color.startswith('rgb'):
-                color = tuple(map(float, color[4:-1].split(',')))
-            return f'rgb{*color,}', f'rgba{*color+(opacity,),}'
-
         # extract rgb colors from given hex, rgb or rgba string
-        rgb, rgba = to_rgb(color)
+        rgb, rgba = color_to_rgb(color)
 
         # plot dashed CDF
         mainfig.add_trace(
@@ -753,7 +758,9 @@ class Numeric(Distribution):
             yaxis=dict(
                 title='%'
             ),
-            title=f'{title or f"Distribution of {self._cl}"}'
+            title=None if title is False else f'{title or f"Distribution of {self._cl}"}',
+            height=1000,
+            width=1200
         )
 
         if fname is not None:
@@ -766,8 +773,17 @@ class Numeric(Distribution):
             if fname.endswith('html'):
                 mainfig.write_html(
                     fpath,
+                    config=dict(
+                        displaylogo=False,
+                        toImageButtonOptions=dict(
+                            format='svg',  # one of png, svg, jpeg, webp
+                            filename=fname or self.__class__.__name__,
+                            scale=1
+                        )
+                    ),
                     include_plotlyjs="cdn"
                 )
+                mainfig.write_json(fpath.replace(".html", ".json"))
             else:
                 mainfig.write_image(
                     fpath,

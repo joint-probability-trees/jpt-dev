@@ -18,6 +18,7 @@ from ..utils import OrderedDictProxy
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
 from ...base.utils import mapstr, classproperty, save_plot, Symbol, Collections
+from ...plotting.helpers import color_to_rgb
 
 
 # noinspection DuplicatedCode
@@ -535,7 +536,8 @@ class Multinomial(Distribution):
     ) -> Figure:
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
 
-        :param title:       the name of the variable this distribution represents
+        :param title:       the title of the plot. defaults to the type of this distribution, can be left
+                            empty by passing `False`.
         :param fname:       the name of the file to be stored. Available file formats: png, svg, jpeg, webp, html
         :param directory:   the directory to store the generated plot files
         :param view:        whether to display generated plots, default False (only stores files)
@@ -571,33 +573,8 @@ class Multinomial(Distribution):
         probs = project(pairs, 0)
         labels = project(pairs, 1)
 
-        # MOVE THIS TO PLOTLY LIBRARY UTILS
-        def hextorgb(col):
-            h = col.strip("#")
-            l = len(h)
-            if l == 3 or l == 4:  # e.g. "#fff"
-                return hextorgb(f'{"".join([(v)*2 for v in h],)}')
-            if l == 6:  # e.g. "#2D6E0F"
-                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
-            if l == 8:  # e.g. "#2D6E0F33"
-                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) + (round(int(h[6:8], 16)/255, 2),)
-
-        def to_rgb(color, opacity=.6):
-            if color.startswith('#'):
-                color = hextorgb(color)
-                if len(color) == 4:
-                    opacity = color[-1]
-                    color = color[:-1]
-            elif color.startswith('rgba'):
-                color = tuple(map(float, color[5:-1].split(',')))
-                opacity = color[-1]
-                color = color[:-1]
-            elif color.startswith('rgb'):
-                color = tuple(map(float, color[4:-1].split(',')))
-            return f'rgb{*color,}', f'rgba{*color+(opacity,),}'
-
         # extract rgb colors from given hex, rgb or rgba string
-        rgb, rgba = to_rgb(color)
+        rgb, rgba = color_to_rgb(color)
 
         mainfig = go.Figure(
             [
@@ -614,16 +591,20 @@ class Multinomial(Distribution):
                 )
             ]
         )
+
+        xname = "_".join(self.__class__.__qualname__.split("_")[:-2]).lower()
         mainfig.update_layout(
             xaxis=dict(
-                title='$P(\\text{label})$' if horizontal else '$\\text{label}$',
-                range=[0, 1] if horizontal else None
+                title=f'$P(\\text{{{xname}}})$' if horizontal else f'$\\text{{{xname}}}$',
+                range=[0, 1] if horizontal else None,
             ),
             yaxis=dict(
-                title='$\\text{label}$' if horizontal else '$P(\\text{label})$',
+                title=f'$\\text{{{xname}}}$' if horizontal else f'$P(\\text{{{xname}}})$',
                 range=None if horizontal else [0, 1]
             ),
-            title=f'{title or f"Distribution of {self._cl}"}'
+            title=None if title is False else f'{title or f"Distribution of {self._cl}"}',
+            height=1000,
+            width=1000
         )
 
         if fname is not None:
@@ -636,8 +617,17 @@ class Multinomial(Distribution):
             if fname.endswith('.html'):
                 mainfig.write_html(
                     fpath,
+                    config=dict(
+                        displaylogo=False,
+                        toImageButtonOptions=dict(
+                            format='svg',  # one of png, svg, jpeg, webp
+                            filename=fname or self.__class__.__name__,
+                            scale=1
+                        )
+                    ),
                     include_plotlyjs="cdn"
                 )
+                mainfig.write_json(fpath.replace(".html", ".json"))
             else:
                 mainfig.write_image(
                     fpath,
