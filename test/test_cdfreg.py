@@ -353,3 +353,50 @@ class QuantileTest(TestCase):
         )
         for f in cdf.functions:
             self.assertGreaterEqual(f.m, 0)
+
+    def test_pdf_to_cdf_jump(self):
+        # Arrange
+        pdf = PiecewiseFunction.from_dict({
+            '(-∞,0.0)': 0,
+            '[0.0,5e-324)': np.inf,
+            '[5e-324,∞)': 0
+        })
+
+        # Act
+        cdf = QuantileDistribution.pdf_to_cdf(
+            pdf,
+            dirac_weights=[1]
+        )
+
+        # Assert
+        self.assertEqual(
+            pdf,
+            pdf
+        )
+
+    def test_cdf_to_pdf_simple(self):
+        pass
+
+    def test_cdf_to_pdf_jump(self):
+        # Arrange
+        qdist = QuantileDistribution.from_cdf(
+            PiecewiseFunction.zero()
+            .overwrite_at(
+                '[0,inf)',
+                ConstantFunction(1)
+            )
+        )
+
+        # Act
+        pdf = qdist.pdf
+
+        # Assert
+        self.assertEqual(
+            PiecewiseFunction.from_dict({
+                '(-∞,0.0)': 0,
+                '[0.0,5e-324)': np.inf,
+                '[5e-324,∞)': 0
+            }),
+            pdf
+        )
+
