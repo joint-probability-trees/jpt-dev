@@ -1658,10 +1658,16 @@ class JPT:
                 )
             transformations = {v: self.varnames[v].domain.values.transformer() for v in data.columns}
             try:
-                data_[:] = data.transform(transformations).values
-            except ValueError:
-                err(transformations)
-                raise
+                for col in data.columns:
+                    data.loc[:, col] = data[col].map(
+                        transformations[col],
+                        na_action='ignore'
+                    )
+                data_[:] = data.values
+            except ValueError as e:
+                raise ValueError(
+                    f'{e} of {self.varnames[col].domain.__qualname__} of variable {col}'
+                )
         else:
             for i, (var, col) in enumerate(zip(self.variables, columns)):
                 data_[:, i] = [var.domain.values[v] for v in col]
