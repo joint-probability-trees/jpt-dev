@@ -172,8 +172,16 @@ class OrderedDictProxy:
     def __repr__(self):
         return '<OrderedDictProxy #%d values=[%s]>' % (len(self), ';'.join(map(repr, self.keys())))
 
+    def _mapvalue(self, key: Any) -> int or float:
+        try:
+            return self._dict[key]
+        except KeyError:
+            raise ValueError(
+                f'Value {key} out of domain'
+            )
+
     def transformer(self):
-        return lambda a: self._dict[a]
+        return self._mapvalue
 
     def __getitem__(self, arg):
         return self._dict[arg]
