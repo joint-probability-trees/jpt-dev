@@ -48,7 +48,7 @@ except ModuleNotFoundError:
 finally:
     from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import Impurity
-    from .base.functions import PiecewiseFunction
+    from .base.functions import PiecewiseFunction, Undefined
 
 
 try:
@@ -2150,7 +2150,6 @@ class JPT:
             # get the next node to inspect
             node = fringe.popleft()
             # clear the path of each node as we will re-construct it later
-            node._path = []
 
             # the node might have been deleted already
             if node.idx not in conditional_jpt.allnodes:
@@ -2163,7 +2162,7 @@ class JPT:
             if isinstance(node, DecisionNode):
 
                 # that has no children
-                if len(node.children) <= 1:
+                if not node.children:
 
                     # remove it and update flag
                     del conditional_jpt.innernodes[node.idx]
@@ -2190,38 +2189,19 @@ class JPT:
                     rm = True
                     del conditional_jpt.leaves[node.idx]
 
-            # if the node has been removed and the removed node as a parent
+            # if the node has been removed and the removed node has a parent
             if rm and node.parent is not None:
-
-                # if the nodes' parent has children
-                if node.parent.children:
-                    # if the node has a child either
-                    if isinstance(node, DecisionNode) and len(node.children) == 1:
-                        # replace it by its child
-                        orphan = first(node.children)
-                        orphan.parent = node.parent
-                        node.parent.children[node.parent.children.index(node)] = orphan
-                    else:
-                        # delete this node from the parents children
-                        idx = node.parent.children.index(node)
-                        del node.parent.children[idx]
-                        del node.parent.splits[idx]
 
                 # mark the parent node for further processing
                 fringe.append(node.parent)
 
+                idx = node.parent.children.index(node)
+                del node.parent.children[idx]
+                del node.parent.splits[idx]
+
             # if the resulting model is empty
             if rm and node is conditional_jpt.root:
-
-                if len(node.children) == 1:
-                    conditional_jpt.root = first(node.children)
-                    conditional_jpt.root.parent = None
-                elif node.children:
-                    conditional_jpt.root = None
-                else:
-                    raise RuntimeError(
-                        'This should never happen. JPT.conditional_jpt() seems to be broken :('
-                    )
+                conditional_jpt.root = None
 
         # calculate remaining probability mass
         probability_mass = sum(
@@ -2239,18 +2219,6 @@ class JPT:
             else:
                 return None
 
-        # calculate remaining probability mass
-        probability_mass = sum(leaf.prior for leaf in conditional_jpt.leaves.values())
-
-        if not probability_mass:
-            raise Unsatisfiability(
-                'JPT is unsatisfiable (all %d leaves have '
-                '0 prior probability with evidence: %s)' % (
-                    len(self.leaves),
-                    format_path(evidence)
-                )
-            )
-
         # clean up not needed distributions and redistribute probability mass
         for leaf in conditional_jpt.leaves.values():
 
@@ -2261,16 +2229,6 @@ class JPT:
                 # adjust leaf distributions
                 # if variable.symbolic or variable.integer:
                 leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
-
-        # reconstruct the path restrictions
-        queue = deque([conditional_jpt.root])
-        while queue:
-            node = queue.popleft()
-            if not isinstance(node, DecisionNode):
-                continue
-            for split, child in zip(node.splits, node.children):
-                child._path.append((node.variable, split))
-                queue.append(child)
 
         # recalculate the priors for the conditional jpt
         priors = conditional_jpt.posterior()
@@ -2529,16 +2487,30 @@ class JPT:
 
         return hyperparameters
 
-    def prune(self, similarity_threshold: float) -> 'JPT':
+    def prune(
+            self,
+            similarity_threshold: float,
+            approximate: Union[float, Dict[Variable or str, float], VariableMap, None] = None
+    ) -> 'JPT':
         '''
         Prune this tree by repeatedly merging leaves with very similiar
         distributions.
 
         :param similarity_threshold: the average similarity of distributions in [0, 1] that two
                                      leaves must exhibit in order to be considered for a merge.
+        :param approximate:
         :return:
         '''
         jpt = self.copy()
+        if approximate is None:
+            approximate = VariableMap((), self.variables)
+        elif isinstance(approximate, numbers.Real):
+            approximate = VariableMap({v: approximate for v in self.variables}, variables=self.variables)
+        elif isinstance(approximate, dict):
+            approximate = VariableMap(approximate, self.variables)
+        else:
+            approximate = approximate
+
         queue: deque[DecisionNode] = deque(list(jpt.innernodes.values()))
         while queue:
             node: DecisionNode = queue.popleft()
@@ -2562,12 +2534,18 @@ class JPT:
 
             similarity = np.mean(similarities)
 
-            self.logger.debug(
-                'Leaf #%d ~ Leaf #%d = %f' % (left.idx, right.idx, similarity)
-            )
-
-            if similarity < similarity_threshold:  # below threshold continue
+            if similarity < similarity_threshold or np.isnan(similarity):  # below threshold continue
                 continue
+
+            self.logger.debug(
+                'Merging leaves #%d and leaf #%d: sim %f, '
+                'tree size: %s' % (
+                    left.idx,
+                    right.idx,
+                    similarity,
+                    len(jpt.allnodes)
+                )
+            )
 
             # Merge the two leaves by merging their distributions
             leaf = Leaf(
@@ -2581,6 +2559,12 @@ class JPT:
                     [left.distributions[variable], right.distributions[variable]],
                     normalized([left.prior, right.prior])
                 )
+                if variable in approximate:
+                    leaf.distributions[variable] = (
+                        leaf.distributions[variable]
+                        .approximate(approximate[variable])
+                    )
+
             leaf.samples = left.samples + right.samples
 
             del jpt.leaves[left.idx]
