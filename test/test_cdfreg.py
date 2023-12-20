@@ -370,8 +370,11 @@ class QuantileTest(TestCase):
 
         # Assert
         self.assertEqual(
-            pdf,
-            pdf
+            PiecewiseFunction.from_dict({
+                '(-inf,0)': 0,
+                '[0,inf)': 1
+            }),
+            cdf
         )
 
     def test_cdf_to_pdf_simple(self):
