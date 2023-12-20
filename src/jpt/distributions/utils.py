@@ -177,7 +177,7 @@ class OrderedDictProxy:
             return self._dict[key]
         except KeyError:
             raise ValueError(
-                f'Value {key} out of domain'
+                f'Value {key} out of domain (must be in {set(self._dict)})'
             )
 
     def transformer(self):
