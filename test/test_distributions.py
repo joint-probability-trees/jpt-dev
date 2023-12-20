@@ -840,7 +840,7 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual((1,), label_tuple)
         self.assertRaises(ValueError, Die.label2value, 0)
 
-    def test_set(self):
+    def test_set_finite(self):
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -849,8 +849,38 @@ class IntegerDistributionTest(TestCase):
         fair_dice.set([1 / 6] * 6)
 
         # Assert
-        self.assertTrue(
-            (np.array([1 / 6] * 6, dtype=np.float64) == fair_dice.probabilities).all(),
+        self.assertRaises(
+            ValueError,
+            fair_dice.set,
+            [1 / 6] * 7
+        )
+        self.assertEqual(
+            {i: 1 / 6 for i in range(0, 6)},
+            fair_dice.probabilities
+        )
+
+    def test_set_infinite(self):
+        # Arrange
+        unbounded = IntegerType('Dice')
+        dist = unbounded()
+
+        # Act
+        dist.set({0: 1 / 3, 1: 2 / 3})
+
+        # Assert
+        self.assertRaises(
+            ValueError,
+            dist.set,
+            [1 / 6] * 6
+        )
+        self.assertRaises(
+            ValueError,
+            dist.set,
+            {0: 2 / 3, 1: 2 / 3}
+        )
+        self.assertEqual(
+            {0: 1 / 3, 1: 2 / 3},
+            dist.probabilities
         )
 
     def test_fit(self):
@@ -872,7 +902,8 @@ class IntegerDistributionTest(TestCase):
 
         # Assert
         self.assertTrue(
-            (np.array([1 / 6] * 6, dtype=np.float64) == fair_dice.probabilities).all(),
+            {i: 1 / 6 for i in range(0, 6)},
+            fair_dice.probabilities,
         )
 
     def test_sampling(self):
@@ -944,9 +975,19 @@ class IntegerDistributionTest(TestCase):
         _biased_dice = fair_dice._crop({0, 1})
 
         # Assert
-        self.assertEqual(list([0, .5, .5, 0, 0, 0]), list(biased_dice.probabilities))
-        self.assertEqual(list([.5, .5, 0, 0, 0, 0]), list(_biased_dice.probabilities))
-        self.assertRaises(Unsatisfiability, biased_dice.crop, {1})
+        self.assertEqual(
+            {1: 0.5, 2: 0.5},
+            biased_dice.probabilities
+        )
+        self.assertEqual(
+            {0: 0.5, 1: 0.5},
+            _biased_dice.probabilities
+        )
+        self.assertRaises(
+            Unsatisfiability,
+            biased_dice.crop,
+            {1}
+        )
 
     def test_mpe(self):
         # Arrange
@@ -1006,10 +1047,16 @@ class IntegerDistributionTest(TestCase):
         biased_dice.set([0 / 6, 1 / 6, 2 / 6, 1 / 6, 1 / 6, 1 / 6])
 
         # Act
-        merged = dice.merge(distributions=[fair_dice, biased_dice], weights=[.5, .5])
+        merged = dice.merge(
+            distributions=[fair_dice, biased_dice],
+            weights=[.5, .5]
+        )
 
         # Assert
-        self.assertEqual([.5 / 6, 1 / 6, 1.5 / 6, 1 / 6, 1 / 6, 1 / 6], list(merged.probabilities))
+        self.assertEqual(
+            {0: .5 / 6, 1: 1 / 6, 2: 1.5 / 6, 3: 1 / 6, 4: 1 / 6, 5: 1 / 6},
+            merged.probabilities
+        )
 
     def test_serialization(self):
         # Arrange
@@ -1080,9 +1127,14 @@ class IntegerDistributionTest(TestCase):
 
         sumpos = posx.add(deltax)
 
-        self.assertEqual(list(sumpos.labels.values()), [-1, 0, 1, 2, 3, 4, 5, 6, 7])
-        self.assertEqual(list(sumpos.values.values()), [0, 1, 2, 3, 4, 5, 6, 7, 8])
-        self.assertEqual(list(sumpos.probabilities), [0, 0, 0, 0, 1, 0, 0, 0, 0])
+        self.assertEqual(
+            (-1, 7),
+            (sumpos.lmin, sumpos.lmax)
+        )
+        self.assertEqual(
+            sumpos.probabilities,
+            {3: 1}
+        )
 
     def test_add_bernoulli(self):
         coin = IntegerType('Coin', 0, 1)
@@ -1094,10 +1146,31 @@ class IntegerDistributionTest(TestCase):
         for _, l in sumpos.items():
             res.append(scipy.special.binom(2, l) * d1.p(1)**l * (1-d1.p(1))**(2-l))
 
+<<<<<<< Updated upstream
         self.assertEqual([0, 1, 2], list(sumpos.labels.values()))
         self.assertEqual([0, 1, 2], list(sumpos.values.values()))
         self.assertEqual(res, list(sumpos.probabilities))
 
+=======
+        print(sumpos.probabilities)
+        self.assertEqual(
+            (0, 2),
+            (sumpos.lmin, sumpos.lmax)
+        )
+        self.assertEqual(
+            {0: 0.25, 1: 0.5, 2: 0.25},
+            sumpos.probabilities
+        )
+
+    def test_plot(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([1 / 6] * 6)
+        d1.plot(
+            title="Test",
+            view=False,
+            horizontal=False
+        )
+>>>>>>> Stashed changes
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -1134,14 +1207,20 @@ class TypeGeneratorTest(TestCase):
         self.assertTrue(issubclass(NumericType('bla', [1, 2, 3, 4]), ScaledNumeric))
 
     def test_integer_type(self):
+        # Act
+        t_1 = IntegerType('Months', 1, 12)
+        t_2 = IntegerType('Unbounded')
+
+        # Assert
+        self.assertEqual(
+            (1, 12),
+            (t_1.lmin, t_1.lmax)
+        )
+        self.assertEqual(
+            (..., ...),
+            (t_2.lmin, t_2.lmax)
+        )
         self.assertRaises(ValueError, IntegerType, 'Bla', 3, 2)
-        t = IntegerType('Months', 1, 12)
-        self.assertEqual(list(range(0, 12)), list(t.values.values()))
-        self.assertEqual(list(range(1, 13)), list(t.labels.values()))
-        self.assertEqual(1, t.lmin)
-        self.assertEqual(12, t.lmax)
-        self.assertEqual(0, t.vmin)
-        self.assertEqual(11, t.vmax)
 
     def test_symbolic_type(self):
         t = SymbolicType('Object', labels=['Bowl', 'Spoon', 'Cereal'])

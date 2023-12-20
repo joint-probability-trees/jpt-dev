@@ -539,8 +539,8 @@ def infer_from_dataframe(df,
             else:
                 dom = IntegerType(
                     '%s%s_TYPE_I' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
-                    lmin=df[col].min(),
-                    lmax=df[col].max()
+                    # lmin=df[col].min(),
+                    # lmax=df[col].max()
                 )
             var = IntegerVariable(col, dom)
         else:
