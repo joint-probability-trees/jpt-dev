@@ -1640,6 +1640,7 @@ class JPT:
             shape = columns.T.shape
         elif isinstance(data, pd.DataFrame):
             shape = data.shape
+            data = data.copy()
         else:
             raise ValueError('No data given.')
 
@@ -1822,10 +1823,12 @@ class JPT:
         else:
             return iv
 
-    def likelihood(self,
-                   queries: Union[np.ndarray, pd.DataFrame],
-                   dirac_scaling: float = 2.,
-                   min_distances: Dict = None) -> np.ndarray:
+    def likelihood(
+            self,
+            queries: Union[np.ndarray, pd.DataFrame],
+            dirac_scaling: float = 2.,
+            min_distances: Dict = None
+    ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
         single numbers (no intervals).
