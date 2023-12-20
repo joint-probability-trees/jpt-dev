@@ -2,7 +2,7 @@
 import numbers
 import re
 from itertools import tee
-from operator import itemgetter
+from operator import itemgetter, attrgetter
 from types import FunctionType
 from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple, List
 
@@ -14,7 +14,7 @@ from . import Distribution
 from ..utils import OrderedDictProxy
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
-from ...base.utils import setstr, normalized, classproperty, save_plot
+from ...base.utils import setstr, normalized, classproperty, save_plot, Collections
 
 try:
     from ...base.functions import __module__
@@ -30,12 +30,13 @@ finally:
 # noinspection DuplicatedCode
 class Integer(Distribution):
 
-    lmin = None
-    lmax = None
-    vmin = None
-    vmax = None
-    values = None
-    labels = None
+    lmin = ...
+    lmax = ...
+    # offset = None
+    # vmin = None
+    # vmax = None
+    # values = None
+    # labels = None
 
     OPEN_DOMAIN = 'open_domain'
     AUTO_DOMAIN = 'auto_domain'
@@ -51,7 +52,7 @@ class Integer(Distribution):
             raise Exception(
                 f'Instantiation of abstract class {type(self)} is not allowed!'
             )
-        self._params: Optional[np.ndarray] = None
+        self._params: Optional[Dict[int, float]] = None
         self.to_json: FunctionType = self.inst_to_json
 
     @classmethod
@@ -60,8 +61,8 @@ class Integer(Distribution):
             cls.__qualname__,
             cls.lmin,
             cls.lmax,
-            cls.vmin,
-            cls.vmax,
+            # cls.vmin,
+            # cls.vmax,
             tuple(
                 sorted(cls.SETTINGS.items())
             )
@@ -97,16 +98,35 @@ class Integer(Distribution):
     ) -> 'Integer':
         res_t = IntegerType(
             name=f'{name if name is not None else self.__class__.__name__}+{other.__class__.__name__}',
-            lmin=self.lmin + other.lmin,
-            lmax=self.lmax + other.lmax
+            lmin=(self.lmin + other.lmin) if ... not in (self.lmin, other.lmin) else ...,
+            lmax=(self.lmax + other.lmax) if ... not in (self.lmax, other.lmax) else ...
         )
         res = res_t()
-        dist = []
-        for z in res.labels.values():
+        z_min = (
+            min(project(self.items(False), 1))
+            +
+            min(project(other.items(False), 1))
+        )
+        z_max = (
+            max(project(self.items(False), 1))
+            +
+            max(project(other.items(False), 1))
+        )
+
+        dist = {}
+        for z in range(z_min, z_max + 1):
             p = 0
-            for k in self.labels.values():
-                p += self.p(k) * (other.p(z-k) if other.lmin <= z-k <= other.lmax else 0)
-            dist.append(p)
+            for p_k, k in self.items():
+                p += p_k * (
+                    other.p(z - k)
+                    if ((other.lmin if other.lmin is not ... else np.NINF)
+                        <= z - k <=
+                        (other.lmax if other.lmax is not ... else np.PINF))
+                    else 0
+                )
+            if not p:
+                continue
+            dist[z] = p
         res.set(dist)
         return res
 
@@ -116,12 +136,8 @@ class Integer(Distribution):
             return False
         return all((
             cls.__name__ == other.__name__,
-            cls.labels == other.labels,
-            cls.values == other.values,
             cls.lmin == other.lmin,
             cls.lmax == other.lmax,
-            cls.vmin == other.vmin,
-            cls.vmax == other.vmax
         ))
 
     @classmethod
@@ -129,11 +145,8 @@ class Integer(Distribution):
         return {
             'type': 'integer',
             'class': cls.__qualname__,
-            'labels': list(cls.labels.values()),
-            'vmin': int(cls.vmin),
-            'vmax': int(cls.vmax),
-            'lmin': int(cls.lmin),
-            'lmax': int(cls.lmax)
+            'lmin': int(cls.lmin) if cls.lmin is not ... else None,
+            'lmax': int(cls.lmax) if cls.lmax is not ... else None
         }
 
     to_json = type_to_json
@@ -141,7 +154,7 @@ class Integer(Distribution):
     def inst_to_json(self) -> Dict[str, Any]:
         return {
             'class': type(self).__qualname__,
-            'params': list(self._params),
+            'params': self._params,
             'settings': self.settings
         }
 
@@ -155,16 +168,55 @@ class Integer(Distribution):
 
     def copy(self):
         result = type(self)(**self.settings)
-        result._params = np.array(self._params)
+        # result._params = np.array(self._params)
+        result._params = self._params.copy() if self._params is not None else None
         return result
 
     @property
-    def probabilities(self):
+    def probabilities(self) -> Dict[int, float]:
         return self._params
 
     @classproperty
-    def n_values(cls) -> int:
-        return cls.lmax - cls.lmin + 1
+    def n_values(cls) -> Optional[int]:
+        if ... not in (cls.lmin, cls.lmax):
+            return cls.lmax - cls.lmin + 1
+        else:
+            return None
+
+    @classmethod
+    def _label2value(cls, label: int) -> int:
+        if cls.lmin is not ...:
+            result = label - cls.lmin
+        elif cls.lmax is not ...:
+            result = cls.lmax - label
+        else:
+            result = label
+        if not ((np.NINF if cls.lmin is ... else cls.lmin)
+                <= label <=
+                (np.PINF if cls.lmax is ... else cls.lmax)
+        ):
+            raise ValueError(
+                f'Label {label} is out of domain [{cls.lmin}, {cls.lmax}]'
+            )
+        return result
+
+    @classmethod
+    def _value2label(cls, value: int) -> int:
+        if cls.lmin is not ...:
+            result = value + cls.lmin
+        elif cls.lmax is not ...:
+            result = value + cls.lmax
+        else:
+            result = value
+        if not (
+                (np.NINF if cls.lmin is ... else cls.lmin)
+                <= result <=
+                (np.PINF if cls.lmax is ... else cls.lmax)
+        ):
+            raise ValueError(
+                f'Value {value} is out of domain [{cls.lmin}, {cls.lmax}]'
+            )
+        return result
 
     # noinspection DuplicatedCode
     @classmethod
@@ -172,23 +224,10 @@ class Integer(Distribution):
             cls,
             value: Union[int, Iterable[int]]
     ) -> Union[int, Iterable[int]]:
-        if not isinstance(value, Iterable):
-            value_ = {value}
+        if not isinstance(value, Collections):
+            return cls._value2label(value)
         else:
-            value_ = value
-        if not all(
-            [v in cls.labels for v in value_]
-        ):
-            raise ValueError(
-                '%s not among the values of domain %s.' % (
-                    first([v for v in value_ if v not in cls.labels]),
-                    cls.__qualname__
-                )
-            )
-        if not isinstance(value, Iterable):
-            return cls.labels[value]
-        # noinspection PyArgumentList
-        return type(value)([cls.labels[v] for v in value_])
+            return type(value)([cls._value2label(v) for v in value])
 
     # noinspection DuplicatedCode
     @classmethod
@@ -196,35 +235,24 @@ class Integer(Distribution):
             cls,
             label: Union[int, Iterable[int]]
     ) -> Union[int, Iterable[int]]:
-        if not isinstance(label, Iterable):
-            label_ = {label}
+        if not isinstance(label, Collections):
+            return cls._label2value(label)
         else:
-            label_ = label
-        if not all(
-            [l in cls.values for l in label_]
-        ):
-            raise ValueError(
-                '%s not among the labels of domain %s.' % (
-                    first([l for l in label_ if l not in cls.labels]),
-                    cls.__qualname__
-                )
-            )
-        if not isinstance(label, Iterable):
-            return cls.values[label]
-        # noinspection PyArgumentList
-        return type(label)([cls.values[l] for l in label_])
+            return type(label)([cls._label2value(l) for l in label])
 
     def _sample(self, n: int) -> Iterable[int]:
+        items = self.probabilities.items()
         return wsample(
-            list(self.values.values()),
-            weights=self.probabilities,
+            project(items, 0),
+            weights=project(items, 1),
             k=n
         )
 
     def _sample_one(self) -> int:
+        items = self.probabilities.items()
         return wchoice(
-            list(self.values.values()),
-            weights=self.probabilities
+            project(items, 0),
+            weights=project(items, 1),
         )
 
     def sample(self, n: int) -> Iterable[int]:
@@ -233,41 +261,50 @@ class Integer(Distribution):
     def sample_one(self) -> int:
         return self.value2label(self._sample_one())
 
-    def _pdf(self, value: int) -> float:
-        return self._p(value)
+    @property
+    def _pdf(self) -> FunctionType:
+        return self._p
 
-    def pdf(self, label: int) -> float:
-        return self.p(label)
+    @property
+    def pdf(self) -> FunctionType:
+        return self.p
 
     def p(self, labels: Union[int, Iterable[int]]) -> float:
         return self._p(self.label2value(labels))
 
     def _p(self, values: Union[int, Iterable[int]]) -> float:
-        if not isinstance(values, Iterable):
+        if not isinstance(values, Collections):
             values = {values}
         elif not isinstance(values, set):
             values = set(values)
-        i1, i2 = tee(values, 2)
-        if not all(isinstance(v, numbers.Integral) and self.vmin <= v <= self.vmax for v in i1):
-            raise ValueError(
-                'Arguments must be in %s' % setstr(self.values.values(), limit=5)
-            )
 
-        return sum(self._params[v] for v in i2)
+        i1, i2 = tee(values, 2)
+        for v in values:
+            self._value2label(v)
+
+        return sum(self.probabilities.get(v, 0) for v in i2)
 
     def expectation(self) -> float:
-        return sum(p * v for p, v in zip(self.probabilities, self.values))
+        return sum(
+            p * self.value2label(v) for v, p in self.probabilities.items() if p
+        )
 
     def _expectation(self) -> float:
-        return sum(p * v for p, v in zip(self.probabilities, self.labels))
+        return sum(
+            p * v for v, p in self.probabilities.items() if p
+        )
 
     def variance(self) -> float:
         e = self.expectation()
-        return sum((l - e) ** 2 * p for l, p in zip(self.labels.values(), self.probabilities))
+        return sum(
+            (self.value2label(v) - e) ** 2 * p for v, p in self.probabilities.items()
+        )
 
     def _variance(self) -> float:
         e = self._expectation()
-        return sum((v - e) ** 2 * p for v, p in zip(self.values.values(), self.probabilities))
+        return sum(
+            (v - e) ** 2 * p for v, p in self.probabilities.items()
+        )
 
     def _k_mpe(self, k: Optional[int] = None) -> List[Tuple[Set[int], float]]:
         """
@@ -276,7 +313,7 @@ class Integer(Distribution):
         :param k: The number of solutions to generate
         :return: An list containing a tuple containing the likelihood and state in descending order.
         """
-        likelihoods = {p for p in self.probabilities if p}
+        likelihoods = {p for p in self.probabilities.values() if p}
         sorted_likelihood = sorted(
             likelihoods,
             reverse=True
@@ -286,7 +323,7 @@ class Integer(Distribution):
         for likelihood in sorted_likelihood:
             result.append(
                 (
-                    {value for value, p in zip(self.values.values(), self.probabilities) if p == likelihood},
+                    {v for v, p in self.probabilities.items() if p == likelihood},
                     likelihood
                 )
             )
@@ -318,10 +355,9 @@ class Integer(Distribution):
             restriction = {restriction}
         result = self.copy()
         try:
-            params = normalized([
-                p if v in restriction else 0
-                for p, v in zip(self.probabilities, self.values.values())
-            ])
+            params = normalized({
+                v: p for v, p in self.probabilities.items() if v in restriction
+            })
         except ValueError:
             raise Unsatisfiability(
                 'Restriction unsatisfiable: probabilities must sum to 1.'
@@ -340,12 +376,13 @@ class Integer(Distribution):
         if abs(1 - sum(weights)) > 1e-10:
             raise ValueError('Weights must sum to 1 (but is %s).' % sum(weights))
 
-        params = np.zeros(distributions[0].n_values)
+        params = {}
 
         for d, w in zip(distributions, weights):
-            params += d.probabilities * w
+            for v, p in d.probabilities.items():
+                params[v] = params.get(v, 0) + d.probabilities.get(v, 0) * w
 
-        if abs(sum(params)) < 1e-10:
+        if abs(sum(params.values())) < 1e-10:
             raise Unsatisfiability('Sum of weights must not be zero.')
 
         return type(distributions[0])().set(params)
@@ -358,11 +395,10 @@ class Integer(Distribution):
         if not 0 <= weight <= 1:
             raise ValueError('Weight must be in [0, 1]')
 
-        if self._params is None:
-            self._params = np.zeros(self.n_values)
-        self._params *= 1 - weight
-        self._params += dist._params * weight
-
+        params = {}
+        for v in set(self.probabilities.keys()).union(dist.probabilities.keys()):
+            params[v] = (1 - weight) * self._p(v) + weight * dist._p(v)
+        self._params = params
         return self
 
     def fit(
@@ -390,29 +426,40 @@ class Integer(Distribution):
             rows: np.ndarray = None,
             col: int = None
     ) -> 'Integer':
-        self._params = np.zeros(
-            shape=self.n_values,
-            dtype=np.float64
-        )
+        self._params = {}
         n_samples = ifnone(rows, len(data), len)
         col = ifnone(col, 0)
         for row in ifnone(rows, range(data.shape[0])):
-            self._params[int(data[row, col])] += 1 / n_samples
+            v = int(data[row, col])
+            self._params[v] = self._params.get(v, 0) + 1 / n_samples
 
         return self
 
-    def set(self, params: Iterable[float]) -> 'Integer':
-        if len(self.values) != len(params):
+    def set(self, params: Dict[int, float] or Iterable[float]) -> 'Integer':
+        if isinstance(params, dict):
+            probabilities = params.copy()
+        else:
+            if not self.finite:
+                raise ValueError(
+                    'Unable to set unbounded integer distributions '
+                    'with object of type %s' % type(params).__qualname__
+                )
+            if ifnone(self.n_values, np.PINF) != len(params):
+                raise ValueError(
+                    'Number of values and probabilities must coincide.'
+                )
+            probabilities = {i: p for i, p in enumerate(params)}
+        if abs(sum(probabilities.values()) - 1) > 1e-8:
             raise ValueError(
-                'Number of values and probabilities must coincide.'
+                'Probabilities must sum to 1, got %s' % sum(probabilities.values())
             )
-        self._params = np.array(params, dtype=np.float64)
+        self._params = probabilities
         return self
 
     def __eq__(self, other) -> bool:
         return (
             type(self).equiv(type(other)) and
-            (self.probabilities == other.probabilities).all()
+            self.probabilities == other.probabilities
         )
 
     def __str__(self):
@@ -426,20 +473,45 @@ class Integer(Distribution):
     def __repr__(self):
         return str(self)
 
-    def sorted(self) -> Iterable[Tuple[float, int]]:
+    @classproperty
+    def finite(cls) -> bool:
+        return ... not in (cls.lmin, cls.lmax)
+
+    def sorted(self, exhaustive: bool = True) -> Iterable[Tuple[float, int]]:
+        probabilities = self.probabilities.copy()
+        if exhaustive and ... not in (self.lmin, self.lmax):
+            probabilities.update({
+                v: 0 for v in range(
+                    self.label2value(self.lmin),
+                    self.label2value(self.lmax) + 1
+                ) if v not in self.probabilities
+            })
         return sorted(
-            [(p, l) for p, l in zip(self._params, self.labels.values())],
+            [(p, self.value2label(v)) for v, p in probabilities.items() if p or exhaustive],
             key=itemgetter(0),
             reverse=True
         )
 
-    def _items(self) -> Iterable[Tuple[float, int]]:
+    def _items(self, exhaustive: bool = True) -> Iterable[Tuple[float, int]]:
         '''Return a list of (probability, value) pairs representing this distribution.'''
-        yield from ((p, v) for p, v in zip(self._params, self.values.values()))
+        probabilities = self.probabilities.copy()
+        if exhaustive and ... not in (self.lmin, self.lmax):
+            probabilities.update({
+                v: 0 for v in range(
+                    self.label2value(self.lmin),
+                    self.label2value(self.lmax) + 1
+                ) if v not in self.probabilities
+            })
+        yield from sorted(
+            ((p, v) for v, p in probabilities.items() if p or exhaustive),
+            key=itemgetter(1)
+        )
 
-    def items(self):
+    def items(self, exhaustive: bool = True) -> Iterable[Tuple[float, int]]:
         '''Return a list of (probability, label) pairs representing this distribution.'''
-        yield from ((p, self.value2label(v)) for p, v in self._items())
+        yield from (
+            (p, self.value2label(v)) for p, v in self._items(exhaustive=exhaustive)
+        )
 
     def kl_divergence(self, other: 'Integer') -> float:
         if type(other) is not type(self):
@@ -447,13 +519,14 @@ class Integer(Distribution):
                 'Can only compute KL divergence between '
                 'distributions of the same type, got %s' % type(other)
             )
+        values = set(self.probabilities.keys()).union(other.probabilities.keys())
         result = 0
-        for v in range(self.n_values):
-            result += self._params[v] * abs(self._params[v] - other._params[v])
+        for v in values:
+            result += self._p(v) * abs(self._p(v) - other._p(v))
         return result
 
     def number_of_parameters(self) -> int:
-        return self._params.shape[0]
+        return len(self._params)
 
     def moment(self, order: int = 1, center: float = 0) -> float:
         r"""Calculate the central moment of the r-th order almost everywhere.
@@ -464,8 +537,8 @@ class Integer(Distribution):
         :param center: The constant to subtract in the basis of the exponent
         """
         result = 0
-        for value, probability in zip(self.labels.values(), self._params):
-            result += pow(value - center, order) * probability
+        for value, probability in self.probabilities.items():
+            result += pow(self.value2label(value) - center, order) * probability
         return result
 
     @staticmethod
@@ -473,8 +546,9 @@ class Integer(Distribution):
             d1: 'Integer',
             d2: 'Integer'
     ) -> float:
-        intersect = sum([min(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)])
-        union = sum([max(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)])
+        values = set(d1.probabilities.keys()).union(d2.probabilities.keys())
+        intersect = sum([min(d1._p(v), d2._p(v)) for v in values])
+        union = sum([max(d1._p(v), d2._p(v)) for v in values])
         return intersect/union
 
     def plot(
@@ -505,20 +579,24 @@ class Integer(Distribution):
         if not view:
             plt.ioff()
 
-        max_values = min(ifnone(max_values, len(self.labels)), len(self.labels))
+        # generate data
+        max_values = min(
+            ifnone(max_values, len(self.probabilities)),
+            len(self.probabilities)
+        )
 
         # prepare prob-label pairs containing only the first `max_values` highest probability tuples
         pairs = sorted(
             [
-                (self._params[idx], lbl) for idx, lbl in enumerate(self.labels.values())
+                self.sorted(exhaustive=True)
             ],
-            key=lambda x: x[0],
+            key=itemgetter(0),
             reverse=True
         )[:max_values]
 
         if alphabet:
             # re-sort remaining values alphabetically
-            pairs = sorted(pairs, key=lambda x: x[1])
+            pairs = sorted(pairs, key=itemgetter(1))
 
         probs = project(pairs, 0)
         labels = project(pairs, 1)
@@ -565,17 +643,16 @@ class Integer(Distribution):
             plt.show()
 
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 
-# noinspection PyPep8Naming
-def IntegerType(name: str, lmin: int, lmax: int) -> Type[Integer]:
-    if lmin > lmax:
-        raise ValueError('Min label is greater tham max value: %s > %s' % (lmin, lmax))
-    t = type(name, (Integer,), {})
-    t.values = OrderedDictProxy([(l, v) for l, v in zip(range(lmin, lmax + 1), range(lmax - lmin + 1))])
-    t.labels = OrderedDictProxy([(v, l) for l, v in zip(range(lmin, lmax + 1), range(lmax - lmin + 1))])
+# noinspection PyPep8Naming,PyTypeChecker
+def IntegerType(name: str, lmin: Optional[int] = ..., lmax: Optional[int] = ...) -> Type[Integer]:
+    if (..., ...) != (lmin, lmax) and lmin > lmax:
+        raise ValueError(
+            'Min label is greater tham max value: %s > %s' % (lmin, lmax)
+        )
+    t: Type[Integer] = type(name, (Integer,), {})
     t.lmin = lmin
     t.lmax = lmax
-    t.vmin = 0
-    t.vmax = lmax - lmin
     return t
