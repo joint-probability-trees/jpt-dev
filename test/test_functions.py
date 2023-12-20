@@ -1100,7 +1100,7 @@ class PLFApproximatorTest(TestCase):
         # Assert
         self.assertEqual(
             plf,
-            result.cdf
+            result
         )
 
     def test_jumps_constant_function(self):

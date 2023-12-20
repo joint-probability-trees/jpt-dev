@@ -611,7 +611,12 @@ class NumericDistributionTest(TestCase):
     def test_jaccard_identity(self):
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
-                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+                PiecewiseFunction
+                .zero()
+                .overwrite_at(
+                    ContinuousSet(0, 1),
+                    ConstantFunction(1)
+                )
             )
         )
 
@@ -621,12 +626,23 @@ class NumericDistributionTest(TestCase):
     def test_jaccard_disjoint(self):
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
-                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+                PiecewiseFunction
+                .zero()
+                .overwrite_at(
+                    ContinuousSet(0, 1),
+                    ConstantFunction(1)
+                )
             )
         )
+
         d2 = Numeric().set(
             params=QuantileDistribution.from_pdf(
-                PiecewiseFunction.zero().overwrite_at(ContinuousSet(2, 3), ConstantFunction(1))
+                PiecewiseFunction
+                .zero()
+                .overwrite_at(
+                    ContinuousSet(2, 3),
+                    ConstantFunction(1)
+                )
             )
         )
 
@@ -636,12 +652,22 @@ class NumericDistributionTest(TestCase):
     def test_jaccard_overlap(self):
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
-                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+                PiecewiseFunction
+                .zero()
+                .overwrite_at(
+                    ContinuousSet(0, 1),
+                    ConstantFunction(1)
+                )
             )
         )
         d2 = Numeric().set(
             params=QuantileDistribution.from_pdf(
-                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0.5, 1.5), ConstantFunction(1))
+                PiecewiseFunction
+                .zero()
+                .overwrite_at(
+                    ContinuousSet(0.5, 1.5),
+                    ConstantFunction(1)
+                )
             )
         )
 
@@ -651,12 +677,22 @@ class NumericDistributionTest(TestCase):
     def test_jaccard_symmetry(self):
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
-                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0, 1), ConstantFunction(1))
+                PiecewiseFunction
+                .zero()
+                .overwrite_at(
+                    ContinuousSet(0, 1),
+                    ConstantFunction(1)
+                )
             )
         )
         d2 = Numeric().set(
             params=QuantileDistribution.from_pdf(
-                PiecewiseFunction.zero().overwrite_at(ContinuousSet(0.5, 1.5), ConstantFunction(1))
+                PiecewiseFunction
+                .zero()
+                .overwrite_at(
+                    ContinuousSet(0.5, 1.5),
+                    ConstantFunction(1)
+                )
             )
         )
 

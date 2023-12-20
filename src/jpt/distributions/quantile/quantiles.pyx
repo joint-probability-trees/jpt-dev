@@ -127,12 +127,14 @@ cdef class QuantileDistribution:
 
         # Weigh the dirac impulses proportionally
         residual = 1 - cdf.eval(cdf.intervals[-1].any_point())
-        if residual < 0:
+
+        if residual < -1e-8:
             raise ValueError(
-                'Illegal CDF value > 1: %f' % (residual + 1)
+                'Illegal CDF value > 1: %f' % (1 - residual)
             )
         elif residual > 0:
             dirac_offsets = [(i, w * residual) for i, w in dirac_offsets]
+
         # Apply offsets by dirac impulses
         offset = 0
         for i, (_, f) in enumerate(cdf.iter()):
@@ -141,7 +143,9 @@ cdef class QuantileDistribution:
             f += offset
 
         return cdf.stretch(
-            1 / cdf.eval(cdf.intervals[-1].any_point())
+            1 / cdf.eval(
+                cdf.intervals[-1].any_point()
+            )
         )
 
     cpdef QuantileDistribution fit(
