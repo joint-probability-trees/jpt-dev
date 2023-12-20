@@ -1051,8 +1051,18 @@ class ConditionalJPTTest(TestCase):
         return result
 
     def test_identity(self):
-        self.assertEqual(np.average(np.log(self.model.likelihood(self.data))),
-                         np.average(np.log(self.model.conditional_jpt().likelihood(self.data))))
+        self.assertEqual(
+            np.average(
+                np.log(
+                    self.model.likelihood(self.data)
+                )
+            ),
+            np.average(
+                np.log(
+                    self.model.conditional_jpt().likelihood(self.data)
+                )
+            )
+        )
 
     def test_likelihood_symbolic(self):
 
