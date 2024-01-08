@@ -1,4 +1,4 @@
-# cython: auto_cpdef=True,
+# cython: auto_cpdef=False,
 # cython: infer_types=False,
 # cython: language_level=3
 # cython: boundscheck=False
@@ -12,24 +12,71 @@ from typing import Iterable
 
 from dnutils import ifnot, first, ifnone
 
-from ...base.constants import eps
-from ...base.intervals import R, EMPTY, EXC, INC
+from constants import eps
+from intervals import R, EMPTY, EXC, INC
 
 import numpy as np
 
-from ...base.functions cimport PiecewiseFunction, LinearFunction, ConstantFunction, Undefined, Jump, Function
-from ...base.intervals cimport ContinuousSet, RealSet
-cimport numpy as np
-from ...base.cutils cimport SIZE_t, DTYPE_t, sort
+from functions.func cimport PiecewiseFunction, LinearFunction, ConstantFunction, Undefined, Function
+from intervals.contset cimport ContinuousSet
+from intervals.unionset cimport RealSet
+from cutils.cutils cimport SIZE_t, DTYPE_t, sort
 
+cimport numpy as np
 import warnings
 
-from jpt.base.utils import pairwise, normalized
+from utils import pairwise, normalized
 from jpt.base.errors import Unsatisfiability
 
 from .cdfreg import CDFRegressor
 
 warnings.filterwarnings("ignore")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+cdef class KnotFunction(Function):
+    """
+    Abstract superclass of all knot functions.
+    """
+
+    cdef public:
+        DTYPE_t knot, weight
+
+    def __init__(self, DTYPE_t knot, DTYPE_t weight):
+        self.knot = knot
+        self.weight = weight
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+cdef class Jump(KnotFunction):
+    """
+    Implementation of jump functions.
+    """
+
+    cdef public:
+        np.int32_t alpha
+
+    def __init__(self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
+        super(Jump, self).__init__(knot, weight)
+        assert alpha in (1, -1), 'alpha must be in {1,-1}'
+        self.alpha = alpha
+
+    cpdef DTYPE_t eval(self, DTYPE_t x):
+        return max(0, (-1 if ((self.knot - x) if self.alpha == 1 else (x - self.knot)) < 0 else 1)) * self.weight
+
+    def __str__(self):
+        return '%.3f * max(0, sgn(%s))' % (self.weight,
+                                           ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
+
+    def __repr__(self):
+        return '<Jump 0x%X: k=%.3f a=%d w=%.3f>' % (id(self), self.knot, self.alpha, self.weight)
+
+    @staticmethod
+    def from_point(p1, alpha):
+        x, y = p1
+        return Jump(x, alpha, y)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -53,11 +100,13 @@ cdef class QuantileDistribution:
         self._ppf = None
 
     def __hash__(self):
-        return hash((QuantileDistribution,
-                     self.epsilon,
-                     self.verbose,
-                     self.min_samples_mars,
-                     self._cdf))
+        return hash((
+            QuantileDistribution,
+            self.epsilon,
+            self.verbose,
+            self.min_samples_mars,
+            self._cdf
+        ))
 
     def __eq__(self, o):
         if not isinstance(o, QuantileDistribution):
@@ -73,13 +122,13 @@ cdef class QuantileDistribution:
         return result
 
     @staticmethod
-    def from_cdf(cdf: PiecewiseFunction) -> 'QuantileDistribution':
+    def from_cdf(cdf: PiecewiseFunction) -> QuantileDistribution:
         d = QuantileDistribution()
         d.cdf = cdf
         return d
 
     @staticmethod
-    def from_pdf(pdf: PiecewiseFunction) -> 'QuantileDistribution':
+    def from_pdf(pdf: PiecewiseFunction) -> QuantileDistribution:
         d = QuantileDistribution()
         d.pdf = pdf
         return d

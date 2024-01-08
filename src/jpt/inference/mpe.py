@@ -6,8 +6,8 @@ from typing import Any, Iterator, List
 import numpy as np
 from dnutils import first, ifnone, project
 
-from jpt.base.utils import Heap
-from jpt.distributions import Numeric
+from utils import Heap
+from jpt.distributions import Numeric, Integer
 from jpt.variables import VariableMap, Variable, ValueAssignment
 
 
@@ -143,7 +143,7 @@ class MPESolver:
                 list(
                     sorted([
                         (
-                            frozenset(val) if not isinstance(dist, Numeric) else val,
+                            frozenset(val) if not isinstance(dist, (Numeric, Integer)) else val,
                             -np.log(
                                 (dist.pdf / likelihood_divisor).eval(val.any_point())
                                 if isinstance(dist, Numeric)
@@ -169,7 +169,10 @@ class MPESolver:
                 self.variable_order(),
                 list(
                     np.cumsum(
-                        [min(self.constraints[var].values()) for var in reversed(list(self.variable_order()))]
+                        [
+                            min(self.constraints[var].values())
+                            for var in reversed(list(self.variable_order()))
+                        ]
                     )[:-1][::-1]
                 ) + [0]
             )

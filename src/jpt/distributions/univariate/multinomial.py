@@ -4,7 +4,7 @@ import re
 from collections import Counter
 from itertools import tee
 from operator import itemgetter
-from types import FunctionType
+from types import FunctionType, MethodType
 from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Collection
 
 import numpy as np
@@ -13,11 +13,42 @@ from dnutils import ifnone, project, first
 from matplotlib import pyplot as plt
 
 from . import Distribution
-from ..utils import OrderedDictProxy
+from .distribution import ValueMap
+from ..utils import HashableOrderedDict
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
-from ...base.utils import mapstr, classproperty, save_plot, Symbol, Collections
+from utils import mapstr, classproperty, save_plot, Symbol, Collections
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class MultinomialValueMap(ValueMap):
+
+    def __init__(self, pairs: Iterable[Tuple[Symbol, Symbol]]):
+        self.mapping = HashableOrderedDict(pairs)
+
+    def __getitem__(self, symbol: Symbol) -> Symbol:
+        try:
+            return self.mapping[symbol]
+        except KeyError:
+            raise ValueError(
+                f'Value {symbol} out of domain (must be in {set(self.mapping)})'
+            )
+
+    def __iter__(self):
+        return iter(self.mapping)
+
+    def __len__(self):
+        return len(self.mapping)
+
+    def __hash__(self):
+        return hash((
+            MultinomialValueMap,
+            self.mapping
+        ))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection DuplicatedCode
 class Multinomial(Distribution):
@@ -25,16 +56,18 @@ class Multinomial(Distribution):
     Abstract supertype of all symbolic domains and distributions.
     '''
 
-    values: OrderedDictProxy = None
-    labels: OrderedDictProxy = None
+    values: MultinomialValueMap = None
+    labels: MultinomialValueMap = None
 
     def __init__(self, **settings):
         super().__init__(**settings)
         if not issubclass(type(self), Multinomial) or type(self) is Multinomial:
-            raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
+            raise Exception(
+                f'Instantiation of abstract class {type(self)} is not allowed!'
+            )
 
         self._params: Optional[np.ndarray] = None
-        self.to_json: FunctionType = self.inst_to_json
+        self.to_json: MethodType = self.inst_to_json
 
     @classmethod
     def hash(cls):
@@ -616,8 +649,8 @@ class Bool(Multinomial):
     Wrapper class for Boolean domains and distributions.
     '''
 
-    values = OrderedDictProxy([(False, 0), (True, 1)])
-    labels = OrderedDictProxy([(0, False), (1, True)])
+    values = MultinomialValueMap([(False, 0), (True, 1)])
+    labels = MultinomialValueMap([(0, False), (1, True)])
 
     def __init__(self, **settings):
         super().__init__(**settings)
@@ -643,12 +676,17 @@ class Bool(Multinomial):
 
 # noinspection PyPep8Naming
 def SymbolicType(name: str, labels: Iterable[Any]) -> Type[Multinomial]:
+    labels = list(labels)
     if len(labels) < 1:
         raise ValueError('At least one value is needed for a symbolic type.')
     if len(set(labels)) != len(labels):
         duplicates = [item for item, count in Counter(labels).items() if count > 1]
         raise ValueError('List of labels  contains duplicates: %s' % duplicates)
     t = type(name, (Multinomial,), {})
-    t.values = OrderedDictProxy([(lbl, int(val)) for val, lbl in zip(range(len(labels)), labels)])
-    t.labels = OrderedDictProxy([(int(val), lbl) for val, lbl in zip(range(len(labels)), labels)])
+    t.values = MultinomialValueMap(
+        [(lbl, int(val)) for val, lbl in zip(range(len(labels)), labels)]
+    )
+    t.labels = MultinomialValueMap(
+        [(int(val), lbl) for val, lbl in zip(range(len(labels)), labels)]
+    )
     return t

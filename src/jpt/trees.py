@@ -18,11 +18,11 @@ from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
-from .base.constants import plotstyle, orange, green
+from constants import plotstyle, orange, green
 from .base.errors import Unsatisfiability
-from .base.utils import list2interval, format_path, normalized, list2intset, list2set
-from .base.utils import list2interval, format_path, normalized, Heap
-from .base.utils import prod, setstr_int
+from utils import list2intset, list2set
+from utils import format_path, normalized, Heap
+from utils import prod, setstr_int
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
 from .distributions.quantile.quantiles import QuantileDistribution
@@ -38,17 +38,17 @@ from .variables import (
     ValueAssignment
 )
 
+from intervals import ContinuousSet, Interval, EXC, INC, R, RealSet, IntSet, Z
+from functions import PiecewiseFunction, Undefined
+
 try:
-    from .base.intervals import __module__
     from .learning.impurity import __module__
-    from .base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
     from .learning.impurity import Impurity
-    from .base.functions import PiecewiseFunction, Undefined
+
 
 
 try:
@@ -96,7 +96,10 @@ class Node:
         for var, vals in self._path:
             res[var] = (res.get(
                 var,
-                set(range(var.domain.n_values)) if (var.symbolic or var.integer) else R
+                set(range(var.domain.n_values))
+                if var.symbolic else (
+                    Z if var.integer else R
+                )
             ).intersection(vals))
         return res
 
@@ -119,30 +122,15 @@ class Node:
                 # get the restriction of the path
                 restriction = self.path[variable]
 
-                # if it is a numeric
-                if variable.numeric:
+                # and a range is given
+                if isinstance(value, (Interval, set)):
+                    # if the ranges don't intersect return false
+                    return not restriction.isdisjoint(value)
 
-                    # and a range is given
-                    if isinstance(value, ContinuousSet):
-                        # if the ranges don't intersect return false
-                        if value.isdisjoint(restriction):
-                            return False
-
+                else:
                     # if it is a singular value
-                    else:
-                        # check if the path allows this value
-                        if not restriction.lower < value <= restriction.upper:
-                            return False
-
-                # if the variable is symbolic or integer
-                elif variable.symbolic or variable.integer:
-
-                    # if it is a set of possible values
-                    if not isinstance(value, set):
-                        value = set([value])
-                    # check if the sets intersect
-                    if value.isdisjoint(restriction):
-                        return False
+                    # check if the path allows this value
+                    return value in restriction
 
         return True
 
@@ -175,9 +163,9 @@ class Node:
         result = np.ones(len(samples))
         for variable, restriction in self.path.items():
             index = variable_index_map[variable]
-            if variable.numeric:
+            if variable.numeric or variable.integer:
                 result *= (samples[:, index] > restriction.lower) & (samples[:, index] <= restriction.upper)
-            if variable.symbolic or variable.integer:
+            if variable.symbolic:
                 result *= np.isin(samples[:, index], list(restriction))
 
         return result
@@ -223,12 +211,12 @@ class DecisionNode(Node):
             'idx': self.idx,
             'parent': ifnone(self.parent, None, attrgetter('idx')),
             'splits': [
-                s.to_json() if isinstance(s, ContinuousSet) else list(s)
+                s.to_json() if isinstance(s, Interval) else list(s)
                 for s in self.splits
             ],
             'variable': self.variable.name,
             '_path': [
-                (var.name, split.to_json() if var.numeric else list(split))
+                (var.name, split.to_json() if (var.numeric or var.integer) else list(split))
                 for var, split in self._path
             ],
             'children': [node.idx for node in self.children],
@@ -248,8 +236,8 @@ class DecisionNode(Node):
             idx=data['idx'],
             variable=tree.varnames[data['variable']]
         )
-        node.splits = [
-            Interval.from_json(s) if node.variable.numeric else set(s)
+        node.splits = [  # TODO: Support backward compatability to integers as regular python sets
+            Interval.from_json(s) if (node.variable.numeric or node.variable.integer) else set(s)
             for s in data['splits']
         ]
         node.children = [None] * len(node.splits)
@@ -301,7 +289,16 @@ class DecisionNode(Node):
             else:
                 return str(self.variable.domain.labels[fst(self.splits[idx_split])])
         elif self.variable.integer:
-            return setstr_int(self.variable.domain.value2label(self.splits[idx_split]))
+            return str(
+                IntSet(
+                    self.variable.domain.value2label(
+                        self.splits[idx_split].lower
+                    ),
+                    self.variable.domain.value2label(
+                        self.splits[idx_split].upper
+                    )
+                )
+            )
 
     @property
     def str_node(self) -> str:
@@ -311,8 +308,11 @@ class DecisionNode(Node):
         """
         :return: All children of this node
         """
-        return self.children + [item for sublist in
-                                [child.recursive_children() for child in self.children] for item in sublist]
+        return self.children + [
+            item for sublist in
+            [child.recursive_children() for child in self.children]
+            for item in sublist
+        ]
 
     def __str__(self) -> str:
         return (f'<DecisionNode #{self.idx} '
@@ -434,12 +434,14 @@ class Leaf(Node):
         return leaf
 
     def __eq__(self, o) -> bool:
-        return (type(o) == type(self) and
-                self.idx == o.idx and
-                self._path == o._path and
-                self.samples == o.samples and
-                self.distributions == o.distributions and
-                self.prior == o.prior)
+        return (
+            type(o) == type(self) and
+            self.idx == o.idx and
+            self._path == o._path and
+            self.samples == o.samples and
+            self.distributions == o.distributions and
+            self.prior == o.prior
+        )
 
     def consistent_with(self, evidence: VariableMap) -> bool:
         """
@@ -459,10 +461,12 @@ class Leaf(Node):
         """
         return super(Leaf, self).consistent_with(evidence)
 
-    def probability(self,
-                    query: VariableAssignment,
-                    dirac_scaling: float = 2.,
-                    min_distances: VariableMap = None) -> float:
+    def probability(
+            self,
+            query: VariableAssignment,
+            dirac_scaling: float = 2.,
+            min_distances: VariableMap = None
+    ) -> float:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
         :param query: A preprocessed VariableMap that maps to singular values (numeric or symbolic)
@@ -492,16 +496,22 @@ class Leaf(Node):
             elif variable.symbolic or variable.integer:
 
                 # force the evidence to be a set
-                if not isinstance(value, set):
-                    value = set([value])
+                # if not isinstance(value, set):
+                #     value = set([value])
+
 
                 # return false if the evidence is impossible in this leaf
                 result *= self.distributions[variable]._p(value)
 
         return result
 
-    def _numeric_probability(self, variable: NumericVariable, value, dirac_scaling: float = 2.,
-                             min_distances: VariableMap = None):
+    def _numeric_probability(
+            self,
+            variable: NumericVariable,
+            value,
+            dirac_scaling: float = 2.,
+            min_distances: VariableMap = None
+    ):
         """ Calculate the probability of an arbitrary value for a numeric variable.
         :param variable: A numeric variable
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
@@ -511,7 +521,15 @@ class Leaf(Node):
             validation processes.
         """
         if isinstance(value, RealSet):
-            return sum(self._numeric_probability(variable, cs, dirac_scaling, min_distances) for cs in value.intervals)
+            return sum(
+                self._numeric_probability(
+                    variable,
+                    i,
+                    dirac_scaling,
+                    min_distances
+                )
+                for i in value.intervals
+            )
 
         # handle ContinuousSet
         elif isinstance(value, ContinuousSet):
@@ -520,7 +538,12 @@ class Leaf(Node):
                 return 0
 
             elif value.size() == 1:
-                return self._numeric_probability(variable, value.lower, dirac_scaling, min_distances)
+                return self._numeric_probability(
+                    variable,
+                    value.lower,
+                    dirac_scaling,
+                    min_distances
+                )
 
             else:
                 return self.distributions[variable]._p(value)
@@ -532,10 +555,10 @@ class Leaf(Node):
             likelihood = self.distributions[variable].pdf(value)
 
             # if it is infinity and no handling is provided replace it with 1.
-            if likelihood == float("inf") and not min_distances:
+            if likelihood == np.inf and not min_distances:
                 result *= 1
             # if it is infinite and a handling is provided, replace with dirac_sclaing/min_distance
-            elif likelihood == float("inf") and min_distances:
+            elif likelihood == np.inf and min_distances:
                 result *= dirac_scaling / min_distances[variable]
             else:
                 result *= likelihood
@@ -545,8 +568,12 @@ class Leaf(Node):
         else:
             raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
 
-    def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
-            -> np.ndarray:
+    def parallel_likelihood(
+            self,
+            queries: np.ndarray,
+            dirac_scaling: float = 2.,
+            min_distances: VariableMap = None
+    ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
         :param queries: A VariableMap that maps to singular values (numeric or symbolic)
@@ -568,14 +595,15 @@ class Leaf(Node):
         for idx, (variable, distribution) in enumerate(self.distributions.items()):
 
             # if the variable is symbolic
-            if isinstance(variable, SymbolicVariable) or isinstance(variable, IntegerVariable):
-
+            if isinstance(variable, SymbolicVariable):
                 # multiply by probability
-                probs = distribution._params[queries[:, idx].astype(int)]
+                probs = distribution.probabilities[queries[:, idx].astype(int)]
+
+            elif isinstance(variable, IntegerVariable):
+                probs = np.array([distribution.p(int(q)) for q in queries[:, idx]])
 
             # if the variable is numeric
             elif isinstance(variable, NumericVariable):
-
                 # get the likelihoods
                 probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C').astype(float)))
 
@@ -603,7 +631,8 @@ class Leaf(Node):
         result.s_indices = self.s_indices
         result.distributions = VariableMap(
             {
-               variable:  type(distribution).from_json(distribution.to_json()) for variable, distribution in self.distributions.items()
+               variable:  type(distribution).from_json(distribution.to_json())
+               for variable, distribution in self.distributions.items()
             }
         )
         return result
@@ -643,7 +672,7 @@ class Leaf(Node):
             explanation, likelihood = distribution.mpe()
 
             # apply upper cap for infinities
-            likelihood = minimal_distances[variable] if likelihood == float("inf") else likelihood
+            likelihood = minimal_distances[variable] if np.isinf(likelihood) else likelihood
 
             # update likelihood
             result_likelihood *= likelihood
@@ -692,15 +721,17 @@ class JPT:
 
     logger = getlogger('/jpt', level=logs.INFO)
 
-    def __init__(self,
-                 variables: List[Variable],
-                 targets: List[str or Variable] = None,
-                 features: List[str or Variable] = None,
-                 min_samples_leaf: float or int = 1,
-                 min_impurity_improvement: float or None = None,
-                 max_leaves: int or None = None,
-                 max_depth: int or None = None,
-                 dependencies: Dict[Variable, List[Variable]] or None = None) -> None:
+    def __init__(
+            self,
+            variables: List[Variable],
+            targets: List[str or Variable] = None,
+            features: List[str or Variable] = None,
+            min_samples_leaf: float or int = 1,
+            min_impurity_improvement: float or None = None,
+            max_leaves: int or None = None,
+            max_depth: int or None = None,
+            dependencies: Dict[Variable, List[Variable]] or None = None
+    ) -> None:
         """
         Create a JPT.
         :param variables: The variables that will be represented this model
@@ -750,7 +781,7 @@ class JPT:
         self.root = None
         self.c45queue = deque()
         self.max_leaves = max_leaves
-        self.max_depth = max_depth or float('inf')
+        self.max_depth = max_depth or np.PINF
         self._node_counter = 0
         self.indices = None
         self.impurity = None
@@ -962,7 +993,7 @@ class JPT:
         """
         if isinstance(values, LabelAssignment):
             values = values.value_assignment()
-        if any([isinstance(val, ContinuousSet) and val.size() > 1 for val in values.values()]):
+        if any([isinstance(val, Interval) and val.size() > 1 for val in values.values()]):
             raise ValueError('PDF not defined on intervals of size >1')
         if any([isinstance(val, set) and len(val) > 1 for val in values.values()]):
             raise ValueError('PDF not defined on sets of size >1')
@@ -971,10 +1002,14 @@ class JPT:
 
         values_scalars = ValueAssignment(variables=values._variables.values())
         values_sets = ValueAssignment(variables=values._variables.values())
+
         for var, val in values.items():
-            if isinstance(var, NumericVariable):
-                if not isinstance(val, ContinuousSet):
-                    values_sets[var] = ContinuousSet(val, val)
+            if isinstance(var, (NumericVariable, IntegerVariable)):
+                if not isinstance(val, (ContinuousSet, IntSet)):
+                    values_sets[var] = {
+                        NumericVariable: ContinuousSet,
+                        IntegerVariable: IntSet
+                    }[type(var)](val, val)
                     values_scalars[var] = val
                 else:
                     values_sets[var] = val
@@ -989,8 +1024,12 @@ class JPT:
 
         pdf = 0
         for leaf in self.apply(values_sets):
-            pdf += leaf.prior * (prod(leaf.distributions[var].pdf(value)
-                                      for var, value in values_scalars.items()) if values_scalars else 1)
+            pdf += leaf.prior * (
+                prod(
+                    leaf.distributions[var].pdf(value)
+                    for var, value in values_scalars.items()
+                ) if values_scalars else 1
+            )
         return pdf
 
     def infer(
@@ -1301,7 +1340,10 @@ class JPT:
             evidence_ = evidence
 
         # apply the evidence given
-        conditional_jpt = self.conditional_jpt(evidence_, fail_on_unsatisfiability)
+        conditional_jpt = self.conditional_jpt(
+            evidence_,
+            fail_on_unsatisfiability
+        )
         if conditional_jpt is None:
             return None
 
@@ -1343,11 +1385,13 @@ class JPT:
                 pass
             count += 1
 
-    def _preprocess_query(self,
-                          query: Union[dict, VariableMap],
-                          remove_none: bool = True,
-                          skip_unknown_variables: bool = False,
-                          allow_singular_values: bool = False) -> LabelAssignment:
+    def _preprocess_query(
+            self,
+            query: Union[dict, VariableMap],
+            remove_none: bool = True,
+            skip_unknown_variables: bool = False,
+            allow_singular_values: bool = False
+    ) -> LabelAssignment:
         """
         Transform a query entered by a user into an internal representation that can be further processed.
         :param query: the raw query
@@ -1376,7 +1420,7 @@ class JPT:
 
             if var.numeric:
                 if type(arg) is list:
-                    arg = list2interval(arg)
+                    arg = ContinuousSet.from_list(arg)
                 if isinstance(arg, numbers.Number):
                     val = arg
                     if allow_singular_values:
@@ -1411,11 +1455,26 @@ class JPT:
                     ])
                 else:
                     raise TypeError('Unknown type of variable value: %s' % type(arg).__name__)
-            if var.symbolic or var.integer:
+
+            elif var.integer:
+                if type(arg) is list:
+                    arg = IntSet.from_list(arg)
+                if isinstance(arg, numbers.Number):
+                    val = arg
+                    if allow_singular_values:
+                        query_[var] = val
+                    else:
+                        query_[var] = IntSet(val, val)
+                elif isinstance(arg, IntSet):
+                    query_[var] = arg
+                elif isinstance(arg, RealSet):
+                    query_[var] = RealSet([
+                        IntSet(i.lower, i.upper) for i in arg.intervals
+                    ])
+
+            elif var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
-                if type(arg) is list and var.integer:
-                    arg = list2intset(arg)
-                if type(arg) is list and var.symbolic:
+                if type(arg) is list:
                     arg = list2set(arg)
                 if type(arg) is tuple:
                     raise TypeError(
@@ -1531,15 +1590,19 @@ class JPT:
                     data[self.indices[start + split_pos + 1], split_var_idx]
                 ) / 2
                 splits = [
-                    Interval(np.NINF, split_value, EXC, EXC),
-                    Interval(split_value, np.PINF, INC, EXC)
+                    ContinuousSet(np.NINF, split_value, EXC, EXC),
+                    ContinuousSet(split_value, np.PINF, INC, EXC)
                 ]
 
             elif split_var.integer:  # Integer domain ------------------------------------------------------------------
-                split_value = int(data[self.indices[start + split_pos + 1], split_var_idx])
-                domain = list(split_var.domain.values.values())
-                idx_split = domain.index(split_value)
-                splits = [set(domain[:idx_split]), set(domain[idx_split:])]
+                split_value = (
+                    data[self.indices[start + split_pos], split_var_idx] +
+                    data[self.indices[start + split_pos + 1], split_var_idx]
+                ) / 2
+                splits = [
+                    IntSet(np.NINF, int(math.floor(split_value))),
+                    IntSet(int(math.floor(split_value)) + 1, np.PINF)
+                ]
 
             else:  # ---------------------------------------------------------------------------------------------------
                 raise TypeError('Unknown variable type: %s.' % type(split_var).__name__)
@@ -1657,7 +1720,7 @@ class JPT:
                 raise ValueError(
                     'Columns in DataFrame must coincide with variable order: %s' % ', '.join(mapstr(self.varnames))
                 )
-            transformations = {v: self.varnames[v].domain.values.transformer() for v in data.columns}
+            transformations = {v: self.varnames[v].domain.values.map for v in data.columns}
             try:
                 for col in data.columns:
                     data.loc[:, col] = data[col].map(
@@ -1754,28 +1817,36 @@ class JPT:
         self.impurity.min_samples_leaf = min_samples_leaf
 
         started = datetime.datetime.now()
-        JPT.logger.info('Started learning of %s x %s at %s '
-                        'requiring at least %s samples per leaf' % (_data.shape[0],
-                                                                    _data.shape[1],
-                                                                    started,
-                                                                    min_samples_leaf))
+        JPT.logger.info(
+            'Started learning of %s x %s at %s '
+            'requiring at least %s samples per leaf' % (
+                _data.shape[0],
+                _data.shape[1],
+                started,
+                min_samples_leaf
+            )
+        )
         learning = GENERATIVE if self.targets == self.variables else DISCRIMINATIVE
         JPT.logger.info('Learning is %s. ' % learning)
         if learning == DISCRIMINATIVE:
-            JPT.logger.info('Target variables (%d): %s\n'
-                            'Feature variables (%d): %s' % (len(self.targets),
-                                                            ', '.join(mapstr(self.targets)),
-                                                            len(self.variables) - len(self.targets),
-                                                            ', '.join(
-                                                                mapstr(set(self.variables) - set(self.targets)))))
+            JPT.logger.info(
+                'Target variables (%d): %s\n'
+                'Feature variables (%d): %s' % (
+                    len(self.targets),
+                    ', '.join(mapstr(self.targets)),
+                    len(self.variables) - len(self.targets),
+                    ', '.join(
+                        mapstr(set(self.variables) - set(self.targets)))
+                )
+            )
         # build up tree
         self.c45queue.append((
-                _data,
-                0,
-                _data.shape[0],
-                None,
-                None,
-                0
+            _data,
+            0,
+            _data.shape[0],
+            None,
+            None,
+            0
         ))
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
@@ -1799,13 +1870,13 @@ class JPT:
     def sample(sample, ft):
         # NOTE: This sampling is NOT uniform for intervals that are infinity in any direction! TODO: FIX to sample from CATEGORICAL
         if ft not in sample:
-            return Interval(np.NINF, np.inf, EXC, EXC).sample()
+            return ContinuousSet(np.NINF, np.inf, EXC, EXC).sample()
         else:
             iv = sample[ft]
 
-        if isinstance(iv, Interval):
+        if isinstance(iv, ContinuousSet):
             if iv.lower == -np.inf and iv.upper == np.inf:
-                return Interval(np.NINF, np.inf, EXC, EXC).sample()
+                return ContinuousSet(np.NINF, np.inf, EXC, EXC).sample()
             if iv.lower == -np.inf:
                 if any([i.right == EXC for i in iv.intervals]):
                     # workaround to be able to sample from open interval

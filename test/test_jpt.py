@@ -16,7 +16,7 @@ import scipy.stats
 import sklearn.datasets
 from dnutils import project
 
-from jpt.base.utils import pairwise
+from utils import pairwise
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 from numpy.testing import assert_array_equal
@@ -24,21 +24,14 @@ from pandas import DataFrame
 from scipy.stats import norm
 
 import jpt.variables
-from jpt import SymbolicType
+from jpt.distributions import SymbolicType
 from jpt.base.errors import Unsatisfiability
 from jpt.trees import JPT, Leaf
 from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment, \
     IntegerVariable
 
-try:
-    from jpt.base.functions import __module__
-    from jpt.base.intervals import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from jpt.base.functions import ConstantFunction, LinearFunction
-    from jpt.base.intervals import ContinuousSet
+from functions import ConstantFunction, LinearFunction
+from intervals import ContinuousSet, IntSet
 
 
 class JPTTest(TestCase):
@@ -344,8 +337,8 @@ class JPTTest(TestCase):
 
         # Assert
         self.assertIsInstance(bind1, LabelAssignment)
-        truth1 = {n: ContinuousSet(1, 1), s: {True}, i: {3}}
-        truth2 = {n: ContinuousSet(1, 1), s: {True}, i: {3, 4, 5}}
+        truth1 = {n: ContinuousSet(1, 1), s: {True}, i: IntSet.from_set({3})}
+        truth2 = {n: ContinuousSet(1, 1), s: {True}, i: IntSet(3, 5)}
         for var, val in bind1.items():
             self.assertEqual(truth1[var], val)
         for var, val in truth2.items():

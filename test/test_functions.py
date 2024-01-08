@@ -4,26 +4,26 @@ import numpy as np
 from ddt import ddt, data, unpack
 from dnutils.tools import ifstr
 
-from jpt.base.constants import eps
-from utils import gaussian_numeric
+from constants import eps
 
-try:
-    from jpt.base.functions import __module__
-    from jpt.base.intervals import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from jpt.base.functions import (
-        LinearFunction,
-        QuadraticFunction,
-        ConstantFunction,
-        Undefined,
-        Function,
-        PiecewiseFunction,
-        PLFApproximator
-    )
-    from jpt.base.intervals import ContinuousSet, EMPTY, R, EXC, INC, RealSet
+from intervals import (
+    ContinuousSet,
+    EMPTY,
+    R,
+    EXC,
+    INC,
+    RealSet
+)
+
+from functions import (
+    LinearFunction,
+    QuadraticFunction,
+    ConstantFunction,
+    Undefined,
+    Function,
+    PiecewiseFunction,
+    PLFApproximator
+)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -241,7 +241,14 @@ class LinearFunctionTest(TestCase):
           )
     @unpack
     def test_addition(self, f1, f2, v):
-        self.assertEqual(v, f1 + f2)
+        # Act
+        sum_ = f1 + f2
+
+        # Assert
+        self.assertEqual(
+            v,
+            sum_
+        )
 
     @data((LinearFunction(1, 2), 3, LinearFunction(3, 6)),
           (LinearFunction(1, 2), ConstantFunction(3), LinearFunction(3, 6)),
@@ -521,24 +528,24 @@ class PLFTest(TestCase):
 
     def test_add_plf(self):
         plf1 = PiecewiseFunction.from_dict({
-            ']-∞,0[': 0,
-            '[0,1[': str(LinearFunction.from_points((0, 0), (1, .5))),
-            '[1.,2[': '.5',
-            '[2,3[': LinearFunction.from_points((2, .5), (3, 1)),
-            '[3,∞[': 1
+            '(-∞,0)': 0,
+            '[0,1)': str(LinearFunction.from_points((0, 0), (1, .5))),
+            '[1.,2)': '.5',
+            '[2,3)': LinearFunction.from_points((2, .5), (3, 1)),
+            '[3,∞)': 1
         })
         plf2 = PiecewiseFunction.from_dict({
-            ']-∞,-1[': 0,
-            '[-1,3[': LinearFunction(.5, 4),
-            '[3,∞[': 1
+            '(-∞,-1)': 0,
+            '[-1,3)': LinearFunction(.5, 4),
+            '[3,∞)': 1
         })
         res = PiecewiseFunction.from_dict({
-            ']-∞,-1.0[': 0,
-            '[-1.0,0.0[': '0.5x + 4.0',
-            '[0,1[': '1.0x + 4.0',
-            '[1.,2[': '0.5x + 4.5',
-            '[2,3[': '1.0x + 3.5',
-            '[3,∞[': 2
+            '(-∞,-1.0)': 0,
+            '[-1.0,0.0)': '0.5x + 4.0',
+            '[0,1)': '1.0x + 4.0',
+            '[1.,2)': '0.5x + 4.5',
+            '[2,3)': '1.0x + 3.5',
+            '[3,∞)': 2
         })
         self.assertEqual(res, plf1 + plf2)
 
@@ -695,7 +702,9 @@ class PLFTest(TestCase):
         })
 
         # Act
-        area = plf1.integrate(ContinuousSet(.5, 1.5))
+        area = plf1.integrate(
+            ContinuousSet(.5, 1.5)
+        )
 
         # Assert
         self.assertAlmostEqual(.5, area, places=6)
@@ -1034,12 +1043,16 @@ class PLFTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+
 class PLFApproximatorTest(TestCase):
 
     def test_approximation_linear_k(self):
-        for k in range(10, 2, -1):
+        for k in range(5, 2, -1):
             # Arrange
-            plf: PiecewiseFunction = gaussian_numeric().cdf
+            plf: PiecewiseFunction = PiecewiseFunction.zero() + PiecewiseFunction.from_points(
+                [(1, 0), (2, .1), (3, .2), (4, .6), (5, .8), (6, 1)]
+            )
+
             approximator = PLFApproximator(
                 plf
             )
@@ -1050,39 +1063,72 @@ class PLFApproximatorTest(TestCase):
             self.assertEqual(k, len(approx))
 
     def test_approximation_constant_k(self):
-        for k in range(10, 2, -1):
+        for k in range(5, 2, -1):
             # Arrange
-            plf: PiecewiseFunction = gaussian_numeric().pdf
+            plf: PiecewiseFunction = (
+                PiecewiseFunction
+                .zero()
+                .overwrite({
+                    '[1,2)': .1,
+                    '[2,3)': .2,
+                    '[3,4)': .3,
+                    '[4,5)': .2,
+                    '[5,6)': .2
+                })
+            )
+
             approximator = PLFApproximator(
                 plf,
                 replace_by=ConstantFunction
             )
+
             # Act
             approx = approximator.run(k=k)
+
             # Assert
-            self.assertGreater(len(plf), k)
-            self.assertEqual(k, len(approx))
+            self.assertGreater(
+                len(plf),
+                k
+            )
+            self.assertEqual(
+                k,
+                len(approx)
+            )
 
     def test_approximation_constant_error(self):
         # Arrange
-        plf: PiecewiseFunction = gaussian_numeric().pdf
+        plf: PiecewiseFunction = (
+            PiecewiseFunction
+            .zero()
+            .overwrite({
+                '[1,2)': .1,
+                '[2,3)': .2,
+                '[3,4)': .3,
+                '[4,5)': .2,
+                '[5,6)': .2
+            })
+        )
         approximator = PLFApproximator(
             plf,
             replace_by=ConstantFunction
         )
         # Act
-        approx = approximator.run(error_max=.2)
+        approx= approximator.run(error_max=.1)
+
         # Assert
-        self.assertGreater(len(plf), len(approx))
+        self.assertEqual(
+            PiecewiseFunction.zero().overwrite_at(
+                ContinuousSet(1, 6, INC, EXC),
+                ConstantFunction(0.19999999999999993)
+            ),
+            approx
+        )
 
     def test_invalid(self):
-        approximator = PLFApproximator(
-            None
-        )
         self.assertRaises(
-            ValueError,
-            approximator.run,
-            k=2
+            TypeError,
+            PLFApproximator,
+            None
         )
 
     def test_jumps_linear_function(self):

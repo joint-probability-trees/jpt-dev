@@ -1,10 +1,12 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
+import collections
 import numbers
+from collections.abc import Hashable
 from typing import Set, Iterable, Type, Any
 
 import numpy as np
 
-from jpt.base.utils import setstr
+from utils import setstr
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -18,12 +20,33 @@ DISCRETE = 'discrete'
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+class ValueMap(collections.Mapping, Hashable):
+
+    def __iter__(self):
+        raise NotImplementedError()
+
+    def __len__(self):
+        raise NotImplementedError()
+
+    def __getitem__(self, label: Any):
+        raise NotImplementedError()
+
+    def __hash__(self):
+        raise NotImplementedError()
+
+    @property
+    def map(self):
+        return lambda x: self[x]
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 class Distribution:
     '''
     Abstract supertype of all domains and distributions
     '''
-    values = None
-    labels = None
+    values: ValueMap = None
+    labels: ValueMap = None
 
     SETTINGS = {
     }

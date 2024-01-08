@@ -11,21 +11,23 @@ from dnutils import ifnone, ifnot, first
 from matplotlib import pyplot as plt
 
 from ..utils import Identity, DataScaler, DataScalerProxy
-from ...base.utils import save_plot, pairwise, normalized, none2nan
+from utils import save_plot, pairwise, normalized, none2nan
 from . import Distribution
 
 try:
-    from ...base.intervals import __module__
     from ..quantile.quantiles import __module__
-    from ...base.functions import __module__
 except ModuleNotFoundError:
     import pyximport
-
     pyximport.install()
 finally:
-    from ...base.intervals import R, ContinuousSet, RealSet, NumberSet
-    from ...base.functions import LinearFunction, ConstantFunction, PiecewiseFunction, Undefined
     from ..quantile.quantiles import QuantileDistribution
+
+from intervals import R, ContinuousSet, RealSet, NumberSet
+from functions import (
+    LinearFunction,
+    ConstantFunction,
+    PiecewiseFunction,
+)
 
 
 class Numeric(Distribution):
@@ -268,7 +270,7 @@ class Numeric(Distribution):
         if not isinstance(value, (NumberSet, numbers.Number)):
             raise TypeError(
                 'Argument must be numbers.Number or '
-                'jpt.base.intervals.NumberSet (got %s).' % type(labels)
+                'jpt.base.intervals.NumberSet (got %s).' % type(value)
             )
         if isinstance(value, numbers.Number):
             value = ContinuousSet(value, value)
@@ -282,7 +284,7 @@ class Numeric(Distribution):
                 (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
         )
         if not probmass:
-            return probspace in value
+            return value.issuperseteq(probspace)
         return probmass
 
     def p(self, labels: Union[numbers.Number, NumberSet]) -> numbers.Real:

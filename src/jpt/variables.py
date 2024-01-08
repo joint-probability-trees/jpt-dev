@@ -12,19 +12,13 @@ import collections.abc
 import numpy as np
 from dnutils import first, edict, ifnone
 
-from jpt.base.utils import mapstr, to_json, list2interval, setstr, setstr_int
-from jpt.base.constants import SYMBOL
+from utils import mapstr, to_json, setstr, setstr_int
+from constants import SYMBOL
 
-from jpt.distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType, Integer, \
+from .distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType, Integer, \
     IntegerType, Bool
 
-try:
-    from .base.intervals import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from .base.intervals import INC, EXC, ContinuousSet, RealSet, NumberSet
+from intervals import INC, EXC, ContinuousSet, RealSet, NumberSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -291,14 +285,14 @@ class NumericVariable(Variable):
         upper = ' %%s %%.%df' % precision
 
         if type(assignment) is list:
-            assignment = list2interval(assignment)
+            assignment = ContinuousSet.from_list(assignment)
         elif type(assignment) is set:
             intervals = []
             for s in assignment:
                 if isinstance(s, ContinuousSet):
                     intervals.append(s)
                 elif type(s) is tuple:
-                    intervals.append(list2interval(s))
+                    intervals.append(ContinuousSet.from_list(list(s)))
                 elif isinstance(s, numbers.Number):
                     intervals.append(ContinuousSet(s, s))
                 else:

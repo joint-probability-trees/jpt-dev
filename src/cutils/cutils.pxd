@@ -21,7 +21,7 @@ cdef DTYPE_t nan, ninf, pinf
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-cdef inline DTYPE_t mean(DTYPE_t[::1] arr) nogil:
+cdef inline DTYPE_t mean(DTYPE_t[::1] arr) noexcept nogil:
     """
     Arithmetic mean in the vector ``arr``.
     
@@ -38,7 +38,7 @@ cdef inline DTYPE_t mean(DTYPE_t[::1] arr) nogil:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-cdef inline int alltrue(SIZE_t[::1] mask, SIZE_t[::1] pos) nogil:
+cdef inline int alltrue(SIZE_t[::1] mask, SIZE_t[::1] pos) noexcept nogil:
     """
     Check if all elements of this array are true-
     :param mask: 
@@ -57,7 +57,7 @@ cdef inline int alltrue(SIZE_t[::1] mask, SIZE_t[::1] pos) nogil:
 # https://github.com/scikit-learn/scikit-learn/blob/main/sklearn/tree/_splitter.pyx
 
 
-cdef inline double ld(double x) nogil:
+cdef inline double ld(double x) noexcept nogil:
     """
     Calculate dual logarithm
     :param x: the function value
@@ -66,7 +66,7 @@ cdef inline double ld(double x) nogil:
     return ln(x) / ln(2.0)
 
 
-cdef inline void sort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
+cdef inline void sort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) noexcept nogil:
     """
     Sort n-element arrays pointed to by Xf and samples, simultaneously,
     by the values in Xf. Algorithm: Introsort (Musser, SP&E, 1997).
@@ -81,7 +81,7 @@ cdef inline void sort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
     introsort(Xf, samples, n, maxd)
 
 
-cdef inline void swap(DTYPE_t* Xf, SIZE_t* samples, SIZE_t i, SIZE_t j) nogil:
+cdef inline void swap(DTYPE_t* Xf, SIZE_t* samples, SIZE_t i, SIZE_t j) noexcept nogil:
     """
     Swap two elements at indices ``i`` and ``j`` in ``Xf`` 
     and their index positions in ``samples``.
@@ -95,7 +95,7 @@ cdef inline void swap(DTYPE_t* Xf, SIZE_t* samples, SIZE_t i, SIZE_t j) nogil:
     samples[i], samples[j] = samples[j], samples[i]
 
 
-cdef inline DTYPE_t median3(DTYPE_t* Xf, SIZE_t n) nogil:
+cdef inline DTYPE_t median3(DTYPE_t* Xf, SIZE_t n) noexcept nogil:
     """
     Median of three pivot selection, after Bentley and McIlroy (1993).
     Engineering a sort function. SP&E. Requires 8/3 comparisons on average.
@@ -120,7 +120,7 @@ cdef inline DTYPE_t median3(DTYPE_t* Xf, SIZE_t n) nogil:
         return b
 
 
-cdef inline void introsort(DTYPE_t* Xf, SIZE_t *samples,  SIZE_t n, int maxd) nogil:
+cdef inline void introsort(DTYPE_t* Xf, SIZE_t *samples,  SIZE_t n, int maxd) noexcept nogil:
     """
     Introsort with median of 3 pivot selection and 3-way partition function
     (robust to repeated elements, e.g. lots of zero features).
@@ -162,7 +162,7 @@ cdef inline void introsort(DTYPE_t* Xf, SIZE_t *samples,  SIZE_t n, int maxd) no
 
 
 cdef inline void sift_down(DTYPE_t* Xf, SIZE_t* samples,
-                           SIZE_t start, SIZE_t end) nogil:
+                           SIZE_t start, SIZE_t end) noexcept nogil:
     """
     Restore heap order in Xf[start:end] by moving the max element to start.
     :param Xf: 
@@ -191,7 +191,7 @@ cdef inline void sift_down(DTYPE_t* Xf, SIZE_t* samples,
             root = maxind
 
 
-cdef inline void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
+cdef inline void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) noexcept nogil:
     """
     Implementation of heapsort
     :param Xf: 
@@ -218,7 +218,7 @@ cdef inline void heapsort(DTYPE_t* Xf, SIZE_t* samples, SIZE_t n) nogil:
         end = end - 1
 
 
-cpdef inline test_sort(DTYPE_t[::1] arr, SIZE_t[::1] indices, SIZE_t n=-1):
+cpdef inline void test_sort(DTYPE_t[::1] arr, SIZE_t[::1] indices, SIZE_t n=-1) noexcept nogil:
     """
     
     :param arr: 
@@ -229,7 +229,7 @@ cpdef inline test_sort(DTYPE_t[::1] arr, SIZE_t[::1] indices, SIZE_t n=-1):
     sort(&arr[0], &indices[0], arr.shape[0] if n == -1 else n)
 
 
-cdef inline SIZE_t _bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t lower, SIZE_t upper) nogil:
+cdef inline SIZE_t _bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t lower, SIZE_t upper) noexcept nogil:
     """
     
     :param Xf: 
@@ -251,7 +251,7 @@ cdef inline SIZE_t _bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t lower, SIZE_t upper) n
         return _bisect(Xf, v, lower, pivot)
 
 
-cdef inline SIZE_t bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t n) nogil:
+cdef inline SIZE_t bisect(DTYPE_t* Xf, DTYPE_t v, SIZE_t n) noexcept nogil:
     """
     
     :param Xf: 

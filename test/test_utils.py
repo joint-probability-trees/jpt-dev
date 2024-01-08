@@ -2,8 +2,8 @@ from unittest import TestCase
 
 import numpy as np
 
-from jpt.base.constants import eps
-from jpt.base.utils import mapstr, setstr_int, Heap, list2intset
+from constants import eps
+from utils import mapstr, setstr_int, Heap, list2intset
 
 
 class UtilsTest(TestCase):

@@ -5,13 +5,7 @@ import numpy as np
 from dnutils import ifnot
 from numpy import isnan
 
-try:
-    from jpt.base.intervals import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from jpt.base.intervals import R
+from intervals import R
 
 
 class DataScaler:
@@ -81,7 +75,8 @@ class Identity:
 
     __call__ = __getitem__
 
-    def transformer(self):
+    @property
+    def map(self):
         return lambda a: self[a]
 
     def __eq__(self, o):
@@ -110,7 +105,8 @@ class DataScalerProxy:
                 self.datascaler == o.datascaler and
                 self.inverse == o.inverse)
 
-    def transformer(self):
+    @property
+    def map(self):
         return lambda a: self[a]
 
     def __getitem__(self, item):

@@ -10,22 +10,23 @@ import scipy.stats
 from ddt import data, unpack, ddt
 from dnutils.tools import ifstr
 
-from jpt.base.constants import eps
+from constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
-from jpt.distributions.utils import OrderedDictProxy, DataScaler
-from utils import gaussian_numeric, uniform_numeric
+from jpt.distributions.univariate.integer import IntegerMap
+from jpt.distributions.univariate.multinomial import MultinomialValueMap
+from jpt.distributions.utils import OrderedDictProxy, DataScaler, HashableOrderedDict
+from testutils import gaussian_numeric, uniform_numeric
 
 try:
-    from jpt.base.functions import __module__
     from jpt.distributions.quantile.quantiles import __module__
-    from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.functions import PiecewiseFunction, LinearFunction, ConstantFunction
     from jpt.distributions.quantile.quantiles import QuantileDistribution
-    from jpt.base.intervals import ContinuousSet, EXC, INC, RealSet, R
+
+from functions import PiecewiseFunction, LinearFunction, ConstantFunction
+from intervals import ContinuousSet, EXC, INC, RealSet, R, IntSet
 
 from jpt.base.errors import Unsatisfiability
 from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
@@ -46,24 +47,53 @@ class MultinomialDistributionTest(TestCase):
 
     def test_creation(self):
         '''Test the creation of the distributions'''
+        # Arrange
         DistABC = self.DistABC
         Dist123 = self.Dist123
 
+        # Assert
         self.assertTrue(DistABC.equiv(DistABC))
         self.assertTrue(Dist123.equiv(Dist123))
         self.assertFalse(DistABC.equiv(Dist123))
 
-        self.assertEqual(DistABC.n_values, 3)
-        self.assertEqual(Dist123.n_values, 5)
+        self.assertEqual(
+            3,
+            DistABC.n_values,
+        )
+        self.assertEqual(
+            5,
+            Dist123.n_values,
+        )
 
         self.assertTrue(issubclass(DistABC, Multinomial))
         self.assertTrue(issubclass(Dist123, Multinomial))
 
-        self.assertEqual(DistABC.values, OrderedDictProxy([('A', 0), ('B', 1), ('C', 2)]))
-        self.assertEqual(DistABC.labels, OrderedDictProxy([(0, 'A'), (1, 'B'), (2, 'C')]))
+        self.assertIsInstance(
+            DistABC.values,
+            MultinomialValueMap
+        )
+        self.assertIsInstance(
+            DistABC.labels,
+            MultinomialValueMap
+        )
 
-        self.assertEqual(Dist123.values, OrderedDictProxy([(1, 0), (2, 1), (3, 2), (4, 3), (5, 4)]))
-        self.assertEqual(Dist123.labels, OrderedDictProxy([(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]))
+        self.assertEqual(
+            HashableOrderedDict([('A', 0), ('B', 1), ('C', 2)]),
+            DistABC.values.mapping,
+        )
+        self.assertEqual(
+            HashableOrderedDict([(0, 'A'), (1, 'B'), (2, 'C')]),
+            DistABC.labels.mapping,
+        )
+
+        self.assertEqual(
+            HashableOrderedDict([(1, 0), (2, 1), (3, 2), (4, 3), (5, 4)]),
+            Dist123.values,
+        )
+        self.assertEqual(
+            HashableOrderedDict([(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]),
+            Dist123.labels,
+        )
 
     def test_label2value(self):
         '''Test the conversion from label to value space'''
@@ -834,6 +864,78 @@ class NumericDistributionTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+class IntegerMapTest(TestCase):
+
+    def test_iter_all_ints(self):
+        # Arrange
+        int_map = IntegerMap()
+        int_iter = iter(int_map)
+
+        # Act
+        result = [next(int_iter) for _ in range(10)]
+
+        # Assert
+        self.assertEqual(
+            [0, 1, -1, 2, -2, 3, -3, 4, -4, 5],
+            result
+        )
+
+    def test_iter_neg_inf(self):
+        # Arrange
+        int_map = IntegerMap(lmax=3)
+        int_iter = iter(int_map)
+
+        # Act
+        result = [next(int_iter) for _ in range(10)]
+
+        # Assert
+        self.assertEqual(
+            [3, 2, 1, 0, -1, -2, -3, -4, -5, -6],
+            result
+        )
+
+    def test_iter_pos_inf(self):
+        # Arrange
+        int_map = IntegerMap(lmin=-1)
+        int_iter = iter(int_map)
+
+        # Act
+        result = [next(int_iter) for _ in range(10)]
+
+        # Assert
+        self.assertEqual(
+            [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8],
+            result
+        )
+
+    def test_iter_finite(self):
+        # Arrange
+        int_map = IntegerMap(lmin=-1, lmax=3)
+        int_iter = iter(int_map)
+
+        # Act
+        result = list(int_iter)
+
+        # Assert
+        self.assertEqual(
+            [-1, 0, 1, 2, 3],
+            result
+        )
+
+    def test_len_finite(self):
+        # Arrange
+        int_map = IntegerMap(-1, 1)
+
+        # Act
+        result = len(int_map)
+
+        # Assert
+        self.assertEqual(
+            3,
+            result
+        )
+
+
 class IntegerDistributionTest(TestCase):
 
     Die = IntegerType('Dice', 1, 6)
@@ -841,12 +943,16 @@ class IntegerDistributionTest(TestCase):
     def test_value2label(self):
         # Arrange
         Die = self.Die
+        intset = IntSet(0, 2)
+        realset = RealSet([IntSet(0, 1), IntSet(4, 5)])
 
         # Act
         value_scalar = Die.value2label(0)
         value_set = Die.value2label({0})
         value_list = Die.value2label([0, 5])
         value_tuple = Die.value2label((1,))
+        value_intset = Die.value2label(intset)
+        value_realset = Die.value2label(realset)
 
         # Assert
         self.assertEqual(1, value_scalar)
@@ -858,16 +964,28 @@ class IntegerDistributionTest(TestCase):
             Die.value2label,
             6
         )
+        self.assertEqual(
+            IntSet(1, 3),
+            value_intset
+        )
+        self.assertEqual(
+            RealSet([IntSet(1, 2), IntSet(5, 6)]),
+            value_realset
+        )
 
     def test_label2value(self):
         # Arrange
         Die = self.Die
+        intset = IntSet(1, 3)
+        realset = RealSet([IntSet(1, 2), IntSet(5, 6)])
 
         # Act
         label_scalar = Die.label2value(1)
         label_set = Die.label2value({1})
         label_list = Die.label2value([1, 6])
         label_tuple = Die.label2value((2,))
+        label_intset = Die.label2value(intset)
+        label_realset = Die.label2value(realset)
 
         # Assert
         self.assertEqual(0, label_scalar)
@@ -875,7 +993,14 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual([0, 5], label_list)
         self.assertEqual((1,), label_tuple)
         self.assertRaises(ValueError, Die.label2value, 0)
-
+        self.assertEqual(
+            IntSet(0, 2),
+            label_intset
+        )
+        self.assertEqual(
+            RealSet([IntSet(0, 1), IntSet(4, 5)]),
+            label_realset
+        )
     def test_set_finite(self):
         # Arrange
         dice = IntegerType('Dice', 1, 6)
@@ -989,6 +1114,10 @@ class IntegerDistributionTest(TestCase):
         p_singular_value = fair_dice._p(0)
         p_set_values = fair_dice._p({0, 1, 2})
         p_duplicate_labels = fair_dice.p([1, 2, 2])
+        p_intset_labels = fair_dice.p(IntSet(1, 3))
+        p_intset_values = fair_dice._p(IntSet(0, 2))
+        p_realset_labels = fair_dice.p(RealSet(['{1..2}', '{5..6}']))
+        p_realset_values = fair_dice._p(RealSet(['{0..1}', '{4..5}']))
 
         # Assert
         self.assertEqual(1 / 6, p_singular_label)
@@ -996,6 +1125,10 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(3 / 6, p_set_label)
         self.assertEqual(3 / 6, p_set_values)
         self.assertEqual(2 / 6, p_duplicate_labels)
+        self.assertEqual(3 / 6, p_intset_labels)
+        self.assertEqual(3 / 6, p_intset_values)
+        self.assertEqual(4 / 6, p_realset_labels)
+        self.assertEqual(4 / 6, p_realset_values)
 
         self.assertRaises(ValueError, fair_dice.p, 0)
         self.assertRaises(ValueError, fair_dice.p, 7)
@@ -1041,14 +1174,14 @@ class IntegerDistributionTest(TestCase):
         _biased_mpe, _p_biased = biased_dice._mpe()
 
         # Assert
-        self.assertEqual(set(range(1, 7)), fair_mpe)
+        self.assertEqual(IntSet(1, 6), fair_mpe)
         self.assertEqual(1 / 6, p_fair)
-        self.assertEqual(set(range(0, 6)), _fair_mpe)
+        self.assertEqual(IntSet(0, 5), _fair_mpe)
         self.assertEqual(1 / 6, _p_fair)
 
-        self.assertEqual({3}, biased_mpe)
+        self.assertEqual(IntSet.from_set({3}), biased_mpe)
         self.assertEqual(2 / 6, p_biased)
-        self.assertEqual({2}, _biased_mpe)
+        self.assertEqual(IntSet.from_set({2}), _biased_mpe)
         self.assertEqual(2 / 6, _p_biased)
 
     def test_k_mpe(self):
@@ -1060,17 +1193,17 @@ class IntegerDistributionTest(TestCase):
         biased_dice.set([0 / 6, 1 / 6, 2 / 6, 1 / 6, 1 / 6, 1 / 6])
 
         # Act
-        fair_k_mpe = fair_dice.k_mpe(3)
-        biased_k_mpe = biased_dice.k_mpe(3)
+        fair_k_mpe = list(fair_dice.k_mpe(3))
+        biased_k_mpe = list(biased_dice.k_mpe(3))
 
         # Assert
         self.assertEqual(
-            fair_k_mpe,
-            [({1, 2, 3, 4, 5, 6}, 1 / 6)]
+            [(IntSet(1, 6), 1 / 6)],
+            fair_k_mpe
         )
 
         self.assertEqual(
-        [({3}, 0.3333333333333333), ({2, 4, 5, 6}, 0.16666666666666666)],
+        [(IntSet.from_set({3}), 0.3333333333333333), (IntSet.from_set({2, 4, 5, 6}), 0.16666666666666666)],
             biased_k_mpe
         )
 
@@ -1182,13 +1315,6 @@ class IntegerDistributionTest(TestCase):
         for _, l in sumpos.items():
             res.append(scipy.special.binom(2, l) * d1.p(1)**l * (1-d1.p(1))**(2-l))
 
-<<<<<<< Updated upstream
-        self.assertEqual([0, 1, 2], list(sumpos.labels.values()))
-        self.assertEqual([0, 1, 2], list(sumpos.values.values()))
-        self.assertEqual(res, list(sumpos.probabilities))
-
-=======
-        print(sumpos.probabilities)
         self.assertEqual(
             (0, 2),
             (sumpos.lmin, sumpos.lmax)
@@ -1203,10 +1329,49 @@ class IntegerDistributionTest(TestCase):
         d1 = dice().set([1 / 6] * 6)
         d1.plot(
             title="Test",
-            view=False,
+            view=True,
             horizontal=False
         )
->>>>>>> Stashed changes
+
+    def test_items_finite(self):
+        # Arrange
+        dist = IntegerType('TEST_FINITE',0, 2)()
+        dist.set([.5, .5, 0])
+
+        # Act
+        items_exhaustive = dist.items(exhaustive=True)
+        items_nonexhaustive = dist.items(exhaustive=False)
+
+        # Assert
+        self.assertEqual(
+            [(0.5, 0), (0.5, 1), (0, 2)],
+            list(items_exhaustive)
+        )
+        self.assertEqual(
+            [(0.5, 0), (0.5, 1)],
+            list(items_nonexhaustive)
+        )
+
+    def test_items_infinite(self):
+        # Arrange
+        dist = IntegerType('TEST_INFINITE')()
+        dist.set({0: .5, 1: .5, 2: 0})
+
+        # Act
+        items_nonexhaustive = dist.items(exhaustive=False)
+
+        # Assert
+        self.assertEqual(
+            [(0.5, 0), (0.5, 1)],
+            list(items_nonexhaustive)
+        )
+        self.assertRaises(
+            ValueError,
+            lambda: list(
+                dist.items(exhaustive=True)
+            )
+        )
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 

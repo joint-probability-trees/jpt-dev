@@ -1,20 +1,20 @@
 import os
 import pickle
 
-from jpt import JPT
+from jpt.trees import JPT
 from jpt.distributions import Numeric
 
 try:
     from jpt.distributions.quantile.quantiles import __module__
-    from jpt.base.functions import __module__
-    from jpt.base.intervals import __module__
+    # from jpt.base.functions import __module__
+    # from jpt.base.intervals import __module__
 except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.base.intervals import ContinuousSet, INC, EXC
     from jpt.distributions.quantile.quantiles import QuantileDistribution
-    from jpt.base.functions import PiecewiseFunction, ConstantFunction
+    from intervals import ContinuousSet, INC, EXC
+    from functions import PiecewiseFunction, ConstantFunction
 
 
 def gaussian_jpt() -> JPT:

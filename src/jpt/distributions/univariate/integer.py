@@ -1,42 +1,106 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import numbers
 import re
-from itertools import tee
+from itertools import tee, count
 from operator import itemgetter, attrgetter
 from types import FunctionType
 from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple, List
 
 import numpy as np
+from deprecated.classic import deprecated
 from dnutils import edict, ifnone, project, first
 from matplotlib import pyplot as plt
 
 from . import Distribution
-from ..utils import OrderedDictProxy
+from .distribution import ValueMap
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
-from ...base.utils import setstr, normalized, classproperty, save_plot, Collections
+from utils import setstr, normalized, classproperty, save_plot, Collections
 
-try:
-    from ...base.functions import __module__
-    from ...base.intervals import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from ...base.functions import PiecewiseFunction, Undefined, ConstantFunction
-    from ...base.intervals import ContinuousSet
+from functions import PiecewiseFunction, Undefined, ConstantFunction
+from intervals import ContinuousSet, IntSet, RealSet, NumberSet
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class IntegerMap(ValueMap):
+    '''A mapping of external integers to their internal representation.'''
+
+    def __init__(self, lmin: Optional[int] = ..., lmax: Optional[int] = ...):
+        self.min = int(lmin) if lmin is not ... else ...
+        self.max = int(lmax) if lmax is not ... else ...
+
+    def __iter__(self):
+        return iter(
+            IntSet(
+                np.NINF if self.min is ... else self.min,
+                np.PINF if self.max is ... else self.max
+            )
+        )
+
+    def __len__(self):
+        if self.min is ... and self.max is ...:
+            return np.inf
+        elif self.min is ... and self.max is not ...:
+            return np.inf
+        elif self.min is not ... and self.max is ...:
+            return np.inf
+        else:
+            return self.max - self.min + 1
+
+    def __hash__(self):
+        return hash((
+            type(self),
+            self.min,
+            self.max
+        ))
+
+class IntegerLabelMap(IntegerMap):
+
+    def __getitem__(self, label: int) -> int:
+        if self.min is not ...:
+            result = label - self.min
+        elif self.max is not ...:
+            result = self.max - label
+        else:
+            result = label
+        if not ((np.NINF if self.min is ... else self.min)
+                <= label <=
+                (np.PINF if self.max is ... else self.max)
+        ):
+            raise ValueError(
+                f'Label {label} is out of domain {{{self.min}..{self.max}}}'
+            )
+        return result
+
+
+class IntegerValueMap(IntegerMap):
+
+    def __getitem__(self, value: int) -> int:
+        if self.min is not ...:
+            result = value + self.min
+        elif self.max is not ...:
+            result = value + self.max
+        else:
+            result = value
+        if not (
+                (np.NINF if self.min is ... else self.min)
+                <= result <=
+                (np.PINF if self.max is ... else self.max)
+        ):
+            raise ValueError(
+                f'Value {value} is out of domain [{self.min}, {self.max}]'
+            )
+        return result
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection DuplicatedCode
 class Integer(Distribution):
 
-    lmin = ...
-    lmax = ...
-    # offset = None
-    # vmin = None
-    # vmax = None
-    # values = None
-    # labels = None
+    values: Optional[IntegerLabelMap]
+    labels = Optional[IntegerValueMap]
 
     OPEN_DOMAIN = 'open_domain'
     AUTO_DOMAIN = 'auto_domain'
@@ -45,6 +109,32 @@ class Integer(Distribution):
         OPEN_DOMAIN: False,
         AUTO_DOMAIN: False
     }
+
+    @classproperty
+    @deprecated
+    def lmin(cls):
+        return cls.values.min
+
+    @classproperty
+    @deprecated
+    def lmax(cls):
+        return cls.values.max
+
+    @classproperty
+    def min(cls) -> Optional[int]:
+        return cls.values.min
+
+    @classproperty
+    def max(cls) -> Optional[int]:
+        return cls.values.max
+
+    @classproperty
+    def _min(cls) -> Optional[int]:
+        return cls.values[cls.values.min]
+
+    @classproperty
+    def _max(cls) -> Optional[int]:
+        return cls.values[cls.values.max]
 
     def __init__(self, **settings):
         super().__init__(**settings)
@@ -59,10 +149,8 @@ class Integer(Distribution):
     def hash(cls):
         return hash((
             cls.__qualname__,
-            cls.lmin,
-            cls.lmax,
-            # cls.vmin,
-            # cls.vmax,
+            cls.min,
+            cls.max,
             tuple(
                 sorted(cls.SETTINGS.items())
             )
@@ -98,8 +186,8 @@ class Integer(Distribution):
     ) -> 'Integer':
         res_t = IntegerType(
             name=f'{name if name is not None else self.__class__.__name__}+{other.__class__.__name__}',
-            lmin=(self.lmin + other.lmin) if ... not in (self.lmin, other.lmin) else ...,
-            lmax=(self.lmax + other.lmax) if ... not in (self.lmax, other.lmax) else ...
+            lmin=(type(self).min + type(other).min) if ... not in (type(self).min, type(other).min) else ...,
+            lmax=(type(self).max + type(other).max) if ... not in (type(self).max, type(other).max) else ...
         )
         res = res_t()
         z_min = (
@@ -119,9 +207,9 @@ class Integer(Distribution):
             for p_k, k in self.items():
                 p += p_k * (
                     other.p(z - k)
-                    if ((other.lmin if other.lmin is not ... else np.NINF)
+                    if ((type(other).min if type(other).min is not ... else np.NINF)
                         <= z - k <=
-                        (other.lmax if other.lmax is not ... else np.PINF))
+                        (type(other).max if type(other).max is not ... else np.PINF))
                     else 0
                 )
             if not p:
@@ -136,8 +224,9 @@ class Integer(Distribution):
             return False
         return all((
             cls.__name__ == other.__name__,
-            cls.lmin == other.lmin,
-            cls.lmax == other.lmax,
+            cls.min == other.min,
+            cls.max == other.max,
+            cls.SETTINGS == other.SETTINGS
         ))
 
     @classmethod
@@ -145,8 +234,9 @@ class Integer(Distribution):
         return {
             'type': 'integer',
             'class': cls.__qualname__,
-            'lmin': int(cls.lmin) if cls.lmin is not ... else None,
-            'lmax': int(cls.lmax) if cls.lmax is not ... else None
+            'min': int(cls.min) if cls.min is not ... else None,
+            'max': int(cls.max) if cls.max is not ... else None,
+            'settings': cls.SETTINGS
         }
 
     to_json = type_to_json
@@ -160,7 +250,16 @@ class Integer(Distribution):
 
     @staticmethod
     def type_from_json(data):
-        return IntegerType(data['class'], data['lmin'], data['lmax'])
+        i_type = IntegerType(
+            data['class'],
+            data.get('min', data.get('lmin')),
+            data.get('max', data.get('lmax'))
+        )
+        i_type.SETTINGS = data.get(
+            'settings',
+            Integer.SETTINGS
+        )
+        return i_type
 
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> 'Integer':
@@ -168,7 +267,6 @@ class Integer(Distribution):
 
     def copy(self):
         result = type(self)(**self.settings)
-        # result._params = np.array(self._params)
         result._params = self._params.copy() if self._params is not None else None
         return result
 
@@ -178,67 +276,44 @@ class Integer(Distribution):
 
     @classproperty
     def n_values(cls) -> Optional[int]:
-        if ... not in (cls.lmin, cls.lmax):
-            return cls.lmax - cls.lmin + 1
+        if ... not in (cls.min, cls.max):
+            return cls.max - cls.min + 1
         else:
             return None
-
-    @classmethod
-    def _label2value(cls, label: int) -> int:
-        if cls.lmin is not ...:
-            result = label - cls.lmin
-        elif cls.lmax is not ...:
-            result = cls.lmax - label
-        else:
-            result = label
-        if not ((np.NINF if cls.lmin is ... else cls.lmin)
-                <= label <=
-                (np.PINF if cls.lmax is ... else cls.lmax)
-        ):
-            raise ValueError(
-                f'Label {label} is out of domain [{cls.lmin}, {cls.lmax}]'
-            )
-        return result
-
-    @classmethod
-    def _value2label(cls, value: int) -> int:
-        if cls.lmin is not ...:
-            result = value + cls.lmin
-        elif cls.lmax is not ...:
-            result = value + cls.lmax
-        else:
-            result = value
-        if not (
-                (np.NINF if cls.lmin is ... else cls.lmin)
-                <= result <=
-                (np.PINF if cls.lmax is ... else cls.lmax)
-        ):
-            raise ValueError(
-                f'Value {value} is out of domain [{cls.lmin}, {cls.lmax}]'
-            )
-        return result
 
     # noinspection DuplicatedCode
     @classmethod
     def value2label(
             cls,
-            value: Union[int, Iterable[int]]
-    ) -> Union[int, Iterable[int]]:
-        if not isinstance(value, Collections):
-            return cls._value2label(value)
+            value: Union[int, Iterable[int], IntSet, RealSet]
+    ) -> Union[int, Iterable[int], IntSet, RealSet]:
+        if isinstance(value, Collections):
+            return type(value)([cls.value2label(v) for v in value])
+        elif isinstance(value, IntSet):
+            return IntSet(cls.value2label(value.lower), cls.value2label(value.upper))
+        elif isinstance(value, RealSet):
+            return RealSet(
+                cls.value2label(v) for v in value.intervals
+            )
         else:
-            return type(value)([cls._value2label(v) for v in value])
+            return cls.labels[value]
 
     # noinspection DuplicatedCode
     @classmethod
     def label2value(
             cls,
-            label: Union[int, Iterable[int]]
-    ) -> Union[int, Iterable[int]]:
-        if not isinstance(label, Collections):
-            return cls._label2value(label)
+            label: Union[int, Iterable[int], IntSet, RealSet]
+    ) -> Union[int, Iterable[int], IntSet, RealSet]:
+        if isinstance(label, Collections):
+            return type(label)([cls.label2value(l) for l in label])
+        elif isinstance(label, IntSet):
+            return IntSet(cls.label2value(label.lower), cls.label2value(label.upper))
+        elif isinstance(label, RealSet):
+            return RealSet(
+                cls.label2value(l) for l in label.intervals
+            )
         else:
-            return type(label)([cls._label2value(l) for l in label])
+            return cls.values[label]
 
     def _sample(self, n: int) -> Iterable[int]:
         items = self.probabilities.items()
@@ -273,16 +348,16 @@ class Integer(Distribution):
         return self._p(self.label2value(labels))
 
     def _p(self, values: Union[int, Iterable[int]]) -> float:
-        if not isinstance(values, Collections):
+        if isinstance(values, numbers.Integral):
             values = {values}
-        elif not isinstance(values, set):
+        if isinstance(values, Collections):
             values = set(values)
-
-        i1, i2 = tee(values, 2)
-        for v in values:
-            self._value2label(v)
-
-        return sum(self.probabilities.get(v, 0) for v in i2)
+        if isinstance(values, set):
+            values = IntSet.from_set(values)
+        if isinstance(values, RealSet):
+            return sum(self._p(i) for i in values.simplify().intervals)
+        if isinstance(values, IntSet):
+            return sum(p for v, p in self.probabilities.items() if v in values and p)
 
     def expectation(self) -> float:
         return sum(
@@ -306,7 +381,7 @@ class Integer(Distribution):
             (v - e) ** 2 * p for v, p in self.probabilities.items()
         )
 
-    def _k_mpe(self, k: Optional[int] = None) -> List[Tuple[Set[int], float]]:
+    def _k_mpe(self, k: Optional[int] = None) -> Iterable[Tuple[NumberSet, float]]:
         """
         Calculate the ``k`` most probable explanation states.
 
@@ -318,24 +393,16 @@ class Integer(Distribution):
             likelihoods,
             reverse=True
         )[:ifnone(k, len(likelihoods))]
-        result = []
 
         for likelihood in sorted_likelihood:
-            result.append(
-                (
-                    {v for v, p in self.probabilities.items() if p == likelihood},
-                    likelihood
-                )
-            )
+            yield IntSet.from_set(
+                {v for v, p in self.probabilities.items() if p == likelihood}
+            ), likelihood
 
-        return result
+    def k_mpe(self, k: int = None) -> Iterable[Tuple[NumberSet, float]]:
+        return ((self.value2label(state), likelihood) for state, likelihood in self._k_mpe(k=k))
 
-    def k_mpe(self, k: int = None) -> List[Tuple[Set[int], float]]:
-        return [
-            (self.value2label(state), likelihood) for state, likelihood in self._k_mpe(k=k)
-        ]
-
-    def mpe(self) -> (Set[int], float):
+    def mpe(self) -> (NumberSet, float):
         state, p_max = self._mpe()
         return self.value2label(state), p_max
 
@@ -345,14 +412,14 @@ class Integer(Distribution):
     mode = mpe
     _mode = _mpe
 
-    def crop(self, restriction: Union[Iterable[int], int]) -> 'Distribution':
+    def crop(self, restriction: Union[NumberSet, int]) -> 'Integer':
         if isinstance(restriction, numbers.Integral):
-            restriction = {restriction}
-        return self._crop([self.label2value(l) for l in restriction])
+            restriction = IntSet.from_set({restriction})
+        return self._crop(self.label2value(restriction))
 
-    def _crop(self, restriction: Union[Iterable[int], int]) -> 'Distribution':
+    def _crop(self, restriction: Union[NumberSet, int]) -> 'Integer':
         if isinstance(restriction, numbers.Integral):
-            restriction = {restriction}
+            restriction = IntSet.from_set({restriction})
         result = self.copy()
         try:
             params = normalized({
@@ -475,31 +542,59 @@ class Integer(Distribution):
 
     @classproperty
     def finite(cls) -> bool:
-        return ... not in (cls.lmin, cls.lmax)
+        return ... not in (cls.min, cls.max)
 
-    def sorted(self, exhaustive: bool = True) -> Iterable[Tuple[float, int]]:
+    @classproperty
+    def infinite(cls) -> bool:
+        return not cls.finite
+
+    def _sorted(
+            self,
+            exhaustive: bool = True,
+            reverse: bool = False
+    ) -> Iterable[Tuple[int, float]]:
         probabilities = self.probabilities.copy()
-        if exhaustive and ... not in (self.lmin, self.lmax):
+        if self.infinite and exhaustive:
+            raise ValueError(
+                'Unable to exhaustively enumerate items in an infinite domain.'
+            )
+        if exhaustive and ... not in (self.min, self.max):
             probabilities.update({
                 v: 0 for v in range(
-                    self.label2value(self.lmin),
-                    self.label2value(self.lmax) + 1
+                    self.label2value(type(self).min),
+                    self.label2value(type(self).max) + 1
                 ) if v not in self.probabilities
             })
         return sorted(
-            [(p, self.value2label(v)) for v, p in probabilities.items() if p or exhaustive],
-            key=itemgetter(0),
-            reverse=True
+            [(v, p) for v, p in probabilities.items() if p or exhaustive],
+            key=itemgetter(1),
+            reverse=not reverse
         )
 
-    def _items(self, exhaustive: bool = True) -> Iterable[Tuple[float, int]]:
+    def sorted(
+            self,
+            exhaustive: bool = True,
+            reverse: bool = False
+    ) -> Iterable[Tuple[int, float]]:
+        return ((self.value2label(v), p)
+            for v, p in self._sorted(
+                exhaustive=exhaustive,
+                reverse=reverse
+            )
+        )
+
+    def _items(self, exhaustive: bool = False) -> Iterable[Tuple[float, int]]:
         '''Return a list of (probability, value) pairs representing this distribution.'''
+        if not self.finite and exhaustive:
+            raise ValueError(
+                'Unable to exhaustively enumerate items in an infinite domain.'
+            )
         probabilities = self.probabilities.copy()
-        if exhaustive and ... not in (self.lmin, self.lmax):
+        if exhaustive and ... not in (self.min, self.max):
             probabilities.update({
                 v: 0 for v in range(
-                    self.label2value(self.lmin),
-                    self.label2value(self.lmax) + 1
+                    self.label2value(type(self).min),
+                    self.label2value(type(self).max) + 1
                 ) if v not in self.probabilities
             })
         yield from sorted(
@@ -586,20 +681,23 @@ class Integer(Distribution):
         )
 
         # prepare prob-label pairs containing only the first `max_values` highest probability tuples
-        pairs = sorted(
-            [
-                self.sorted(exhaustive=True)
-            ],
-            key=itemgetter(0),
-            reverse=True
-        )[:max_values]
-
+        # pairs = sorted(
+        #     [
+        #         self.sorted(exhaustive=False)
+        #     ],
+        #     key=itemgetter(0),
+        #     reverse=True
+        # )[:max_values]
+        #
+        # if alphabet:
+        #     # re-sort remaining values alphabetically
+        #     pairs = sorted(pairs, key=itemgetter(1))
         if alphabet:
-            # re-sort remaining values alphabetically
-            pairs = sorted(pairs, key=itemgetter(1))
-
-        probs = project(pairs, 0)
-        labels = project(pairs, 1)
+            data = list(self.items())[:max_values]
+        else:
+            data = list(self.sorted())[:max_values]
+        labels = project(data, 0)
+        probs = project(data, 1)
         vals = [re.escape(str(x)) for x in labels]
 
         x = np.arange(max_values)  # the label locations
@@ -648,11 +746,13 @@ class Integer(Distribution):
 
 # noinspection PyPep8Naming,PyTypeChecker
 def IntegerType(name: str, lmin: Optional[int] = ..., lmax: Optional[int] = ...) -> Type[Integer]:
+    lmin = ifnone(lmin, ...)
+    lmax = ifnone(lmax, ...)
     if (..., ...) != (lmin, lmax) and lmin > lmax:
         raise ValueError(
             'Min label is greater tham max value: %s > %s' % (lmin, lmax)
         )
     t: Type[Integer] = type(name, (Integer,), {})
-    t.lmin = lmin
-    t.lmax = lmax
+    t.labels = IntegerValueMap(lmin, lmax)
+    t.values = IntegerLabelMap(lmin, lmax)
     return t

@@ -7,13 +7,12 @@ import numpy as np
 import pandas as pd
 from dnutils import project
 
-from jpt import SymbolicVariable, JPT, NumericVariable, infer_from_dataframe
-from jpt.base.intervals import ContinuousSet, RealSet, EXC, INC
-from jpt.base.utils import pairwise
+from intervals import ContinuousSet, RealSet, EXC, INC
+from utils import pairwise
 from jpt.distributions import Bool, Numeric
-from jpt.trees import MPESolver
+from jpt.trees import MPESolver, JPT
 from jpt.variables import VariableMap
-
+from jpt.variables import SymbolicVariable, NumericVariable, infer_from_dataframe
 from jpt.variables import LabelAssignment
 
 
@@ -88,8 +87,10 @@ class JPTInferenceInteger(unittest.TestCase):
         jpt = JPT(variables, min_samples_leaf=.1)
         jpt.fit(data)
         q = jpt.bind(X=[-1, 1])
+
         # Act
         result = jpt.infer(q)
+
         # Assert
         self.assertAlmostEqual(
             .15,
@@ -98,14 +99,19 @@ class JPTInferenceInteger(unittest.TestCase):
         )
 
     def test_mpe_serialization(self):
+        # Arrange
         data = pd.DataFrame(np.array([list(range(-10, 10))]).T, columns=["X"])
+
         variables = infer_from_dataframe(data, scale_numeric_types=False)
         tree = JPT(variables, min_samples_leaf=.1)
         tree.fit(data)
+
+        # Act
         # Creating json maxima infos
         maxima, likelihood = tree.mpe()
         maxima_json = [m.to_json() for m in maxima]
 
+        # Assert
         # Trying to recreate the maxima Variables from json
         for maxi_json in maxima_json:
             maxi = LabelAssignment.from_json(variables=tree.variables, d=maxi_json)
