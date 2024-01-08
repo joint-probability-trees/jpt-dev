@@ -1,4 +1,4 @@
-# cython: auto_cpdef=True
+# cython: auto_cpdef=False
 # cython: infer_types=True
 # cython: language_level=3
 # cython: cdivision=True
@@ -16,7 +16,7 @@ from libc.math cimport isinf, isnan
 from dnutils import mapstr
 
 from libc.stdio cimport printf
-from ..base.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort, ninf
+from cutils.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort, ninf
 
 # variables declaring that at num_samples[0] are the number of samples left of the split and vice versa
 cdef int LEFT = 0
@@ -32,7 +32,7 @@ cdef inline DTYPE_t compute_var_improvements(
     DTYPE_t[::1] variances_right,
     SIZE_t samples_left,
     SIZE_t samples_right,
-    SIZE_t skip_idx=-1) nogil:
+    SIZE_t skip_idx=-1) noexcept nogil:
     """
     Compute the variance improvement of a split. 
     
@@ -76,7 +76,7 @@ cpdef inline DTYPE_t _compute_var_improvements(
     SIZE_t samples_left,
     SIZE_t samples_right,
     SIZE_t skip_idx=-1
-):
+) noexcept nogil:
     """Python-callable version for testing only."""
     return compute_var_improvements(
         variances_total,
@@ -96,7 +96,7 @@ cdef inline void sum_at(
     SIZE_t[::1] rows,
     SIZE_t[::1] cols,
     DTYPE_t[::1] result
-) nogil:
+) noexcept nogil:
     """
     Sum rows at columns.
     
@@ -121,7 +121,7 @@ cpdef inline void _sum_at(
     SIZE_t[::1] rows,
     SIZE_t[::1] cols,
     DTYPE_t[::1] result
-):
+) noexcept nogil:
     """Python-callable version for testing only."""
     sum_at(M, rows, cols, result)
 
@@ -133,7 +133,7 @@ cdef inline void sq_sum_at(
     SIZE_t[::1] rows,
     SIZE_t[::1] cols,
     DTYPE_t[::1] result
-) nogil:
+) noexcept nogil:
     """
     Square the values in the rows and sum them.
     
@@ -160,7 +160,7 @@ cpdef inline void _sq_sum_at(
     SIZE_t[::1] rows,
     SIZE_t[::1] cols,
     DTYPE_t[::1] result
-):
+) noexcept nogil:
     """Python-callable version for testing only."""
     sq_sum_at(M, rows, cols, result)
 
@@ -172,7 +172,7 @@ cdef inline void variances(
     DTYPE_t[::1] sums,
     SIZE_t n_samples,
     DTYPE_t[::1] result
-) nogil:
+) noexcept nogil:
     """
     Variance computation uses the proxy from sklearn: ::
 
@@ -206,7 +206,7 @@ cpdef inline void _variances(
     DTYPE_t[::1] sums,
     SIZE_t n_samples,
     DTYPE_t[::1] result
-):
+) noexcept nogil:
     """Python-callable version for testing only."""
     variances(sq_sums, sums, n_samples, result)
 
@@ -214,7 +214,7 @@ cpdef inline void _variances(
 # ----------------------------------------------------------------------------------------------------------------------
 # in-place vector addition
 
-cdef inline void ivadd(DTYPE_t[::1] target, DTYPE_t[::1] arg, SIZE_t n, int sq=False) nogil:
+cdef inline void ivadd(DTYPE_t[::1] target, DTYPE_t[::1] arg, SIZE_t n, int sq=False) noexcept nogil:
     """
     Inplace vector addition
     :param target: the target vector
@@ -232,7 +232,7 @@ cdef inline void ivadd(DTYPE_t[::1] target, DTYPE_t[::1] arg, SIZE_t n, int sq=F
 cdef inline void bincount(DTYPE_t[:, ::1] data,
                           SIZE_t[::1] rows,
                           SIZE_t[::1] cols,
-                          SIZE_t[:, ::1] result) nogil:
+                          SIZE_t[:, ::1] result) noexcept nogil:
     """
     Compute a histogram where the first dimension denotes the values of the column and the second denotes the column.
     The value stored at a specific position denotes the frequency.
@@ -653,7 +653,7 @@ cdef class Impurity:
                 return True
         return False
 
-    cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices) except +:
+    cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices):
         """
         Set data and indices, update features and index_buffer
         
@@ -675,7 +675,7 @@ cdef class Impurity:
         '''Python variant of ``has_numeric_vars()`` for testing purpose only.'''
         return self.has_numeric_vars(except_var)
 
-    cdef inline int has_numeric_vars(Impurity self, SIZE_t except_var=-1) nogil:
+    cdef inline int has_numeric_vars(Impurity self, SIZE_t except_var=-1) noexcept nogil:
         """
         :return: number of numeric targets, possibly reduced by 1 if ``except_var`` is
         passed and the variable with that index is also numeric.
@@ -688,19 +688,19 @@ cdef class Impurity:
                     break
         return self.n_num_vars - offset
 
-    cdef inline int has_symbolic_vars(Impurity self) nogil:
+    cdef inline int has_symbolic_vars(Impurity self) noexcept nogil:
         """
         :return: number of symbolic targets 
         """
         return self.n_sym_vars
 
-    cdef inline int has_symbolic_features(Impurity self) nogil:
+    cdef inline int has_symbolic_features(Impurity self) noexcept nogil:
         """
         :return: number of symbolic features 
         """
         return self.n_sym_vars_total - self.n_sym_vars
 
-    cdef inline int has_numeric_features(Impurity self) nogil:
+    cdef inline int has_numeric_features(Impurity self) noexcept nogil:
         """
         :return: number of numeric features 
         """
@@ -709,7 +709,7 @@ cdef class Impurity:
     cdef inline void gini_impurity(Impurity self,
                                    SIZE_t[:, ::1] counts,
                                    SIZE_t n_samples,
-                                   DTYPE_t[::1] result) nogil:
+                                   DTYPE_t[::1] result) noexcept nogil:
         """
         Calculate gini impurity of histogram
         
@@ -749,7 +749,7 @@ cdef class Impurity:
         '''For testing only.'''
         return self.col_is_constant(start, end, col)
 
-    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) nogil:
+    cdef inline SIZE_t col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col) noexcept nogil:
         """
         Check if a column in self.data is a constant, i.e. only contains the same value in every row.
         The column is only evaluated between start and end
@@ -775,7 +775,7 @@ cdef class Impurity:
                 else: return False
         return True
 
-    cpdef DTYPE_t compute_best_split(self, SIZE_t start, SIZE_t end) except -1:
+    cpdef DTYPE_t compute_best_split(self, SIZE_t start, SIZE_t end):
         """
         Calculate the best split on all variables.
         
@@ -927,7 +927,7 @@ cdef class Impurity:
             SIZE_t var_idx,
             DTYPE_t value,
             SIZE_t* split_pos
-    ) nogil:
+    ) noexcept nogil:
         """
         Move all indices of data points with the specified value from ``split_pos`` on to the
         front of the index array.
@@ -957,7 +957,7 @@ cdef class Impurity:
             DTYPE_t gini_total,
             SIZE_t[::1] index_buffer,
             SIZE_t* best_split_pos
-    ) nogil except -1:
+    ) noexcept nogil:
         """
         Evaluate a variable w. r. t. its possible slit. Calculate the best split on this variable
         and the corresponding impurity.
@@ -1162,9 +1162,11 @@ cdef class Impurity:
 
         return max_impurity_improvement
 
-    cdef inline void update_numeric_stats_with_dependencies(Impurity self,
-                                                            SIZE_t sample_idx,
-                                                            SIZE_t[::1] dependent_columns) nogil:
+    cdef inline void update_numeric_stats_with_dependencies(
+            Impurity self,
+            SIZE_t sample_idx,
+            SIZE_t[::1] dependent_columns
+    ) noexcept nogil:
         """
         Update the stats of all dependent numeric variables of a variable (numeric of symbolic)
         The sample is considered left of the split and the stats are updated that way.
@@ -1195,9 +1197,11 @@ cdef class Impurity:
             self.sq_sums_left[dep_var] += y * y
             self.sq_sums_right[dep_var] = self.sq_sums_total[dep_var] - self.sq_sums_left[dep_var]
 
-    cdef inline void update_symbolic_stats_with_dependencies(Impurity self,
-                                                             SIZE_t sample_idx,
-                                                             SIZE_t[::1] dependent_columns) nogil:
+    cdef inline void update_symbolic_stats_with_dependencies(
+            Impurity self,
+            SIZE_t sample_idx,
+            SIZE_t[::1] dependent_columns
+    ) noexcept nogil:
         """
         Update the stats of all dependent symbolic variables of a variable (numeric of symbolic)
         The sample is considered left of the split and the stats are updated that way.

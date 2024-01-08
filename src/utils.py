@@ -20,15 +20,6 @@ from numpy import iterable
 
 from dnutils import ifnone, ifnot
 
-try:
-    from .intervals import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from .intervals import ContinuousSet
-
-
 # ----------------------------------------------------------------------------------------------------------------------
 # Type definitions
 
@@ -266,16 +257,6 @@ def classproperty(func):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-
-def list2interval(l: List[int]) -> ContinuousSet:
-    '''
-    Converts a list representation of an interval to an instance of type
-    '''
-    lower, upper = l
-    return ContinuousSet(
-        np.NINF if lower in (np.NINF, -float('inf'), None, ...) else np.float64(lower),
-        np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper)
-    )
 
 
 def list2set(values: List[Symbol]) -> Set[str]:

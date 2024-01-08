@@ -6,8 +6,8 @@ from unittest import TestCase
 import numpy as np
 import pandas as pd
 
-from jpt import NumericType, SymbolicType
-from jpt.base.intervals import ContinuousSet
+from jpt.distributions import NumericType, SymbolicType
+from intervals import ContinuousSet
 from jpt.distributions import Bool, Numeric, Distribution
 from jpt.distributions.univariate import IntegerType
 from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable, infer_from_dataframe, \

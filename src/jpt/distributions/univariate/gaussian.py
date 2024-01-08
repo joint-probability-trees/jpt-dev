@@ -8,7 +8,7 @@ from dnutils.stats import Gaussian as Gaussian_, _matshape
 from matplotlib import pyplot as plt
 from scipy.stats import norm, multivariate_normal
 
-from jpt.base.utils import save_plot
+from utils import save_plot
 
 
 # ----------------------------------------------------------------------------------------------------------------------

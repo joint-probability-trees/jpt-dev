@@ -82,9 +82,6 @@ class SYMBOL:
     ARROW_BAR_RIGHT = '\u21E5'
 
 
-# ----------------------------------------------------------------------------------------------------------------------
-# Numeric constants
-
 class Epsilon:
     '''
     Class representing the smallest machine-representable increment or decrement

@@ -1,12 +1,6 @@
-# cython: infer_types=True
 # cython: language_level=3
-# cython: cdivision=True
-# cython: wraparound=True
-# cython: boundscheck=False
-# cython: nonecheck=False
-__module__ = 'functions.pyx'
+__module__ = 'func.pyx'
 
-import heapq
 from functools import cmp_to_key
 
 from itertools import chain
@@ -22,25 +16,23 @@ from dnutils.tools import ifstr, first
 from scipy import stats
 from scipy.stats import norm
 
-from .constants import eps
-from .intervals cimport ContinuousSet, RealSet
-from .intervals import R, EMPTY, EXC, INC, NumberSet, ContinuousSet
+from constants import eps
+
+from intervals import R, EMPTY, EXC, INC
+
 
 import numpy as np
 cimport numpy as np
-cimport cython
 
-import warnings
+# import warnings
 
-from .cutils cimport DTYPE_t
-from .utils import Heap
+from utils import Heap
 
-warnings.filterwarnings("ignore")
+# warnings.filterwarnings("ignore")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-@cython.freelist(1000)
 cdef class Function:
     """
     Abstract base type of functions.
@@ -93,11 +85,9 @@ cdef class Function:
         raise NotImplementedError()
 
     def __add__(self, other):
-        if isinstance(other, numbers.Real):
-            return self.add(
-                ConstantFunction(other)
-            ).simplify()
-        elif isinstance(other, Function):
+        if isinstance(other, numbers.Number):
+            other = ConstantFunction(other)
+        if isinstance(other, Function):
             return self.add(other).simplify()
         else:
             raise TypeError(
@@ -107,7 +97,7 @@ cdef class Function:
                 )
             )
 
-    def __mul__(self, other: Union[float, Function]) -> 'Function':
+    def __mul__(self, other: Union[float, Function]) -> Function:
         if isinstance(other, numbers.Real):
             return self.mul(
                 ConstantFunction(other)
@@ -118,7 +108,8 @@ cdef class Function:
             raise TypeError(
                 'Unsupported operand type(s) for *: %s and %s' % (
                     type(self).__name__,
-                    type(other).__name__)
+                    type(other).__name__
+                )
             )
 
     def __iadd__(self, other):
@@ -128,10 +119,10 @@ cdef class Function:
         return self.set(self * other)
 
     def __radd__(self, other):
-        return other + self
+        return self + other
 
     def __rmul__(self, other):
-        return other * self
+        return self * other
 
     def __eq__(self, other):
         raise NotImplementedError()
@@ -176,7 +167,7 @@ cdef class Undefined(Function):
             return True
         elif isinstance(other, ConstantFunction) and np.isnan(other.value):
             return True
-        elif isinstance(other, LinearFunction) and any(np.isnan(other.m), np.isnan(other.c)):
+        elif isinstance(other, LinearFunction) and any([np.isnan(other.m), np.isnan(other.c)]):
             return True
         return False
 
@@ -198,107 +189,59 @@ cdef class Undefined(Function):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-cdef class KnotFunction(Function):
-    """
-    Abstract superclass of all knot functions.
-    """
-
-    def __init__(self, DTYPE_t knot, DTYPE_t weight):
-        self.knot = knot
-        self.weight = weight
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-cdef class Hinge(KnotFunction):
-    """
-    Implementation of hinge functions as used in MARS regression.
-
-    alpha = 1:  hinge is zero to the right of knot
-    alpha = -1: hinge is zero to the left of knot
-    """
-
-    def __init__(self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
-        super(Hinge, self).__init__(knot, weight)
-        assert alpha in (1, -1), 'alpha must be in {1,-1}'
-        self.alpha = alpha
-
-    cpdef DTYPE_t eval(self, DTYPE_t x):
-        return max(0, (self.knot - x) if self.alpha == 1 else (x - self.knot)) * self.weight
-
-    def __str__(self):
-        return '%.3f * max(0, %s)' % (self.weight,
-                                      ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
-
-    def __repr__(self):
-        return '<Hinge 0x%X: k=%.3f a=%d w=%.3f>' % (id(self), self.knot, self.alpha, self.weight)
-
-    cpdef Function differentiate(self):
-        """
-        Calculate the derivative of this function.
-        :return: the derivative
-        """
-        return Jump(self.knot, self.alpha, -self.weight if self.alpha == 1 else self.weight)
-
-    cpdef np.int32_t is_invertible(self):
-        return False
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-cdef class Jump(KnotFunction):
-    """
-    Implementation of jump functions.
-    """
-
-    def __init__(self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
-        super(Jump, self).__init__(knot, weight)
-        assert alpha in (1, -1), 'alpha must be in {1,-1}'
-        self.alpha = alpha
-
-    cpdef DTYPE_t eval(self, DTYPE_t x):
-        return max(0, (-1 if ((self.knot - x) if self.alpha == 1 else (x - self.knot)) < 0 else 1)) * self.weight
-
-    def __str__(self):
-        return '%.3f * max(0, sgn(%s))' % (self.weight,
-                                           ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
-
-    def __repr__(self):
-        return '<Jump 0x%X: k=%.3f a=%d w=%.3f>' % (id(self), self.knot, self.alpha, self.weight)
-
-    @staticmethod
-    def from_point(p1, alpha):
-        x, y = p1
-        return Jump(x, alpha, y)
-
-    cpdef Function differentiate(self):
-        return Impulse(self.knot, self.weight)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-cdef class Impulse(KnotFunction):
-    """
-    Represents a function that is non-zero at exactly one x-position and zero at all other positions.
-    """
-
-    def __init__(self, DTYPE_t knot, DTYPE_t weight):
-        super(Impulse, self).__init__(knot, weight)
-
-    cpdef DTYPE_t eval(self, DTYPE_t x):
-        return self.weight if x == self.knot else 0
-
-    cpdef Function differentiate(self):
-        return Impulse(self.knot, np.nan)
-
-    cpdef np.int32_t is_invertible(self):
-        return False
-
-    def __repr__(self):
-        return '<Impulse )x%X: k=%.3f w=%.3f>' % (id(self), self.knot, self.weight)
-
-    def __str__(self):
-        return '%.3f if x=%.3f else 0' % (self.weight, self.knot)
+# cdef class Jump(KnotFunction):
+#     """
+#     Implementation of jump functions.
+#     """
+#
+#     def __init__(self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
+#         super(Jump, self).__init__(knot, weight)
+#         assert alpha in (1, -1), 'alpha must be in {1,-1}'
+#         self.alpha = alpha
+#
+#     cpdef DTYPE_t eval(self, DTYPE_t x):
+#         return max(0, (-1 if ((self.knot - x) if self.alpha == 1 else (x - self.knot)) < 0 else 1)) * self.weight
+#
+#     def __str__(self):
+#         return '%.3f * max(0, sgn(%s))' % (self.weight,
+#                                            ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
+#
+#     def __repr__(self):
+#         return '<Jump 0x%X: k=%.3f a=%d w=%.3f>' % (id(self), self.knot, self.alpha, self.weight)
+#
+#     @staticmethod
+#     def from_point(p1, alpha):
+#         x, y = p1
+#         return Jump(x, alpha, y)
+#
+#     cpdef Function differentiate(self):
+#         return Impulse(self.knot, self.weight)
+#
+#
+# # ----------------------------------------------------------------------------------------------------------------------
+#
+# cdef class Impulse(KnotFunction):
+#     """
+#     Represents a function that is non-zero at exactly one x-position and zero at all other positions.
+#     """
+#
+#     def __init__(self, DTYPE_t knot, DTYPE_t weight):
+#         super(Impulse, self).__init__(knot, weight)
+#
+#     cpdef DTYPE_t eval(self, DTYPE_t x):
+#         return self.weight if x == self.knot else 0
+#
+#     cpdef Function differentiate(self):
+#         return Impulse(self.knot, np.nan)
+#
+#     cpdef np.int32_t is_invertible(self):
+#         return False
+#
+#     def __repr__(self):
+#         return '<Impulse )x%X: k=%.3f w=%.3f>' % (id(self), self.knot, self.weight)
+#
+#     def __str__(self):
+#         return '%.3f if x=%.3f else 0' % (self.weight, self.knot)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -326,7 +269,7 @@ cdef class ConstantFunction(Function):
     cpdef Function differentiate(self):
         return ConstantFunction(0)
 
-    cpdef np.int32_t is_invertible(self):
+    cpdef SIZE_t is_invertible(self):
         return False
 
     cpdef Function copy(self):
@@ -398,7 +341,7 @@ cdef class ConstantFunction(Function):
     def c(self):
         return self.value
 
-    cpdef np.int32_t intersects(self, Function f) except +:
+    cpdef SIZE_t intersects(self, Function f):
         """
         Determine if the function crosses another function ``f``.
         :param f: the other ``Function``
@@ -412,7 +355,7 @@ cdef class ConstantFunction(Function):
             raise TypeError('Argument must be of type LinearFunction '
                             'or ConstantFunction, not %s' % type(f).__name__)
 
-    cpdef ContinuousSet intersection(self, Function f) except +:
+    cpdef ContinuousSet intersection(self, Function f):
         """
         Determine where the function crosses another function ``f``.
         :param f: the other ``Function``
@@ -446,7 +389,7 @@ cdef class ConstantFunction(Function):
         '''
         Returns a modification of the functino that has been mirrored
         at position x=0.
-        :return: 
+        :return:
         '''
         return self.copy()
 
@@ -495,14 +438,14 @@ cdef class LinearFunction(Function):
         else:
             return ConstantFunction(float(match[0].replace(' ', '')))
 
-    cpdef DTYPE_t root(self) except +:
+    cpdef DTYPE_t root(self):
         """
-        Find the root of the function, i.e. the ``x`` positions subject to ``self.eval(x) = 0``. 
+        Find the root of the function, i.e. the ``x`` positions subject to ``self.eval(x) = 0``.
         :return: root of this function as float
         """
         return -self.c / self.m
 
-    cpdef Function invert(self) except +:
+    cpdef Function invert(self):
         """
         Return the inverted linear function of this LF.
         :return: the inverted function as ``LinearFunction``
@@ -519,7 +462,7 @@ cdef class LinearFunction(Function):
     cpdef Function copy(self):
         return LinearFunction(self.m, self.c)
 
-    cpdef np.int32_t intersects(self, Function f) except +:
+    cpdef SIZE_t intersects(self, Function f):
         """
         Determine if the function crosses another function ``f``.
         :param f: the other ``Function``
@@ -539,7 +482,7 @@ cdef class LinearFunction(Function):
             raise TypeError('Argument must be of type '
                             'LinearFunction or ConstantFunction, not %s' % type(f).__name__)
 
-    cpdef ContinuousSet intersection(self, Function f) except +:
+    cpdef ContinuousSet intersection(self, Function f):
         """
         Determine the interval where this function intersects the other function ``f``.
         :param f: the other ``Function``
@@ -579,25 +522,18 @@ cdef class LinearFunction(Function):
     cpdef Function add(self, Function f):
         if isinstance(f, LinearFunction):
             return LinearFunction(self.m + f.m, self.c + f.c)
-        elif isinstance(f, (int, float)):
+        elif isinstance(f, numbers.Number):
             return LinearFunction(self.m, self.c + f)
         elif isinstance(f, ConstantFunction):
             return LinearFunction(self.m, self.c + f.value)
         else:
-            raise TypeError('Operator "+" undefined for types %s '
-                            'and %s' % (type(f).__name__, type(self).__name__))
+            raise TypeError(
+                'Operator "+" undefined for types %s '
+                'and %s' % (type(f).__name__, type(self).__name__)
+            )
 
     def __sub__(self, x):
         return -x + self
-
-    def __radd__(self, x):
-        return self + x
-
-    def __rsub__(self, x):
-        return self - x
-
-    def __rmul__(self, o):
-        return self * o
 
     def __iadd__(self, other):
         return self.set(self + other)
@@ -641,7 +577,7 @@ cdef class LinearFunction(Function):
             return self.copy()
 
     @classmethod
-    def from_points(cls, (DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2) -> 'Function':
+    def from_points(cls, (DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2) -> Function:
         """
         Construct a linear function for two points.
         :param p1: the first point
@@ -663,17 +599,17 @@ cdef class LinearFunction(Function):
             'Fitting linear function from %s to %s resulted in m=%s, c=%s' % (p1, p2, m, c)
         return cls(m, c)
 
-    cpdef np.int32_t is_invertible(self):
+    cpdef SIZE_t is_invertible(self):
         """
         Checks if this function can be inverted.
         :return: True if it is possible, False if not
         """
         return abs(self.m) >= 1e-4
 
-    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +:
+    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y):
         """
         Perform a linear regression of the form x -> y.
-        :param x: The x values 
+        :param x: The x values
         :param y: The y values
         :return: The best solution as ``LinearFunction``
         """
@@ -728,7 +664,7 @@ cdef class LinearFunction(Function):
         '''
         Returns a modification of the functino that has been mirrored
         at position x=0.
-        :return: 
+        :return:
         '''
         return LinearFunction(
             -self.m,
@@ -789,16 +725,16 @@ cdef class QuadraticFunction(Function):
             result = np.ndarray(shape=(0,), dtype=np.float64)
         return result
 
-    cpdef Function invert(self) except +:
+    cpdef Function invert(self):
         raise NotImplementedError()
 
     cpdef Function copy(self):
         return QuadraticFunction(self.a, self.b, self.c)
 
-    cpdef np.int32_t intersects(self, Function f) except +:
+    cpdef SIZE_t intersects(self, Function f):
         raise NotImplementedError()
 
-    cpdef ContinuousSet intersection(self, Function f) except +:
+    cpdef ContinuousSet intersection(self, Function f):
         raise NotImplementedError()
 
     cpdef Function differentiate(self):
@@ -811,10 +747,10 @@ cdef class QuadraticFunction(Function):
             return LinearFunction(self.b, self.c)
         return self.copy()
 
-    cpdef np.int32_t is_invertible(self):
+    cpdef SIZE_t is_invertible(self):
         return False
 
-    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t[::1] z) except +:
+    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t[::1] z):
         cdef DTYPE_t denom = (x[0] - y[0]) * (x[0] - z[0]) * (y[0] - z[0])
         self.a = (z[0] * (y[1] - x[1]) + y[0] *
                           (x[1] - z[1]) + x[0] * (z[1] - y[1])) / denom
@@ -855,59 +791,6 @@ cdef class QuadraticFunction(Function):
     def __repr__(self):
         return '<QuadraticFunction 0x%X: %s>' % (id(self), str(self))
 
-# ----------------------------------------------------------------------------------------------------------------------
-
-cdef class GaussianCDF(Function):
-    """
-    Integral of a univariate Gaussian distribution.
-    """
-
-    cdef readonly DTYPE_t mu, sigma
-
-    def __init__(self, DTYPE_t mu, DTYPE_t sigma):
-        self.mu = mu
-        self.sigma = sigma
-
-    cpdef DTYPE_t eval(self, DTYPE_t x):
-        return norm.cdf(x, loc=self.mu, scale=self.sigma)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-cdef class GaussianPDF(Function):
-    """
-    Density of a univariate Gaussian distribution.
-    """
-
-    cdef readonly DTYPE_t mu, sigma
-
-    def __init__(self, DTYPE_t mu, DTYPE_t sigma):
-        self.mu = mu
-        self.sigma = sigma
-
-    cpdef DTYPE_t eval(self, DTYPE_t x):
-        return norm.pdf(x, loc=self.mu, scale=self.sigma)
-
-    def __str__(self):
-        return '<GaussianPDF mu=%s sigma=%s>' % (self.mu, self.sigma)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-cdef class GaussianPPF(Function):
-    """
-    PPF of Gaussian distribution
-    """
-
-    cdef readonly DTYPE_t mu, sigma
-
-    def __init__(self, DTYPE_t mu, DTYPE_t sigma):
-        self.mu = mu
-        self.sigma = sigma
-
-    cpdef DTYPE_t eval(self, DTYPE_t x):
-        return norm.ppf(x, loc=self.mu, scale=self.sigma)
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -916,8 +799,8 @@ cdef class PiecewiseFunction(Function):
     Represents a function that is piece-wise defined by constant values.
     """
     def __init__(self):
-        self.functions: List[Function] = []
-        self.intervals: List[ContinuousSet] = []
+        self.functions = []
+        self.intervals = []
 
     def __hash__(self):
         return hash((PiecewiseFunction, ((i, f) for i, f in self.iter())))
@@ -1043,7 +926,7 @@ cdef class PiecewiseFunction(Function):
         Eval multiple points.
         :param x: The points
         :param result: Array of function values at x.
-        :return: 
+        :return:
         """
         if result is None:
             result = np.ndarray(shape=len(x), dtype=np.float64)
@@ -1109,6 +992,8 @@ cdef class PiecewiseFunction(Function):
             result.functions = [g + f for g in result.functions]
             return result
         elif isinstance(f, PiecewiseFunction):
+            print(self.intervals)
+            print(f.intervals)
             domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
             undefined = self.domain().union(f.domain()).difference(domain)
             if not isinstance(undefined, RealSet):
@@ -1181,7 +1066,7 @@ cdef class PiecewiseFunction(Function):
         result.intervals = [i.copy() for i in self.intervals]
         return result
 
-    def overwrite_at(self, interval: ContinuousSet or str, func: Function) -> 'PiecewiseFunction':
+    def overwrite_at(self, interval: ContinuousSet or str, func: Function) -> PiecewiseFunction:
         """
         Overwrite this function in the specified interval range with the passed function ``func``.
 
@@ -1202,8 +1087,10 @@ cdef class PiecewiseFunction(Function):
         insert_pos = 0
         while segments:
             i, f = segments.popleft()
-            intersection = i.intersection(interval, left=INC, right=EXC)
-            i_ = i.difference(intersection).simplify()
+            intersection = i.intersection_with_ends(interval, left=INC, right=EXC)
+            i_ = i.difference(intersection)
+            if isinstance(i_, RealSet):
+                i_ = i_.simplify()
             if i_.isempty():  # The original interval is subsumed by the new one and thus disappears
                 continue
             if isinstance(i_, RealSet) and len(i_.intervals) > 1:
@@ -1296,7 +1183,7 @@ cdef class PiecewiseFunction(Function):
         for i, f in self.iter():
             intersect = interval & i
             if intersect:
-                area += f.integrate(intersect.lower, intersect.upper)
+                area += f.integrate(intersect.min, intersect.max)
         return area
 
     cpdef ensure_left(self, Function left, DTYPE_t x):
@@ -1477,9 +1364,11 @@ cdef class PiecewiseFunction(Function):
         Return a copy of this ``PiecewiseFunction``, whose domain is cropped to the passed interval.
         '''
         cdef PiecewiseFunction result = PiecewiseFunction()
+        cdef ContinuousSet i
+        cdef Function f
         for i, f in self.iter():
             if i.intersects(interval):
-                intersection = i.intersection(interval, left=INC, right=EXC)
+                intersection = i.intersection_with_ends(interval, left=INC, right=EXC)
                 result.intervals.append(intersection)
                 result.functions.append(f.copy())
         return result
@@ -1507,8 +1396,8 @@ cdef class PiecewiseFunction(Function):
 
         If ``include_intervals`` is ``False``, the parameter values of the intervals will not be affected by
         this operation.
-        
-        :param digits: the amount of digits to round to. 
+
+        :param digits: the amount of digits to round to.
         :param include_intervals: Rather to round interval borders or not.
         :return: A new, rounded function.
         """
@@ -1531,7 +1420,7 @@ cdef class PiecewiseFunction(Function):
             plf.functions.append(function)
         return plf
 
-    def domain(self) -> NumberSet:
+    def domain(self):
         '''
         Return the domain of this PLF, i.e. the range of input values the PLF is defined on.
         '''
@@ -1562,7 +1451,9 @@ cdef class PiecewiseFunction(Function):
     @staticmethod
     def combine(f1: PiecewiseFunction, f2: PiecewiseFunction, operator: str) -> PiecewiseFunction:
         # The combination of two functions is only defined on their intersecting domains
-        domain = (f1.domain() & f2.domain()).simplify()
+        domain = f1.domain() & f2.domain()
+        if isinstance(domain, RealSet):
+            domain = domain.simplify()
         intervals = [
             (i.min, i.max + eps) for i in f1.intervals
         ] + [
@@ -1624,12 +1515,12 @@ cdef class PiecewiseFunction(Function):
             self.intervals[1].min + eps >= self.intervals[1].upper - eps
         ):
             return self.functions[1].eval(self.intervals[1].lower)
-        elif (
-            len(self) == 1 and
-            self.domain() == R and
-            isinstance(self.functions[0], Impulse)
-        ):
-            return self.functions[0].weight
+        # elif (
+        #     len(self) == 1 and
+        #     self.domain() == R and
+        #     isinstance(self.functions[0], Impulse)
+        # ):
+        #     return self.functions[0].weight
         return False
 
     @staticmethod
@@ -1656,10 +1547,10 @@ cdef class PiecewiseFunction(Function):
     cpdef PiecewiseFunction xshift(self, DTYPE_t delta):
         '''
         Returns a copy of this function, which is shifted the on the x-axis by ``delta``.
-        
+
         Corresponds to a translation of $f(x + \Delta)$, i.e. positive values of
         $\Delta$ will cause the function to "move to the left", negative value will
-        move it to the right. 
+        move it to the right.
         '''
         cdef PiecewiseFunction f = self.copy()
         for j, i in enumerate(f.intervals):
@@ -1694,10 +1585,10 @@ cdef class PiecewiseFunction(Function):
     cpdef Function xmirror(self):
         cdef PiecewiseFunction result = PiecewiseFunction()
         result.intervals = [
-            i.ends(
+            (<ContinuousSet> i).ends(
                 left=INC if np.isfinite(i.lower) else EXC,
                 right=EXC
-            ) for i in RealSet(self.intervals).xmirror().intervals
+            ) for i in (<RealSet> RealSet(self.intervals).xmirror()).intervals
         ]
         result.functions = list(reversed([f.xmirror() for f in self.functions]))
         return result
