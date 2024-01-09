@@ -16,8 +16,8 @@ except ModuleNotFoundError:
 finally:
     from jpt.distributions.quantile.quantiles import QuantileDistribution
 
-from intervals import ContinuousSet, INC, EXC
-from functions import (PiecewiseFunction, ConstantFunction, LinearFunction, Undefined, QuadraticFunction)
+from jpt.base.intervals import ContinuousSet, INC, EXC
+from jpt.base.functions import (PiecewiseFunction, ConstantFunction, LinearFunction)
 
 
 class TestCaseMerge(unittest.TestCase):

@@ -69,3 +69,6 @@ cdef class Interval(NumberSet):
     cpdef SIZE_t contiguous(self, Interval other)
 
     cpdef NumberSet complement(self)
+
+    @staticmethod
+    cdef Interval _allnumbers()

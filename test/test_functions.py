@@ -4,18 +4,18 @@ import numpy as np
 from ddt import ddt, data, unpack
 from dnutils.tools import ifstr
 
-from constants import eps
+from jpt.base.constants import eps
 
-from intervals import (
+from jpt.base.intervals import (
     ContinuousSet,
     EMPTY,
     R,
     EXC,
     INC,
-    RealSet
+    UnionSet
 )
 
-from functions import (
+from jpt.base.functions import (
     LinearFunction,
     QuadraticFunction,
     ConstantFunction,
@@ -984,7 +984,7 @@ class PLFTest(TestCase):
                 '[1,2)': 1
             }),
             1,
-            RealSet(['[-2.0,-1.0)', '[1.0,2.0)']),
+            UnionSet(['[-2.0,-1.0)', '[1.0,2.0)']),
         ),
         (
             PiecewiseFunction.zero().overwrite({

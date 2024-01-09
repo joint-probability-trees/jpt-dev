@@ -15,7 +15,7 @@ from .base cimport DTYPE_t, SIZE_t
 cimport numpy as np
 import numpy as np
 
-from .unionset cimport RealSet
+from .unionset cimport UnionSet
 from .base cimport NumberSet
 
 from .base import (
@@ -29,7 +29,6 @@ from typing import Dict, Any, List, Set
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-_EMPTY = IntSet(np.PINF, np.NINF)
 _Z = IntSet(np.NINF, np.PINF)
 
 
@@ -89,11 +88,19 @@ cdef class IntSet(Interval):
 
     @staticmethod
     cdef NumberSet _emptyset():
-        return _EMPTY.copy()
+        return IntSet(np.PINF, np.NINF)
 
     @staticmethod
     def emptyset():
         return IntSet._emptyset()
+
+    @staticmethod
+    cdef Interval _allnumbers():
+        return IntSet(np.NINF, np.PINF)
+
+    @staticmethod
+    def allnumbers():
+        return IntSet._allnumbers()
 
     cpdef NumberSet copy(self):
         return IntSet(
@@ -117,7 +124,7 @@ cdef class IntSet(Interval):
                 self._lower == other._lower
                 and self._upper == other._upper
             )
-        elif isinstance(other, RealSet):
+        elif isinstance(other, UnionSet):
             return other == self
         else:
             raise TypeError(
@@ -265,7 +272,7 @@ cdef class IntSet(Interval):
     # noinspection PyTypeChecker
     @staticmethod
     def from_set(set numbers: Set[int]) -> NumberSet:
-        return RealSet([
+        return UnionSet([
             IntSet(n, n) for n in numbers
         ]).simplify(keep_type=False)
 
@@ -290,7 +297,7 @@ cdef class IntSet(Interval):
         if other.issuperseteq(self):
             return self.emptyset()
         if self.intersects(other):
-            return RealSet([
+            return UnionSet([
                 IntSet(self.lower, other.lower - 1),
                 IntSet(other.upper + 1, self.upper)
             ]).simplify()
@@ -304,7 +311,7 @@ cdef class IntSet(Interval):
                 max(self.upper, other.upper)
             )
         else:
-            return RealSet([
+            return UnionSet([
                 self,
                 other
             ])
@@ -313,7 +320,7 @@ cdef class IntSet(Interval):
         if self == _Z:
             return _Z
         elif self.isempty():
-            return _EMPTY
+            return IntSet._emptyset()
         return IntSet(
             -self.upper,
             -self.lower

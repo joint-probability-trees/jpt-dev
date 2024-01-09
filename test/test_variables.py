@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 
 from jpt.distributions import NumericType, SymbolicType
-from intervals import ContinuousSet
-from jpt.distributions import Bool, Numeric, Distribution
+from jpt.base.intervals import ContinuousSet
+from jpt.distributions import Bool, Distribution
 from jpt.distributions.univariate import IntegerType
 from jpt.variables import VariableMap, NumericVariable, SymbolicVariable, Variable, infer_from_dataframe, \
     LabelAssignment, ValueAssignment, IntegerVariable
@@ -371,7 +371,7 @@ class DuplicateDomainTest(TestCase):
         t1 = Distribution.type_from_json(v1['domain'])
         t2 = Distribution.type_from_json(v2['domain'])
         self.assertEqual(t1.__name__, t2.__name__)
-        self.assertNotEqual(t1.labels.values(), t2.labels.values())
+        self.assertNotEqual(t1.labels, t2.labels)
 
     def test_duplicate_dom_numeric_not_raise_err(self):
         '''Raise exception when generating duplicate numeric domains.'''

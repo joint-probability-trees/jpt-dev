@@ -15,8 +15,7 @@ from libc.math cimport isinf, isnan
 
 from dnutils import mapstr
 
-from libc.stdio cimport printf
-from cutils.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort, ninf
+from ...base.cutils.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort, ninf
 
 # variables declaring that at num_samples[0] are the number of samples left of the split and vice versa
 cdef int LEFT = 0

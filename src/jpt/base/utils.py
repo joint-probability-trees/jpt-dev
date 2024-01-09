@@ -6,6 +6,7 @@ from _csv import register_dialect, QUOTE_NONNUMERIC
 from csv import Dialect
 
 import math
+from itertools import tee
 from typing import Callable, Iterable, Any, Tuple, Set, List, Union, Dict
 
 import numpy as np
@@ -480,6 +481,12 @@ class Heap:
     def pop(self):
         return heapq.heappop(self._data)[2]
 
+    def popleft(self):
+        return self.pop()
+
+    def popright(self):
+        return self._data.pop()[2]
+
     def __len__(self):
         return len(self._data)
 
@@ -509,3 +516,22 @@ class Heap:
             raise ValueError(
                 'Item %s not found.' % item
             )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def chop(seq: Iterable[Any]) -> Iterable[Tuple[Any, Iterable]]:
+    """
+    Returns pairs of the first element ("head") and the remainder
+    ("tail") for all right subsequences of ``seq``
+    :param seq: The sequence to yield from
+    :return: Head and Tail of the sequence
+    """
+    it = iter(seq)
+    try:
+        head = next(it)
+        it, tail = tee(it)
+        yield head, tail
+        yield from chop(it)
+    except StopIteration:
+        return

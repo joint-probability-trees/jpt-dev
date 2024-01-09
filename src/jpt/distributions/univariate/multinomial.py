@@ -4,7 +4,7 @@ import re
 from collections import Counter
 from itertools import tee
 from operator import itemgetter
-from types import FunctionType, MethodType
+from types import MethodType
 from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Collection
 
 import numpy as np
@@ -17,7 +17,7 @@ from .distribution import ValueMap
 from ..utils import HashableOrderedDict
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
-from utils import mapstr, classproperty, save_plot, Symbol, Collections
+from jpt.base.utils import mapstr, classproperty, save_plot, Symbol, Collections
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -26,6 +26,15 @@ class MultinomialValueMap(ValueMap):
 
     def __init__(self, pairs: Iterable[Tuple[Symbol, Symbol]]):
         self.mapping = HashableOrderedDict(pairs)
+
+    def __eq__(self, other):
+        return (
+            type(other) is MultinomialValueMap and
+            self.mapping == other.mapping
+        )
+
+    def __contains__(self, item):
+        return item in set(self.mapping.values())
 
     def __getitem__(self, symbol: Symbol) -> Symbol:
         try:
@@ -36,7 +45,7 @@ class MultinomialValueMap(ValueMap):
             )
 
     def __iter__(self):
-        return iter(self.mapping)
+        return iter(self.mapping.values())
 
     def __len__(self):
         return len(self.mapping)
@@ -91,11 +100,11 @@ class Multinomial(Distribution):
         else:
             value_ = value
         if not all(
-            [v in cls.labels for v in value_]
+            [v in cls.values for v in value_]
         ):
             raise ValueError(
                 '%s not among the values of domain %s.' % (
-                    first([v for v in value_ if v not in cls.labels]),
+                    repr(first([v for v in value_ if v not in cls.values])),
                     cls.__qualname__
                 )
             )
@@ -114,12 +123,13 @@ class Multinomial(Distribution):
             label_ = {label}
         else:
             label_ = label
+
         if not all(
-            [l in cls.values for l in label_]
+            [l in cls.labels for l in label_]
         ):
             raise ValueError(
                 '%s not among the labels of domain %s.' % (
-                    first([l for l in label_ if l not in cls.labels]),
+                    repr(first([l for l in label_ if l not in cls.labels])),
                     cls.__qualname__
                 )
             )
@@ -147,8 +157,8 @@ class Multinomial(Distribution):
             cls.__name__,
             ', '.join(
                 mapstr(
-                    cls.values.values() if labels_or_values == 'values'
-                    else cls.labels.values(),
+                    cls.values if labels_or_values == 'values'
+                    else cls.labels,
                     limit=max_values
                 )
             )
@@ -203,7 +213,7 @@ class Multinomial(Distribution):
         return '<%s p=[%s]>' % (
             self.__class__.__qualname__,
             ";".join(
-               [f"{v}={p:.3f}" for v, p in zip(self.values, self.probabilities)]
+               [f"{v}={p:.3f}" for v, p in self.items()]
             )
         )
 
@@ -212,29 +222,29 @@ class Multinomial(Distribution):
 
     def sorted(self) -> Iterable[Tuple[float, Symbol]]:
         '''
-        Generate a sequence of (prob, label) pairs representing this distribution,
+        Generate a sequence of (label, prob) pairs representing this distribution,
         ordered by descending probability.
         :return:
         '''
-        yield from sorted([
-            (p, l) for p, l in zip(self._params, self.labels.values())],
-            key=itemgetter(0),
+        yield from sorted(
+            zip(self.labels, self.probabilities),
+            key=itemgetter(1),
             reverse=True
         )
 
     def _items(self) -> Iterable[Tuple[float, int]]:
         '''Generate a sequence of (probability, value) pairs representing this distribution.'''
-        yield from ((p, v) for p, v in zip(
-            self.probabilities,
-            self.values.values()
-        ))
+        yield from zip(
+            self.values,
+            self.probabilities
+        )
 
     def items(self) -> Iterable[Tuple[float, Symbol]]:
         '''Generate a sequence of (probability, label) pairs representing this distribution.'''
-        yield from ((p, l) for p, l in zip(
+        yield from zip(
+            self.labels,
             self.probabilities,
-            self.labels.values()
-        ))
+        )
 
     def copy(self):
         return type(self)(**self.settings).set(params=self._params)
@@ -314,7 +324,7 @@ class Multinomial(Distribution):
     def _sample(self, n: int) -> Iterable[int]:
         '''Returns ``n`` sample `values` according to their respective probability'''
         return wsample(
-            list(self.values.values()),
+            list(self.values),
             self.probabilities,
             n
         )
@@ -322,8 +332,8 @@ class Multinomial(Distribution):
     def _sample_one(self) -> Symbol:
         '''Returns one sample `value` according to its probability'''
         return wchoice(
-            list(self.values.values()),
-            self._params
+            list(self.values),
+            self.probabilities
         )
 
     @deprecated('Expectation is undefined in symbolic domains. Use Multinomial._mode() instead.')
@@ -364,7 +374,7 @@ class Multinomial(Distribution):
         for likelihood in sorted_likelihood:
             result.append(
                 (
-                    {value for value, p in zip(self.values.values(), self.probabilities) if p == likelihood},
+                    {value for value, p in self._items() if p == likelihood},
                     likelihood
                 )
             )
@@ -406,7 +416,7 @@ class Multinomial(Distribution):
             return self.create_dirac_impulse(restriction)
 
         result = self.copy()
-        for idx, value in enumerate(result.values.values()):
+        for idx, value in enumerate(result.values):
             if value not in restriction:
                 result.probabilities[idx] = 0
 
@@ -443,7 +453,7 @@ class Multinomial(Distribution):
         n_samples = ifnone(rows, len(data), len)
         col = ifnone(col, 0)
         for row in ifnone(rows, range(len(data))):
-            self._params[int(data[row, col])] += 1 / n_samples
+            self.probabilities[int(data[row, col])] += 1 / n_samples
         return self
 
     def set(
@@ -518,7 +528,7 @@ class Multinomial(Distribution):
         return {
             'type': 'symbolic',
             'class': cls.__qualname__,
-            'labels': list(cls.labels.values())
+            'labels': list(cls.labels)
         }
 
     def inst_to_json(self):
@@ -581,12 +591,14 @@ class Multinomial(Distribution):
         if not view:
             plt.ioff()
 
-        max_values = min(ifnone(max_values, len(self.labels)), len(self.labels))
+        max_values = min(
+            ifnone(max_values, len(self.labels)), len(self.labels)
+        )
 
         # prepare prob-label pairs containing only the first `max_values` highest probability tuples
         pairs = sorted(
             [
-                (self._params[idx], lbl) for idx, lbl in enumerate(self.labels.values())
+                (self._params[idx], lbl) for idx, lbl in enumerate(self.labels)
             ],
             key=lambda x: x[0],
             reverse=True
@@ -661,11 +673,6 @@ class Bool(Multinomial):
         super().set(params)
         return self
 
-    # def __str__(self):
-    #     if self.p is None:
-    #         return f'{self._cl}<p=n/a>'
-    #     return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._params)])}]>'
-
     def __setitem__(self, v, p):
         if not isinstance(p, Iterable):
             p = np.array([p, 1 - p])
@@ -674,7 +681,7 @@ class Bool(Multinomial):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# noinspection PyPep8Naming
+# noinspection PyPep8Naming,PyTypeChecker
 def SymbolicType(name: str, labels: Iterable[Any]) -> Type[Multinomial]:
     labels = list(labels)
     if len(labels) < 1:

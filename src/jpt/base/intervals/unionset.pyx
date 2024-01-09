@@ -12,6 +12,7 @@ from operator import attrgetter
 
 from dnutils import first
 
+from jpt.base.utils import chop
 from .base cimport DTYPE_t, SIZE_t
 
 from .contset import ContinuousSet
@@ -20,21 +21,18 @@ from .contset cimport ContinuousSet
 from .intset import IntSet
 from .intset cimport IntSet
 
-from .base import _CHAR_EMPTYSET, _CHAR_CUP, chop, EXC, INC
+from .base import _CHAR_EMPTYSET, _CHAR_CUP, EXC, INC
 from .base cimport Interval
 
 from typing import List, Dict, Any, Iterable
 import numbers
 
-cimport numpy as np
 import numpy as np
-
-_EMPTY = RealSet([])
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-cdef class RealSet(NumberSet):
+cdef class UnionSet(NumberSet):
     """
     Class for interval calculus providing basic interval manipulation, such as :func:`sample`,
     :func:`intersection` and :func:`union`. An Instance of this type actually represents a
@@ -54,9 +52,9 @@ cdef class RealSet(NumberSet):
 
     def __init__(self, intervals: str or List[Interval or str]=None):
         """
-        Create a RealSet
+        Create a UnionSet
 
-        :param intervals: The List of intervals to create the RealSet from
+        :param intervals: The List of intervals to create the UnionSet from
         :type intervals: str, or List of ContinuousSet or str that can be parsed
         """
         # member for all intervals
@@ -79,7 +77,7 @@ cdef class RealSet(NumberSet):
 
     @staticmethod
     def emptyset():
-        return RealSet._emptyset()
+        return UnionSet._emptyset()
 
     def _check_interval_types(self):
         clazz = None
@@ -89,7 +87,7 @@ cdef class RealSet(NumberSet):
             else:
                 if not isinstance(i, clazz):
                     raise TypeError(
-                        f'All intervals in a RealSet must be of the same '
+                        f'All intervals in a UnionSet must be of the same '
                         f'``Interval`` substype, got {i.__class__.__qualname__}'
                     )
         return 0
@@ -115,11 +113,11 @@ cdef class RealSet(NumberSet):
         if self.isempty() and other.isempty():
             return True
         self_ = self.simplify()
-        other_ = other.simplify() if isinstance(other, RealSet) else other
+        other_ = other.simplify() if isinstance(other, UnionSet) else other
 
         if isinstance(other_, Interval) and isinstance(self_, Interval):
             return self_ == other_
-        elif isinstance(other_, RealSet) and isinstance(self_, RealSet):
+        elif isinstance(other_, UnionSet) and isinstance(self_, UnionSet):
             return self_.intervals == other_.intervals
 
         return False
@@ -132,12 +130,12 @@ cdef class RealSet(NumberSet):
 
     def __hash__(self):
         return hash((
-            RealSet,
+            UnionSet,
             frozenset(self.intervals)
         ))
 
     def __round__(self, n: int):
-        return RealSet(
+        return UnionSet(
             [round(i, n) for i in self.intervals]
         )
 
@@ -161,7 +159,7 @@ cdef class RealSet(NumberSet):
         }
 
     @staticmethod
-    def from_json(data: Dict[str, Any]) -> 'RealSet':
+    def from_json(data: Dict[str, Any]) -> 'UnionSet':
         intervals = []
         for d in data['intervals']:
             if 'type' in d:
@@ -173,15 +171,15 @@ cdef class RealSet(NumberSet):
             intervals.append(
                 clazz.from_json(d_)
             )
-        return RealSet(
+        return UnionSet(
             intervals
         )
 
     cpdef DTYPE_t size(self):
         """
-        This size of this ``RealSet``.
+        This size of this ``UnionSet``.
 
-        The size of a ``RealSet`` is the sum of the sizes of its constituents.
+        The size of a ``UnionSet`` is the sum of the sizes of its constituents.
 
         Size refers to the number of values that are possible. For any range that allows more than
         one value this is infinite.
@@ -195,7 +193,7 @@ cdef class RealSet(NumberSet):
         simplified = self.simplify()
         if isinstance(simplified, Interval):
             return simplified.size()
-        cdef RealSet r = simplified
+        cdef UnionSet r = simplified
         for i in range(len(r.intervals)):
             s += r.intervals[i].size()
 
@@ -203,7 +201,7 @@ cdef class RealSet(NumberSet):
 
     @staticmethod
     cdef NumberSet _emptyset():
-        return _EMPTY.copy()
+        return UnionSet()
 
     cpdef DTYPE_t[::1] _sample(self, SIZE_t n=1, DTYPE_t[::1] result=None):
         """
@@ -244,12 +242,12 @@ cdef class RealSet(NumberSet):
         :return: bool
         """
         if isinstance(other, Interval):
-            other = RealSet([other])
+            other = UnionSet([other])
         return (other - self).isempty()
 
     cpdef SIZE_t isninf(self):
         """
-        Check if this ``RealSet`` is infinite to the left (negative infty).
+        Check if this ``UnionSet`` is infinite to the left (negative infty).
         :return:
         """
         for i in self.intervals:
@@ -259,7 +257,7 @@ cdef class RealSet(NumberSet):
 
     cpdef SIZE_t ispinf(self):
         """
-        Check if this ``RealSet`` is infinite to the right (positive infty).
+        Check if this ``UnionSet`` is infinite to the right (positive infty).
         :return:
         """
         for i in self.intervals:
@@ -269,7 +267,7 @@ cdef class RealSet(NumberSet):
 
     cpdef SIZE_t isinf(self):
         """
-        Check if this ``RealSet`` is infinite to the right OR the left (negative OR positive infty).
+        Check if this ``UnionSet`` is infinite to the right OR the left (negative OR positive infty).
         :return:
         """
         for i in self.intervals:
@@ -279,16 +277,16 @@ cdef class RealSet(NumberSet):
 
     cpdef SIZE_t isempty(self):
         """
-        Checks whether this RealSet is empty or not.
+        Checks whether this UnionSet is empty or not.
 
         :returns: True if this is interval is empty, i.e. does not contain any values, False otherwise
         :rtype: bool
 
         :Example:
 
-        >>> RealSet(['[0,1]']).isempty()
+        >>> UnionSet(['[0,1]']).isempty()
         False
-        >>> RealSet(']1,1]').isempty()
+        >>> UnionSet(']1,1]').isempty()
         True
 
         """
@@ -301,7 +299,7 @@ cdef class RealSet(NumberSet):
     cpdef DTYPE_t fst(self):
         """
         Get the lowest value
-        :return: the lowest value as number or math.nan if there are no values in this RealSet
+        :return: the lowest value as number or math.nan if there are no values in this UnionSet
         :rtype: numbers.Number
         """
         valid_intervals = [i.fst() for i in self.intervals if i]
@@ -313,7 +311,7 @@ cdef class RealSet(NumberSet):
     cpdef DTYPE_t lst(self):
         """
         Get the lowest value
-        :return: the lowest value as number or math.nan if there are no values in this RealSet
+        :return: the lowest value as number or math.nan if there are no values in this UnionSet
         :rtype: numbers.Number
         """
         valid_intervals = [i.lst() for i in self.intervals if i]
@@ -332,7 +330,7 @@ cdef class RealSet(NumberSet):
         :rtype: bool
         """
         if isinstance(other, Interval):
-            other = RealSet([other])
+            other = UnionSet([other])
         cdef Interval s, s_
         for s in self.intervals:
             for s_ in other.intervals:
@@ -356,29 +354,29 @@ cdef class RealSet(NumberSet):
 
         :param other: the other NumberSet
         :returns: the intersection of this interval with ``other``
-        :rtype: RealSet
+        :rtype: UnionSet
         """
-        cdef RealSet other_
+        cdef UnionSet other_
         if isinstance(other, Interval):
-            other_ = RealSet([other])
+            other_ = UnionSet([other])
         else:
             other_ = other
-        cdef RealSet result = RealSet()
+        cdef UnionSet result = UnionSet()
         for subset_i in self.intervals:
             for subset_j in other_.intervals:
                 result.intervals.append(subset_j.intersection(subset_i))
         return result.simplify()
 
-    def intersections(self, other: RealSet) -> RealSet:
+    def intersections(self, other: UnionSet) -> UnionSet:
         '''
-        Compute a ``RealSet`` whose individual interval constituents contain
-        all pairwise intersections of this ``RealSet``'s constituents and the ``other``
-        ``RealSet``'s. The result is sorted but not simplified in the sense that
+        Compute a ``UnionSet`` whose individual interval constituents contain
+        all pairwise intersections of this ``UnionSet``'s constituents and the ``other``
+        ``UnionSet``'s. The result is sorted but not simplified in the sense that
         contiguous sub-intervals are not merged.
         '''
         if other.dtype is not ContinuousSet:
             raise TypeError(
-                'Method intersections() is not applicible to RealSet of type %s' % other.dtype
+                'Method intersections() is not applicible to UnionSet of type %s' % other.dtype
             )
         intervals_ = [
             i1.intersection_with_ends(i2, left=INC, right=EXC)
@@ -393,7 +391,7 @@ cdef class RealSet(NumberSet):
             intervals.append(i)
             closed.add(i)
 
-        return RealSet(
+        return UnionSet(
             intervals=list(
                 sorted(
                     intervals,
@@ -404,7 +402,7 @@ cdef class RealSet(NumberSet):
 
     cpdef NumberSet simplify(self, SIZE_t keep_type=False):
         """
-        Constructs a new simplified modification of this ``RealSet`` instance, in which the
+        Constructs a new simplified modification of this ``UnionSet`` instance, in which the
         subset intervals are guaranteed to be non-overlapping and non-empty.
 
         In the case that the resulting set comprises only a single ``ContinuousSet``,
@@ -424,7 +422,7 @@ cdef class RealSet(NumberSet):
                 else:
                     tail.extend(diff.intervals)
         if not intervals:
-            return _EMPTY.copy()
+            return UnionSet._emptyset()
 
         head, tail = first(
             chop(sorted(intervals, key=attrgetter('upper')))
@@ -439,25 +437,25 @@ cdef class RealSet(NumberSet):
                 intervals.append(subset)
         if not keep_type and len(intervals) == 1:
             return first(intervals)
-        return RealSet(intervals)
+        return UnionSet(intervals)
 
     cpdef NumberSet copy(self):
         """
         Return a deep copy of this real-valued set.
-        :return: copy of this RealSet
+        :return: copy of this UnionSet
         """
-        return RealSet(
+        return UnionSet(
             [i.copy() for i in self.intervals]
         )
 
     cpdef NumberSet union(self, NumberSet other):
         '''
-        Compute the union set of this ``RealSet`` and ``other``.
+        Compute the union set of this ``UnionSet`` and ``other``.
         '''
         if isinstance(other, Interval):
-            other = RealSet([other])
-        cdef RealSet other_ = <RealSet> other
-        return RealSet(
+            other = UnionSet([other])
+        cdef UnionSet other_ = <UnionSet> other
+        return UnionSet(
             self.intervals + other_.intervals
         ).simplify()
 
@@ -466,7 +464,7 @@ cdef class RealSet(NumberSet):
         if other.isempty() or self.isdisjoint(other):
             return self.copy()
         if isinstance(other, Interval):
-            other = RealSet([other])
+            other = UnionSet([other])
         intervals = []
         q = [i.copy() for i in self.intervals]
         cdef NumberSet diff
@@ -476,16 +474,14 @@ cdef class RealSet(NumberSet):
                 diff = s.difference(subset)
                 if isinstance(diff, Interval):
                     s = diff
-                elif isinstance(diff, RealSet):
+                elif isinstance(diff, UnionSet):
                     q.insert(0, diff.intervals[1])
                     s = diff.intervals[0]
                 else:
                     raise TypeError('This should not happen.')
             intervals.append(s)
-        return RealSet(intervals).simplify(keep_type=True)
 
-    # cpdef inline NumberSet complement(self):
-    #     return RealSet([R]).difference(self).simplify()
+        return UnionSet(intervals).simplify(keep_type=True)
 
     def chop(self, points: Iterable[float]) -> Iterable[ContinuousSet]:
         for i in self.simplify(keep_type=True).intervals:
@@ -493,16 +489,16 @@ cdef class RealSet(NumberSet):
 
     cpdef NumberSet xmirror(self):
         '''
-        Returns a modification of this ``RealSet``, which has been mirrored at position x=0.
+        Returns a modification of this ``UnionSet``, which has been mirrored at position x=0.
         :return:
         '''
-        return RealSet(
+        return UnionSet(
             list(
                 reversed(
                     [i.xmirror() for i in self.intervals]
                 )
             )
-        ) if not self.isempty() else RealSet.EMPTY
+        ) if not self.isempty() else UnionSet.emptyset()
 
     def __and__(self, other):
         return self.intersection(other)
@@ -510,4 +506,5 @@ cdef class RealSet(NumberSet):
     def __or__(self, other):
         return self.union(other)
 
-    EMPTY = RealSet.emptyset()
+
+RealSet = UnionSet

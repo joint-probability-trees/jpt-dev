@@ -6,7 +6,7 @@ from typing import Any, Iterator, List
 import numpy as np
 from dnutils import first, ifnone, project
 
-from utils import Heap
+from jpt.base.utils import Heap
 from jpt.distributions import Numeric, Integer
 from jpt.variables import VariableMap, Variable, ValueAssignment
 

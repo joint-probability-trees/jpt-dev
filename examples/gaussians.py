@@ -4,10 +4,10 @@ from functools import reduce
 import numpy as np
 from matplotlib._color_data import BASE_COLORS
 
-from dnutils import out, first, ifnone
+from dnutils import first, ifnone
 from pandas import DataFrame
 
-from utils import format_path
+from jpt.base.utils import format_path
 from jpt.distributions import Gaussian, Numeric, SymbolicType
 from matplotlib import pyplot as plt
 

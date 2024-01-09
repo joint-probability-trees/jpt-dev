@@ -18,9 +18,9 @@ from .base cimport (
     DTYPE_t,
     SIZE_t
 )
-from constants import eps
+from jpt.base.constants import eps
 
-from .unionset import RealSet
+from .unionset import UnionSet
 
 from .base import (
     RIGHT,
@@ -29,7 +29,6 @@ from .base import (
 
 import math
 
-cimport numpy as np
 import numpy as np
 
 from .base import _CHAR_EMPTYSET
@@ -77,7 +76,6 @@ re_int = re.compile(
     r'(?P<ldelim>\(|\[|\])(?P<lval>.+),(?P<rval>.+)(?P<rdelim>\)|\]|\[)'
 )
 
-_EMPTY = ContinuousSet(0, 0, EXC, EXC)
 _R = ContinuousSet(np.NINF, np.PINF, EXC, EXC)
 
 _INC = 1
@@ -111,7 +109,7 @@ cdef class ContinuousSet(Interval):
         [3.0,4.0]
         >>> i4 = i1.union(i2)
         >>> print(i4)
-        <RealSet=[<ContinuousSet [0.0,1.0]>; <ContinuousSet [2.0,3.0]>]>
+        <UnionSet=[<ContinuousSet [0.0,1.0]>; <ContinuousSet [2.0,3.0]>]>
         >>> i5 = i4.union(ContinuousSet('[0.5,3]'))
         >>> print(i5)
         [0.0,3.0]
@@ -159,7 +157,7 @@ cdef class ContinuousSet(Interval):
         :return: The corresponding ContinuousSet
         """
         if s == _CHAR_EMPTYSET:
-            return _EMPTY
+            return ContinuousSet._emptyset()
         interval = ContinuousSet(np.nan, np.nan)
         tokens = re_int.match(s.replace(" ", "").replace('∞', 'inf'))
 
@@ -267,23 +265,23 @@ cdef class ContinuousSet(Interval):
         Create an empty interval centered at 0.
         :return: An empty interval
         """
-        return _EMPTY.copy()
+        return ContinuousSet(0, 0, EXC, EXC)
 
     @staticmethod
     def emptyset() -> ContinuousSet:
         return ContinuousSet._emptyset()
 
     @staticmethod
-    cdef ContinuousSet c_allnumbers():
+    cdef Interval _allnumbers():
         """
         Create a ContinuousSet that contains all numbers but infinity and -infinity
         :return: Infinitely big ContinuousSet
         """
-        return ContinuousSet(np.NINF, np.inf, _EXC, _EXC)
+        return ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)
 
     @staticmethod
     def allnumbers():
-        return ContinuousSet.c_allnumbers()
+        return ContinuousSet._allnumbers()
 
     cpdef DTYPE_t[::1] _sample(self, SIZE_t k=1, DTYPE_t[::1] result=None):
         """
@@ -469,7 +467,7 @@ cdef class ContinuousSet(Interval):
         """
         if self.isempty():
             return False
-        # if isinstance(other, RealSet):
+        # if isinstance(other, UnionSet):
         #     return all(
         #         [self.contains_interval(i, proper_containment=proper_containment) for i in other.intervals]
         #     )
@@ -514,7 +512,7 @@ cdef class ContinuousSet(Interval):
         """
         if other.isempty() or self.isempty():
             return False
-        if isinstance(other, RealSet):
+        if isinstance(other, UnionSet):
             return other.intersects(self)
         elif isinstance(other, ContinuousSet):
             if other.lower > self.upper or other.upper < self.lower:
@@ -648,12 +646,12 @@ cdef class ContinuousSet(Interval):
         """
         Compute the union of this ``ContinuousSet`` and ``other``.
         :param other: The other ContinuousSet
-        :return: The union of both sets as ContinuousSet if the union is contiguous or RealSet if it is not.
+        :return: The union of both sets as ContinuousSet if the union is contiguous or UnionSet if it is not.
         """
         if not self.intersects(other) and not self.contiguous(other):
             if self.isempty():
                 return other.copy()
-            return RealSet([self]).union(RealSet([other]))
+            return UnionSet([self]).union(UnionSet([other]))
         cdef np.int32_t left = (min(self.left, other.left) if self.lower == other.lower
                                 else (self.left if self.lower < other.lower else other.left))
         cdef np.int32_t right = (min(self.right, other.right) if self.upper == other.upper
@@ -664,18 +662,18 @@ cdef class ContinuousSet(Interval):
         """
         Compute the set difference of this ``ContinuousSet`` minus ``other``.
         :param other: the other NumberSet
-        :return: difference of those sets as RealSet
+        :return: difference of those sets as UnionSet
         """
         if other.isempty():
             return self.copy()
-        if isinstance(other, RealSet):
-            return RealSet([self]).difference(other)
+        if isinstance(other, UnionSet):
+            return UnionSet([self]).difference(other)
         cdef NumberSet result
         if other.issuperseteq(self):
             return ContinuousSet._emptyset()
 
         elif self.contains_interval(other, proper_containment=True):
-            result = RealSet([
+            result = UnionSet([
                 ContinuousSet(
                     self.lower,
                     other.lower,
@@ -838,7 +836,7 @@ cdef class ContinuousSet(Interval):
         )
 
     def __eq__(self, other):
-        if isinstance(other, RealSet):
+        if isinstance(other, UnionSet):
             return other == self
         return all((
             self.min == other.min,

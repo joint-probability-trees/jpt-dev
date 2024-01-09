@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 from dnutils import project
 
-from intervals import ContinuousSet, RealSet, EXC, INC
-from utils import pairwise
+from jpt.base.intervals import ContinuousSet, UnionSet, EXC, INC
+from jpt.base.utils import pairwise
 from jpt.distributions import Bool, Numeric
 from jpt.trees import MPESolver, JPT
 from jpt.variables import VariableMap
@@ -72,7 +72,7 @@ class JPTInferenceNumeric(unittest.TestCase):
             self.jpt.fit(self.data.reshape(-1, 1))
 
     def test_realset_evidence(self):
-        r1 = self.jpt.infer(query={'x': RealSet(['[-1,0.5]', '[1,inf['])})
+        r1 = self.jpt.infer(query={'x': UnionSet(['[-1,0.5]', '[1,inf['])})
         r2 = self.jpt.infer(query={'x': ContinuousSet(.5, 1, EXC, INC)})
         self.assertAlmostEqual(r1, 1 - r2, places=10)
 

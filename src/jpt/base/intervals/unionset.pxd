@@ -13,7 +13,7 @@ from .base cimport SIZE_t, DTYPE_t
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-cdef class RealSet(NumberSet):
+cdef class UnionSet(NumberSet):
 
     # Class attributes
     cdef public list intervals

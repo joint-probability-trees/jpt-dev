@@ -2,13 +2,8 @@ from unittest import TestCase
 
 import numpy as np
 
-try:
-    from cutils.cutils import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from cutils.cutils import test_sort
+
+from jpt.base.cutils.cutils import test_sort
 
 
 class CUtilsTest(TestCase):

@@ -15,15 +15,15 @@ from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, 
 
 import numpy as np
 import pandas as pd
-from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs
+from dnutils import first, ifnone, mapstr, fst, ifnot, getlogger, logs
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
-from constants import plotstyle, orange, green
+from .base.constants import plotstyle, orange, green
 from .base.errors import Unsatisfiability
-from utils import list2intset, list2set
-from utils import format_path, normalized, Heap
-from utils import prod, setstr_int
+from .base.utils import list2set
+from .base.utils import format_path, normalized, Heap
+from .base.utils import prod
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
 from .distributions.quantile.quantiles import QuantileDistribution
@@ -39,17 +39,9 @@ from .variables import (
     ValueAssignment
 )
 
-from intervals import ContinuousSet, Interval, EXC, INC, R, RealSet, IntSet, Z
-from functions import PiecewiseFunction, Undefined
-
-try:
-    from .learning.impurity import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from .learning.impurity import Impurity
-
+from .base.intervals import ContinuousSet, Interval, EXC, INC, R, UnionSet, IntSet, Z
+from .base.functions import PiecewiseFunction
+from .learning.impurity import Impurity
 
 
 try:
@@ -237,10 +229,19 @@ class DecisionNode(Node):
             idx=data['idx'],
             variable=tree.varnames[data['variable']]
         )
-        node.splits = [  # TODO: Support backward compatability to integers as regular python sets
-            Interval.from_json(s) if (node.variable.numeric or node.variable.integer) else set(s)
-            for s in data['splits']
-        ]
+        # the following cases are to support backward compatibility with old integer representations
+        if node.variable.numeric or (node.variable.integer and type(first(data['splits'])) is dict):
+            node.splits = [
+                Interval.from_json(s) for s in data['splits']
+            ]
+        elif node.variable.integer and type(first(data['splits'])) is list:
+            node.splits = [
+                IntSet.from_set(set(s)) for s in data['splits']
+            ]
+        elif node.variable.symbolic:
+            node.splits = [
+                set(s) for s in data['splits']
+            ]
         node.children = [None] * len(node.splits)
         node.parent = ifnone(data['parent'], None, tree.innernodes.get)
         node.samples = data['samples']
@@ -521,7 +522,7 @@ class Leaf(Node):
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
         """
-        if isinstance(value, RealSet):
+        if isinstance(value, UnionSet):
             return sum(
                 self._numeric_probability(
                     variable,
@@ -1379,7 +1380,8 @@ class JPT:
 
         count = 0
         while mpe_candidates and (not k or count < k):
-            solution, likelihood, solver = mpe_candidates.pop()
+            solution, likelihood, solver = mpe_candidates.popright()
+
             values = ValueAssignment(
                 [
                     (variable, value if variable.numeric else set(value))
@@ -1458,8 +1460,8 @@ class JPT:
                         query_[var] = ContinuousSet(val, val)
                 elif isinstance(arg, ContinuousSet):
                     query_[var] = arg
-                elif isinstance(arg, RealSet):
-                    query_[var] = RealSet([
+                elif isinstance(arg, UnionSet):
+                    query_[var] = UnionSet([
                         ContinuousSet(i.lower, i.upper, i.left, i.right) for i in arg.intervals
                     ])
                 else:
@@ -1476,8 +1478,8 @@ class JPT:
                         query_[var] = IntSet(val, val)
                 elif isinstance(arg, IntSet):
                     query_[var] = arg
-                elif isinstance(arg, RealSet):
-                    query_[var] = RealSet([
+                elif isinstance(arg, UnionSet):
+                    query_[var] = UnionSet([
                         IntSet(i.lower, i.upper) for i in arg.intervals
                     ])
 
@@ -1590,7 +1592,7 @@ class JPT:
                 )
                 splits = [
                     {split_value},
-                    set(split_var.domain.values.values()) - {split_value}
+                    set(split_var.domain.values) - {split_value}
                 ]
 
             elif split_var.numeric:  # Numeric domain ------------------------------------------------------------------
@@ -1973,8 +1975,10 @@ class JPT:
             if var in query_: continue
             if var.numeric:
                 query_[var] = R
+            elif var.integer:
+                query_[var] = Z
             else:
-                query_[var] = set(var.domain.labels.values())
+                query_[var] = set(var.domain.labels)
 
         # stores the probabilities, that the query variables take on the value(s)/a value in the interval given in
         # the query

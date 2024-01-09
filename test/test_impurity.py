@@ -15,7 +15,7 @@ except ModuleNotFoundError:
     import pyximport
     pyximport.install()
 finally:
-    from jpt.learning.impurity import (
+    from jpt.learning.impurity.impurity import (
         Impurity,
         _sum_at,
         _sq_sum_at,

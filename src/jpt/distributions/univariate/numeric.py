@@ -10,8 +10,8 @@ import numpy as np
 from dnutils import ifnone, ifnot, first
 from matplotlib import pyplot as plt
 
-from ..utils import Identity, DataScaler, DataScalerProxy
-from utils import save_plot, pairwise, normalized, none2nan
+from .distribution import ValueMap, Identity
+from jpt.base.utils import save_plot, pairwise, normalized, none2nan
 from . import Distribution
 
 try:
@@ -22,12 +22,98 @@ except ModuleNotFoundError:
 finally:
     from ..quantile.quantiles import QuantileDistribution
 
-from intervals import R, ContinuousSet, RealSet, NumberSet
-from functions import (
+from jpt.base.intervals import ContinuousSet, UnionSet, NumberSet
+from jpt.base.functions import (
     LinearFunction,
     ConstantFunction,
     PiecewiseFunction,
 )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class NumericMap(ValueMap):
+
+    def __init__(self, mean: float = None, scale: float = None):
+        self.mean = mean
+        self.scale = scale
+
+    def fit(self, data: np.ndarray) -> 'NumericMap':
+        self.mean = np.mean(data)
+        scale = np.std(data)
+        self.scale = ifnot(
+            1 if np.isnan(scale) else scale,
+            1
+        )
+        return self
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            'mean_': [self.mean],
+            'scale_': [self.scale]
+        }
+
+    @classmethod
+    def from_json(cls, data: Dict[str, Any]) -> 'NumericMap':
+        return cls(
+            mean=data['mean_'][0],
+            scale=data['scale_'][0]
+        )
+
+    def __hash__(self):
+        return hash((
+            type(self),
+            self.mean,
+            self.scale
+        ))
+
+    def __eq__(self, other):
+        return (
+            type(other) == type(self)
+            and self.mean == other.mean
+            and self.scale == other.scale
+        )
+
+
+class NumericValueToLabelMap(NumericMap):
+    '''
+    Values -> Labels
+    '''
+
+    def __getitem__(self, x) -> float:
+        if x in (np.NINF, np.PINF):
+            return x
+        return self.transform(x, make_copy=True)
+
+    def transform(self, x, make_copy=True) -> Union[np.ndarray, float]:
+        if type(x) is np.ndarray:
+            target = np.array(x) if make_copy else x
+            target *= self.scale
+            target += self.mean
+            return target
+        return x * self.scale + self.mean
+
+
+class NumericLabelToValueMap(NumericMap):
+    '''
+    Labels -> Values
+    '''
+
+    def __getitem__(self, x) -> float:
+        if x in (np.NINF, np.PINF):
+            return x
+        return self.transform(x, make_copy=True)
+
+    def transform(self, x, make_copy=True) -> Union[np.ndarray, float]:
+        if type(x) is np.ndarray:
+            target = np.array(x) if make_copy else x
+            target -= self.mean
+            target /= self.scale
+            return target
+        return (x - self.mean) / self.scale
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 class Numeric(Distribution):
@@ -90,8 +176,10 @@ class Numeric(Distribution):
                 value.left,
                 value.right
             )
-        elif isinstance(value, RealSet):
-            return RealSet([cls.value2label(i) for i in value.intervals])
+        elif isinstance(value, UnionSet):
+            return UnionSet(
+                [cls.value2label(i) for i in value.intervals]
+            )
         elif isinstance(value, numbers.Real):
             return cls.labels[value]
         else:
@@ -112,8 +200,8 @@ class Numeric(Distribution):
                 label.left,
                 label.right
             )
-        elif isinstance(label, RealSet):
-            return RealSet(
+        elif isinstance(label, UnionSet):
+            return UnionSet(
                 [cls.label2value(i) for i in label.intervals]
             )
         elif isinstance(label, numbers.Real):
@@ -189,7 +277,7 @@ class Numeric(Distribution):
         """Checks if this distribution is a dirac impulse."""
         return len(self._quantile.cdf.intervals) == 2
 
-    def mpe(self) -> (RealSet, float):
+    def mpe(self) -> (UnionSet, float):
         state, likelihood = self._mpe()
         return self.value2label(state), likelihood
 
@@ -197,7 +285,7 @@ class Numeric(Distribution):
         """
         Calculate the most probable configuration of this quantile distribution.
 
-        :return: The mpe itself as RealSet and the likelihood of the mpe as float
+        :return: The mpe itself as UnionSet and the likelihood of the mpe as float
         """
         return first(self._k_mpe(k=1))
 
@@ -218,7 +306,7 @@ class Numeric(Distribution):
         for likelihood in sorted_likelihood:
             result.append(
                 (
-                    RealSet([
+                    UnionSet([
                         interval
                         for interval, function in zip(self.pdf.intervals, self.pdf.functions)
                         if function.value == likelihood
@@ -274,7 +362,7 @@ class Numeric(Distribution):
             )
         if isinstance(value, numbers.Number):
             value = ContinuousSet(value, value)
-        elif isinstance(value, RealSet):
+        elif isinstance(value, UnionSet):
             return sum(self._p(i) for i in value.intervals)
         probspace = self.pdf.gt(0)
         if probspace.isdisjoint(value):
@@ -374,7 +462,7 @@ class Numeric(Distribution):
         """
 
         # for real sets the result is a merge of the single ContinuousSet crops
-        if isinstance(restriction, RealSet):
+        if isinstance(restriction, UnionSet):
             distributions = []
 
             for idx, continuous_set in enumerate(restriction.intervals):
@@ -722,8 +810,6 @@ class ScaledNumeric(Numeric):
     Scaled numeric distribution represented by mean and variance.
     '''
 
-    scaler = None
-
     def __init__(self, **settings):
         super().__init__(**settings)
 
@@ -732,17 +818,19 @@ class ScaledNumeric(Numeric):
         return {
             'type': 'scaled-numeric',
             'class': cls.__name__,
-            'scaler': cls.scaler.to_json()
+            'scaler': cls.values.to_json()
         }
 
     to_json = type_to_json
 
     @staticmethod
     def type_from_json(data):
-        clazz = NumericType(data['class'], None)
-        clazz.scaler = DataScaler.from_json(data['scaler'])
-        clazz.values = DataScalerProxy(clazz.scaler)
-        clazz.labels = DataScalerProxy(clazz.scaler, True)
+        clazz = NumericType(
+            data['class'],
+            None
+        )
+        clazz.values = NumericLabelToValueMap.from_json(data['scaler'])
+        clazz.labels = NumericValueToLabelMap.from_json(data['scaler'])
         return clazz
 
     @classmethod
@@ -763,7 +851,6 @@ def NumericType(name: str, values: Iterable[float]) -> Type[Numeric]:
         values = np.array(list(none2nan(values)))
         if (~np.isfinite(values)).any():
             raise ValueError('Values contain nan or inf.')
-        t.scaler = DataScaler(values)
-        t.values = DataScalerProxy(t.scaler, inverse=False)
-        t.labels = DataScalerProxy(t.scaler, inverse=True)
+        t.values = NumericLabelToValueMap().fit(values)
+        t.labels = NumericValueToLabelMap().fit(values)
     return t

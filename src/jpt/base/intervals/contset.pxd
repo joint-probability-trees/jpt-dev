@@ -34,9 +34,6 @@ cdef class ContinuousSet(Interval):
 
     cpdef SIZE_t isclosed(self)
 
-    @staticmethod
-    cdef ContinuousSet c_allnumbers()
-
     cpdef SIZE_t contains_interval(self, NumberSet other, int proper_containment=*)
 
     cpdef ContinuousSet intersection_with_ends(

@@ -1,12 +1,11 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
-import collections
 import numbers
 from collections.abc import Hashable
 from typing import Set, Iterable, Type, Any
 
 import numpy as np
 
-from utils import setstr
+from jpt.base.utils import setstr
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -20,7 +19,7 @@ DISCRETE = 'discrete'
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class ValueMap(collections.Mapping, Hashable):
+class ValueMap(Hashable):
 
     def __iter__(self):
         raise NotImplementedError()
@@ -37,6 +36,36 @@ class ValueMap(collections.Mapping, Hashable):
     @property
     def map(self):
         return lambda x: self[x]
+
+    def __eq__(self, other):
+        raise NotImplementedError()
+
+    def __contains__(self, item):
+        raise NotImplementedError()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class Identity(ValueMap):
+    '''
+    Simple identity mapping that mimics the __getitem__ protocol of dicts.
+    '''
+
+    def __getitem__(self, item):
+        return item
+
+    @property
+    def map(self):
+        return lambda a: self[a]
+
+    def __eq__(self, o):
+        return type(o) is Identity
+
+    def __hash__(self):
+        return hash(Identity)
+
+    def __contains__(self, item):
+        return True
 
 
 # ----------------------------------------------------------------------------------------------------------------------

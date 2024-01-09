@@ -13,8 +13,8 @@ except ModuleNotFoundError:
     pyximport.install()
 finally:
     from jpt.distributions.quantile.quantiles import QuantileDistribution
-    from intervals import ContinuousSet, INC, EXC
-    from functions import PiecewiseFunction, ConstantFunction
+    from jpt.base.intervals import ContinuousSet, INC, EXC
+    from jpt.base.functions import PiecewiseFunction, ConstantFunction
 
 
 def gaussian_jpt() -> JPT:

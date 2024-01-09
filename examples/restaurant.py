@@ -158,7 +158,7 @@ def restaurant_auto_sample(visualize=True):
         d_ = df
         for v, val in vals:
             d_ = d_[d_[v.name] == val]
-        return [len(d_[d_[var.name] == l]) / len(d_) for l in var.domain.labels.values()] if len(d_) else None
+        return [len(d_[d_[var.name] == l]) / len(d_) for l in var.domain.labels] if len(d_) else None
 
     data = [rec(variables, []) for _ in range(500)]
 

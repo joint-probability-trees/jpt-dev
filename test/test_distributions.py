@@ -10,12 +10,12 @@ import scipy.stats
 from ddt import data, unpack, ddt
 from dnutils.tools import ifstr
 
-from constants import eps
+from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
-from jpt.distributions.univariate.integer import IntegerMap
+from jpt.distributions.univariate.integer import IntegerMap, IntegerValueToLabelMap, IntegerLabelToValueMap
 from jpt.distributions.univariate.multinomial import MultinomialValueMap
-from jpt.distributions.utils import OrderedDictProxy, DataScaler, HashableOrderedDict
-from testutils import gaussian_numeric, uniform_numeric
+from jpt.distributions.univariate.numeric import NumericValueToLabelMap, NumericLabelToValueMap
+from testutils import uniform_numeric
 
 try:
     from jpt.distributions.quantile.quantiles import __module__
@@ -25,8 +25,8 @@ except ModuleNotFoundError:
 finally:
     from jpt.distributions.quantile.quantiles import QuantileDistribution
 
-from functions import PiecewiseFunction, LinearFunction, ConstantFunction
-from intervals import ContinuousSet, EXC, INC, RealSet, R, IntSet
+from jpt.base.functions import PiecewiseFunction, LinearFunction, ConstantFunction
+from jpt.base.intervals import ContinuousSet, EXC, INC, UnionSet, R, IntSet, Z
 
 from jpt.base.errors import Unsatisfiability
 from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, Numeric, \
@@ -78,20 +78,20 @@ class MultinomialDistributionTest(TestCase):
         )
 
         self.assertEqual(
-            HashableOrderedDict([('A', 0), ('B', 1), ('C', 2)]),
-            DistABC.values.mapping,
+            MultinomialValueMap([('A', 0), ('B', 1), ('C', 2)]),
+            DistABC.values,
         )
         self.assertEqual(
-            HashableOrderedDict([(0, 'A'), (1, 'B'), (2, 'C')]),
-            DistABC.labels.mapping,
+            MultinomialValueMap([(0, 'A'), (1, 'B'), (2, 'C')]),
+            DistABC.labels,
         )
 
         self.assertEqual(
-            HashableOrderedDict([(1, 0), (2, 1), (3, 2), (4, 3), (5, 4)]),
+            MultinomialValueMap([(1, 0), (2, 1), (3, 2), (4, 3), (5, 4)]),
             Dist123.values,
         )
         self.assertEqual(
-            HashableOrderedDict([(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]),
+            MultinomialValueMap([(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]),
             Dist123.labels,
         )
 
@@ -517,7 +517,7 @@ class NumericDistributionTest(TestCase):
 
         # Act
         value_realset = Gauss.label2value(
-            RealSet(['[0,1]', '[2,3]'])
+            UnionSet(['[0,1]', '[2,3]'])
         )
         value_scalar = Gauss.label2value(.5)
         value_interval = Gauss.label2value(
@@ -526,7 +526,7 @@ class NumericDistributionTest(TestCase):
 
         # Assert
         self.assertEqual(
-            RealSet([
+            UnionSet([
                 ContinuousSet(-.9, .9),
                 ContinuousSet(2.6, 4.3)
             ]),
@@ -579,7 +579,7 @@ class NumericDistributionTest(TestCase):
         ('(-inf, .5]', .5),
         ('[.5,inf)', .5),
         ('[.5,.5]', 0),
-        (RealSet([
+        (UnionSet([
             '[0,.25]', '[.75,1]'
         ]), .5)
     )
@@ -864,11 +864,62 @@ class NumericDistributionTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class IntegerMapTest(TestCase):
+class IntegerValueMapTest(TestCase):
+
+    def test_getitem(self):
+        # Arrange
+        z = IntegerValueToLabelMap()
+        halfopen_pos = IntegerValueToLabelMap(lmin=-2)
+        halfopen_neg = IntegerValueToLabelMap(lmax=3)
+        closed = IntegerValueToLabelMap(lmin=-2, lmax=3)
+
+        # Act
+        result_z = z[0], z[-5], z[100]
+        result_halfopen_pos = halfopen_pos[0], halfopen_pos[2], halfopen_pos[12]
+        result_halfopen_neg = halfopen_neg[-13], halfopen_neg[-3], halfopen_neg[0]
+        result_closed = closed[0], closed[2], closed[5]
+
+        # Assert
+        self.assertEqual(
+            (0, -5, 100),
+            result_z
+        )
+        self.assertEqual(
+            (-2, 0, 10),
+            result_halfopen_pos
+        )
+        self.assertRaises(
+            ValueError,
+            halfopen_pos.__getitem__,
+            -1
+        )
+        self.assertEqual(
+            (-10, 0, 3),
+            result_halfopen_neg
+        )
+        self.assertRaises(
+            ValueError,
+            halfopen_neg.__getitem__,
+            1
+        )
+        self.assertEqual(
+            (-2, 0, 3),
+            result_closed
+        )
+        self.assertRaises(
+            ValueError,
+            closed.__getitem__,
+            -1
+        )
+        self.assertRaises(
+            ValueError,
+            closed.__getitem__,
+            6
+        )
 
     def test_iter_all_ints(self):
         # Arrange
-        int_map = IntegerMap()
+        int_map = IntegerValueToLabelMap()
         int_iter = iter(int_map)
 
         # Act
@@ -882,7 +933,7 @@ class IntegerMapTest(TestCase):
 
     def test_iter_neg_inf(self):
         # Arrange
-        int_map = IntegerMap(lmax=3)
+        int_map = IntegerValueToLabelMap(lmax=3)
         int_iter = iter(int_map)
 
         # Act
@@ -896,7 +947,7 @@ class IntegerMapTest(TestCase):
 
     def test_iter_pos_inf(self):
         # Arrange
-        int_map = IntegerMap(lmin=-1)
+        int_map = IntegerValueToLabelMap(lmin=-1)
         int_iter = iter(int_map)
 
         # Act
@@ -910,7 +961,7 @@ class IntegerMapTest(TestCase):
 
     def test_iter_finite(self):
         # Arrange
-        int_map = IntegerMap(lmin=-1, lmax=3)
+        int_map = IntegerValueToLabelMap(lmin=-1, lmax=3)
         int_iter = iter(int_map)
 
         # Act
@@ -936,6 +987,93 @@ class IntegerMapTest(TestCase):
         )
 
 
+class IntegerLabelMapTest(TestCase):
+
+    def test_getitem(self):
+        # Arrange
+        z = IntegerLabelToValueMap()
+        halfopen_pos = IntegerLabelToValueMap(lmin=-2)
+        halfopen_neg = IntegerLabelToValueMap(lmax=3)
+        closed = IntegerLabelToValueMap(lmin=-2, lmax=3)
+
+        # Act
+        result_z = z[0], z[-5], z[100]
+        result_halfopen_pos = halfopen_pos[-2], halfopen_pos[0], halfopen_pos[10]
+        result_halfopen_neg = halfopen_neg[-10], halfopen_neg[0], halfopen_neg[3]
+        result_closed = closed[-2], closed[0], closed[3]
+
+        # Assert
+        self.assertEqual(
+            (0, -5, 100),
+            result_z
+        )
+        self.assertEqual(
+            (0, 2, 12),
+            result_halfopen_pos
+        )
+        self.assertRaises(
+            ValueError,
+            halfopen_pos.__getitem__,
+            -3
+        )
+        self.assertEqual(
+            (-13, -3, 0),
+            result_halfopen_neg
+        )
+        self.assertRaises(
+            ValueError,
+            halfopen_neg.__getitem__,
+            4
+        )
+        self.assertEqual(
+            (0, 2, 5),
+            result_closed
+        )
+        self.assertRaises(
+            ValueError,
+            closed.__getitem__,
+            -3
+        )
+        self.assertRaises(
+            ValueError,
+            closed.__getitem__,
+            4
+        )
+
+    def test_intset(self):
+        # Arrange
+        z = IntegerLabelToValueMap()
+        halfopen_pos = IntegerLabelToValueMap(lmin=-2)
+        halfopen_neg = IntegerLabelToValueMap(lmax=3)
+        closed = IntegerLabelToValueMap(lmin=-2, lmax=3)
+
+        # Act
+        intset_z = z._to_intset()
+        intset_halfopen_pos = halfopen_pos._to_intset()
+        intset_halfopen_neg = halfopen_neg._to_intset()
+        intset_closed = closed._to_intset()
+
+        # Assert
+        self.assertEqual(
+            Z,
+            intset_z
+        )
+        self.assertEqual(
+            IntSet(0, np.PINF),
+            intset_halfopen_pos
+        )
+        self.assertEqual(
+            IntSet(np.NINF, 0),
+            intset_halfopen_neg
+        )
+        self.assertEqual(
+            IntSet(0, 5),
+            intset_closed
+        )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 class IntegerDistributionTest(TestCase):
 
     Die = IntegerType('Dice', 1, 6)
@@ -944,7 +1082,7 @@ class IntegerDistributionTest(TestCase):
         # Arrange
         Die = self.Die
         intset = IntSet(0, 2)
-        realset = RealSet([IntSet(0, 1), IntSet(4, 5)])
+        realset = UnionSet([IntSet(0, 1), IntSet(4, 5)])
 
         # Act
         value_scalar = Die.value2label(0)
@@ -969,7 +1107,7 @@ class IntegerDistributionTest(TestCase):
             value_intset
         )
         self.assertEqual(
-            RealSet([IntSet(1, 2), IntSet(5, 6)]),
+            UnionSet([IntSet(1, 2), IntSet(5, 6)]),
             value_realset
         )
 
@@ -977,7 +1115,7 @@ class IntegerDistributionTest(TestCase):
         # Arrange
         Die = self.Die
         intset = IntSet(1, 3)
-        realset = RealSet([IntSet(1, 2), IntSet(5, 6)])
+        realset = UnionSet([IntSet(1, 2), IntSet(5, 6)])
 
         # Act
         label_scalar = Die.label2value(1)
@@ -998,7 +1136,7 @@ class IntegerDistributionTest(TestCase):
             label_intset
         )
         self.assertEqual(
-            RealSet([IntSet(0, 1), IntSet(4, 5)]),
+            UnionSet([IntSet(0, 1), IntSet(4, 5)]),
             label_realset
         )
     def test_set_finite(self):
@@ -1116,8 +1254,8 @@ class IntegerDistributionTest(TestCase):
         p_duplicate_labels = fair_dice.p([1, 2, 2])
         p_intset_labels = fair_dice.p(IntSet(1, 3))
         p_intset_values = fair_dice._p(IntSet(0, 2))
-        p_realset_labels = fair_dice.p(RealSet(['{1..2}', '{5..6}']))
-        p_realset_values = fair_dice._p(RealSet(['{0..1}', '{4..5}']))
+        p_realset_labels = fair_dice.p(UnionSet(['{1..2}', '{5..6}']))
+        p_realset_values = fair_dice._p(UnionSet(['{0..1}', '{4..5}']))
 
         # Assert
         self.assertEqual(1 / 6, p_singular_label)
@@ -1234,8 +1372,20 @@ class IntegerDistributionTest(TestCase):
         fair_dice.set([1 / 6] * 6)
 
         # Act
-        dice_type = Distribution.from_json(dice.to_json())
-        fair_dice_inst = dice.from_json(fair_dice.to_json())
+        dice_type = Distribution.from_json(
+            json.loads(
+                json.dumps(
+                    dice.to_json()
+                )
+            )
+        )
+        fair_dice_inst = dice.from_json(
+            json.loads(
+                json.dumps(
+                    fair_dice.to_json()
+                )
+            )
+        )
 
         # Assert
         self.assertTrue(dice.equiv(dice_type))
@@ -1329,7 +1479,7 @@ class IntegerDistributionTest(TestCase):
         d1 = dice().set([1 / 6] * 6)
         d1.plot(
             title="Test",
-            view=True,
+            view=False,
             horizontal=False
         )
 
@@ -1382,20 +1532,41 @@ class DataScalerTest(TestCase):
     def setUpClass(cls) -> None:
         DataScalerTest.DATA = Gaussian(5, 10).sample(10000)
 
-    def test_transformation(self):
-        scaler = DataScaler()
-        scaler.fit(DataScalerTest.DATA)
-        # self.assertAlmostEqual(5, scaler.mean, places=0)
-        # self.assertAlmostEqual(10, scaler.variance, places=2)
+    def test_singular_values_transformation(self):
+        # Arrange
+        value2label = NumericValueToLabelMap()
+        value2label.fit(DataScalerTest.DATA)
+        label2value = NumericLabelToValueMap()
+        label2value.fit(DataScalerTest.DATA)
 
-        # Test single transformation
         for x in DataScalerTest.DATA:
-            self.assertAlmostEqual(x, scaler.inverse_transform(scaler.transform(x)), 5)
+            # Act
+            single_value_result = value2label[label2value[x]]
 
-        # Test bulk transformation
-        data_ = scaler.transform(DataScalerTest.DATA)
-        for x_, x in zip(data_, DataScalerTest.DATA):
-            self.assertAlmostEqual(x, scaler.inverse_transform(x_), 5)
+            # Assert
+            self.assertAlmostEqual(
+                x,
+                single_value_result,
+                5
+            )
+
+    def test_bulk_values_transformation(self):
+        # Arrange
+        value2label = NumericValueToLabelMap()
+        value2label.fit(DataScalerTest.DATA)
+        label2value = NumericLabelToValueMap()
+        label2value.fit(DataScalerTest.DATA)
+
+        # Act
+        values = value2label.transform(
+            label2value.transform(DataScalerTest.DATA)
+        )
+
+        # Assert
+        self.assertEqual(
+            list(DataScalerTest.DATA.round(5)),
+            list(values.round(5)),
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1426,4 +1597,4 @@ class TypeGeneratorTest(TestCase):
     def test_symbolic_type(self):
         t = SymbolicType('Object', labels=['Bowl', 'Spoon', 'Cereal'])
         self.assertEqual('Object', t.__qualname__)
-        self.assertEqual(['Bowl', 'Spoon', 'Cereal'], list(t.labels.values()))
+        self.assertEqual(['Bowl', 'Spoon', 'Cereal'], list(t.labels))
