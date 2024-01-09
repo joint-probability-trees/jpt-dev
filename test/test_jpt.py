@@ -4,7 +4,6 @@ import os
 import pickle
 import random
 import statistics
-import tempfile
 import unittest
 from math import prod
 from operator import itemgetter
@@ -16,7 +15,7 @@ import scipy.stats
 import sklearn.datasets
 from dnutils import project
 
-from utils import pairwise
+from jpt.base.utils import pairwise
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 from numpy.testing import assert_array_equal
@@ -30,8 +29,8 @@ from jpt.trees import JPT, Leaf
 from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment, \
     IntegerVariable
 
-from functions import ConstantFunction, LinearFunction
-from intervals import ContinuousSet, IntSet
+from jpt.base.functions import ConstantFunction, LinearFunction
+from jpt.base.intervals import ContinuousSet, IntSet
 
 
 class JPTTest(TestCase):
@@ -135,6 +134,8 @@ class JPTTest(TestCase):
 
         # Assert
         self.assertIsNone(jpt.root.parent)
+        print(jpt.to_json())
+        print(jpt_.to_json())
         self.assertEqual(jpt, jpt_)
 
         q = jpt.bind(X=[-1, 1])

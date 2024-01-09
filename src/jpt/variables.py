@@ -12,13 +12,13 @@ import collections.abc
 import numpy as np
 from dnutils import first, edict, ifnone
 
-from utils import mapstr, to_json, setstr, setstr_int
-from constants import SYMBOL
+from jpt.base.utils import mapstr, to_json, setstr, setstr_int
+from jpt.base.constants import SYMBOL
 
 from .distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType, Integer, \
     IntegerType, Bool
 
-from intervals import INC, EXC, ContinuousSet, RealSet, NumberSet
+from jpt.base.intervals import INC, EXC, ContinuousSet, UnionSet, NumberSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -256,7 +256,7 @@ class NumericVariable(Variable):
     @property
     def _max_std(self):
         if issubclass(self.domain, ScaledNumeric):
-            return self.max_std_lbl / math.sqrt(self.domain.values.datascaler.scale)
+            return self.max_std_lbl / math.sqrt(self.domain.values.scale)
         else:
             return self.max_std_lbl
 
@@ -297,9 +297,9 @@ class NumericVariable(Variable):
                     intervals.append(ContinuousSet(s, s))
                 else:
                     raise TypeError('Expected number of ContinuousSet, got %s.' % type(s).__name__)
-            assignment = RealSet(intervals).simplify()
+            assignment = UnionSet(intervals).simplify()
         if isinstance(assignment, ContinuousSet):
-            assignment = RealSet([assignment])
+            assignment = UnionSet([assignment])
         if isinstance(assignment, numbers.Number):
             return prec % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
@@ -773,15 +773,22 @@ class LabelAssignment(VariableAssignment):
                                  numbers.Number,
                                  str]) -> None:
         if isinstance(variable, NumericVariable) and not isinstance(value, (numbers.Number, NumberSet)):
-            raise TypeError('Expected value of type numbers.Number or NumberSet, got %s.' % type(value).__name__)
+            raise TypeError(
+                'Expected value of type numbers.Number or NumberSet, got %s.' % type(value).__name__
+            )
         elif isinstance(variable, SymbolicVariable):
             if type(value) is not set:
                 value_ = {value}
             else:
                 value_ = value
             for v in value_:
-                if v not in set(variable.domain.labels.values()):
-                    raise TypeError('Value %s is not in the labels of domain %s.' % (v, variable.domain.__name__))
+                if v not in set(variable.domain.labels):
+                    raise TypeError(
+                        'Value %s is not in the labels of domain %s.' % (
+                            v,
+                            variable.domain.__name__
+                        )
+                    )
         super().__setitem__(variable, value)
 
     def value_assignment(self) -> 'ValueAssignment':
@@ -812,15 +819,19 @@ class ValueAssignment(VariableAssignment):
 
     def __setitem__(self, variable: Variable, value: Union[Set[int], NumberSet, numbers.Number]) -> None:
         if isinstance(variable, NumericVariable) and not isinstance(value, (numbers.Number, NumberSet)):
-            raise TypeError('Expected value of type numbers.Number or NumberSet, got %s.' % type(value).__name__)
+            raise TypeError(
+                'Expected value of type numbers.Number or NumberSet, got %s.' % type(value).__name__
+            )
         elif isinstance(variable, SymbolicVariable) and type(value) not in (numbers.Integral, set):
             if type(value) is not set:
                 value_ = {value}
             else:
                 value_ = value
             for v in value_:
-                if v not in set(variable.domain.values.values()):
-                    raise TypeError('Value %s is not in the values of domain %s.' % (v, variable.domain.__name__))
+                if v not in set(variable.domain.values):
+                    raise TypeError(
+                        'Value %s is not in the values of domain %s.' % (v, variable.domain.__name__)
+                    )
         super().__setitem__(variable, value)
 
     def label_assignment(self) -> LabelAssignment:

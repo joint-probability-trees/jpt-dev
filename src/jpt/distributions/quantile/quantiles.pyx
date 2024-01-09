@@ -7,25 +7,24 @@
 __module__ = 'quantiles.pyx'
 
 from cmath import isnan
-from operator import itemgetter, attrgetter
+from operator import itemgetter
 from typing import Iterable
 
-from dnutils import ifnot, first, ifnone
+from dnutils import first
 
-from constants import eps
-from intervals import R, EMPTY, EXC, INC
+from jpt.base.constants import eps
+from jpt.base.intervals import EXC, INC
 
 import numpy as np
 
-from functions.func cimport PiecewiseFunction, LinearFunction, ConstantFunction, Undefined, Function
-from intervals.contset cimport ContinuousSet
-from intervals.unionset cimport RealSet
-from cutils.cutils cimport SIZE_t, DTYPE_t, sort
+from jpt.base.functions.func cimport PiecewiseFunction, LinearFunction, ConstantFunction, Undefined, Function
+from jpt.base.intervals.contset cimport ContinuousSet
+from jpt.base.cutils.cutils cimport SIZE_t, DTYPE_t
 
 cimport numpy as np
 import warnings
 
-from utils import pairwise, normalized
+from jpt.base.utils import pairwise, normalized
 from jpt.base.errors import Unsatisfiability
 
 from .cdfreg import CDFRegressor

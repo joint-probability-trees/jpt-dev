@@ -9,16 +9,15 @@ import itertools
 import numbers
 from collections import deque
 from operator import attrgetter
-from typing import Iterator, List, Iterable, Tuple, Union, Dict, Any, Optional
+from typing import Iterator, Iterable, Tuple, Union, Dict, Any, Optional
 
 from dnutils import ifnot, ifnone, pairwise, fst, last
 from dnutils.tools import ifstr, first
 from scipy import stats
-from scipy.stats import norm
 
-from constants import eps
+from jpt.base.constants import eps
 
-from intervals import R, EMPTY, EXC, INC
+from jpt.base.intervals import R, EMPTY, EXC, INC
 
 
 import numpy as np
@@ -26,7 +25,7 @@ cimport numpy as np
 
 # import warnings
 
-from utils import Heap
+from jpt.base.utils import Heap
 
 # warnings.filterwarnings("ignore")
 
@@ -994,10 +993,10 @@ cdef class PiecewiseFunction(Function):
         elif isinstance(f, PiecewiseFunction):
             print(self.intervals)
             print(f.intervals)
-            domain = RealSet(self.intervals).intersections(RealSet(f.intervals))
+            domain = UnionSet(self.intervals).intersections(UnionSet(f.intervals))
             undefined = self.domain().union(f.domain()).difference(domain)
-            if not isinstance(undefined, RealSet):
-                undefined = RealSet([undefined])
+            if not isinstance(undefined, UnionSet):
+                undefined = UnionSet([undefined])
             result = PiecewiseFunction.from_dict({
                 i: Undefined() for i in undefined.intervals
             })
@@ -1021,22 +1020,23 @@ cdef class PiecewiseFunction(Function):
 
     # noinspection DuplicatedCode
     cpdef Function mul(self, Function f):
+
         if isinstance(f, (ConstantFunction, LinearFunction)):
             result = self.copy()
             result.functions = [g * f for g in result.functions]
             return result
 
         elif isinstance(f, PiecewiseFunction):
-            domain = RealSet(self.intervals).intersections(
-                RealSet(f.intervals)
+            domain = UnionSet(self.intervals).intersections(
+                UnionSet(f.intervals)
             )
 
             undefined = self.domain().union(
                 f.domain()
             ).difference(domain)
 
-            if not isinstance(undefined, RealSet):
-                undefined = RealSet([undefined])
+            if not isinstance(undefined, UnionSet):
+                undefined = UnionSet([undefined])
 
             result = PiecewiseFunction.from_dict({
                 i: Undefined() for i in undefined.intervals
@@ -1089,11 +1089,11 @@ cdef class PiecewiseFunction(Function):
             i, f = segments.popleft()
             intersection = i.intersection_with_ends(interval, left=INC, right=EXC)
             i_ = i.difference(intersection)
-            if isinstance(i_, RealSet):
+            if isinstance(i_, UnionSet):
                 i_ = i_.simplify()
             if i_.isempty():  # The original interval is subsumed by the new one and thus disappears
                 continue
-            if isinstance(i_, RealSet) and len(i_.intervals) > 1:
+            if isinstance(i_, UnionSet) and len(i_.intervals) > 1:
                 segments.appendleft((i_.intervals[1], f.copy()))
                 i_ = i_.intervals[0]
             if isinstance(i_, ContinuousSet):
@@ -1256,8 +1256,8 @@ cdef class PiecewiseFunction(Function):
         else:
             return samples_x[:i]
 
-    cpdef RealSet eq(self, DTYPE_t y):
-        result_set = RealSet()
+    cpdef UnionSet eq(self, DTYPE_t y):
+        result_set = UnionSet()
         y_ = ConstantFunction(y)
         prev_f = None
         for i, f in zip(self.intervals, self.functions):
@@ -1269,8 +1269,8 @@ cdef class PiecewiseFunction(Function):
             prev_f = f
         return result_set
 
-    cpdef RealSet lt(self, DTYPE_t y):
-        result_set = RealSet()
+    cpdef UnionSet lt(self, DTYPE_t y):
+        result_set = UnionSet()
         y_ = ConstantFunction(y)
         prev_f = None
         current = None
@@ -1297,8 +1297,8 @@ cdef class PiecewiseFunction(Function):
             result_set.intervals.append(current)
         return result_set
 
-    cpdef RealSet gt(self, DTYPE_t y):
-        result_set = RealSet()
+    cpdef UnionSet gt(self, DTYPE_t y):
+        result_set = UnionSet()
         y_ = ConstantFunction(y)
         current = None
         for i, f in zip(self.intervals, self.functions):
@@ -1424,7 +1424,7 @@ cdef class PiecewiseFunction(Function):
         '''
         Return the domain of this PLF, i.e. the range of input values the PLF is defined on.
         '''
-        return RealSet(self.intervals).simplify()
+        return UnionSet(self.intervals).simplify()
 
     cpdef PiecewiseFunction simplify(self):
         segments = sorted(
@@ -1452,7 +1452,7 @@ cdef class PiecewiseFunction(Function):
     def combine(f1: PiecewiseFunction, f2: PiecewiseFunction, operator: str) -> PiecewiseFunction:
         # The combination of two functions is only defined on their intersecting domains
         domain = f1.domain() & f2.domain()
-        if isinstance(domain, RealSet):
+        if isinstance(domain, UnionSet):
             domain = domain.simplify()
         intervals = [
             (i.min, i.max + eps) for i in f1.intervals
@@ -1588,7 +1588,7 @@ cdef class PiecewiseFunction(Function):
             (<ContinuousSet> i).ends(
                 left=INC if np.isfinite(i.lower) else EXC,
                 right=EXC
-            ) for i in (<RealSet> RealSet(self.intervals).xmirror()).intervals
+            ) for i in (<UnionSet> UnionSet(self.intervals).xmirror()).intervals
         ]
         result.functions = list(reversed([f.xmirror() for f in self.functions]))
         return result
@@ -1650,7 +1650,7 @@ cdef class PiecewiseFunction(Function):
             iteration += 1
         domain = f.domain().union(g.domain())
         if isinstance(domain, ContinuousSet):
-            domain = RealSet([domain])
+            domain = UnionSet([domain])
         result = PiecewiseFunction.from_dict({
             i: v for i, v in [
                 (first(domain.intervals), first(support_points)[1]),
@@ -1688,7 +1688,7 @@ cdef class PiecewiseFunction(Function):
             result.append(i.copy(), f_)
         return result
 
-    def maximize(self) -> Tuple[RealSet, float]:
+    def maximize(self) -> Tuple[UnionSet, float]:
         '''
         Determine the global maxima of this ``PiecewiseFunction``
         :return:

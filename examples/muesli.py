@@ -1,5 +1,5 @@
 
-from utils import format_path
+from jpt.base.utils import format_path
 
 import itertools
 import os
@@ -16,7 +16,7 @@ from jpt.distributions.quantile.quantiles import QuantileDistribution
 from jpt.distributions import Numeric, Bool, SymbolicType, NumericType
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable, NumericVariable
-from intervals import ContinuousSet
+from jpt.base.intervals import ContinuousSet
 
 
 def plot_muesli(visualize=True):

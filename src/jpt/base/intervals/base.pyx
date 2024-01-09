@@ -45,7 +45,7 @@ EXC = np.int32(_EXC)
 
 cdef class NumberSet:
     """
-    Abstract superclass for RealSet and ContinuousSet.
+    Abstract superclass for UnionSet and ContinuousSet.
     """
 
     @staticmethod
@@ -172,27 +172,6 @@ cdef class NumberSet:
         self.__suppress_inheritance()
         return hash(frozenset())
 
-    EMPTY: NumberSet = NumberSet.emptyset()
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-def chop(seq: Iterable[Any]) -> Iterable[Tuple[Any, Iterable]]:
-    """
-    Returns pairs of the first element ("head") and the remainder
-    ("tail") for all right subsequences of ``seq``
-    :param seq: The sequence to yield from
-    :return: Head and Tail of the sequence
-    """
-    it = iter(seq)
-    try:
-        head = next(it)
-        it, tail = tee(it)
-        yield head, tail
-        yield from chop(it)
-    except StopIteration:
-        return
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -244,7 +223,7 @@ cdef class Interval(NumberSet):
         return {
             IntSet.__qualname__: IntSet,
             ContinuousSet.__qualname__: ContinuousSet
-        }[itype].from_json(data)
+        }.get(itype, ContinuousSet).from_json(data)
 
     cpdef SIZE_t contiguous(self, Interval other):
         raise NotImplementedError()
@@ -305,5 +284,10 @@ cdef class Interval(NumberSet):
         else:
             raise NotImplementedError()
 
-    EMPTY: Interval = Interval.emptyset()
-    ALL: Interval = None
+    @staticmethod
+    cdef Interval _allnumbers():
+        raise NotImplementedError()
+
+    @staticmethod
+    def allnumbers():
+        raise NotImplementedError()

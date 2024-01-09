@@ -1,10 +1,9 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import numbers
 import re
-from itertools import tee, count
-from operator import itemgetter, attrgetter
+from operator import itemgetter
 from types import FunctionType
-from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple, List
+from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple
 
 import numpy as np
 from deprecated.classic import deprecated
@@ -15,27 +14,26 @@ from . import Distribution
 from .distribution import ValueMap
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
-from utils import setstr, normalized, classproperty, save_plot, Collections
+from jpt.base.utils import normalized, classproperty, save_plot, Collections
 
-from functions import PiecewiseFunction, Undefined, ConstantFunction
-from intervals import ContinuousSet, IntSet, RealSet, NumberSet
+from jpt.base.functions import PiecewiseFunction, Undefined, ConstantFunction
+from jpt.base.intervals import ContinuousSet, IntSet, UnionSet, NumberSet, Z
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 class IntegerMap(ValueMap):
-    '''A mapping of external integers to their internal representation.'''
+    '''A mapping of external integers to their internal representation and vice versa.'''
 
     def __init__(self, lmin: Optional[int] = ..., lmax: Optional[int] = ...):
         self.min = int(lmin) if lmin is not ... else ...
         self.max = int(lmax) if lmax is not ... else ...
 
-    def __iter__(self):
-        return iter(
-            IntSet(
-                np.NINF if self.min is ... else self.min,
-                np.PINF if self.max is ... else self.max
-            )
+    def __eq__(self, other: 'IntegerMap') -> bool:
+        return (
+            type(other) == type(self) and
+            self.min == other.min and
+            self.max == other.max
         )
 
     def __len__(self):
@@ -55,26 +53,54 @@ class IntegerMap(ValueMap):
             self.max
         ))
 
-class IntegerLabelMap(IntegerMap):
+    def __contains__(self, item):
+        return item in self._to_intset()
+
+    def __iter__(self):
+        return iter(self._to_intset())
+
+
+class IntegerLabelToValueMap(IntegerMap):
+    '''
+    Maps integer labels to their internal values
+    '''
 
     def __getitem__(self, label: int) -> int:
         if self.min is not ...:
             result = label - self.min
         elif self.max is not ...:
-            result = self.max - label
+            result = label - self.max
         else:
             result = label
-        if not ((np.NINF if self.min is ... else self.min)
-                <= label <=
-                (np.PINF if self.max is ... else self.max)
+        if not (
+            (np.NINF if self.min is ... else self.min)
+            <= label <=
+            (np.PINF if self.max is ... else self.max)
         ):
             raise ValueError(
                 f'Label {label} is out of domain {{{self.min}..{self.max}}}'
             )
         return result
 
+    def _to_intset(self) -> IntSet:
+        if self.min is ... and self.max is ...:
+            return Z
+        elif self.min is not ...:
+            return IntSet(
+                0,
+                np.PINF if self.max is ... else (self.max - self.min)
+            )
+        else:
+            return IntSet(
+                np.NINF if self.min is ... else self.min,
+                0
+            )
 
-class IntegerValueMap(IntegerMap):
+
+class IntegerValueToLabelMap(IntegerMap):
+    '''
+    Maps internal integer values to integer labels.
+    '''
 
     def __getitem__(self, value: int) -> int:
         if self.min is not ...:
@@ -93,14 +119,20 @@ class IntegerValueMap(IntegerMap):
             )
         return result
 
+    def _to_intset(self) -> IntSet:
+        return IntSet(
+            self.min if self.min is not ... else np.NINF,
+            self.max if self.max is not ... else np.PINF
+        )
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection DuplicatedCode
 class Integer(Distribution):
 
-    values: Optional[IntegerLabelMap]
-    labels = Optional[IntegerValueMap]
+    values: Optional[IntegerLabelToValueMap]
+    labels = Optional[IntegerValueToLabelMap]
 
     OPEN_DOMAIN = 'open_domain'
     AUTO_DOMAIN = 'auto_domain'
@@ -263,7 +295,11 @@ class Integer(Distribution):
 
     @classmethod
     def from_json(cls, data: Dict[str, Any]) -> 'Integer':
-        return cls(**data['settings']).set(data['params'])
+        return cls(
+            **data['settings']
+        ).set(
+            data['params']
+        )
 
     def copy(self):
         result = type(self)(**self.settings)
@@ -285,14 +321,14 @@ class Integer(Distribution):
     @classmethod
     def value2label(
             cls,
-            value: Union[int, Iterable[int], IntSet, RealSet]
-    ) -> Union[int, Iterable[int], IntSet, RealSet]:
+            value: Union[int, Iterable[int], IntSet, UnionSet]
+    ) -> Union[int, Iterable[int], IntSet, UnionSet]:
         if isinstance(value, Collections):
             return type(value)([cls.value2label(v) for v in value])
         elif isinstance(value, IntSet):
             return IntSet(cls.value2label(value.lower), cls.value2label(value.upper))
-        elif isinstance(value, RealSet):
-            return RealSet(
+        elif isinstance(value, UnionSet):
+            return UnionSet(
                 cls.value2label(v) for v in value.intervals
             )
         else:
@@ -302,14 +338,14 @@ class Integer(Distribution):
     @classmethod
     def label2value(
             cls,
-            label: Union[int, Iterable[int], IntSet, RealSet]
-    ) -> Union[int, Iterable[int], IntSet, RealSet]:
+            label: Union[int, Iterable[int], IntSet, UnionSet]
+    ) -> Union[int, Iterable[int], IntSet, UnionSet]:
         if isinstance(label, Collections):
             return type(label)([cls.label2value(l) for l in label])
         elif isinstance(label, IntSet):
             return IntSet(cls.label2value(label.lower), cls.label2value(label.upper))
-        elif isinstance(label, RealSet):
-            return RealSet(
+        elif isinstance(label, UnionSet):
+            return UnionSet(
                 cls.label2value(l) for l in label.intervals
             )
         else:
@@ -354,10 +390,13 @@ class Integer(Distribution):
             values = set(values)
         if isinstance(values, set):
             values = IntSet.from_set(values)
-        if isinstance(values, RealSet):
+        if isinstance(values, UnionSet):
             return sum(self._p(i) for i in values.simplify().intervals)
         if isinstance(values, IntSet):
             return sum(p for v, p in self.probabilities.items() if v in values and p)
+        raise TypeError(
+            'Unsupported type for argument "values": {}'.format(type(values))
+        )
 
     def expectation(self) -> float:
         return sum(
@@ -504,7 +543,7 @@ class Integer(Distribution):
 
     def set(self, params: Dict[int, float] or Iterable[float]) -> 'Integer':
         if isinstance(params, dict):
-            probabilities = params.copy()
+            probabilities = {int(k): v for k, v in params.items()}
         else:
             if not self.finite:
                 raise ValueError(
@@ -534,7 +573,7 @@ class Integer(Distribution):
             return f'<{type(self).__qualname__} p=n/a>'
         return '<%s p=[%s]>' % (
             self.__class__.__qualname__,
-            "; ".join([f"{v}: {p:.3f}" for v, p in zip(self.labels.values(), self.probabilities)])
+            "; ".join([f"{v}: {p:.3f}" for v, p in zip(self.labels, self.probabilities)])
         )
 
     def __repr__(self):
@@ -753,6 +792,6 @@ def IntegerType(name: str, lmin: Optional[int] = ..., lmax: Optional[int] = ...)
             'Min label is greater tham max value: %s > %s' % (lmin, lmax)
         )
     t: Type[Integer] = type(name, (Integer,), {})
-    t.labels = IntegerValueMap(lmin, lmax)
-    t.values = IntegerLabelMap(lmin, lmax)
+    t.labels = IntegerValueToLabelMap(lmin, lmax)
+    t.values = IntegerLabelToValueMap(lmin, lmax)
     return t

@@ -1,6 +1,6 @@
 # cython: language_level=3
 
-from cutils.cutils cimport DTYPE_t, SIZE_t, nan
+from jpt.base.cutils.cutils cimport DTYPE_t, SIZE_t
 
 from libcpp.queue cimport priority_queue
 from libcpp.deque cimport  deque

@@ -13,7 +13,7 @@ finally:
     from .base import NumberSet, Interval, INC, EXC
     from .contset import ContinuousSet
     from .intset import IntSet
-    from .unionset import RealSet
+    from .unionset import UnionSet
 
 import numpy as np
 

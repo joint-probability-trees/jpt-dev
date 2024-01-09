@@ -1,7 +1,7 @@
 # cython: language_level=3
 
-from intervals.contset cimport ContinuousSet
-from intervals.unionset cimport RealSet
+from jpt.base.intervals.contset cimport ContinuousSet
+from jpt.base.intervals.unionset cimport UnionSet
 
 import numpy as np
 cimport numpy as np
@@ -174,11 +174,11 @@ cdef class PiecewiseFunction(Function):
 
     cpdef DTYPE_t[::1] xsamples(self, np.int32_t sort=*)
 
-    cpdef RealSet eq(self, DTYPE_t y)
+    cpdef UnionSet eq(self, DTYPE_t y)
 
-    cpdef RealSet lt(self, DTYPE_t y)
+    cpdef UnionSet lt(self, DTYPE_t y)
 
-    cpdef RealSet gt(self, DTYPE_t y)
+    cpdef UnionSet gt(self, DTYPE_t y)
 
     cpdef tuple split(self, DTYPE_t splitpoint)
 

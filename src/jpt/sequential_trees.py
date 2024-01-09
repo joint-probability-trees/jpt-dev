@@ -10,7 +10,7 @@ from dnutils import out, getlogger
 
 from jpt.trees import JPT
 from jpt.base.errors import Unsatisfiability
-from utils import normalized
+from jpt.base.utils import normalized
 from jpt.variables import LabelAssignment, VariableAssignment, VariableMap, Variable
 
 

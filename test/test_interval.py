@@ -8,14 +8,14 @@ import numpy as np
 
 from dnutils.tools import ifstr
 
-from constants import eps
-from intervals.base import chop
+from jpt.base.constants import eps
+from jpt.base.utils import chop
 
-from intervals import (
+from jpt.base.intervals import (
     ContinuousSet,
     INC,
     EXC,
-    RealSet,
+    UnionSet,
     R,
     STR_EMPTYSET,
     STR_INFTY,
@@ -155,7 +155,7 @@ class ContinuousSetTest(TestCase):
         ('(0,1]', '(0,1]', True),
         (ContinuousSet(0 + eps, 1 - eps, INC, INC), '(0,1)', True),
         ('(0,0)', '(1,1)', True),  # Different kinds of empty sets
-        ('[0,0)', ContinuousSet.EMPTY, True)
+        ('[0,0)', ContinuousSet.emptyset(), True)
     )
     @unpack
     def test_equality(self, i1, i2, eq):
@@ -325,7 +325,7 @@ class ContinuousSetTest(TestCase):
     def test_disjoint(self, i1, i2):
         i1 = ContinuousSet.parse(i1)
         i2 = ContinuousSet.parse(i2)
-        self.assertEqual(ContinuousSet.EMPTY, i1.intersection(i2))
+        self.assertEqual(ContinuousSet.emptyset(), i1.intersection(i2))
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -420,15 +420,15 @@ class ContinuousSetTest(TestCase):
     # ------------------------------------------------------------------------------------------------------------------
 
     @data(('[-10, 5]', '[0, 10]', ContinuousSet.parse('[-10,0[')),
-          ('[-10, 10]', '[-5, 5]', RealSet(['[-10,-5[', ']5,10]'])),
-          ('[-10, 10]', ']-5, 5[', RealSet(['[-10,-5]', '[5,10]'])),
-          ('[-10, 10]', '[-5, 5[', RealSet(['[-10,-5[', '[5,10]'])),
+          ('[-10, 10]', '[-5, 5]', UnionSet(['[-10,-5[', ']5,10]'])),
+          ('[-10, 10]', ']-5, 5[', UnionSet(['[-10,-5]', '[5,10]'])),
+          ('[-10, 10]', '[-5, 5[', UnionSet(['[-10,-5[', '[5,10]'])),
           ('[-1.0,1.0]', '[0.0, 1.0]', ContinuousSet(-1, 0, INC, EXC)),
           ('[0,1]', '[1,2]', ContinuousSet(0, 1, INC, EXC)),
-          ('[-10, 10]', ContinuousSet.EMPTY, '[-10,10]'),
-          (ContinuousSet(0, 0 + eps, INC, EXC), ContinuousSet.EMPTY, ContinuousSet(0, 0 + eps, INC, EXC)),
-          (ContinuousSet(0 + eps, np.PINF, INC, EXC), ContinuousSet.EMPTY, ContinuousSet(0 + eps, np.PINF, INC, EXC)),
-          ('[-1, 1]', '[-1,1]', ContinuousSet.EMPTY)
+          ('[-10, 10]', ContinuousSet.emptyset(), '[-10,10]'),
+          (ContinuousSet(0, 0 + eps, INC, EXC), ContinuousSet.emptyset(), ContinuousSet(0, 0 + eps, INC, EXC)),
+          (ContinuousSet(0 + eps, np.PINF, INC, EXC), ContinuousSet.emptyset(), ContinuousSet(0 + eps, np.PINF, INC, EXC)),
+          ('[-1, 1]', '[-1,1]', ContinuousSet.emptyset())
           )
     @unpack
     def test_difference(self, i1, i2, r):
@@ -458,9 +458,9 @@ class ContinuousSetTest(TestCase):
     # ------------------------------------------------------------------------------------------------------------------
 
     @data(
-        (ContinuousSet.parse('[0,1]'), RealSet([ContinuousSet(np.NINF, 0, EXC, EXC), ContinuousSet(1, np.PINF, EXC, EXC)])),
-        (ContinuousSet.EMPTY, R),
-        (R, ContinuousSet.EMPTY)
+        (ContinuousSet.parse('[0,1]'), UnionSet([ContinuousSet(np.NINF, 0, EXC, EXC), ContinuousSet(1, np.PINF, EXC, EXC)])),
+        (ContinuousSet.emptyset(), R),
+        (R, ContinuousSet.emptyset())
     )
     @unpack
     def test_complement(self, i, r):
@@ -495,10 +495,10 @@ class ContinuousSetTest(TestCase):
         (ContinuousSet.parse('[0,3]'), ContinuousSet.parse('[1,2]'), ContinuousSet.parse('[0,3]')),
         (ContinuousSet.parse('[1,2]'), ContinuousSet.parse('[0,3]'), ContinuousSet.parse('[0,3]')),
         (ContinuousSet.parse('[1,2]'), ContinuousSet.parse(']2,3]'), ContinuousSet.parse('[1,3]')),
-        (ContinuousSet.parse('[1,2]'), ContinuousSet.parse('[3,4]'), RealSet([ContinuousSet.parse('[1,2]'),
+        (ContinuousSet.parse('[1,2]'), ContinuousSet.parse('[3,4]'), UnionSet([ContinuousSet.parse('[1,2]'),
                                                                               ContinuousSet.parse('[3,4]')])),
-        (ContinuousSet.EMPTY, ContinuousSet.parse('[0,1]'), ContinuousSet(0, 1)),
-        (ContinuousSet.EMPTY, ContinuousSet.EMPTY, ContinuousSet.EMPTY),
+        (ContinuousSet.emptyset(), ContinuousSet.parse('[0,1]'), ContinuousSet(0, 1)),
+        (ContinuousSet.emptyset(), ContinuousSet.emptyset(), ContinuousSet.emptyset()),
         (R, ContinuousSet(0, 1), R)
     )
     @unpack
@@ -554,7 +554,7 @@ class ContinuousSetTest(TestCase):
         i1 = ContinuousSet.allnumbers()
         self.assertEqual(float("inf"), i1.size())
 
-        # test RealSet of size 1
+        # test UnionSet of size 1
         i2 = ContinuousSet.parse("[-.5, -.5]")
         self.assertEqual(i2.size(), 1)
 
@@ -603,7 +603,7 @@ class ContinuousSetTest(TestCase):
             ],
             chops
         )
-        self.assertEqual(i, RealSet(intervals=chops))
+        self.assertEqual(i, UnionSet(intervals=chops))
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -619,14 +619,14 @@ class ContinuousSetTest(TestCase):
         self.assertEqual(
             [i], chop_lower
         )
-        self.assertEqual(i, RealSet(intervals=chop_lower))
+        self.assertEqual(i, UnionSet(intervals=chop_lower))
         self.assertEqual(
             [
                 ContinuousSet.parse('[0,1['),
                 ContinuousSet.parse('[1,1]')
             ], chop_upper
         )
-        self.assertEqual(i, RealSet(intervals=chop_upper))
+        self.assertEqual(i, UnionSet(intervals=chop_upper))
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -642,14 +642,14 @@ class ContinuousSetTest(TestCase):
         self.assertEqual(
             [i], chop_lower
         )
-        self.assertEqual(i, RealSet(intervals=chop_lower))
+        self.assertEqual(i, UnionSet(intervals=chop_lower))
         self.assertEqual(
             [
                 ContinuousSet(0, i.max, EXC, EXC),
                 ContinuousSet(i.max, i.max)
             ], chop_upper
         )
-        self.assertEqual(i, RealSet(intervals=chop_upper))
+        self.assertEqual(i, UnionSet(intervals=chop_upper))
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -664,7 +664,7 @@ class ContinuousSetTest(TestCase):
         self.assertEqual(
             [i], chops
         )
-        self.assertEqual(i, RealSet(intervals=chops))
+        self.assertEqual(i, UnionSet(intervals=chops))
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -728,9 +728,9 @@ class ContinuousSetTest(TestCase):
         (ContinuousSet(0, 1), ContinuousSet(0, 1, INC, EXC), True),
         (ContinuousSet(0, 1), ContinuousSet(1, 2), False),
         (ContinuousSet(0, 1, INC, EXC), ContinuousSet(0, 1), False),
-        (ContinuousSet(0, 1), ContinuousSet.EMPTY, True),
-        (ContinuousSet.EMPTY, ContinuousSet.EMPTY, True),
-        (ContinuousSet.EMPTY, ContinuousSet(0, 1), False)
+        (ContinuousSet(0, 1), ContinuousSet.emptyset(), True),
+        (ContinuousSet.emptyset(), ContinuousSet.emptyset(), True),
+        (ContinuousSet.emptyset(), ContinuousSet(0, 1), False)
     )
     @unpack
     def test_issuperseteq(self, superset, subset, truth):
@@ -748,9 +748,9 @@ class ContinuousSetTest(TestCase):
         (ContinuousSet(0, 1), ContinuousSet(0, 1, INC, EXC), True),
         (ContinuousSet(0, 1), ContinuousSet(1, 2), False),
         (ContinuousSet(0, 1, INC, EXC), ContinuousSet(0, 1), False),
-        (ContinuousSet(0, 1), ContinuousSet.EMPTY, True),
-        (ContinuousSet.EMPTY, ContinuousSet.EMPTY, False),
-        (ContinuousSet.EMPTY, ContinuousSet(0, 1), False)
+        (ContinuousSet(0, 1), ContinuousSet.emptyset(), True),
+        (ContinuousSet.emptyset(), ContinuousSet.emptyset(), False),
+        (ContinuousSet.emptyset(), ContinuousSet(0, 1), False)
     )
     @unpack
     def test_issuperset(self, superset, subset, truth):
@@ -765,19 +765,19 @@ class ContinuousSetTest(TestCase):
 
 
 @ddt
-class RealSetContinuousTest(TestCase):
+class UnionSetContinuousTest(TestCase):
 
     @data(
-        (['[0, 1]', '[2, 3]'], RealSet([ContinuousSet(0, 1), ContinuousSet(2, 3)])),
+        (['[0, 1]', '[2, 3]'], UnionSet([ContinuousSet(0, 1), ContinuousSet(2, 3)])),
     )
     @unpack
     def test_creation(self, i, o):
-        s = RealSet(i)
+        s = UnionSet(i)
         self.assertEqual(s, o)
 
     def test_copy(self):
         # Arrange
-        r = RealSet([
+        r = UnionSet([
             ContinuousSet(0, 1),
             ContinuousSet(2, 3)
         ])
@@ -803,61 +803,61 @@ class RealSetContinuousTest(TestCase):
     )
     @unpack
     def test_isempty(self, i, o):
-        self.assertEqual(o, RealSet(i).isempty())
+        self.assertEqual(o, UnionSet(i).isempty())
 
     @data(
-        (RealSet(['[0,1]']), RealSet(['[0,1]']), True),
-        (RealSet(['[0,1]']), RealSet(['[0,1[']), False),
+        (UnionSet(['[0,1]']), UnionSet(['[0,1]']), True),
+        (UnionSet(['[0,1]']), UnionSet(['[0,1[']), False),
     )
     @unpack
     def test_equality(self, i1, i2, o):
         return self.assertEqual(o, i1 == i2)
 
     @data(
-        (['[0,1]', '[2,3]'], RealSet([']1,2[']), ContinuousSet.EMPTY),
-        (['[0,1]', '[2,3]'], RealSet(['[0,1]', '[2,3]']), RealSet(['[0,1]', '[2,3]'])),
-        (['[0,1]', '[2,3]'], ContinuousSet.EMPTY, ContinuousSet.EMPTY),
+        (['[0,1]', '[2,3]'], UnionSet([']1,2[']), ContinuousSet.emptyset()),
+        (['[0,1]', '[2,3]'], UnionSet(['[0,1]', '[2,3]']), UnionSet(['[0,1]', '[2,3]'])),
+        (['[0,1]', '[2,3]'], ContinuousSet.emptyset(), ContinuousSet.emptyset()),
     )
     @unpack
     def test_intersection(self, i1, i2, o):
-        self.assertEqual(o, RealSet(i1).intersection(i2))
+        self.assertEqual(o, UnionSet(i1).intersection(i2))
 
     @data(
-        (RealSet(['[-1,1]', '[-.5,.5]']), ContinuousSet(-1, 1)),
-        (RealSet(['[-1,1]', '[.5,2]']), ContinuousSet(-1, 2)),
-        (RealSet(['[0,1]', '[2,3]']), RealSet(['[0,1]', '[2,3]'])),
-        (RealSet(['[0,1]', '[1,2]']), ContinuousSet(0, 2)),
-        (RealSet(['[0,1]', ']1,3]']), ContinuousSet(0, 3)),
-        (RealSet([']1,3]', '[0,1]']), ContinuousSet(0, 3)),
-        (RealSet([ContinuousSet.EMPTY]), ContinuousSet.EMPTY),
+        (UnionSet(['[-1,1]', '[-.5,.5]']), ContinuousSet(-1, 1)),
+        (UnionSet(['[-1,1]', '[.5,2]']), ContinuousSet(-1, 2)),
+        (UnionSet(['[0,1]', '[2,3]']), UnionSet(['[0,1]', '[2,3]'])),
+        (UnionSet(['[0,1]', '[1,2]']), ContinuousSet(0, 2)),
+        (UnionSet(['[0,1]', ']1,3]']), ContinuousSet(0, 3)),
+        (UnionSet([']1,3]', '[0,1]']), ContinuousSet(0, 3)),
+        (UnionSet([ContinuousSet.emptyset()]), ContinuousSet.emptyset()),
     )
     @unpack
     def test_simplify(self, i, o):
         self.assertEqual(o, i.simplify())
 
     @data(
-        (RealSet(['[-1,1]', '[-.5,.5]']), RealSet(['[0,1[']), RealSet(['[-1,0[', '[1,1]'])),
-        (RealSet(['[-1,1]', '[-.5,.5]']), RealSet(['[0,1]']), ContinuousSet.parse('[-1,0[')),
-        (RealSet(['[0,1]', '[1,2]', '[2,3]']), ContinuousSet(1, 2), RealSet(['[0,1[', ']2,3]'])),
-        (RealSet([ContinuousSet.EMPTY]), ContinuousSet.EMPTY, RealSet.EMPTY),
+        (UnionSet(['[-1,1]', '[-.5,.5]']), UnionSet(['[0,1[']), UnionSet(['[-1,0[', '[1,1]'])),
+        (UnionSet(['[-1,1]', '[-.5,.5]']), UnionSet(['[0,1]']), ContinuousSet.parse('[-1,0[')),
+        (UnionSet(['[0,1]', '[1,2]', '[2,3]']), ContinuousSet(1, 2), UnionSet(['[0,1[', ']2,3]'])),
+        (UnionSet([ContinuousSet.emptyset()]), ContinuousSet.emptyset(), UnionSet.emptyset()),
     )
     @unpack
     def test_difference(self, i1, i2, o):
         self.assertEqual(o, i1.difference(i2))
 
     @data(
-        (RealSet(['[0,1]', '[2,3]']),
-         RealSet(['[-1.5,-1]', '[-3,-2]']),
-         RealSet(['[-1.5,-1]', '[-3,-2]', '[0,1]', '[2,3]'])),
+        (UnionSet(['[0,1]', '[2,3]']),
+         UnionSet(['[-1.5,-1]', '[-3,-2]']),
+         UnionSet(['[-1.5,-1]', '[-3,-2]', '[0,1]', '[2,3]'])),
     )
     @unpack
     def test_union(self, i1, i2, r):
         self.assertEqual(r, i1.union(i2))
 
     def test_serialization(self):
-        i1 = RealSet([']0,1[', ']2,3['])
-        i2 = RealSet([']2,3[', ']0,1['])
-        i3 = RealSet([']2,3[', ']0,1]'])
+        i1 = UnionSet([']0,1[', ']2,3['])
+        i2 = UnionSet([']2,3[', ']0,1['])
+        i3 = UnionSet([']2,3[', ']0,1]'])
         self.assertEqual(i1, pickle.loads(pickle.dumps(i1)))
         self.assertEqual(i2, pickle.loads(pickle.dumps(i2)))
         self.assertEqual(i3, pickle.loads(pickle.dumps(i3)))
@@ -865,9 +865,9 @@ class RealSetContinuousTest(TestCase):
         self.assertNotEqual(i1, pickle.loads(pickle.dumps(i3)))
 
     def test_hash(self):
-        i1 = RealSet([']0,1[', ']2,3['])
-        i2 = RealSet([']2,3[', ']0,1['])
-        i3 = RealSet([']2,3[', ']0,1]'])
+        i1 = UnionSet([']0,1[', ']2,3['])
+        i2 = UnionSet([']2,3[', ']0,1['])
+        i3 = UnionSet([']2,3[', ']0,1]'])
         self.assertEqual(hash(i1), hash(i2))
         self.assertEqual(hash(i1), hash(pickle.loads(pickle.dumps(i1))))
         self.assertEqual(hash(i2), hash(pickle.loads(pickle.dumps(i2))))
@@ -875,95 +875,95 @@ class RealSetContinuousTest(TestCase):
 
     def test_size(self):
         # test infinitely big sets
-        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        r1 = UnionSet(['[-1,1]', '[-.5,.5]'])
         self.assertEqual(float("inf"), r1.size())
 
-        # test RealSet of size 1
-        r2 = RealSet(["[-.5, -.5]"])
+        # test UnionSet of size 1
+        r2 = UnionSet(["[-.5, -.5]"])
         self.assertEqual(r2.size(), 1)
 
         # test multiple but same single values
-        r3 = RealSet(["[-.5, -.5]", "[-.5, -.5]"])
+        r3 = UnionSet(["[-.5, -.5]", "[-.5, -.5]"])
         self.assertEqual(r3.size(), 1)
 
         # test multiple but different values
-        r4 = RealSet(["[-.5, -.5]", "[-.6, -.6]"])
+        r4 = UnionSet(["[-.5, -.5]", "[-.6, -.6]"])
         self.assertEqual(r4.size(), 2)
 
         # test emptyset
-        r5 = RealSet.emptyset()
+        r5 = UnionSet.emptyset()
         self.assertEqual(r5.size(), 0)
 
     def test_sample(self):
         # test default usage
-        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        r1 = UnionSet(['[-1,1]', '[-.5,.5]'])
         samples = r1.sample(100)
         for sample in samples:
             self.assertTrue(sample in r1)
 
         # test raising index error
-        r2 = RealSet.emptyset()
+        r2 = UnionSet.emptyset()
         self.assertRaises(ValueError, r2.sample, 100)
 
         # test singular value
-        r3 = RealSet(["[-.5, -.5]"])
+        r3 = UnionSet(["[-.5, -.5]"])
         samples = r3.sample(100)
         for sample in samples:
             self.assertEqual(sample, -0.5)
 
     def test_contains_value(self):
         # test infinitely big sets
-        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        r1 = UnionSet(['[-1,1]', '[-.5,.5]'])
         self.assertTrue(r1.contains_value(.5))
         self.assertTrue(r1.contains_value(0.75))
         self.assertFalse(r1.contains_value(10))
 
         # test singular values
-        r4 = RealSet(["[-.5, -.5]", "[-.6, -.6]"])
+        r4 = UnionSet(["[-.5, -.5]", "[-.6, -.6]"])
         self.assertTrue(r4.contains_value(-.5))
         self.assertTrue(r4.contains_value(-.6))
         self.assertFalse(r4.contains_value(-.55))
 
         # test emptyset
-        r5 = RealSet.emptyset()
+        r5 = UnionSet.emptyset()
         self.assertFalse(r5.contains_value(1))
 
     def test_issuperseteq(self):
         # test regular case
-        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        r1 = UnionSet(['[-1,1]', '[-.5,.5]'])
         self.assertTrue(r1.issuperseteq(ContinuousSet(-0.25, 0.25)))
         self.assertFalse(r1.issuperseteq(ContinuousSet(-2, 0.25)))
-        self.assertTrue(r1.issuperseteq(ContinuousSet.EMPTY))
+        self.assertTrue(r1.issuperseteq(ContinuousSet.emptyset()))
 
         # test empty set
-        r2 = RealSet.EMPTY
+        r2 = UnionSet.emptyset()
         self.assertFalse(r2.issuperseteq(ContinuousSet(-0.25, 0.25)))
-        self.assertTrue(r2.issuperseteq(ContinuousSet.EMPTY))
+        self.assertTrue(r2.issuperseteq(ContinuousSet.emptyset()))
 
         # test singular value
-        r3 = RealSet(["[-.5, -.5]"])
+        r3 = UnionSet(["[-.5, -.5]"])
         self.assertTrue(r3.issuperseteq(ContinuousSet(-0.5, -0.5)))
-        self.assertTrue(r3.issuperseteq(ContinuousSet.EMPTY))
+        self.assertTrue(r3.issuperseteq(ContinuousSet.emptyset()))
 
     def test_fst(self):
         # test default case
-        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        r1 = UnionSet(['[-1,1]', '[-.5,.5]'])
         self.assertEqual(r1.fst(), -1.)
 
         # test set containing empty set
-        r2 = RealSet([ContinuousSet(0, 0, 2, 2)])
+        r2 = UnionSet([ContinuousSet(0, 0, 2, 2)])
         self.assertTrue(math.isnan(r2.fst()))
 
         # test empty set
-        r3 = RealSet.emptyset()
+        r3 = UnionSet.emptyset()
         self.assertTrue(math.isnan(r3.fst()))
 
     @data(
-        (RealSet(['(-inf,1]', '[3,inf)']), True, True, True),
-        (RealSet(['(-inf,2]', '[3,5]']), True, False, True),
-        (RealSet(['[2,inf)', '[3,inf)']), False, True, True),
-        (RealSet(['[-1,-1]', '[4,7]']), False, False, False),
-        (RealSet.EMPTY, False, False, False)
+        (UnionSet(['(-inf,1]', '[3,inf)']), True, True, True),
+        (UnionSet(['(-inf,2]', '[3,5]']), True, False, True),
+        (UnionSet(['[2,inf)', '[3,inf)']), False, True, True),
+        (UnionSet(['[-1,-1]', '[4,7]']), False, False, False),
+        (UnionSet.emptyset(), False, False, False)
     )
     @unpack
     def test_infinity(self, i, isninf, ispinf, isinf):
@@ -991,24 +991,24 @@ class RealSetContinuousTest(TestCase):
     def test_intersects(self):
         # this also tests isdisjoint
         # test regular case
-        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        r1 = UnionSet(['[-1,1]', '[-.5,.5]'])
         self.assertTrue(r1.intersects(ContinuousSet(-0.25, 0.25)))
         self.assertFalse(r1.intersects(ContinuousSet(-7, -6)))
-        self.assertFalse(r1.intersects(ContinuousSet.EMPTY))
+        self.assertFalse(r1.intersects(ContinuousSet.emptyset()))
 
         # test empty set
-        r2 = RealSet.emptyset()
+        r2 = UnionSet.emptyset()
         self.assertFalse(r2.intersects(ContinuousSet(-0.25, 0.25)))
-        self.assertFalse(r2.intersects(ContinuousSet.EMPTY))
+        self.assertFalse(r2.intersects(ContinuousSet.emptyset()))
 
         # test singular value
-        r3 = RealSet(["[-.5, -.5]"])
+        r3 = UnionSet(["[-.5, -.5]"])
         self.assertTrue(r3.intersects(ContinuousSet(-0.5, -0.5)))
-        self.assertFalse(r3.intersects(ContinuousSet.EMPTY))
+        self.assertFalse(r3.intersects(ContinuousSet.emptyset()))
 
     def test_chop(self):
         # Arrange
-        r = RealSet([']0,1]', '[2,3['])
+        r = UnionSet([']0,1]', '[2,3['])
 
         # Act
         chops = r.chop([.5, 1.2, 2.5])
@@ -1026,12 +1026,12 @@ class RealSetContinuousTest(TestCase):
 
     def test_xmirror(self):
         # Arrange
-        s = RealSet(['(-1,1]', '[2,3)'])
+        s = UnionSet(['(-1,1]', '[2,3)'])
         # Act
         s_ = s.xmirror()
         # Assert
         self.assertEqual(
-            RealSet([
+            UnionSet([
                 '(-3,-2]', '[-1,1)'
             ]),
             s_
@@ -1039,7 +1039,7 @@ class RealSetContinuousTest(TestCase):
 
     def test_round(self):
         # Arrange
-        i = RealSet([
+        i = UnionSet([
             ContinuousSet(0.1234, 5.6789, INC, EXC),
             ContinuousSet(3.456, 7.89, INC, EXC),
         ])
@@ -1049,7 +1049,7 @@ class RealSetContinuousTest(TestCase):
 
         # Assert
         self.assertEqual(
-            RealSet([
+            UnionSet([
                 ContinuousSet(0.1, 5.7, INC, EXC),
                 ContinuousSet(3.5, 7.9, INC, EXC),
             ]),
@@ -1068,15 +1068,15 @@ class RealSetContinuousTest(TestCase):
 # ----------------------------------------------------------------------------------------------------------------------
 
 @ddt
-class RealSetIntegerTest(TestCase):
+class UnionSetIntegerTest(TestCase):
 
     @data(
-        (['{0..1}', '{2..3}'], RealSet([IntSet(0, 1), IntSet(2, 3)])),
+        (['{0..1}', '{2..3}'], UnionSet([IntSet(0, 1), IntSet(2, 3)])),
     )
     @unpack
     def test_creation(self, i, o):
         # Act
-        s = RealSet(i)
+        s = UnionSet(i)
 
         # Assert
         self.assertEqual(s, o)
@@ -1089,13 +1089,13 @@ class RealSetIntegerTest(TestCase):
         # Act & Assert
         self.assertRaises(
             TypeError,
-            RealSet,
+            UnionSet,
             [cset, iset]
         )
 
     def test_copy(self):
         # Arrange
-        r = RealSet([IntSet(0, 1), IntSet(3, 4)])
+        r = UnionSet([IntSet(0, 1), IntSet(3, 4)])
 
         # Act
         result = r.copy()
@@ -1119,7 +1119,7 @@ class RealSetIntegerTest(TestCase):
     @unpack
     def test_isempty(self, i, truth):
         # Arrange
-        rs = RealSet(i)
+        rs = UnionSet(i)
 
         # Act
         isempty = rs.isempty()
@@ -1131,9 +1131,9 @@ class RealSetIntegerTest(TestCase):
         )
 
     @data(
-        (RealSet(['{0..1}']), RealSet(['{0..1}']), True),
-        (RealSet(['{0..1}']), RealSet(['{0..2}']), False),
-        (RealSet(['{0..2}']), RealSet(['{0..1}', '{2..2}']), True)
+        (UnionSet(['{0..1}']), UnionSet(['{0..1}']), True),
+        (UnionSet(['{0..1}']), UnionSet(['{0..2}']), False),
+        (UnionSet(['{0..2}']), UnionSet(['{0..1}', '{2..2}']), True)
     )
     @unpack
     def test_equality(self, i1, i2, truth):
@@ -1147,9 +1147,9 @@ class RealSetIntegerTest(TestCase):
         )
 
     @data(
-        (RealSet(['{-1..0}', '{3..4}']), RealSet(['{1..2}']), RealSet.emptyset()),
-        (RealSet(['{0..1}', '{2..3}']), RealSet(['{0..1}', '{2..3}']), IntSet(0, 3)),
-        (RealSet(['{0..1}', '{2..3}']), RealSet.EMPTY, RealSet.EMPTY),
+        (UnionSet(['{-1..0}', '{3..4}']), UnionSet(['{1..2}']), UnionSet.emptyset()),
+        (UnionSet(['{0..1}', '{2..3}']), UnionSet(['{0..1}', '{2..3}']), IntSet(0, 3)),
+        (UnionSet(['{0..1}', '{2..3}']), UnionSet.emptyset(), UnionSet.emptyset()),
     )
     @unpack
     def test_intersection(self, i1, i2, o):
@@ -1163,12 +1163,12 @@ class RealSetIntegerTest(TestCase):
         )
 
     @data(
-        (RealSet(['{-1..1}', '{0..0}']), IntSet(-1, 1)),
-        (RealSet(['{-1..1}', '{0..2}']), IntSet(-1, 2)),
-        (RealSet(['{0..0}', '{2..3}']), RealSet(['{0..0}', '{2..3}'])),
-        (RealSet(['{0..1}', '{2..3}']), IntSet(0, 3)),
-        (RealSet(['{0..5}', '{1..3}']), IntSet(0, 5)),
-        (RealSet([IntSet.emptyset()]), RealSet.emptyset()),
+        (UnionSet(['{-1..1}', '{0..0}']), IntSet(-1, 1)),
+        (UnionSet(['{-1..1}', '{0..2}']), IntSet(-1, 2)),
+        (UnionSet(['{0..0}', '{2..3}']), UnionSet(['{0..0}', '{2..3}'])),
+        (UnionSet(['{0..1}', '{2..3}']), IntSet(0, 3)),
+        (UnionSet(['{0..5}', '{1..3}']), IntSet(0, 5)),
+        (UnionSet([IntSet.emptyset()]), UnionSet.emptyset()),
     )
     @unpack
     def test_simplify(self, i, truth):
@@ -1182,7 +1182,7 @@ class RealSetIntegerTest(TestCase):
         )
 
     @data(
-        (RealSet(['{0..5}', '{1..3}']), RealSet([IntSet(0, 5)])),
+        (UnionSet(['{0..5}', '{1..3}']), UnionSet([IntSet(0, 5)])),
     )
     @unpack
     def test_simplify_with_keep_type(self, i, truth):
@@ -1196,28 +1196,28 @@ class RealSetIntegerTest(TestCase):
         )
 
     @data(
-        (RealSet(['{-2..2}', '{-1..1}']), RealSet(['{0..1}']), RealSet(['{-2..-1}', '{2..2}'])),
-        (RealSet(['[-1,1]', '[-.5,.5]']), RealSet(['[0,1]']), ContinuousSet.parse('[-1,0[')),
-        (RealSet(['[0,1]', '[1,2]', '[2,3]']), ContinuousSet(1, 2), RealSet(['[0,1[', ']2,3]'])),
-        (RealSet([IntSet.emptyset()]), RealSet.emptyset(), RealSet.emptyset()),
+        (UnionSet(['{-2..2}', '{-1..1}']), UnionSet(['{0..1}']), UnionSet(['{-2..-1}', '{2..2}'])),
+        (UnionSet(['[-1,1]', '[-.5,.5]']), UnionSet(['[0,1]']), ContinuousSet.parse('[-1,0[')),
+        (UnionSet(['[0,1]', '[1,2]', '[2,3]']), ContinuousSet(1, 2), UnionSet(['[0,1[', ']2,3]'])),
+        (UnionSet([IntSet.emptyset()]), UnionSet.emptyset(), UnionSet.emptyset()),
     )
     @unpack
     def test_difference(self, i1, i2, o):
         self.assertEqual(o, i1.difference(i2))
 
     @data(
-        (RealSet(['[0,1]', '[2,3]']),
-         RealSet(['[-1.5,-1]', '[-3,-2]']),
-         RealSet(['[-1.5,-1]', '[-3,-2]', '[0,1]', '[2,3]'])),
+        (UnionSet(['[0,1]', '[2,3]']),
+         UnionSet(['[-1.5,-1]', '[-3,-2]']),
+         UnionSet(['[-1.5,-1]', '[-3,-2]', '[0,1]', '[2,3]'])),
     )
     @unpack
     def test_union(self, i1, i2, r):
         self.assertEqual(r, i1.union(i2))
 
     def test_serialization(self):
-        i1 = RealSet([']0,1[', ']2,3['])
-        i2 = RealSet([']2,3[', ']0,1['])
-        i3 = RealSet([']2,3[', ']0,1]'])
+        i1 = UnionSet([']0,1[', ']2,3['])
+        i2 = UnionSet([']2,3[', ']0,1['])
+        i3 = UnionSet([']2,3[', ']0,1]'])
         self.assertEqual(i1, pickle.loads(pickle.dumps(i1)))
         self.assertEqual(i2, pickle.loads(pickle.dumps(i2)))
         self.assertEqual(i3, pickle.loads(pickle.dumps(i3)))
@@ -1225,20 +1225,20 @@ class RealSetIntegerTest(TestCase):
         self.assertNotEqual(i1, pickle.loads(pickle.dumps(i3)))
 
     def test_hash(self):
-        i1 = RealSet([']0,1[', ']2,3['])
-        i2 = RealSet([']2,3[', ']0,1['])
-        i3 = RealSet([']2,3[', ']0,1]'])
+        i1 = UnionSet([']0,1[', ']2,3['])
+        i2 = UnionSet([']2,3[', ']0,1['])
+        i3 = UnionSet([']2,3[', ']0,1]'])
         self.assertEqual(hash(i1), hash(i2))
         self.assertEqual(hash(i1), hash(pickle.loads(pickle.dumps(i1))))
         self.assertEqual(hash(i2), hash(pickle.loads(pickle.dumps(i2))))
         self.assertNotEqual(hash(i1), hash(i3))
 
     @data(
-        (RealSet(['{..1}', '{3..}']), True, True, True),
-        (RealSet(['{..2}', '{3..5}']), True, False, True),
-        (RealSet(['{2..}', '{3..}']), False, True, True),
-        (RealSet(['{-1..-1}', '{4..7}']), False, False, False),
-        (RealSet.EMPTY, False, False, False)
+        (UnionSet(['{..1}', '{3..}']), True, True, True),
+        (UnionSet(['{..2}', '{3..5}']), True, False, True),
+        (UnionSet(['{2..}', '{3..}']), False, True, True),
+        (UnionSet(['{-1..-1}', '{4..7}']), False, False, False),
+        (UnionSet.emptyset(), False, False, False)
     )
     @unpack
     def test_infinity(self, i, isninf, ispinf, isinf):
@@ -1265,33 +1265,33 @@ class RealSetIntegerTest(TestCase):
 
     def test_size(self):
         # test infinitely big sets
-        r1 = RealSet(['{..0}', '{5..}'])
+        r1 = UnionSet(['{..0}', '{5..}'])
         self.assertEqual(float("inf"), r1.size())
 
-        # test RealSet of size 1
-        r2 = RealSet(["{0..0}"])
+        # test UnionSet of size 1
+        r2 = UnionSet(["{0..0}"])
         self.assertEqual(r2.size(), 1)
 
         # test multiple but same single values
-        r3 = RealSet(["{0..0}", "{0..0}"])
+        r3 = UnionSet(["{0..0}", "{0..0}"])
         self.assertEqual(r3.size(), 1)
 
         # test multiple but different values
-        r4 = RealSet(["{0..0}", "{1..1}"])
+        r4 = UnionSet(["{0..0}", "{1..1}"])
         self.assertEqual(r4.size(), 2)
 
         # test emptyset
-        r5 = RealSet.emptyset()
+        r5 = UnionSet.emptyset()
         self.assertEqual(r5.size(), 0)
 
     def test_sample(self):
         # Arrange
         # test default usage
-        r1 = RealSet(['{-2..2}', '{-1..1}'])
+        r1 = UnionSet(['{-2..2}', '{-1..1}'])
         # test singular value
-        r2 = RealSet(["{1..1}"])
+        r2 = UnionSet(["{1..1}"])
         # test raising index error
-        r3 = RealSet.emptyset()
+        r3 = UnionSet.emptyset()
 
         # Act
         samples1 = r1.sample(100)
@@ -1309,66 +1309,66 @@ class RealSetIntegerTest(TestCase):
 
     def test_contains_value(self):
         # test infinitely big sets
-        r1 = RealSet(['[-1,1]', '[-.5,.5]'])
+        r1 = UnionSet(['[-1,1]', '[-.5,.5]'])
         self.assertTrue(r1.contains_value(.5))
         self.assertTrue(r1.contains_value(0.75))
         self.assertFalse(r1.contains_value(10))
 
         # test singular values
-        r4 = RealSet(["[-.5, -.5]", "[-.6, -.6]"])
+        r4 = UnionSet(["[-.5, -.5]", "[-.6, -.6]"])
         self.assertTrue(r4.contains_value(-.5))
         self.assertTrue(r4.contains_value(-.6))
         self.assertFalse(r4.contains_value(-.55))
 
         # test emptyset
-        r5 = RealSet.emptyset()
+        r5 = UnionSet.emptyset()
         self.assertFalse(r5.contains_value(1))
 
     def test_issuperseteq(self):
         # test regular case
-        r1 = RealSet(['{-3..3}', '{-2..2}'])
+        r1 = UnionSet(['{-3..3}', '{-2..2}'])
         self.assertTrue(r1.issuperseteq(IntSet(-1, 1)))
         self.assertFalse(r1.issuperseteq(IntSet(-4, 1)))
-        self.assertTrue(r1.issuperseteq(IntSet.EMPTY))
+        self.assertTrue(r1.issuperseteq(IntSet.emptyset()))
 
         # test empty set
-        r2 = RealSet.EMPTY
+        r2 = UnionSet.emptyset()
         self.assertFalse(r2.issuperseteq(IntSet(-1, 1)))
-        self.assertTrue(r2.issuperseteq(IntSet.EMPTY))
+        self.assertTrue(r2.issuperseteq(IntSet.emptyset()))
 
         # test singular value
-        r3 = RealSet(["{-1..-1}"])
+        r3 = UnionSet(["{-1..-1}"])
         self.assertTrue(r3.issuperseteq(IntSet(-1, -1)))
-        self.assertTrue(r3.issuperseteq(IntSet.EMPTY))
+        self.assertTrue(r3.issuperseteq(IntSet.emptyset()))
 
     def test_min(self):
         # test default case
-        r1 = RealSet(['{-2..2}', '{-1..1}'])
+        r1 = UnionSet(['{-2..2}', '{-1..1}'])
         self.assertEqual(
             -2,
             r1.fst()
         )
 
         # test set containing empty set
-        r2 = RealSet([IntSet.EMPTY])
+        r2 = UnionSet([IntSet.emptyset()])
         self.assertTrue(
             math.isnan(r2.fst())
         )
 
         # test empty set
-        r3 = RealSet.EMPTY
+        r3 = UnionSet.emptyset()
         self.assertTrue(
             math.isnan(r3.fst())
         )
 
     @data(
-        (RealSet(['{0..1}', '{3..4}']), 0, True),
-        (RealSet(['{0..1}', '{3..4}']), 2, False),
-        (RealSet(['{0..1}', '{3..4}']), 4, True),
-        (RealSet(['{..0}', '{5..}']), -10, True),
-        (RealSet(['{..0}', '{5..}']), 0, True),
-        (RealSet(['{..0}', '{5..}']), 1, False),
-        (RealSet(['{..0}', '{5..}']), 10, True),
+        (UnionSet(['{0..1}', '{3..4}']), 0, True),
+        (UnionSet(['{0..1}', '{3..4}']), 2, False),
+        (UnionSet(['{0..1}', '{3..4}']), 4, True),
+        (UnionSet(['{..0}', '{5..}']), -10, True),
+        (UnionSet(['{..0}', '{5..}']), 0, True),
+        (UnionSet(['{..0}', '{5..}']), 1, False),
+        (UnionSet(['{..0}', '{5..}']), 10, True),
     )
     @unpack
     def test_contains_value(self, interval, value, truth):
@@ -1383,13 +1383,13 @@ class RealSetIntegerTest(TestCase):
 
 
     @data(
-        (RealSet(['{-3..3}', '{-2..2}']), IntSet(-1, 1), True),
-        (RealSet(['{-2..2}', '{-1..1}']), IntSet(-7, -6), False),
-        (RealSet(['{-2..2}', '{-1..1}']), RealSet.emptyset(), False),
-        (RealSet.emptyset(), IntSet(-1, 1), False),
-        (RealSet.emptyset(), IntSet.emptyset(), False),
-        (RealSet(["{-1..-1}"]), IntSet(-1, -1), True),
-        (RealSet(["{-1..-1}"]), RealSet.emptyset(), False)
+        (UnionSet(['{-3..3}', '{-2..2}']), IntSet(-1, 1), True),
+        (UnionSet(['{-2..2}', '{-1..1}']), IntSet(-7, -6), False),
+        (UnionSet(['{-2..2}', '{-1..1}']), UnionSet.emptyset(), False),
+        (UnionSet.emptyset(), IntSet(-1, 1), False),
+        (UnionSet.emptyset(), IntSet.emptyset(), False),
+        (UnionSet(["{-1..-1}"]), IntSet(-1, -1), True),
+        (UnionSet(["{-1..-1}"]), UnionSet.emptyset(), False)
     )
     @unpack
     def test_intersects_and_isdisjoint(self, i1, i2, truth):
@@ -1409,7 +1409,7 @@ class RealSetIntegerTest(TestCase):
 
     def test_chop(self):
         # Arrange
-        r = RealSet([']0,1]', '[2,3['])
+        r = UnionSet([']0,1]', '[2,3['])
 
         # Act
         chops = r.chop([.5, 1.2, 2.5])
@@ -1426,8 +1426,8 @@ class RealSetIntegerTest(TestCase):
         )
 
     @data(
-        (RealSet(['{-1..0}', '{2..3}']), RealSet(['{-3..-2}', '{0..1}'])),
-        (RealSet.EMPTY, RealSet.EMPTY),
+        (UnionSet(['{-1..0}', '{2..3}']), UnionSet(['{-3..-2}', '{0..1}'])),
+        (UnionSet.emptyset(), UnionSet.emptyset()),
     )
     @unpack
     def test_xmirror(self, rset, truth):
@@ -1442,7 +1442,7 @@ class RealSetIntegerTest(TestCase):
 
     def test_round(self):
         # Arrange
-        i = RealSet([
+        i = UnionSet([
             ContinuousSet(0.1234, 5.6789, INC, EXC),
             ContinuousSet(3.456, 7.89, INC, EXC),
         ])
@@ -1452,7 +1452,7 @@ class RealSetIntegerTest(TestCase):
 
         # Assert
         self.assertEqual(
-            RealSet([
+            UnionSet([
                 ContinuousSet(0.1, 5.7, INC, EXC),
                 ContinuousSet(3.5, 7.9, INC, EXC),
             ]),
@@ -1492,7 +1492,7 @@ class ContinuousSetOperatorTest(TestCase):
         union = i1 | i2
 
         # Assert
-        self.assertEqual(RealSet(['[0, 1]', '[2,3]']), union)
+        self.assertEqual(UnionSet(['[0, 1]', '[2,3]']), union)
 
     def test_diff(self):
         # Arrange
@@ -1503,7 +1503,7 @@ class ContinuousSetOperatorTest(TestCase):
         diff = i1 - i2
 
         # Assert
-        self.assertEqual(RealSet(['[0, 1[', ']2,3]']), diff)
+        self.assertEqual(UnionSet(['[0, 1[', ']2,3]']), diff)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1681,7 +1681,7 @@ class IntSetTest(TestCase):
         (IntSet(2, 4), IntSet(-1, 0), False),
         (IntSet(0, 1), IntSet(1, 2), False),
         (IntSet(0, 1), IntSet.emptyset(), True),
-        (IntSet.EMPTY, IntSet.EMPTY, True)
+        (IntSet.emptyset(), IntSet.emptyset(), True)
     )
     @unpack
     def test_superseteq(self, i1, i2, t):
@@ -1752,7 +1752,7 @@ class IntSetTest(TestCase):
                 i2.isdisjoint(i1)
             )
     @data(
-        (IntSet(0, -1), IntSet(-2, -3), IntSet.EMPTY),
+        (IntSet(0, -1), IntSet(-2, -3), IntSet.emptyset()),
         (IntSet(0, 3), IntSet(1, 2), IntSet(1, 2)),
         (IntSet(0, 3), IntSet(-1, 1), IntSet(0, 1)),
         (IntSet(0, 3), IntSet(2, 4), IntSet(2, 3)),
@@ -1827,7 +1827,7 @@ class IntSetTest(TestCase):
 
     @data(
         (IntSet(0, 2), IntSet(2, 3), IntSet(0, 3)),
-        (IntSet(0, 1), IntSet(3, 4), RealSet([IntSet(0, 1), IntSet(3, 4)]))
+        (IntSet(0, 1), IntSet(3, 4), UnionSet([IntSet(0, 1), IntSet(3, 4)]))
     )
     @unpack
     def test_union(self, i1, i2, truth):
@@ -1842,7 +1842,7 @@ class IntSetTest(TestCase):
 
     @data(
         (IntSet(0, 1), IntSet(2, 3), IntSet(0, 1)),
-        (IntSet(0, 5), IntSet(2, 3), RealSet([IntSet(0, 1), IntSet(4, 5)])),
+        (IntSet(0, 5), IntSet(2, 3), UnionSet([IntSet(0, 1), IntSet(4, 5)])),
         (IntSet(0, 4), IntSet(2, 6), IntSet(0, 1)),
         (IntSet(0, 4), IntSet(-2, 0), IntSet(1, 4)),
         (IntSet(0, 1), IntSet(-1, 3), IntSet.emptyset()),
@@ -1887,7 +1887,7 @@ class IntSetTest(TestCase):
         # i2 = IntSet(np.NINF, 0)
         # i3 = IntSet(1, np.PINF)
         # i4 = IntSet.ALL
-        # i5 = IntSet.EMPTY
+        # i5 = IntSet.emptyset()
     @data(
         ('{0..1}', False, False, False),
         ('{..0}', True, False, True),
@@ -1941,7 +1941,7 @@ class IntSetTest(TestCase):
 
         # Assert
         self.assertEqual(
-            RealSet(['{1..1}', '{3..4}']),
+            UnionSet(['{1..1}', '{3..4}']),
             realset
         )
         self.assertEqual(
