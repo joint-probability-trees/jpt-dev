@@ -1085,3 +1085,38 @@ class PLFApproximatorTest(TestCase):
             k=2
         )
 
+    def test_jumps_linear_function(self):
+        '''Jumps at the same positions'''
+        # Arrange
+        plf = PiecewiseFunction.zero().overwrite({
+            '[0.0,5e-324)': LinearFunction(np.inf, np.nan),
+        })
+
+        approx = PLFApproximator(plf, LinearFunction)
+
+        # Act
+        result = approx.run(error_max=.1)
+
+        # Assert
+        self.assertEqual(
+            plf,
+            result
+        )
+
+    def test_jumps_constant_function(self):
+        # Assert
+        plf = PiecewiseFunction.from_dict({
+            '(-∞,0.0)': 0,
+            '[0.0,5e-324)': np.inf,
+            '[5e-324,∞)': 0
+        })
+        approx = PLFApproximator(plf, ConstantFunction)
+
+        # Act
+        result = approx.run(error_max=.2)
+
+        print(result)
+
+
+
+
