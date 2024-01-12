@@ -174,7 +174,7 @@ cdef class IntSet(Interval):
         elif self.isempty():
             return _CHAR_EMPTYSET
         elif self.size() == 1:
-            return f'{{{self._lower}}}'
+            return f'{{{self.lower}}}'
         return (
             f'{{{self.lower if not np.isneginf(self._lower) else ""}'
             # f'{".." if self.size() > 2 else ","}'
