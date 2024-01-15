@@ -504,9 +504,11 @@ def infer_from_dataframe(df,
                     '%s%s_TYPE_S' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
                     labels=df[col].unique()
                 )
-            var = SymbolicVariable(col,
-                                   dom,
-                                   min_impurity_improvement=min_impurity_improvement)
+            var = SymbolicVariable(
+                col,
+                dom,
+                min_impurity_improvement=min_impurity_improvement
+            )
 
         elif dtype in (np.float64, np.float32):
             if excluded_columns is not None and col in excluded_columns:
@@ -517,7 +519,7 @@ def infer_from_dataframe(df,
                     values = values[~values.isin([np.nan, np.inf])]
                 dom = NumericType(
                     '%s%s_TYPE_N' % (col.upper(), '_' + str(uuid.uuid4()) if unique_domain_names else ''),
-                    values.unique()
+                    values
                 )
             else:
                 dom = Numeric
