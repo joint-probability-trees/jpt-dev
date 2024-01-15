@@ -14,6 +14,7 @@ from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 from dnutils import first, ifnone, mapstr, fst, ifnot, getlogger, logs
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
@@ -126,7 +127,7 @@ class Node:
 
         return True
 
-    def format_path(self):
+    def format_path(self) -> str:
         return format_path(self.path)
 
     def number_of_parameters(self) -> int:
@@ -294,10 +295,10 @@ class DecisionNode(Node):
                 IntSet(
                     self.variable.domain.value2label(
                         self.splits[idx_split].lower
-                    ),
+                    ) if not np.isneginf(self.splits[idx_split].lower) else np.NINF,
                     self.variable.domain.value2label(
                         self.splits[idx_split].upper
-                    )
+                    ) if not np.isposinf(self.splits[idx_split].upper) else np.PINF
                 )
             )
 
@@ -799,6 +800,9 @@ class JPT:
                 dependencies.items(),
                 variables=self.variables
             )
+
+        # progress bar is a non-serializable attribute
+        self._progressbar = None
 
     def _reset(self) -> None:
         """ Delete all parameters of this model (not the hyperparameters)"""
@@ -1634,6 +1638,9 @@ class JPT:
 
             self.leaves[leaf.idx] = leaf
 
+            if self._progressbar is not None:
+                self._progressbar.update(n_samples)
+
         JPT.logger.debug('Created', str(node))
 
         if parent is not None:
@@ -1745,7 +1752,8 @@ class JPT:
             rows: Optional[Union[np.ndarray, List]] = None,
             columns: Optional[Union[np.ndarray, List]] = None,
             keep_samples: bool = False,
-            close_convex_gaps: bool = True
+            close_convex_gaps: bool = True,
+            verbose: bool = False
     ) -> 'JPT':
         """
         Fit the jpt to ``data``
@@ -1758,6 +1766,8 @@ class JPT:
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
                         purposes only. Default is false.
         :param close_convex_gaps:
+        :param verbose:
+
         :return: the fitted model
         """
         # --------------------------------------------------------------------------------------------------------------
@@ -1788,11 +1798,20 @@ class JPT:
         started = datetime.datetime.now()
         JPT.logger.info('Learning prior distributions...')
 
+        if verbose:
+            pbar = tqdm(total=len(self.variables), desc='Learning prior distributions')
+
         for i, (vname, var) in enumerate(self.varnames.items()):
             self.priors[var] = var.distribution()._fit(
                 data=_data,
                 col=i
             )
+            if verbose:
+                pbar.update(1)
+
+        if verbose:
+            pbar.close()
+
         JPT.logger.info(
             '%d prior distributions learnt in %s.' % (
                 len(self.priors),
@@ -1850,8 +1869,18 @@ class JPT:
             None,
             0
         ))
+
+        if verbose:
+            self._progressbar = tqdm(total=_data.shape[0], desc='Learning')
+
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
+
+        if verbose:
+            self._progressbar.close()
+            self._progressbar = None
+
+
 
         if close_convex_gaps:
             self.postprocess_leaves()
@@ -1997,7 +2026,7 @@ class JPT:
              title: str = "unnamed",
              filename: str or None = None,
              directory: str = None,
-             plotvars: Iterable[Variable] = None,
+             plotvars: Iterable[Variable or str] = None,
              view: bool = True,
              max_symb_values: int = 10,
              nodefill=None,
@@ -2041,6 +2070,11 @@ class JPT:
             filename=f'{filename or title}'
         )
 
+        pbar = tqdm(
+            total=len(self.leaves),
+            desc='Plotting nodes'
+        )
+
         # create nodes
         sep = ",<BR/>"
         for idx, n in self.leaves.items():
@@ -2066,7 +2100,7 @@ class JPT:
                     **params
                 )
                 img += (f'''{"<TR>" if i % rc == 0 else ""}
-                        <TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
+                        <TD><IMG SCALE="TRUE" SRC="./{img_name}.png"/></TD>
                         {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
                 ''')
 
@@ -2119,6 +2153,11 @@ class JPT:
                      shape='box',
                      style='rounded,filled',
                      fillcolor=leaffill or green)
+
+            pbar.update(1)
+
+        pbar.close()
+
         for idx, node in self.innernodes.items():
             dot.node(str(idx),
                      label=node.str_node,
