@@ -47,12 +47,15 @@ def requirements():
 basedir = 'src'
 
 pyxfiles = [
-    "jpt/base/cutils.pyx",
-    "jpt/base/functions.pyx",
-    "jpt/base/intervals.pyx",
+    "jpt/base/cutils/cutils.pyx",
+    "jpt/base/functions/func.pyx",
+    "jpt/base/intervals/base.pyx",
+    "jpt/base/intervals/intset.pyx",
+    "jpt/base/intervals/contset.pyx",
+    "jpt/base/intervals/unionset.pyx",
     "jpt/distributions/quantile/quantiles.pyx",
     "jpt/distributions/quantile/cdfreg.pyx",
-    "jpt/learning/impurity.pyx",
+    "jpt/learning/impurity/impurity.pyx",
 ]
 
 extensions = [
@@ -108,8 +111,12 @@ setup(
     packages=[
         'jpt',
         'jpt.learning',
+        'jpt.learning.impurity',
         'jpt.inference',
         'jpt.base',
+        'jpt.base.intervals',
+        'jpt.base.cutils',
+        'jpt.base.functions',
         'jpt.distributions',
         'jpt.distributions.quantile',
         'jpt.distributions.univariate'
