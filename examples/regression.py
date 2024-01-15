@@ -56,7 +56,7 @@ def main(visualize=True):
     # For generative learning, uncomment the following line:
     # jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
 
-    jpt.learn(df)
+    jpt.learn(df, verbose=True)
 
     # jpt.plot(view=visualize)
 
