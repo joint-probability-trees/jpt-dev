@@ -1,8 +1,11 @@
 PKG_NAME=pyjpt
-PKG_VERSION=$(shell cat src/jpt/.version)
-PYTHON_PATH=/usr/bin/python3.8
-PYTHON_VERSION=$(shell ${PYTHON_PATH} -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))")
-ENV_NAME=.venv/${PKG_NAME}-${PKG_VERSION}-py-${PYTHON_VERSION}
+PKG_VERSION=$(cat src/jpt/.version || echo 0.0.0)
+PYTHON_VERSION=3.10
+PY_VERSION_STR=$(awk -F '.' '{print $1 $2}' <<< "${PYTHON_VERSION}")
+ARCH_STR=linux_x86_64
+PYTHON_PATH=python${PYTHON_VERSION}
+
+ENV_NAME=.venv/${PKG_NAME}-${PKG_VERSION}-cp${PY_VERSION_STR}
 BASEDIR=$(shell pwd)
 RELEASE_NAME=${PKG_NAME}-${PKG_VERSION}
 
@@ -15,6 +18,7 @@ rmvirtualenv:
 
 virtualenv:
 	@(virtualenv ${ENV_NAME} --python ${PYTHON_PATH})
+	@(. ${ENV_NAME}/bin/activate && pip install -U pip)
 	@(. ${ENV_NAME}/bin/activate && pip install -U -r requirements.txt) # -r requirements-dev.txt)
 
 sdist: virtualenv versioncheck
@@ -25,9 +29,9 @@ bdist: virtualenv versioncheck
 	@(echo "Build ${PKG_NAME} bdist package...")
 	@(. ${ENV_NAME}/bin/activate && pip install -r requirements-dev.txt && python setup.py bdist)
 
-wheel: virtualenv
+wheel: # virtualenv
 	@(echo "Build ${PKG_NAME} bdist_wheel package...")
-	@(. ${ENV_NAME}/bin/activate && pip install wheel)
+	@(. ${ENV_NAME}/bin/activate && pip install -U wheel pip)
 	@(. ${ENV_NAME}/bin/activate && pip install -r requirements-dev.txt && python setup.py bdist_wheel)
 
 release: clean sdist bdist wheel tests
@@ -42,7 +46,7 @@ all: clean virtualenv versioncheck tests sdist bdist wheel
 tests: wheel
 	@(echo "Running all tests...")
 	@(. ${ENV_NAME}/bin/activate &&\
-	pip install dist/${PKG_NAME}-0.0.0-cp38-cp38-linux_x86_64.whl &&\
+	pip install dist/${PKG_NAME}-${PKG_VERSION}-cp${PY_VERSION_STR}-cp${PY_VERSION_STR}-${ARCH_STR}.whl &&\
 	cd test &&\
 	python -m unittest)
 
