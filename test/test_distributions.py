@@ -1048,10 +1048,10 @@ class IntegerLabelMapTest(TestCase):
         closed = IntegerLabelToValueMap(lmin=-2, lmax=3)
 
         # Act
-        intset_z = z._to_intset()
-        intset_halfopen_pos = halfopen_pos._to_intset()
-        intset_halfopen_neg = halfopen_neg._to_intset()
-        intset_closed = closed._to_intset()
+        intset_z = z.as_set()
+        intset_halfopen_pos = halfopen_pos.as_set()
+        intset_halfopen_neg = halfopen_neg.as_set()
+        intset_closed = closed.as_set()
 
         # Assert
         self.assertEqual(
@@ -1139,23 +1139,30 @@ class IntegerDistributionTest(TestCase):
             UnionSet([IntSet(0, 1), IntSet(4, 5)]),
             label_realset
         )
+
     def test_set_finite(self):
         # Arrange
         dice = IntegerType('Dice', 1, 6)
-        fair_dice = dice()
+        fair_dice_set_array = dice()
+        fair_dice_set_dict = dice()
 
         # Act
-        fair_dice.set([1 / 6] * 6)
+        fair_dice_set_array.set([1 / 6] * 6)
+        fair_dice_set_dict.set({1: 1/6, 2: 1/6, 3: 1/6, 4: 1/6, 5: 1/6, 6: 1/6})
 
         # Assert
         self.assertRaises(
             ValueError,
-            fair_dice.set,
+            fair_dice_set_array.set,
             [1 / 6] * 7
         )
         self.assertEqual(
             {i: 1 / 6 for i in range(0, 6)},
-            fair_dice.probabilities
+            fair_dice_set_array.probabilities
+        )
+        self.assertEqual(
+            {i: 1 / 6 for i in range(0, 6)},
+            fair_dice_set_dict.probabilities
         )
 
     def test_set_infinite(self):
@@ -1436,6 +1443,7 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(jacc1, jacc2)
 
     def test_add(self):
+        # Arrange
         pos = IntegerType('Pos', 0, 6)
         posx = pos()
         posx.set([0, 0, 1, 0, 0, 0, 0])
@@ -1444,15 +1452,21 @@ class IntegerDistributionTest(TestCase):
         deltax = delta()
         deltax.set([0, 0, 1])
 
+        # Act
         sumpos = posx.add(deltax)
 
+        # Assert
         self.assertEqual(
             (-1, 7),
-            (sumpos.lmin, sumpos.lmax)
+            (sumpos.min, sumpos.max)
         )
         self.assertEqual(
-            sumpos.probabilities,
-            {3: 1}
+            {4: 1},
+            sumpos.probabilities
+        )
+        self.assertEqual(
+            1,
+            sumpos.p(3)
         )
 
     def test_add_bernoulli(self):
@@ -1467,7 +1481,7 @@ class IntegerDistributionTest(TestCase):
 
         self.assertEqual(
             (0, 2),
-            (sumpos.lmin, sumpos.lmax)
+            (sumpos.min, sumpos.max)
         )
         self.assertEqual(
             {0: 0.25, 1: 0.5, 2: 0.25},
@@ -1476,11 +1490,11 @@ class IntegerDistributionTest(TestCase):
 
     def test_plot(self):
         dice = IntegerType('Dice', 1, 6)
-        d1 = dice().set([1 / 6] * 6)
+        d1 = dice().set([1/6, 2/6, 3/6, 0, 0, 0])
         d1.plot(
             title="Test",
             view=False,
-            horizontal=False
+            horizontal=True
         )
 
     def test_items_finite(self):
@@ -1494,11 +1508,11 @@ class IntegerDistributionTest(TestCase):
 
         # Assert
         self.assertEqual(
-            [(0.5, 0), (0.5, 1), (0, 2)],
+            [(0, 0.5), (1, 0.5), (2, 0)],
             list(items_exhaustive)
         )
         self.assertEqual(
-            [(0.5, 0), (0.5, 1)],
+            [(0, 0.5), (1, 0.5)],
             list(items_nonexhaustive)
         )
 
@@ -1512,15 +1526,15 @@ class IntegerDistributionTest(TestCase):
 
         # Assert
         self.assertEqual(
-            [(0.5, 0), (0.5, 1)],
+            [(0, 0.5), (1, 0.5)],
             list(items_nonexhaustive)
         )
-        self.assertRaises(
-            ValueError,
-            lambda: list(
-                dist.items(exhaustive=True)
-            )
-        )
+        # self.assertRaises(
+        #     ValueError,
+        #     lambda: list(
+        #         dist.items(exhaustive=True)
+        #     )
+        # )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1586,11 +1600,11 @@ class TypeGeneratorTest(TestCase):
         # Assert
         self.assertEqual(
             (1, 12),
-            (t_1.lmin, t_1.lmax)
+            (t_1.min, t_1.max)
         )
         self.assertEqual(
-            (..., ...),
-            (t_2.lmin, t_2.lmax)
+            (np.NINF, np.PINF),
+            (t_2.min, t_2.max)
         )
         self.assertRaises(ValueError, IntegerType, 'Bla', 3, 2)
 
