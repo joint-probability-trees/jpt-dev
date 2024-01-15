@@ -375,7 +375,9 @@ class Numeric(Distribution):
             return value.issuperseteq(probspace)
         return probmass
 
-    def p(self, labels: Union[numbers.Number, NumberSet]) -> numbers.Real:
+    def p(self, labels: Union[numbers.Number, NumberSet, List[float]]) -> numbers.Real:
+        if isinstance(labels, list):
+            labels = ContinuousSet.from_list(labels)
         return self._p(self.label2value(labels))
 
     def kl_divergence(self, other: 'Numeric') -> numbers.Real:
@@ -845,7 +847,7 @@ class ScaledNumeric(Numeric):
 # ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection PyPep8Naming
-def NumericType(name: str, values: Iterable[float]) -> Type[Numeric]:
+def NumericType(name: str, values: Iterable[float] = None) -> Type[Numeric]:
     t = type(name, (ScaledNumeric,), {})
     if values is not None:
         values = np.array(list(none2nan(values)))
