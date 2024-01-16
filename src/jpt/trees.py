@@ -10,7 +10,8 @@ import tempfile
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from itertools import zip_longest
 from operator import attrgetter, itemgetter
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional
+from types import FunctionType
+from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable
 
 import numpy as np
 import pandas as pd
@@ -804,6 +805,10 @@ class JPT:
         # progress bar is a non-serializable attribute
         self._progressbar = None
 
+        # temporarily store a hook to decide whether a partition
+        # should be split further or a leaf shall be created at the current position in the tree
+        self._prune_or_split: Optional[FunctionType] = None
+
     def _reset(self) -> None:
         """ Delete all parameters of this model (not the hyperparameters)"""
         self.innernodes.clear()
@@ -811,6 +816,8 @@ class JPT:
         self.priors = VariableMap(variables=self.variables) # .clear()
         self.root = None
         self.c45queue.clear()
+        self._progressbar = None
+        self._prune_or_split = None
 
     @property
     def allnodes(self):
@@ -1568,7 +1575,21 @@ class JPT:
             ', gain:', max_gain
         )
 
-        if max_gain >= min_impurity_improvement and depth < self.max_depth:  # Create a decision node ------------------
+        prune = (
+            self._prune_or_split is not None
+            and self._prune_or_split(
+                self,
+                data,
+                self.indices,
+                start,
+                end,
+                parent,
+                child_idx,
+                depth
+            )
+        )
+
+        if not prune and max_gain >= min_impurity_improvement and depth < self.max_depth:  # Create a decision node ----
             split_pos = impurity.best_split_pos
             split_var_idx = impurity.best_var
             split_var = self.variables[split_var_idx]
@@ -1753,7 +1774,8 @@ class JPT:
             columns: Optional[Union[np.ndarray, List]] = None,
             keep_samples: bool = False,
             close_convex_gaps: bool = True,
-            verbose: bool = False
+            verbose: bool = False,
+            prune_or_split: Optional[Callable] = None
     ) -> 'JPT':
         """
         Fit the jpt to ``data``
@@ -1766,6 +1788,7 @@ class JPT:
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
                         purposes only. Default is false.
         :param close_convex_gaps:
+        :param prune_or_split:
         :param verbose:
 
         :return: the fitted model
@@ -1792,6 +1815,7 @@ class JPT:
         # --------------------------------------------------------------------------------------------------------------
         # Initialize the internal data structures
         self._reset()
+        self._prune_or_split = prune_or_split
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
@@ -1847,7 +1871,7 @@ class JPT:
                 min_samples_leaf
             )
         )
-        learning = GENERATIVE if self.targets == self.variables else DISCRIMINATIVE
+        learning = GENERATIVE if (self.targets == self.variables or self.targets is None) else DISCRIMINATIVE
         JPT.logger.info('Learning is %s. ' % learning)
         if learning == DISCRIMINATIVE:
             JPT.logger.info(
