@@ -31,6 +31,7 @@ from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, Sy
 
 from jpt.base.functions import ConstantFunction, LinearFunction
 from jpt.base.intervals import ContinuousSet, IntSet
+from testutils import gaussian_data_1d
 
 
 class JPTTest(TestCase):
@@ -1405,6 +1406,59 @@ class PruningTest(TestCase):
             1,
             pruned_jpt.root.prior,
             places=8
+        )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class TestPruneOrPslitHook(TestCase):
+
+    @staticmethod
+    def prune_or_split(
+        jpt,
+        data,
+        indices,
+        start,
+        end,
+        parent,
+        child_idx,
+        depth
+    ):
+        return depth > 4
+
+    def test_prune_or_split_hook(self):
+        # Arrange
+        df = gaussian_data_1d()
+        variables = infer_from_dataframe(df)
+        jpt = JPT(variables)
+
+        # Act
+        jpt.fit(
+            df,
+            prune_or_split=self.prune_or_split
+        )
+
+        # Assert
+        self.assertEqual(
+            5,
+            len(jpt.innernodes)
+        )
+
+    def test_ignore_prune_or_split_hook(self):
+        # Arrange
+        df = gaussian_data_1d()
+        variables = infer_from_dataframe(df)
+        jpt = JPT(variables)
+
+        # Act
+        jpt.fit(
+            df,
+        )
+
+        # Assert
+        self.assertEqual(
+            99,
+            len(jpt.innernodes)
         )
 
 
