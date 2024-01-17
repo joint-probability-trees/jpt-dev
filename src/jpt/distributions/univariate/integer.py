@@ -16,6 +16,7 @@ from ..utils import OrderedDictProxy
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
 from ...base.utils import setstr, normalized, classproperty, save_plot
+from ...plotting.helpers import color_to_rgb
 
 try:
     from ...base.functions import __module__
@@ -470,13 +471,46 @@ class Integer(Distribution):
         return result
 
     @staticmethod
+    def wasserstein_distance(
+            d1: 'Integer',
+            d2: 'Integer',
+    ) -> float:
+        points = list(
+            sorted(
+                set(d1.cdf.boundaries()) | set(d2.cdf.boundaries())
+            )
+        )
+        minpt = min(points)
+        maxpt = max(points)
+
+        diff_ = PiecewiseFunction.abs(d1.cdf - d2.cdf)
+        ar = diff_.integrate(ContinuousSet(minpt, maxpt))
+
+        return ar
+
+    def distance(
+            self,
+            other: 'Integer'
+    ) -> float:
+        return Integer.wasserstein_distance(self, other)
+
+    @staticmethod
     def jaccard_similarity(
             d1: 'Integer',
             d2: 'Integer'
     ) -> float:
+        # if the domains of the given distributions are not identical, they are considered maximally dissimilar
+        if any([len(set(i)) != 1 for i in zip(d1.values, d2.values)]): return 0.
+
         intersect = sum([min(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)])
         union = sum([max(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)])
         return intersect/union
+
+    def similarity(
+            self,
+            other: 'Integer'
+    ) -> float:
+        return Integer.jaccard_similarity(self, other)
 
     def plot(
             self,
@@ -528,33 +562,8 @@ class Integer(Distribution):
         probs = project(pairs, 0)
         labels = project(pairs, 1)
 
-        # MOVE THIS TO PLOTLY LIBRARY UTILS
-        def hextorgb(col):
-            h = col.strip("#")
-            l = len(h)
-            if l == 3 or l == 4:  # e.g. "#fff"
-                return hextorgb(f'{"".join([(v)*2 for v in h],)}')
-            if l == 6:  # e.g. "#2D6E0F"
-                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
-            if l == 8:  # e.g. "#2D6E0F33"
-                return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4)) + (round(int(h[6:8], 16)/255, 2),)
-
-        def to_rgb(color, opacity=.6):
-            if color.startswith('#'):
-                color = hextorgb(color)
-                if len(color) == 4:
-                    opacity = color[-1]
-                    color = color[:-1]
-            elif color.startswith('rgba'):
-                color = tuple(map(float, color[5:-1].split(',')))
-                opacity = color[-1]
-                color = color[:-1]
-            elif color.startswith('rgb'):
-                color = tuple(map(float, color[4:-1].split(',')))
-            return f'rgb{*color,}', f'rgba{*color+(opacity,),}'
-
         # extract rgb colors from given hex, rgb or rgba string
-        rgb, rgba = to_rgb(color)
+        rgb, rgba = color_to_rgb(color)
 
         mainfig = go.Figure(
             [
