@@ -8,6 +8,7 @@ __module__ = 'quantiles.pyx'
 
 from cmath import isnan
 from operator import itemgetter, attrgetter
+from typing import Iterable
 
 from dnutils import ifnot, first, ifnone
 
@@ -23,7 +24,7 @@ from ...base.cutils cimport SIZE_t, DTYPE_t, sort
 
 import warnings
 
-from jpt.base.utils import pairwise
+from jpt.base.utils import pairwise, normalized
 from jpt.base.errors import Unsatisfiability
 
 from .cdfreg import CDFRegressor
@@ -91,22 +92,61 @@ cdef class QuantileDistribution:
                                                         len(self.cdf.functions))
 
     @staticmethod
-    def pdf_to_cdf(pdf: PiecewiseFunction) -> PiecewiseFunction:
+    def pdf_to_cdf(
+            pdf: PiecewiseFunction,
+            dirac_weights: Iterable[float] = None
+    ) -> PiecewiseFunction:
         '''Convert a PDF into a CDF by piecewise integration'''
         cdf = PiecewiseFunction()
         pdf = pdf.rectify()
         head = 0
+        dirac_weights = normalized(dirac_weights) if dirac_weights is not None else []
+        dirac_offsets = []
+
+        last_int: ContinuousSet = None
         for i, f in pdf.iter():
             if not f.value:
                 f_ = ConstantFunction(head)
+            elif np.isinf(f.value):
+                dirac_offsets.append((
+                    len(cdf),
+                    dirac_offsets.pop(-1) if dirac_offsets else 1
+                ))
+                last_int = i
+                continue
             else:
                 f_ = LinearFunction(
                     f.value,
                     head - f.value * i.lower
                 )
             head = f_.eval(i.upper)
+            if last_int is not None and last_int.contiguous(i):
+                i = last_int.union(i)
+                last_int = None
             cdf.append(i.copy(), f_)
-        return cdf
+
+        # Weigh the dirac impulses proportionally
+        residual = 1 - cdf.eval(cdf.intervals[-1].any_point())
+
+        if residual < -1e-8:
+            raise ValueError(
+                'Illegal CDF value > 1: %f' % (1 - residual)
+            )
+        elif residual > 0:
+            dirac_offsets = [(i, w * residual) for i, w in dirac_offsets]
+
+        # Apply offsets by dirac impulses
+        offset = 0
+        for i, (_, f) in enumerate(cdf.iter()):
+            if dirac_offsets and dirac_offsets[0][0] == i:
+                offset += dirac_offsets.pop(0)[1]
+            f += offset
+
+        return cdf.stretch(
+            1 / cdf.eval(
+                cdf.intervals[-1].any_point()
+            )
+        )
 
     cpdef QuantileDistribution fit(
             self,
@@ -411,9 +451,16 @@ cdef class QuantileDistribution:
             weights = [1. / len(distributions)] * len(distributions)
 
         if abs(sum(weights) - 1) > 1e-8:
-            raise ValueError('Weights must sum to 1, got sum %s; %s' % (sum(weights), str(weights)))
+            raise ValueError(
+                'Weights must sum to 1, got sum %s; %s' % (
+                    sum(weights),
+                    str(weights)
+                )
+            )
         if any(np.isnan(w) for w in weights):
-            raise ValueError('Detected NaN in weight vector!')
+            raise ValueError(
+                'Detected NaN in weight vector!'
+            )
 
         # --------------------------------------------------------------------------------------------------------------
         # We preprocess the CDFs that are in the form of "jump" functions
@@ -423,20 +470,30 @@ cdef class QuantileDistribution:
             jumps.get(cdf.intervals[0].upper).weight += w
 
         # --------------------------------------------------------------------------------------------------------------
-        lower = sorted([(i.lower, f, w)
-                        for d, w in zip(distributions, weights)
-                        for i, f in zip(d.cdf.intervals, d.cdf.functions)
-                        if not isinstance(f, ConstantFunction) and w > 0]
-                       + [(j.knot, j, j.weight)
-                          for j in jumps.values() if j.weight > 0],
-                       key=itemgetter(0))
-        upper = sorted([(i.upper, f, w)
-                        for d, w in zip(distributions, weights)
-                        for i, f in zip(d.cdf.intervals, d.cdf.functions)
-                        if not isinstance(f, ConstantFunction) and w > 0],
-                       key=itemgetter(0))
+
+        lower = sorted(
+            [
+                (i.lower, f, w)
+                for d, w in zip(distributions, weights)
+                    for i, f in zip(d.cdf.intervals, d.cdf.functions)
+                if not isinstance(f, ConstantFunction) and w > 0
+            ] + [
+                (j.knot, j, j.weight) for j in jumps.values() if j.weight > 0
+            ],
+            key=itemgetter(0)
+        )
+        upper = sorted(
+            [
+                (i.upper, f, w)
+                for d, w in zip(distributions, weights)
+                    for i, f in zip(d.cdf.intervals, d.cdf.functions)
+                if not isinstance(f, ConstantFunction) and w > 0
+            ],
+            key=itemgetter(0)
+        )
 
         # --------------------------------------------------------------------------------------------------------------
+
         m = 0
         c = 0
 

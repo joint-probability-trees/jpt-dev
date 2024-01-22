@@ -599,9 +599,9 @@ class Numeric(Distribution):
         result = type(other)(**other.settings)
 
         # multiply with -1, i.e. mirror at y-axis
-        iv_rev = [ContinuousSet(-i.upper, -i.lower, i.right, i.left) for i in reversed(other.pdf.intervals)]
+        # iv_rev = [i.xmirror() for i in reversed(other.pdf.intervals)]
         result._quantile = QuantileDistribution.from_pdf(
-            PiecewiseFunction.from_dict({i: f for i, f in zip(iv_rev, other.pdf.functions)})
+            other.pdf.xmirror()
         )
 
         # then add other
@@ -621,6 +621,30 @@ class Numeric(Distribution):
                 )
             )
         )
+
+    @staticmethod
+    def wasserstein_distance(
+            d1: 'Numeric',
+            d2: 'Numeric',
+    ) -> float:
+        points = list(
+            sorted(
+                set(d1.cdf.boundaries()) | set(d2.cdf.boundaries())
+            )
+        )
+        minpt = min(points)
+        maxpt = max(points)
+
+        diff_ = PiecewiseFunction.abs(d1.cdf - d2.cdf)
+        ar = diff_.integrate(ContinuousSet(minpt, maxpt))
+
+        return ar
+
+    def distance(
+            self,
+            other: 'Numeric'
+    ) -> float:
+        return Numeric.wasserstein_distance(self, other)
 
     @staticmethod
     def jaccard_similarity(
@@ -661,6 +685,7 @@ class Numeric(Distribution):
             directory: str = '/tmp',
             view: bool = False,
             color: str = 'rgb(15,21,110)',
+            fill: str = None,
             **kwargs
     ) -> Figure:
         '''
@@ -727,7 +752,8 @@ class Numeric(Distribution):
                     color=rgb,
                     width=4,
                     dash='dash'
-                )
+                ),
+                fill=fill
             )
         )
 

@@ -142,16 +142,35 @@ class Multinomial(Distribution):
 
     @staticmethod
     def jaccard_similarity(
-            d1: 'Multinomial',
-            d2: 'Multinomial'
+            *d: 'Multinomial'
     ) -> float:
-        intersect = sum(
-            [min(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)]
-        )
-        union = sum(
-            [max(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)]
-        )
+        '''Calculate the similarity of two or more Multinomial distributions,
+
+            \text{sim}(D_1, ..., D_n) = \frac{\sum_{x \in dom(D)} min(p_i(x))}{\sum_{x \in dom(D)} max(p_i(x))}
+
+        adapted from the Jaccard coefficient:
+
+            \text{sim}(S_1, ..., S_n) = \frac{\mid \bigcap_{i}^{n} S_i \mid}{\mid \bigcup_{i}^{n} S_i \mid}
+         '''
+        # if the domains of the given distributions are not identical, they are considered maximally dissimilar
+        if any([len(set(i)) != 1 for i in zip(*map(lambda x: x.values, d))]): return 0.
+
+        intersect = sum([min(a) for a in zip(*map(lambda x: x.probabilities, d))])
+        union = sum([max(a) for a in zip(*map(lambda x: x.probabilities, d))])
+
         return intersect / union
+
+    def similarity(
+            self,
+            other: 'Multinomial'
+    ) -> float:
+        return Multinomial.jaccard_similarity(self, other)
+
+    def distance(
+            self,
+            other: 'Multinomial',
+    ) -> float:
+        return 1-Multinomial.jaccard_similarity(self, other)
 
     def __getitem__(self, value):
         return self.p([value])
@@ -592,14 +611,15 @@ class Multinomial(Distribution):
             ]
         )
 
+        # determine variable name from class (only works for Multinomial, empty on Bool)
         xname = "_".join(self.__class__.__qualname__.split("_")[:-2]).lower()
         mainfig.update_layout(
             xaxis=dict(
-                title=f'$P(\\text{{{xname}}})$' if horizontal else f'$\\text{{{xname}}}$',
+                title=f'P({xname})' if horizontal else xname,
                 range=[0, 1] if horizontal else None,
             ),
             yaxis=dict(
-                title=f'$\\text{{{xname}}}$' if horizontal else f'$P(\\text{{{xname}}})$',
+                title=xname if horizontal else f'P({xname})',
                 range=None if horizontal else [0, 1]
             ),
             title=None if title is False else f'{title or f"Distribution of {self._cl}"}',
