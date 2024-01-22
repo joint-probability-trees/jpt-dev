@@ -294,7 +294,7 @@ class DecisionNode(Node):
                 fmt='logic'
             )
         elif self.variable.symbolic:
-            negate = len(self.splits[1]) > 1
+            negate = len(self.splits) > 1 and len(self.splits[1]) > 1
             if negate:
                 label = self.variable.domain.labels[fst(self.splits[0])]
                 return '%s%s' % ('\u00AC' if idx_split > 0 else '', label)
