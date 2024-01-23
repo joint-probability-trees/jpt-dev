@@ -1191,16 +1191,16 @@ class JPT:
                     evidence_set = evidence_set.intersection(leaf.path[var])
 
                 if isinstance(evidence_set, ContinuousSet) and evidence_set.size() == 1:
-                    l_var = leaf.distributions[var].pdf(evidence_set.lower)
+                    l_var = leaf.distributions[var].pdf(evidence_set.min)
                     l_var = 1 if np.isinf(l_var) else l_var
                 else:
                     l_var = leaf.distributions[var]._p(evidence_set)
-
+                if abs(l_var) < 1e-8:
+                    l_var = .0
                 if not l_var:
                     conflicting_assignment[var] = var.domain.value2label(evidence_set)
                     if not report_inconsistencies:
                         break
-
                 likelihood *= ifnot(l_var, 1)
 
             if conflicting_assignment:
@@ -1229,7 +1229,6 @@ class JPT:
                     reasons=inconsistencies
                 )
             return None
-
 
         for var, dists in distributions.items():
             if var.numeric:
@@ -1281,7 +1280,9 @@ class JPT:
 
         if posteriors is None:
             if fail_on_unsatisfiability:
-                raise Unsatisfiability('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                raise Unsatisfiability(
+                    'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
+                )
             else:
                 return None
 
