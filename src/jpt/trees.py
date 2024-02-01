@@ -588,9 +588,7 @@ class Leaf(Node):
     ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
-        :param queries: A VariableMap that maps to singular values (numeric or symbolic)
-            or ranges (continuous set, set)
-        :type queries: VariableMap
+        :param queries: An array-like object that represents variable assignments in value space.
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
         :type dirac_scaling: float
@@ -612,7 +610,7 @@ class Leaf(Node):
                 probs = distribution.probabilities[queries[:, idx].astype(int)]
 
             elif isinstance(variable, IntegerVariable):
-                probs = np.array([distribution.p(int(q)) for q in queries[:, idx]])
+                probs = np.array([distribution._p(int(q)) for q in queries[:, idx]])
 
             # if the variable is numeric
             elif isinstance(variable, NumericVariable):
