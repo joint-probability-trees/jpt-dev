@@ -72,6 +72,7 @@ avalailable_colormaps = [
 
 class SYMBOL:
     LAND = '\u2227'
+    LOR = '\u2228'
     IN = '\u2208'
     LT = '<'
     GT = '>'

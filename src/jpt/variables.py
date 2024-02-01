@@ -18,7 +18,7 @@ from jpt.base.constants import SYMBOL
 from .distributions import Multinomial, Numeric, ScaledNumeric, Distribution, SymbolicType, NumericType, Integer, \
     IntegerType, Bool
 
-from jpt.base.intervals import INC, EXC, ContinuousSet, UnionSet, NumberSet
+from jpt.base.intervals import INC, EXC, ContinuousSet, UnionSet, NumberSet, IntSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -279,7 +279,7 @@ class NumericVariable(Variable):
         :param precision:         (int) the number of decimals to use for rounding.
         '''
         fmt = kwargs.get('fmt', 'set')
-        precision = kwargs.get('precision', 3)
+        precision = ifnone(kwargs.get('precision', 3), 3)
         prec = '%%s = %%.%df' % precision
         lower = '%%.%df %%s ' % precision
         upper = ' %%s %%.%df' % precision
@@ -303,13 +303,25 @@ class NumericVariable(Variable):
         if isinstance(assignment, numbers.Number):
             return prec % (self.name, self.domain.labels[assignment])
         if fmt == 'set':
-            return f'{self.name} {SYMBOL.IN} {str(assignment)}'
+            return f'{self.name} {SYMBOL.IN} {str(round(assignment, precision))}'
         elif fmt == 'logic':
             s = []
             for i in assignment.intervals:
                 if i.size() == 1:
                     s.append(
                         '%s = %s' % (self.name, self.domain.labels[i.lower])
+                    )
+                elif i.ispinf() and i.isninf():
+                    s.append(
+                        f'{self.name} {SYMBOL.IN} {i}'
+                    )
+                elif i.ispinf():
+                    s.append(
+                        (f'{self.name} {{cmp}} {i.lower}').format(cmp={INC: SYMBOL.GTE, EXC: SYMBOL.GT}[i.left])
+                    )
+                elif i.isninf():
+                    s.append(
+                        (f'{self.name} {{cmp}} {i.upper}').format(cmp={INC: SYMBOL.LTE, EXC: SYMBOL.LT}[i.right])
                     )
                 else:
                     s.append(
@@ -323,7 +335,7 @@ class NumericVariable(Variable):
                              ) if i.upper != np.PINF else ''
                         )
                     )
-            return ' v '.join(s)
+            return f' {SYMBOL.LOR} '.join(s)
         else:
             raise ValueError('Unknown format for numeric variable: %s.' % fmt)
 
@@ -353,18 +365,28 @@ class IntegerVariable(Variable):
 
     def str(self, assignment, **kwargs) -> str:
         fmt = kwargs.get('fmt', 'set')
-        if type(assignment) is set:
-            if len(assignment) == 1:
+        if isinstance(assignment, IntSet):
+            if assignment.size() == 1:
                 return self.str(first(assignment), fmt=fmt)
             elif fmt == 'set':
-                valstr = setstr_int(assignment)
-                return f'{self.name} {SYMBOL.IN} {{{valstr}}}'
+                return f'{self.name} {SYMBOL.IN} {assignment}'
             elif fmt == 'logic':
-                return ' v '.join([self.str(a, fmt=fmt) for a in assignment])
+                if assignment.isninf() and assignment.ispinf():
+                    return f'{self.name} {SYMBOL.IN} {assignment}'
+                elif assignment.isninf():
+                    return f'{self.name} {SYMBOL.LTE} {assignment.upper}'
+                elif assignment.ispinf():
+                    return f'{self.name} {SYMBOL.GTE} {assignment.lower}'
+                else:
+                    return f'{assignment.lower} {SYMBOL.LTE} {self.name} {SYMBOL.LTE} {assignment.upper}'
+                # SYMBOL.LOR.join([self.str(a, fmt=fmt) for a in assignment])
         if isinstance(assignment, numbers.Number):
-            return '%s = %s' % (self.name, self.domain.labels[assignment])
+            return '%s = %s' % (self.name, assignment)
         else:
-            return '%s = %s' % (self.name, str(assignment))
+            # return '%s = %s' % (self.name, str(assignment))
+            raise TypeError(
+                f'Unexpected type for assignment: {type(assignment)}'
+            )
 
     def assignment2set(self, assignment: Union[int, Set[int]]) -> Set[int]:
         if isinstance(assignment, numbers.Integral):
