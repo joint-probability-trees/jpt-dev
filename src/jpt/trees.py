@@ -128,8 +128,16 @@ class Node:
 
         return True
 
-    def format_path(self) -> str:
-        return format_path(self.path)
+    def format_path(
+            self,
+            fmt: str = None,
+            precision: int = None
+    ) -> str:
+        return format_path(
+            self.path,
+            fmt=fmt,
+            precision=precision
+        )
 
     def number_of_parameters(self) -> int:
         raise NotImplementedError()

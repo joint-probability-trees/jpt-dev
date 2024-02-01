@@ -21,6 +21,8 @@ from numpy import iterable
 
 from dnutils import ifnone, ifnot
 
+from jpt.base.constants import SYMBOL
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Type definitions
 
@@ -171,7 +173,7 @@ def format_path(path, **kwargs):
     '''
     if 'fmt' not in kwargs:
         kwargs['fmt'] = 'logic'
-    return ' ^ '.join([var.str(val, **kwargs) for var, val in path.items()])
+    return f' {SYMBOL.LAND} '.join([var.str(val, **kwargs) for var, val in path.items()])
 
 
 # ----------------------------------------------------------------------------------------------------------------------

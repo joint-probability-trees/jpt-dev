@@ -90,9 +90,10 @@ class IntegerLabelToValueMap(IntegerMap):
             result = label - self._max
         else:
             result = label
-        if not (self._min <= label <= self._max):
+        if not (self.min <= result <= self.max):
+            print(self.min, self.max, result, label)
             raise ValueError(
-                f'Label {label} is out of domain {{{self.min}..{self.max}}}'
+                f'Label {label} ({type(label).__name__}) is out of domain {IntSet(self._min, self._max)}'
             )
         return int(result) if not np.isinf(result) else result
 
