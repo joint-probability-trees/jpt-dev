@@ -263,16 +263,16 @@ class MultinomialDistributionTest(TestCase):
         DistABC = self.DistABC
         d1 = DistABC().set(params=[.5, .25, .25])
         d1.plot(
-            view=False,
-            horizontal=True
+            view=True,
+            horizontal=False
         )
 
     def test_plot_coin(self):
         fr = SymbolicVariable('BiasedCoin', Bool)
         d1 = fr.distribution().set(5/12.)
         d1.plot(
-            view=False,
-            horizontal=True
+            view=True,
+            horizontal=False
         )
 
     def test_value_conversion(self):
@@ -758,9 +758,9 @@ class NumericDistributionTest(TestCase):
         # Act
         z = (x + y)
 
-        x.plot(view=False)
-        y.plot(view=False)
-        z.plot(view=False)
+        x.plot(view=True)
+        y.plot(view=True)
+        z.plot(view=True)
         # Assert
         self.assertAlmostEqual(
             x.expectation() + y.expectation(),
@@ -773,6 +773,32 @@ class NumericDistributionTest(TestCase):
                 '[-2.0,2.0000000000000004)': .25,
                 '[2.0000000000000004,∞)': 0
             }),
+            z.pdf
+        )
+
+    def test_sub(self):
+        # Arrange
+        x = uniform_numeric(-2, 2)
+        y = uniform_numeric(-1, 1)
+
+        # Act
+        z = (x - y)
+
+        x.plot(view=True,title='x')
+        y.plot(view=True,title='y')
+        z.plot(view=True,title='z')
+
+        # Assert
+        self.assertAlmostEqual(
+            x.expectation() - y.expectation(),
+            z.expectation(),
+            places=10
+        )
+        print(y.pdf)
+        print()
+        print(z.pdf)
+        self.assertEqual(
+            y.pdf,
             z.pdf
         )
 
