@@ -198,7 +198,10 @@ class Numeric(Distribution):
 
     def is_dirac_impulse(self) -> bool:
         """Checks if this distribution is a dirac impulse."""
-        return len(self._quantile.cdf.intervals) == 2
+        return any(
+            np.isinf(f.value) for f in self._quantile.pdf.functions if isinstance(f, ConstantFunction)
+        )
+        # return len(self._quantile.cdf.intervals) == 2
 
     def mpe(self) -> (RealSet, float):
         state, likelihood = self._mpe()
