@@ -1780,7 +1780,7 @@ class JPT:
         JPT.logger.info('Learning prior distributions...')
 
         if verbose:
-            pbar = tqdm(total=len(self.variables), desc='Learning prior distributions')
+            pbar = tqdm(total=len(self.variables), desc='Learning prior distributions', colour="green")
 
         for i, (vname, var) in enumerate(self.varnames.items()):
             self.priors[var] = var.distribution()._fit(
@@ -1852,7 +1852,7 @@ class JPT:
         ))
 
         if verbose:
-            self._progressbar = tqdm(total=_data.shape[0], desc='Learning')
+            self._progressbar = tqdm(total=_data.shape[0], desc='Learning', colour="green")
 
         while self.c45queue:
             self.c45(*self.c45queue.popleft())
@@ -2051,7 +2051,8 @@ class JPT:
 
         pbar = tqdm(
             total=len(self.leaves),
-            desc='Plotting nodes'
+            desc='Plotting nodes',
+            colour="green"
         )
 
         # create nodes
