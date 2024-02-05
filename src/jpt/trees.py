@@ -1015,8 +1015,13 @@ class JPT:
 
         pdf = 0
         for leaf in self.apply(values_sets):
-            pdf += leaf.prior * (prod(leaf.distributions[var].pdf(value)
-                                      for var, value in values_scalars.items()) if values_scalars else 1)
+            pdf += leaf.prior * (
+                prod(
+                    leaf.distributions[var].pdf(value)
+                    for var, value in values_scalars.items()
+                )
+                if values_scalars else 1
+            )
         return pdf
 
     def infer(
@@ -1527,15 +1532,6 @@ class JPT:
         split_var = None
         impurity = self.impurity
 
-        max_gain = impurity.compute_best_split(start, end)
-
-        self.logger.debug(
-            'Data range: %d-%d,' % (start, end),
-            'split var:', split_var,
-            ', split_pos:', split_pos,
-            ', gain:', max_gain
-        )
-
         prune = (
             self._prune_or_split is not None
             and self._prune_or_split(
@@ -1548,6 +1544,15 @@ class JPT:
                 child_idx,
                 depth
             )
+        )
+
+        max_gain = impurity.compute_best_split(start, end)
+
+        self.logger.debug(
+            'Data range: %d-%d,' % (start, end),
+            'split var:', split_var,
+            ', split_pos:', split_pos,
+            ', gain:', max_gain
         )
 
         if not prune and max_gain >= min_impurity_improvement and depth < self.max_depth:  # Create a decision node ----
@@ -1860,8 +1865,6 @@ class JPT:
         if verbose:
             self._progressbar.close()
             self._progressbar = None
-
-
 
         if close_convex_gaps:
             self.postprocess_leaves()
@@ -2276,7 +2279,9 @@ class JPT:
                 leaf: Leaf = node
 
                 # calculate probability of this leaf being selected given the evidence
-                probability = leaf.probability(evidence_)
+                probability = 1  # leaf.probability(evidence_)
+                for var, val in evidence_.items():
+                    probability *= leaf.distributions[var]._p(val)
 
                 # if the leaf's probability is 0 with the evidence
                 if probability > 0:
@@ -2322,9 +2327,8 @@ class JPT:
             # normalize probability
             leaf.prior /= probability_mass
 
+            # adjust leaf distributions
             for variable, value in evidence_.items():
-                # adjust leaf distributions
-                # if variable.symbolic or variable.integer:
                 leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
 
         # recalculate the priors for the conditional jpt
