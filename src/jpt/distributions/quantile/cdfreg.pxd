@@ -6,6 +6,9 @@ from libcpp.queue cimport priority_queue
 from libcpp.deque cimport  deque
 
 
+cdef DTYPE_t DELTA_MIN_THR
+
+
 cdef class CDFRegressor:
     '''Experimental quantile regression.'''
 
@@ -16,6 +19,7 @@ cdef class CDFRegressor:
     cdef priority_queue[SIZE_t] _points
     cdef deque[SIZE_t] points
     cdef deque[(SIZE_t, SIZE_t, DTYPE_t, SIZE_t)] _queue
+    cdef DTYPE_t delta_min
 
     cpdef void fit(self, DTYPE_t[:, ::1] data)
 

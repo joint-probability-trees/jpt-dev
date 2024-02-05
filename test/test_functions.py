@@ -922,6 +922,22 @@ class PLFTest(TestCase):
                     ContinuousSet(0, 2, INC, EXC): '-.25x + .5',
                     ContinuousSet(2, np.inf, INC, EXC): 0
                 })
+        ), (
+                PiecewiseFunction.from_dict({
+                    R: 0
+                }).overwrite_at(
+                    ContinuousSet(-1, 1, INC, EXC), ConstantFunction(.5)
+                ),
+                PiecewiseFunction.from_dict({
+                    R: 0
+                }).overwrite_at(
+                    ContinuousSet(0.0, 5e-324, INC, EXC), ConstantFunction(np.PINF)
+                ),
+                PiecewiseFunction.from_dict({
+                    R: 0
+                }).overwrite_at(
+                    ContinuousSet(-1, 1, INC, EXC), ConstantFunction(.5)
+                )
         )
     )
     @unpack

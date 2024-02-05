@@ -10,6 +10,7 @@ from cmath import isnan
 from operator import itemgetter, attrgetter
 from typing import Iterable
 
+import pandas as pd
 from dnutils import ifnot, first, ifnone
 
 from ...base.constants import eps
@@ -174,60 +175,81 @@ cdef class QuantileDistribution:
             rows = np.arange(data.shape[0], dtype=np.int64)
 
         # We have to copy the data into C-contiguous array first
-        cdef SIZE_t i, n_samples = rows.shape[0] + (0 if isnan(leftmost) else 1) + (0 if isnan(rightmost) else 1)
+        cdef SIZE_t i, n_samples = rows.shape[0]
         cdef DTYPE_t[:, ::1] data_buffer = np.ndarray(
             shape=(2, n_samples),
             dtype=np.float64,
             order='C'
         )
+
         # Write the data points themselves into the first (upper) row of the array...
-        if not isnan(leftmost):
-            data_buffer[0, 0] = leftmost
-        for i in range(n_samples - (not isnan(rightmost)) - (not isnan(leftmost))):
-            if not isnan(leftmost):
-                assert data[rows[i], col] > leftmost, 'leftmost: %s <= %s' % (data[rows[i], col], leftmost)
-            if not isnan(rightmost):
-                assert data[rows[i], col] < rightmost, 'rightmost: %s >= %s' % (data[rows[i], col], rightmost)
-            data_buffer[0, i + (not isnan(leftmost))] = data[rows[i], col]
-        if not isnan(rightmost):
-            data_buffer[0, n_samples - 1] = rightmost
+        for i in range(n_samples):
+            data_buffer[0, i] = data[rows[i], col]
         np.asarray(data_buffer[0, :]).sort()
 
         # ... and the respective quantiles into the row below
-        cdef SIZE_t count = 0,
-        i = 0
+        cdef SIZE_t distinct = 0,
         for i in range(n_samples):
             if i > 0 and data_buffer[0, i] == data_buffer[0, i - 1]:
-                data_buffer[1, count - 1] += 1
+                data_buffer[1, distinct - 1] += 1
             else:
-                data_buffer[0, count] = data_buffer[0, i]
-                data_buffer[1, count] = <DTYPE_t> i + 1
-                count += 1
+                data_buffer[0, distinct] = data_buffer[0, i]
+                data_buffer[1, distinct] = (
+                    (data_buffer[1, distinct - 1] + 1)
+                    if distinct >= 1
+                    else 1
+                )
+                distinct += 1
 
-        for i in range(count):
+        data_buffer = np.ascontiguousarray(data_buffer[:, :distinct])
+        cdef DTYPE_t z = data_buffer[1, distinct - 1] - 1
+        cdef DTYPE_t delta_min = 1. / z if z else 1
+
+        for i in range(distinct):
             data_buffer[1, i] -= 1
-            data_buffer[1, i] /= <DTYPE_t> (n_samples - 1)
+            data_buffer[1, i] *= delta_min
 
-        data_buffer = np.ascontiguousarray(data_buffer[:, :count])
         cdef DTYPE_t[::1] x, y
-        n_samples = count
+        n_samples = distinct
 
         self._ppf = self._pdf = None
         if n_samples > 1:
-            regressor = CDFRegressor(eps=self.epsilon)
+            regressor = CDFRegressor(eps=self.epsilon, delta_min=delta_min)
             regressor.fit(data_buffer)
             self._cdf = PiecewiseFunction()
             self._cdf.functions.append(ConstantFunction(0))
             self._cdf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
+
+            skipnext = False
+
             for left, right in pairwise(regressor.support_points):
-                self._cdf.functions.append(LinearFunction.from_points(tuple(left), tuple(right)))
+                if skipnext:
+                    skipnext = False
+                    continue
+
+                f = LinearFunction.from_points(
+                    tuple(left),
+                    tuple(right)
+                )
+
+                assert np.isfinite([f.m, f.c]).all(), f'Illegal values: {left}, {right}'
+
+                if isinstance(f, ConstantFunction):
+                    skipnext = True
+
+                self._cdf.functions.append(f)
                 self._cdf.intervals[-1].upper = left[0]
-                self._cdf.intervals.append(ContinuousSet(left[0], right[0], 1, 2))
+                self._cdf.intervals.append(
+                    ContinuousSet(left[0], right[0], 1, 2)
+                )
 
             # overwrite right most interval by an interval with an including right border
-            self._cdf.intervals[-1] = ContinuousSet(self._cdf.intervals[-1].lower,
-                                                    np.nextafter(self._cdf.intervals[-1].upper,
-                                                                 self._cdf.intervals[-1].upper + 1), INC, EXC)
+            self._cdf.intervals[-1] = ContinuousSet(
+                self._cdf.intervals[-1].lower,
+                np.nextafter(self._cdf.intervals[-1].upper, self._cdf.intervals[-1].upper + 1),
+                INC,
+                EXC
+            )
 
             self._cdf.functions.append(ConstantFunction(1))
             self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
@@ -286,18 +308,31 @@ cdef class QuantileDistribution:
             if f == ConstantFunction(0.):
                 cdf.intervals[-1].upper = i.upper
                 continue
+
             y = cdf.functions[-1].eval(i.lower)
             c = (f.eval(i.lower) - f_.eval(i.lower)) * alpha  # If the function is continuous (no jump), c = 0
+
             f_ = f
-            cdf.intervals.append(ContinuousSet(i.lower, i.upper, INC, EXC))
+            cdf.intervals.append(
+                ContinuousSet(i.lower, i.upper, INC, EXC)
+            )
             upper_ = np.nextafter(i.upper, i.upper - 1)
 
             if isinstance(f, ConstantFunction) or i.size() == 1:
                 cdf.functions.append(ConstantFunction(y + c))
-            else:
+
+            elif isinstance(f, LinearFunction):
                 cdf.intervals[-1].lower = cdf.intervals[-2].upper
-                cdf.functions.append(LinearFunction.from_points((i.lower, y + c),
-                                                                (upper_, (f.m / alpha) * (upper_ - i.lower) + y + c)))
+                cdf.functions.append(
+                    LinearFunction.from_points(
+                        (i.lower, y + c),
+                        (upper_, (f.m / alpha) * (upper_ - i.lower) + y + c)
+                    )
+                )
+            else:
+                raise TypeError(
+                    f'Invalid function type: {type(f)}'
+                )
         if cdf.functions[-1] == ConstantFunction(1.):
             cdf.intervals[-1].upper = np.PINF
             cdf.intervals[-1].right = EXC
