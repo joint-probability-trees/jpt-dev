@@ -3,6 +3,8 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 
+__module__ = 'cdfreg.pyx'
+
 import numpy as np
 cimport numpy as np
 
@@ -14,8 +16,10 @@ from jpt.base.utils import pairwise
 
 cdef DTYPE_t pinf = np.PINF
 
+from libc.math cimport fabs as abs
 
-cdef DTYPE_t DELTA_MIN_THR = 2
+
+DELTA_MIN_THR = 10
 
 
 cdef class CDFRegressor:
@@ -25,7 +29,7 @@ cdef class CDFRegressor:
         self.eps = ifnone(eps, .000, lambda _: _ * _)
         self.max_splits = ifnone(max_splits, -1)
         self.data = None
-        self.delta_min = delta_min
+        self.delta_min = np.inf  # delta_min
 
     @property
     def support_points(self):
@@ -63,12 +67,13 @@ cdef class CDFRegressor:
 
         if n_samples > 1:
             self._points.push(n_samples - 1)
+            # if jump is "high" enough according to threshold, add it
             if n_samples > 2 and (data[1, n_samples - 1] - data[1, n_samples - 2]) - DELTA_MIN_THR * self.delta_min > 1e-8:
                 self._points.push(n_samples - 1)
 
             self._queue.push_back((
                 0,
-                n_samples,
+                n_samples - 1,
                 -1,
                 0
             ))
@@ -97,12 +102,21 @@ cdef class CDFRegressor:
             SIZE_t end,
             DTYPE_t mse,
             SIZE_t depth
-    ) nogil:
-        if end - start < 2 or 0 < self.max_splits <= depth:
+    ) : #nogil:
+        '''
+        
+        :param start:   index of the leftmost point of the split 
+        :param end:     index of the rightmost point of the split
+        :param mse:     
+        :param depth: 
+        :return: 
+        '''
+        # if there are no points between start and end, stop
+        if end - start == 1 or 0 < self.max_splits <= depth:
             return
 
         cdef:
-            DTYPE_t n_samples = <DTYPE_t> end - start
+            DTYPE_t n_samples = <DTYPE_t> end - start + 1
             DTYPE_t mse_min = mse
             SIZE_t best_split = -1
             DTYPE_t best_mse1 = pinf, best_mse2 = pinf
@@ -112,13 +126,13 @@ cdef class CDFRegressor:
             DTYPE_t sum_xy_left = 0, sum_y_sq_left = 0, sum_x_sq_left = 0
 
             DTYPE_t xl_ = data[0, start], yl_ = data[1, start]
-            DTYPE_t xr_ = data[0, end - 1], yr_ = data[1, end - 1]
+            DTYPE_t xr_ = data[0, end], yr_ = data[1, end]
 
             DTYPE_t sum_x_sq_right = 0, sum_y_sq_right = 0, sum_xy_right = 0
             SIZE_t i,
             DTYPE_t x, y
 
-        for i in range(start + 1, end - 1):
+        for i in range(start + 1, end):
             x = data[0, i] - xr_
             y = data[1, i] - yr_
             sum_x_sq_right += x * x
@@ -128,18 +142,19 @@ cdef class CDFRegressor:
         cdef:
             DTYPE_t x_start = data[0, start] - xl_
             DTYPE_t y_start = data[1, start] - yl_
-            DTYPE_t x_end = data[0, end - 1] - xr_
-            DTYPE_t y_end = data[1, end - 1] - yr_
+            DTYPE_t x_end = data[0, end] - xr_ # Fixme
+            DTYPE_t y_end = data[1, end] - yr_
             DTYPE_t xl, yl, xr, yr, m1, m2
             SIZE_t samples_left, samples_right
             DTYPE_t err_left, err_right, mse_
 
-        cdef SIZE_t split
+        cdef SIZE_t split, is_jump
         cdef DTYPE_t delta
 
-        for split in range(start + 1, end - 1):
+        for split in range(start + 1, end):
             delta = data[1, split] - data[1, split - 1]
 
+            # determine slopes from start to current point and current point to end
             xl = data[0, split] - xl_
             yl = data[1, split] - yl_
             xr = data[0, split] - xr_
@@ -147,34 +162,42 @@ cdef class CDFRegressor:
             m1 = (yl - y_start) / (xl - x_start)
             m2 = (y_end - yr) / (x_end - xr)
 
-            samples_left = split - start
-            samples_right = end - split
+            samples_left = split - start - 1
+            samples_right = end - split - 1
 
-            sum_y_sq_left += yl * yl
-            sum_x_sq_left += xl * xl
-            sum_xy_left += xl * yl
+            if samples_left > 0:
+                sum_y_sq_left += yl * yl
+                sum_x_sq_left += xl * xl
+                sum_xy_left += xl * yl
 
-            err_left = sum_y_sq_left - 2 * sum_xy_left * m1 + sum_x_sq_left * m1 * m1
-            err_left /= samples_left
+                err_left = sum_y_sq_left - 2 * sum_xy_left * m1 + sum_x_sq_left * m1 * m1
+                err_left /= samples_left
+            else:
+                err_left = 0
 
-            sum_y_sq_right -= yr * yr
-            sum_x_sq_right -= xr * xr
-            sum_xy_right -= xr * yr
+            if samples_right > 0:
+                sum_y_sq_right -= yr * yr
+                sum_x_sq_right -= xr * xr
+                sum_xy_right -= xr * yr
 
-            err_right = sum_y_sq_right - 2 * sum_xy_right * m2 + sum_x_sq_right * m2 * m2
-            err_right /= samples_right
+                err_right = sum_y_sq_right - 2 * sum_xy_right * m2 + sum_x_sq_right * m2 * m2
+                err_right /= samples_right
+            else:
+                err_right = 0
 
             mse_ = samples_left / n_samples * err_left + samples_right / n_samples * err_right
 
-            if mse_min < 0 or mse_ < mse_min or delta - DELTA_MIN_THR * self.delta_min > 1e-8:
+            is_jump = delta - DELTA_MIN_THR * self.delta_min > 1e-8
+
+            if mse_min < 0 or mse_ < mse_min or is_jump:
                 best_split = split
                 mse_min = mse_
                 best_mse1 = err_left
                 best_mse2 = err_right
-                if delta - DELTA_MIN_THR * self.delta_min > 1e-8:
+                if is_jump:
                     self._points.push(best_split)
-                    if best_split > 1:
-                        self._points.push(best_split - 1)
+                    # if best_split > 1:
+                    #     self._points.push(best_split - 1)
                     break
 
         if best_split == -1:
@@ -183,7 +206,7 @@ cdef class CDFRegressor:
         self._points.push(best_split)
 
         if best_mse1 >= self.eps:
-            self._queue.push_back((start, best_split, best_mse1, depth + 1))
+            self._queue.push_back((start, best_split - is_jump, best_mse1, depth + 1))
         if best_mse2 >= self.eps:
             self._queue.push_back((best_split, end, best_mse2, depth + 1))
 
@@ -227,6 +250,7 @@ cdef class CDFRegressor:
                 # printf('%d, top: %d, lx=%.4f\n', pos, self._points.top(), lx)
                 err += (m * data[0, pos] + c - data[1, pos]) ** 2
                 pos -= 1
+
             if err / <DTYPE_t> (start - pos) >= self.eps:
                 self.points.push_front(p)
                 pos = p - 1

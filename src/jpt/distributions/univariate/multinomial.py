@@ -551,6 +551,7 @@ class Multinomial(Distribution):
             max_values: int = None,
             alphabet: bool = False,
             color: str = 'rgb(15,21,110)',
+            xvar: str = None,
             **kwargs
     ) -> Figure:
         '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
@@ -611,8 +612,9 @@ class Multinomial(Distribution):
             ]
         )
 
-        # determine variable name from class (only works for Multinomial, empty on Bool)
-        xname = "_".join(self.__class__.__qualname__.split("_")[:-2]).lower()
+        # determine variable name from class (qualname only works for Multinomial, empty on Bool,
+        # therefore xvar would be required)
+        xname = xvar if xvar is not None else "_".join(self.__class__.__qualname__.split("_")[:-2]).lower()
         mainfig.update_layout(
             xaxis=dict(
                 title=f'P({xname})' if horizontal else xname,

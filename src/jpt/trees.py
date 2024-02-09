@@ -2164,6 +2164,7 @@ class JPT:
         dot.render(view=view, cleanup=False)
         return filepath
 
+
     def pickle(self, fpath: str) -> None:
         """
         Pickles the fitted regression tree to a file at the given location ``fpath``.

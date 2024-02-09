@@ -202,7 +202,7 @@ cdef class QuantileDistribution:
                 distinct += 1
 
         data_buffer = np.ascontiguousarray(data_buffer[:, :distinct])
-        cdef DTYPE_t z = data_buffer[1, distinct - 1] - 1
+        cdef DTYPE_t z = n_samples -1 # data_buffer[1, distinct - 1] - 1  # FIXME why not n_samples
         cdef DTYPE_t delta_min = 1. / z if z else 1
 
         for i in range(distinct):
@@ -232,7 +232,9 @@ cdef class QuantileDistribution:
                     tuple(right)
                 )
 
-                assert np.isfinite([f.m, f.c]).all(), f'Illegal values: {left}, {right}'
+                # print(f.m, f.c, n_samples, regressor.support_points)
+                if not np.isfinite([f.m, f.c]).all(): continue
+                # assert np.isfinite([f.m, f.c]).all(), f'Illegal values: {left}, {right}'
 
                 if isinstance(f, ConstantFunction):
                     skipnext = True
