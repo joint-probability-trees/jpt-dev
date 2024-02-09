@@ -12,7 +12,7 @@ cdef DTYPE_t DELTA_MIN_THR
 cdef class CDFRegressor:
     '''Experimental quantile regression.'''
 
-    cdef DTYPE_t eps
+    cdef readonly DTYPE_t eps
     cdef SIZE_t max_splits
     cdef DTYPE_t[:, ::1] data
     cdef SIZE_t[::1] indices
@@ -27,6 +27,6 @@ cdef class CDFRegressor:
                               SIZE_t start,
                               SIZE_t end,
                               DTYPE_t mse,
-                              SIZE_t depth) nogil
+                              SIZE_t depth)# nogil
 
     cdef void _backward(self) nogil

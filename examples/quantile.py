@@ -1,10 +1,13 @@
-import pyximport
-
-pyximport.install()
 
 # from jpt.base.quantiles import QuantileDistribution
+try:
+    from jpt.distributions.quantile.cdfreg import __module__
+except ModuleNotFoundError:
+    import pyximport
+    pyximport.install()
+finally:
+    from jpt.distributions.quantile.cdfreg import CDFRegressor
 
-from jpt.distributions.quantile.cdfreg import CDFRegressor
 import plotly.graph_objects as go
 
 
@@ -222,10 +225,12 @@ def test_quantiles():
     g3data = gauss3.sample(100)
     data = np.hstack([sorted(g1data), sorted(g2data), sorted(g3data)])
 
-    reg = CDFRegressor(eps=.01)
+    nsamples = data.shape[0]
+
+    reg = CDFRegressor(eps=.0, delta_min=1 / nsamples)
     reg.fit(qdata(data))
 
-    reg2 = CDFRegressor(eps=.05)
+    reg2 = CDFRegressor(eps=.01, delta_min=1 / nsamples)
     reg2.fit(qdata(data))
 
     # print(reg.cdf.pfmt())
@@ -294,7 +299,7 @@ def test_quantiles():
                 size=10,
             ),
             mode="lines+markers",
-            name=r'$\text{PLF of CDF with }\varepsilon = 0.01$'
+            name=r'$\text{PLF of CDF with }\varepsilon = %s$' % reg.eps
         )
     )
 
@@ -313,7 +318,7 @@ def test_quantiles():
                 size=10,
             ),
             mode="lines+markers",
-            name=r'$\text{PLF of CDF with }\varepsilon = 0.05$'
+            name=r'$\text{PLF of CDF with }\varepsilon = %s$' % reg2.eps
         )
     )
 
@@ -376,7 +381,7 @@ def test_quantiles():
 
 def main(*args):
     test_quantiles()
-    test_quantile_merge()
+    # test_quantile_merge()
 
 
 # Press the green button in the gutter to run the script.
