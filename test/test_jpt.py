@@ -19,6 +19,9 @@ from dnutils import project
 from jpt.base.utils import pairwise
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
+
+plt.switch_backend('agg')
+
 from numpy.testing import assert_array_equal
 from pandas import DataFrame
 from scipy.stats import norm
@@ -440,49 +443,49 @@ class TestCasePosteriorNumeric(TestCase):
     def test_convexity(self):
         self.jpt.postprocess_leaves()
 
-    def plot(self):
-        print('Tearing down test method',
-              self._testMethodName,
-              'with calculated posterior',
-              f'Posterior P('
-              f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-
-        # Mesh the input space for evaluations of the real function, the prediction and its MSE
-        X = np.linspace(-2, 2, 100)
-        mean = statistics.mean(self.df['X'])
-        sd = statistics.stdev(self.df['X'])
-        meanr = statistics.mean(self.df[self.df['Color'] == 'R']['X'])
-        sdr = statistics.stdev(self.df[self.df['Color'] == 'R']['X'])
-        meanb = statistics.mean(self.df[self.df['Color'] == 'B']['X'])
-        sdb = statistics.stdev(self.df[self.df['Color'] == 'B']['X'])
-
-        xr = self.df[self.df['Color'] == 'R']['X']
-        xb = self.df[self.df['Color'] == 'B']['X']
-        yr = self.df[self.df['Color'] == 'R']['Y']
-        yb = self.df[self.df['Color'] == 'B']['Y']
-
-        # Plot the data, the pdfs of each dataset and of the datasets combined
-        plt.scatter(xr, yr, color='r', marker='.', label='Training data A')
-        plt.scatter(xb, yb, color='b', marker='.', label='Training data B')
-        plt.plot(sorted(self.df['X']), norm.pdf(sorted(self.df['X']), mean, sd), label='PDF of combined datasets')
-        plt.plot(sorted(xr), norm.pdf(sorted(xr), meanr, sdr), label='PDF of dataset A')
-        plt.plot(sorted(xb), norm.pdf(sorted(xb), meanb, sdb), label='PDF of dataset B')
-
-        # plot posterior
-        for var in self.q:
-            if var not in self.posterior:
-                continue
-            plt.plot(X, self.posterior[var].cdf.multi_eval(X), label=f'Posterior of combined datasets')
-
-        plt.xlabel('$x$')
-        plt.ylabel('$f(x)$')
-        plt.ylim(-2, 5)
-        plt.xlim(-2, 2)
-        plt.legend(loc='upper left')
-        plt.title(f'Posterior P('
-                  f'{",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-        plt.grid()
-        plt.show()
+    # def plot(self):
+    #     print('Tearing down test method',
+    #           self._testMethodName,
+    #           'with calculated posterior',
+    #           f'Posterior P('
+    #           f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+    #
+    #     # Mesh the input space for evaluations of the real function, the prediction and its MSE
+    #     X = np.linspace(-2, 2, 100)
+    #     mean = statistics.mean(self.df['X'])
+    #     sd = statistics.stdev(self.df['X'])
+    #     meanr = statistics.mean(self.df[self.df['Color'] == 'R']['X'])
+    #     sdr = statistics.stdev(self.df[self.df['Color'] == 'R']['X'])
+    #     meanb = statistics.mean(self.df[self.df['Color'] == 'B']['X'])
+    #     sdb = statistics.stdev(self.df[self.df['Color'] == 'B']['X'])
+    #
+    #     xr = self.df[self.df['Color'] == 'R']['X']
+    #     xb = self.df[self.df['Color'] == 'B']['X']
+    #     yr = self.df[self.df['Color'] == 'R']['Y']
+    #     yb = self.df[self.df['Color'] == 'B']['Y']
+    #
+    #     # Plot the data, the pdfs of each dataset and of the datasets combined
+    #     plt.scatter(xr, yr, color='r', marker='.', label='Training data A')
+    #     plt.scatter(xb, yb, color='b', marker='.', label='Training data B')
+    #     plt.plot(sorted(self.df['X']), norm.pdf(sorted(self.df['X']), mean, sd), label='PDF of combined datasets')
+    #     plt.plot(sorted(xr), norm.pdf(sorted(xr), meanr, sdr), label='PDF of dataset A')
+    #     plt.plot(sorted(xb), norm.pdf(sorted(xb), meanb, sdb), label='PDF of dataset B')
+    #
+    #     # plot posterior
+    #     for var in self.q:
+    #         if var not in self.posterior:
+    #             continue
+    #         plt.plot(X, self.posterior[var].cdf.multi_eval(X), label=f'Posterior of combined datasets')
+    #
+    #     plt.xlabel('$x$')
+    #     plt.ylabel('$f(x)$')
+    #     plt.ylim(-2, 5)
+    #     plt.xlim(-2, 2)
+    #     plt.legend(loc='upper left')
+    #     plt.title(f'Posterior P('
+    #               f'{",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+    #     plt.grid()
+    #     plt.show()
 
 
 # noinspection PyPep8Naming
@@ -576,6 +579,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         JPT.logger.setLevel(logging.DEBUG)
         cls.jpt.learn(columns=cls.data.values.T)
 
+    # @unittest.skip
     def test_plot(self):
         # Act
         path = self.jpt.plot(
@@ -632,37 +636,37 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         xr = self.data[(self.data['Food'] == 'Burger') & (self.data['Alternatives'] == False)]['WaitEstimate']
 
         # Plot the data, the pdfs of each dataset and of the datasets combined
-        plt.scatter(self.data['WaitEstimate'], [0] * len(self.data), color='b', marker='*', label='All training data')
-        plt.scatter(xr, [0] * len(xr), color='r', marker='.', label='Filtered training data')
+        # plt.scatter(self.data['WaitEstimate'], [0] * len(self.data), color='b', marker='*', label='All training data')
+        # plt.scatter(xr, [0] * len(xr), color='r', marker='.', label='Filtered training data')
 
     def test_sampling(self):
         samples = self.jpt.sample(1000)
         self.assertTrue(all(self.jpt.likelihood(samples) > 0))
 
-    def plot(self):
-        print('Tearing down test method',
-              self._testMethodName,
-              'with calculated posterior',
-              f'Posterior P('
-              f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
-        # plot posterior
-        X = np.linspace(-5, 65, 100)
-        for var in self.q:
-            if var not in self.posterior.distributions: continue
-            plt.plot(X,
-                     self.posterior.distributions[var].cdf.multi_eval(np.array([var.domain.values[x] for x in X])),
-                     label=f'Posterior of dataset')
-
-        plt.xlabel('$WaitEstimate [min]$')
-        plt.ylabel('$f(x)$')
-        plt.ylim(-2, 2)
-        plt.xlim(-5, 65)
-        plt.legend(loc='upper left')
-        plt.title(f'Posterior P('
-                  f'{",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'
-                  .replace('$', r'\$'))
-        plt.grid()
-        plt.show()
+    # def plot(self):
+    #     print('Tearing down test method',
+    #           self._testMethodName,
+    #           'with calculated posterior',
+    #           f'Posterior P('
+    #           f'{",".join([qv.name for qv in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})')
+    #     # plot posterior
+    #     X = np.linspace(-5, 65, 100)
+    #     for var in self.q:
+    #         if var not in self.posterior.distributions: continue
+    #         plt.plot(X,
+    #                  self.posterior.distributions[var].cdf.multi_eval(np.array([var.domain.values[x] for x in X])),
+    #                  label=f'Posterior of dataset')
+    #
+    #     plt.xlabel('$WaitEstimate [min]$')
+    #     plt.ylabel('$f(x)$')
+    #     plt.ylim(-2, 2)
+    #     plt.xlim(-5, 65)
+    #     plt.legend(loc='upper left')
+    #     plt.title(f'Posterior P('
+    #               f'{",".join([v.name for v in self.q])}|{",".join([f"{k.name}={v}" for k, v in self.e.items()])})'
+    #               .replace('$', r'\$'))
+    #     plt.grid()
+    #     plt.show()
 
 
 class TestCaseExpectation(TestCase):
@@ -691,6 +695,7 @@ class TestCaseExpectation(TestCase):
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
         cls.jpt.learn(columns=cls.data.values.T)
 
+    # @unittest.skip
     def test_plot(self):
         # Act
         path = self.jpt.plot(
