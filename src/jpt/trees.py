@@ -560,7 +560,8 @@ class Leaf(Node):
             self,
             queries: np.ndarray,
             dirac_scaling: float = 2.,
-            min_distances: VariableMap = None
+            min_distances: VariableMap = None,
+            single_likelihoods: bool = False
     ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
@@ -578,6 +579,7 @@ class Leaf(Node):
 
         # create result vector
         result = np.ones(len(queries))
+        result_vars = np.ones(queries.shape)
 
         # for each idx, variable and distribution
         for idx, (variable, distribution) in enumerate(self.distributions.items()):
@@ -607,6 +609,10 @@ class Leaf(Node):
 
             # multiply results
             result *= probs
+            result_vars[:, idx] = probs.T
+
+        if single_likelihoods:
+            return result, result_vars
 
         return result
 
@@ -1913,7 +1919,8 @@ class JPT:
             self,
             queries: Union[np.ndarray, pd.DataFrame],
             dirac_scaling: float = 2.,
-            min_distances: Dict = None
+            min_distances: Dict = None,
+            single_likelihoods: bool = False
     ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
@@ -1937,6 +1944,7 @@ class JPT:
 
         # initialize probabilities
         probabilities = np.zeros(len(queries))
+        probs_per_var = np.zeros(queries.shape)
 
         # for all leaves
         for leaf in self.leaves.values():
@@ -1945,11 +1953,19 @@ class JPT:
             leaf_probabilities = leaf.parallel_likelihood(
                 queries,
                 dirac_scaling,
-                min_distances
+                min_distances,
+                single_likelihoods=single_likelihoods
             )
+
+            if single_likelihoods:
+                leaf_probabilities, leaf_probs_per_var = leaf_probabilities
+                probs_per_var += [l * leaf.prior for l in leaf_probs_per_var]
 
             # multiply likelihood by leaf prior
             probabilities += (leaf.prior * leaf_probabilities)
+
+        if single_likelihoods:
+            return probabilities, probs_per_var
 
         return probabilities
 
