@@ -29,7 +29,7 @@ cdef class CDFRegressor:
         self.eps = ifnone(eps, .000, lambda _: _ * _)
         self.max_splits = ifnone(max_splits, -1)
         self.data = None
-        self.delta_min = np.inf  # delta_min
+        self.delta_min = delta_min
 
     @property
     def support_points(self):
@@ -64,16 +64,18 @@ cdef class CDFRegressor:
 
         self._points.push(0)
         cdef (SIZE_t, SIZE_t, DTYPE_t, SIZE_t) args
+        cdef SIZE_t lastpointjump
 
         if n_samples > 1:
             self._points.push(n_samples - 1)
             # if jump is "high" enough according to threshold, add it
-            if n_samples > 2 and (data[1, n_samples - 1] - data[1, n_samples - 2]) - DELTA_MIN_THR * self.delta_min > 1e-8:
+            lastpointjump = n_samples > 2 and (data[1, n_samples - 1] - data[1, n_samples - 2]) - DELTA_MIN_THR * self.delta_min > 1e-8
+            if lastpointjump:
                 self._points.push(n_samples - 1)
 
             self._queue.push_back((
                 0,
-                n_samples - 1,
+                n_samples - 1 - lastpointjump,
                 -1,
                 0
             ))
