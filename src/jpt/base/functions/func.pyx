@@ -23,12 +23,7 @@ from jpt.base.intervals import R, EMPTY, EXC, INC
 import numpy as np
 cimport numpy as np
 
-# import warnings
-
 from jpt.base.utils import Heap
-
-# warnings.filterwarnings("ignore")
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 
