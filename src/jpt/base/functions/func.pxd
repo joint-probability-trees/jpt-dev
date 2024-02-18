@@ -7,8 +7,8 @@ import numpy as np
 cimport numpy as np
 
 
-from ..cutils.cutils cimport DTYPE_t
-from ..cutils.cutils cimport SIZE_t
+from .cutils cimport DTYPE_t, SIZE_t
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
