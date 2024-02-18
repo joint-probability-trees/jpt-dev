@@ -2094,16 +2094,18 @@ class JPT:
 
         return candidates
 
-    def plot(self,
-             title: str = "unnamed",
-             filename: str or None = None,
-             directory: str = None,
-             plotvars: Iterable[Variable] = None,
-             view: bool = True,
-             max_symb_values: int = 10,
-             nodefill=None,
-             leaffill=None,
-             alphabet=False
+    def plot(
+            self,
+            title: str = "unnamed",
+            filename: str or None = None,
+            directory: str = None,
+            plotvars: Iterable[Variable] = None,
+            view: bool = True,
+            max_symb_values: int = 10,
+            nodefill: str = None,
+            leaffill: str = None,
+            alphabet: bool = False,
+            verbose: bool = False
     ) -> str:
         """
         Generates an SVG representation of the generated regression tree.
@@ -2118,130 +2120,23 @@ class JPT:
         :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
         :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
         probability (descending); default is False
+        :param verbose:
 
         :return:   (str) the path under which the renderd image has been saved.
         """
-        if directory is None:
-            directory = tempfile.mkdtemp(
-                prefix=f'jpt_{title}-{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")}',
-                dir=tempfile.gettempdir()
-            )
-        else:
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-        if plotvars is None:
-            plotvars = []
-
-        plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
-
-        dot = Digraph(
-            format='svg',
-            name=title,
-            directory=directory,
-            filename=f'{filename or title}'
-        )
-
-        # create nodes
-        sep = ",<BR/>"
-        for idx, n in self.leaves.items():
-            imgs = ''
-
-            # plot and save distributions for later use in tree plot
-            rc = math.ceil(math.sqrt(len(plotvars)))
-            img = ''
-            for i, pvar in enumerate(plotvars):
-                img_name = html.escape(f'{pvar.name}-{n.idx}')
-
-                params = {} if pvar.numeric else {
-                    'horizontal': True,
-                    'max_values': max_symb_values,
-                    'alphabet': alphabet
-                }
-
-                n.distributions[pvar].plot(
-                    title=html.escape(pvar.name),
-                    fname=img_name,
-                    directory=directory,
-                    view=False,
-                    **params
-                )
-                img += (f'''{"<TR>" if i % rc == 0 else ""}
-                        <TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
-                        {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
-                ''')
-
-                # close current figure to allow for other plots
-                plt.close()
-
-            if plotvars:
-                imgs = f'''
-                            <TR>
-                                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
-                                    <TABLE>
-                                        {img}
-                                    </TABLE>
-                                </TD>
-                            </TR>
-                            '''
-
-            land = '<BR/>\u2227 '
-            element = ' \u2208 '
-
-            # content for node labels
-            leaf_label = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
-            nodelabel = f'''
-            <TR>
-                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(n.str_node)}</TD>
-            </TR>'''
-
-            nodelabel = f'''{nodelabel}{imgs}
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{n.samples} ({n.prior * 100:.3f}%)</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in n.path.items()])}</TD>
-                            </TR>
-                            '''
-
-            # stitch together
-            lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
-                            {nodelabel}
-                      </TABLE>>'''
-
-            dot.node(str(idx),
-                     label=lbl,
-                     shape='box',
-                     style='rounded,filled',
-                     fillcolor=leaffill or green)
-        for idx, node in self.innernodes.items():
-            dot.node(str(idx),
-                     label=node.str_node,
-                     shape='ellipse',
-                     style='rounded,filled',
-                     fillcolor=nodefill or orange)
-
-        # create edges
-        for idx, n in self.innernodes.items():
-            for i, c in enumerate(n.children):
-                if c is None:
-                    continue
-                dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
-
-        # show graph
-        filepath = '%s.svg' % os.path.join(directory, ifnone(filename, title))
-        JPT.logger.info(f'Saving rendered image to {filepath}.')
-
-        # improve aspect ratio of graph having many leaves or disconnected nodes
-        dot = dot.unflatten(stagger=3)
-        dot.render(view=view, cleanup=False)
-        return filepath
+        from .plotting.jpt import JPTPlotter
+        return JPTPlotter(
+            self,
+            title,
+            filename,
+            directory,
+            plotvars,
+            max_symb_values,
+            nodefill,
+            leaffill,
+            alphabet,
+            verbose
+        ).plot(view)
 
     def pickle(self, fpath: str) -> None:
         """

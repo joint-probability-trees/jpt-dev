@@ -1,6 +1,6 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import numbers
-from typing import Set, Iterable, Type, Any
+from typing import Set, Iterable, Type, Any, Dict, Union
 
 import numpy as np
 
@@ -173,14 +173,20 @@ class Distribution:
     def to_json(self):
         raise NotImplementedError()
 
-    def __getstate__(self):
-        return self.to_json()
+    # def __getstate__(self):
+    #     return self.to_json()
+    #
+    # def __setstate__(self, state):
+    #     self.__dict__ = type(self).from_json(state).__dict__
 
-    def __setstate__(self, state):
-        self.__dict__ = Distribution.from_json(state).__dict__
+    def __reduce__(self):
+        return (
+            Distribution.from_json,
+            (type(self).type_to_json(), self.to_json()),
+        )
 
     @staticmethod
-    def from_json(data) -> Type['Distribution']:
+    def type_from_json(data: Dict[str, Any]) -> Type['Distribution']:
         from .numeric import Numeric, ScaledNumeric
         from .multinomial import Multinomial
         from .integer import Integer
@@ -197,4 +203,12 @@ class Distribution:
             raise TypeError('Unknown distribution type: %s' % data['type'])
         return cls.type_from_json(data)
 
-    type_from_json = from_json
+    @staticmethod
+    def from_json(
+            dtype: Dict[str, Any],
+            dinst: Dict[str, Any] = None
+    ) -> Union['Distribution', Type['Distribution']]:
+        clazz = Distribution.type_from_json(dtype)
+        if dinst is not None:
+            return clazz.from_json(dinst)
+        return clazz
