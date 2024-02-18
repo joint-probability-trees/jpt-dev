@@ -1076,13 +1076,10 @@ class PLFApproximatorTest(TestCase):
         self.assertGreater(len(plf), len(approx))
 
     def test_invalid(self):
-        approximator = PLFApproximator(
-            None
-        )
         self.assertRaises(
-            ValueError,
-            approximator.run,
-            k=2
+            TypeError,
+            PLFApproximator,
+            None
         )
 
     def test_jumps_linear_function(self):

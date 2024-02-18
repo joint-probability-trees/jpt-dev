@@ -3,7 +3,6 @@ import json
 import os
 import pickle
 import random
-import statistics
 import tempfile
 import unittest
 from math import prod
@@ -20,14 +19,16 @@ from jpt.base.utils import pairwise
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 
+from jpt.learning.c45 import C45Algorithm
+from utils import gaussian_data_1d
+
 plt.switch_backend('agg')
 
 from numpy.testing import assert_array_equal
 from pandas import DataFrame
-from scipy.stats import norm
 
 import jpt.variables
-from jpt import SymbolicType
+from jpt.distributions import SymbolicType
 from jpt.base.errors import Unsatisfiability
 from jpt.trees import JPT, Leaf
 from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, SymbolicVariable, LabelAssignment, \
@@ -413,9 +414,10 @@ class JPTTest(TestCase):
         jpt.fit(data, close_convex_gaps=False)
         for _, f in jpt.posterior([x])[x].cdf.iter():
             self.assertIsInstance(f, ConstantFunction)
+        learner = C45Algorithm(jpt)
 
         # Act
-        jpt.postprocess_leaves()
+        learner.postprocess_leaves()
 
         # Assert
         for i, f in jpt.posterior([x])[x].cdf.iter():
@@ -473,7 +475,8 @@ class TestCasePosteriorNumeric(TestCase):
         self.posterior = self.jpt.posterior(self.q, self.e)
 
     def test_convexity(self):
-        self.jpt.postprocess_leaves()
+        learner = C45Algorithm(self.jpt)
+        learner.postprocess_leaves()
 
     # def plot(self):
     #     print('Tearing down test method',
@@ -869,24 +872,24 @@ class TestJPTFeaturesTargets(TestCase):
 
     def test_no_features_no_targets(self):
         model = JPT(variables=self.variables, min_samples_leaf=1)
-        self.assertEqual(list(model.variables), model.features)
-        self.assertEqual(list(model.variables), model.targets)
+        self.assertEqual(tuple(model.variables), model.features)
+        self.assertEqual(tuple(model.variables), model.targets)
 
     def test_no_features_targets(self):
         model = JPT(variables=self.variables, targets=["WillWait"], min_samples_leaf=1)
-        self.assertEqual([model.varnames["WillWait"]], model.targets)
-        self.assertEqual([v for n, v in model.varnames.items() if v not in model.targets], model.features)
+        self.assertEqual((model.varnames["WillWait"],), model.targets)
+        self.assertEqual(tuple(v for n, v in model.varnames.items() if v not in model.targets), model.features)
 
     def test_features_no_targets(self):
         model = JPT(variables=self.variables, features=["Price"], min_samples_leaf=1)
-        self.assertEqual(list(model.variables), model.targets)
-        self.assertEqual([model.varnames["Price"]], model.features)
+        self.assertEqual(tuple(model.variables), model.targets)
+        self.assertEqual((model.varnames["Price"],), model.features)
 
     def test_features_targets(self):
         model = JPT(variables=self.variables, features=["Price", "Food"], targets=["Price", "WillWait"],
                     min_samples_leaf=1)
-        self.assertEqual([model.varnames["Price"], model.varnames["WillWait"]], model.targets)
-        self.assertEqual([model.varnames["Price"], model.varnames["Food"]], model.features)
+        self.assertEqual((model.varnames["Price"], model.varnames["WillWait"]), model.targets)
+        self.assertEqual((model.varnames["Price"], model.varnames["Food"]), model.features)
 
 
 class TestGaussianConditionalJPT(TestCase):
@@ -1416,6 +1419,58 @@ class PruningTest(TestCase):
             1,
             pruned_jpt.root.prior,
             places=8
+        )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class TestPruneOrPslitHook(TestCase):
+
+    @staticmethod
+    def prune_or_split(
+        data,
+        indices,
+        start,
+        end,
+        parent,
+        child_idx,
+        depth
+    ):
+        return depth > 4
+
+    def test_prune_or_split_hook(self):
+        # Arrange
+        df = gaussian_data_1d()
+        variables = infer_from_dataframe(df)
+        jpt = JPT(variables)
+
+        # Act
+        jpt.fit(
+            df,
+            prune_or_split=self.prune_or_split
+        )
+
+        # Assert
+        self.assertEqual(
+            5,
+            len(jpt.innernodes)
+        )
+
+    def test_ignore_prune_or_split_hook(self):
+        # Arrange
+        df = gaussian_data_1d()
+        variables = infer_from_dataframe(df)
+        jpt = JPT(variables)
+
+        # Act
+        jpt.fit(
+            df,
+        )
+
+        # Assert
+        self.assertEqual(
+            99,
+            len(jpt.innernodes)
         )
 
 

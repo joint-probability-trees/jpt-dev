@@ -2,6 +2,7 @@ import heapq
 import logging
 import numbers
 import os
+import sys
 from _csv import register_dialect, QUOTE_NONNUMERIC
 from csv import Dialect
 
@@ -48,32 +49,14 @@ def pairwise(seq: Iterable[Any]) -> Iterable[Tuple[Any, Any]]:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class Conditional:
+def _write_error(exc: BaseException):
+    sys.stderr.write(
+        str(exc.__cause__)
+    )
+    raise exc
 
-    def __init__(self, typ, conditionals):
-        self.type = typ
-        self.conditionals = conditionals
-        self.p = {}
 
-    def __getitem__(self, values):
-        if not iterable(values):
-            values = (values,)
-        return self.p[tuple(values)]
-
-    def __setitem__(self, evidence, dist):
-        if not iterable(evidence):
-            evidence = (evidence,)
-        self.p[evidence] = dist
-
-    def sample(self, evidence, n):
-        if not iterable(evidence):
-            evidence = (evidence,)
-        return self.p[tuple(evidence)].sample(n)
-
-    def sample_one(self, evidence):
-        if not iterable(evidence):
-            evidence = (evidence,)
-        return self.p[tuple(evidence)].sample_one()
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 def mapstr(seq: Iterable, fmt: Callable = None, limit: int = None, ellipse: str = '...'):
