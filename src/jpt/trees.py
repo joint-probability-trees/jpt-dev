@@ -1,4 +1,5 @@
 """© Copyright 2021-23, Mareike Picklum, Daniel Nyga."""
+import bz2
 import datetime
 import html
 import json
@@ -13,7 +14,7 @@ from collections import defaultdict, deque, ChainMap, OrderedDict
 from itertools import zip_longest
 from multiprocessing import Pool, Lock, Event, RLock, Array
 from operator import attrgetter, itemgetter
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Set
+from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Set, IO, Literal
 
 import numpy as np
 import pandas as pd
@@ -1094,10 +1095,18 @@ class JPT:
         return jpt
 
     def __getstate__(self):
-        return self.to_json()
+        json_data = self.to_json()
+        pickled = pickle.dumps(json_data)
+        compressed = bz2.compress(pickled)
+        return compressed
 
     def __setstate__(self, state):
-        self.__dict__ = JPT.from_json(state).__dict__
+        if isinstance(state, dict):
+            json_data = state
+        else:
+            pickled = bz2.decompress(state)
+            json_data = pickle.loads(pickled)
+        self.__dict__ = JPT.from_json(json_data).__dict__
 
     def __eq__(self, o) -> bool:
         eq = (
@@ -2243,25 +2252,25 @@ class JPT:
         with open(os.path.abspath(fpath), 'wb') as f:
             pickle.dump(self, f)
 
-    @staticmethod
-    def load(fpath) -> 'JPT':
-        """
-        Loads the pickled regression tree from the file at the given location ``fpath``.
-
-        :param fpath: the location of the pickled file
-        :type fpath: str
-        """
-        with open(os.path.abspath(fpath), 'rb') as f:
-            try:
-                JPT.logger.info(f'Loading JPT {os.path.abspath(fpath)}')
-                return pickle.load(f)
-            except ModuleNotFoundError:
-                JPT.logger.error(
-                    f'Could not load file {os.path.abspath(fpath)}'
-                )
-                raise Exception(
-                    f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.'
-                )
+    # @staticmethod
+    # def load(fpath) -> 'JPT':
+    #     """
+    #     Loads the pickled regression tree from the file at the given location ``fpath``.
+    #
+    #     :param fpath: the location of the pickled file
+    #     :type fpath: str
+    #     """
+    #     with open(os.path.abspath(fpath), 'rb') as f:
+    #         try:
+    #             JPT.logger.info(f'Loading JPT {os.path.abspath(fpath)}')
+    #             return pickle.load(f)
+    #         except ModuleNotFoundError:
+    #             JPT.logger.error(
+    #                 f'Could not load file {os.path.abspath(fpath)}'
+    #             )
+    #             raise Exception(
+    #                 f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.'
+    #             )
 
     @staticmethod
     def calcnorm(sigma: float, mu: float, intervals):
@@ -2434,30 +2443,54 @@ class JPT:
             self.leaves[idx].prior /= probability_mass
         return self
 
-    def save(self, file) -> None:
+    def save(
+            self,
+            file: Union[str, IO],
+            protocol: Literal['pickle', 'json'] = 'pickle'
+    ) -> None:
         """
         Write this JPT persistently to disk.
+
         :param file: either a string or file-like object.
+        :param protocol:
         """
-        if type(file) is str:
-            with open(file, 'w+') as f:
-                json.dump(self.to_json(), f)
+        writer = {'json': json, 'pickle': pickle}[protocol]
+        if protocol == 'json':
+            data = self.to_json()
         else:
-            json.dump(self.to_json(), file)
+            data = self
+
+        if type(file) is str:
+            with open(file, {'json': 'w', 'pickle': 'wb'}[protocol]) as f:
+                writer.dump(data, f)
+        else:
+            writer.dump(data, file)
 
     @staticmethod
-    def load(file) -> 'JPT':
+    def load(
+            file: Union[str, IO],
+            protocol: Literal['pickle', 'json'] = 'pickle'
+    ) -> 'JPT':
         """
         Load a JPT from disk.
+
         :param file: either a string or file-like object.
+        :param protocol:
+
         :return: the JPT described in ``file``
         """
+        loader = {'json': json, 'pickle': pickle}[protocol]
         if type(file) is str:
-            with open(file, 'r') as f:
-                t = json.load(f)
+            with open(file, {'json': 'r', 'pickle': 'rb'}[protocol]) as f:
+                data = loader.load(f)
         else:
-            t = json.load(file)
-        return JPT.from_json(t)
+            data = loader.load(file)
+
+        if protocol == 'json':
+            model = JPT.from_json(data)
+        else:
+            model = data
+        return model
 
     def depth(self) -> int:
         """
