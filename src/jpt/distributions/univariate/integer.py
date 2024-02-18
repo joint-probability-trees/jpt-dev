@@ -91,7 +91,6 @@ class IntegerLabelToValueMap(IntegerMap):
         else:
             result = label
         if not (self.min <= result <= self.max):
-            print(self.min, self.max, result, label)
             raise ValueError(
                 f'Label {label} ({type(label).__name__}) is out of domain {IntSet(self._min, self._max)}'
             )

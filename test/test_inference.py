@@ -71,7 +71,6 @@ class JPTInferenceNumeric(unittest.TestCase):
             x = NumericVariable('x')
             self.jpt = JPT(variables=[x])
             self.jpt.fit(self.data.reshape(-1, 1), close_convex_gaps=False)
-            self.jpt.plot(plotvars=self.jpt.variables, view=True)
 
     def test_realset_evidence(self):
         r1 = self.jpt.infer(query={'x': UnionSet(['[-1,0.5]', '[1,inf['])})

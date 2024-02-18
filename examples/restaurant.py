@@ -165,15 +165,16 @@ def restaurant_auto_sample(visualize=True):
     jpt = JPT(variables, min_samples_leaf=30, min_impurity_improvement=0)
     jpt.learn(rows=data)
 
-    jpt.plot(plotvars=variables,
-             view=visualize,
-             directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant'))
+    jpt.plot(
+        plotvars=variables,
+        view=visualize,
+        directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Restaurant')
+    )
 
     q = {ba: True, re: False}
     e = {ra: False}
 
     res = jpt.infer(q, e)
-    print(res)
 
 
 def main(*args):

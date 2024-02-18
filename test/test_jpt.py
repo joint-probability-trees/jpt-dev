@@ -20,6 +20,8 @@ from jpt.base.utils import pairwise
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 
+from jpt.learning.c45 import C45Algorithm
+
 plt.switch_backend('agg')
 
 from numpy.testing import assert_array_equal
@@ -409,9 +411,10 @@ class JPTTest(TestCase):
         jpt.fit(data, close_convex_gaps=False)
         for _, f in jpt.posterior([x])[x].cdf.iter():
             self.assertIsInstance(f, ConstantFunction)
+        learner = C45Algorithm(jpt)
 
         # Act
-        jpt.postprocess_leaves()
+        learner.postprocess_leaves()
 
         # Assert
         for i, f in jpt.posterior([x])[x].cdf.iter():
@@ -469,7 +472,8 @@ class TestCasePosteriorNumeric(TestCase):
         self.posterior = self.jpt.posterior(self.q, self.e)
 
     def test_convexity(self):
-        self.jpt.postprocess_leaves()
+        learner = C45Algorithm(self.jpt)
+        learner.postprocess_leaves()
 
     # def plot(self):
     #     print('Tearing down test method',
@@ -865,24 +869,24 @@ class TestJPTFeaturesTargets(TestCase):
 
     def test_no_features_no_targets(self):
         model = JPT(variables=self.variables, min_samples_leaf=1)
-        self.assertEqual(list(model.variables), model.features)
-        self.assertEqual(list(model.variables), model.targets)
+        self.assertEqual(tuple(model.variables), model.features)
+        self.assertEqual(tuple(model.variables), model.targets)
 
     def test_no_features_targets(self):
         model = JPT(variables=self.variables, targets=["WillWait"], min_samples_leaf=1)
-        self.assertEqual([model.varnames["WillWait"]], model.targets)
-        self.assertEqual([v for n, v in model.varnames.items() if v not in model.targets], model.features)
+        self.assertEqual((model.varnames["WillWait"],), model.targets)
+        self.assertEqual(tuple(v for n, v in model.varnames.items() if v not in model.targets), model.features)
 
     def test_features_no_targets(self):
         model = JPT(variables=self.variables, features=["Price"], min_samples_leaf=1)
-        self.assertEqual(list(model.variables), model.targets)
-        self.assertEqual([model.varnames["Price"]], model.features)
+        self.assertEqual(tuple(model.variables), model.targets)
+        self.assertEqual((model.varnames["Price"],), model.features)
 
     def test_features_targets(self):
         model = JPT(variables=self.variables, features=["Price", "Food"], targets=["Price", "WillWait"],
                     min_samples_leaf=1)
-        self.assertEqual([model.varnames["Price"], model.varnames["WillWait"]], model.targets)
-        self.assertEqual([model.varnames["Price"], model.varnames["Food"]], model.features)
+        self.assertEqual((model.varnames["Price"], model.varnames["WillWait"]), model.targets)
+        self.assertEqual((model.varnames["Price"], model.varnames["Food"]), model.features)
 
 
 class TestGaussianConditionalJPT(TestCase):
@@ -1421,7 +1425,6 @@ class TestPruneOrPslitHook(TestCase):
 
     @staticmethod
     def prune_or_split(
-        jpt,
         data,
         indices,
         start,
