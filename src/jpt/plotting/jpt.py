@@ -1,8 +1,8 @@
 import html
 import math
 import os
-import pickle
 import tempfile
+import threading
 from multiprocessing import Pool
 from typing import Iterable, Dict, Tuple
 
@@ -19,13 +19,56 @@ from jpt.trees import Leaf, DecisionNode
 from jpt.variables import Variable
 
 
-LEAF_TEMPLATE = '''
+IMG_TEMPLATE = '''
+{begin_row}
+<TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
+{end_row}
 '''
+
+DISTIRBUTIONS_TEMPLATE = '''
+<TR>
+    <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
+        <TABLE>
+            {code_distributions}
+        </TABLE>
+    </TD>
+</TR>
+'''
+
+TEMPLATE_LEAF_HEADER = '''
+<TR>
+    <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
+        <B>{leaf_label}</B><BR/>
+        {leaf_description}
+    </TD>
+</TR>
+'''
+
+TEMPLATE_LEAF_BODY = '''{code_leaf_header}{code_distributions}
+<TR>
+    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B># Samples:</B></TD>
+    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{leaf_samples} ({leaf_prior:.3f} %)</TD>
+</TR>
+<TR>
+    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
+    <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{code_expectations}</TD>
+</TR>
+<TR>
+    <TD BORDER="1" ROWSPAN="{path_span}" ALIGN="CENTER" VALIGN="MIDDLE"><B>Path:</B></TD>
+    <TD BORDER="1" ROWSPAN="{path_span}" ALIGN="CENTER" VALIGN="MIDDLE">{code_path}</TD>
+</TR>
+'''
+
+TEMPLATE_LEAF = '''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
+    {code_leaf_body}
+</TABLE>>'''
+
+_locals = threading.local()
 
 
 def render_leaf(args) -> Tuple[Tuple, Dict]:
-    jpt, leaf_idx, directory, plotvars, max_symb_values, alphabet, leaffill = args
-    jpt = pickle.loads(jpt)
+    leaf_idx, directory, plotvars, max_symb_values, alphabet, leaffill = args
+    jpt = _locals.jpt
     imgs = ''
 
     leaf = jpt.leaves[leaf_idx]
@@ -36,10 +79,13 @@ def render_leaf(args) -> Tuple[Tuple, Dict]:
             len(plotvars)
         )
     )
-    img = ''
+    code_distributions = ''
+
     for i, pvar in enumerate(plotvars):
+
         if type(pvar) is str:
             pvar = jpt.varnames[pvar]
+
         img_name = html.escape(f'{pvar.name}-{leaf.idx}')
 
         params = {} if pvar.numeric else {
@@ -55,61 +101,67 @@ def render_leaf(args) -> Tuple[Tuple, Dict]:
             view=False,
             **params
         )
-        img += f'''
-            {"<TR>" if i % rc == 0 else ""}
-                <TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
-            {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
-        '''
+
+        code_img = IMG_TEMPLATE.format(
+            begin_row="<TR>" if i % rc == 0 else "",
+            img_name=img_name,
+            end_row="</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""
+        )
+
+        code_distributions += code_img
 
         # close current figure to allow for other plots
         plt.close()
 
     if plotvars:
-        imgs = f'''
-            <TR>
-                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
-                    <TABLE>
-                        {img}
-                    </TABLE>
-                </TD>
-            </TR>
-        '''
+        code_distributions_table = DISTIRBUTIONS_TEMPLATE.format(
+            code_distributions=code_distributions
+        )
+    else:
+        code_distributions_table = ""
 
-    land = '<BR/>\u2227 '
-    element = ' \u2208 '
+    br_land = '<BR/>\u2227 '
 
     # content for node labels
     leaf_label = 'Leaf #%s (p = %.4f)' % (leaf.idx, leaf.prior)
-    nodelabel = f'''
-        <TR>
-            <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(leaf.str_node)}</TD>
-        </TR>
-    '''
 
-    nodelabel = f'''{nodelabel}{imgs}
-        <TR>
-            <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-            <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{leaf.samples} ({leaf.prior * 100:.3f}%)</TD>
-        </TR>
-        <TR>
-            <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-            <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" if jpt.targets is not None and v in jpt.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in leaf.value.items()])}</TD>
-        </TR>
-        <TR>
-            <TD BORDER="1" ROWSPAN="{len(leaf.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-            <TD BORDER="1" ROWSPAN="{len(leaf.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in leaf.path.items()])}</TD>
-        </TR>
-    '''
+    code_leaf_header = TEMPLATE_LEAF_HEADER.format(
+        leaf_label=leaf_label,
+        leaf_description=html.escape(leaf.str_node)
+    )
+
+    expectations = []
+    for v, dist in leaf.value.items():
+        varstr = html.escape(v.name)
+        if jpt.targets is not None and v in jpt.targets:
+            varstr = f'<B>{varstr}</B>'
+        if v.symbolic:
+            valstr = str(dist.mode()[0])
+        else:
+            valstr = f'{dist.expectation():.2f}'
+        expectations.append(f'{varstr}={html.escape(valstr)}')
+
+    code_expectations = '<BR/>'.join(expectations)
+
+    code_leaf_body = TEMPLATE_LEAF_BODY.format(
+        code_leaf_header=code_leaf_header,
+        code_distributions=code_distributions_table,
+        leaf_samples=leaf.samples,
+        leaf_prior=leaf.prior * 100,
+        code_expectations=code_expectations,
+        code_path=br_land.join([html.escape(var.str(val, fmt='set')) for var, val in leaf.path.items()]),
+        path_span=len(leaf.path)
+    )
 
     # stitch together
-    lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
-        {nodelabel}
-    </TABLE>>'''
+    code_leaf = TEMPLATE_LEAF.format(
+        code_leaf_body=code_leaf_body
+    )
 
     return (
         (str(leaf.idx),),
         dict(
-            label=lbl,
+            label=code_leaf,
             shape='box',
             style='rounded,filled',
             fillcolor=leaffill or green
@@ -192,17 +244,16 @@ class JPTPlotter:
             filename=f'{self.filename or self.title}'
         )
 
+        _locals.jpt = self.jpt
+
         # create nodes
         pool = Pool()
         if self.verbose:
             progress = tqdm(total=len(self.jpt.leaves))
 
-        jpt_pickled = pickle.dumps(self.jpt)
-
         for args, kwargs in pool.imap_unordered(
                 render_leaf,
                 iterable=[(
-                    jpt_pickled,
                     i,
                     directory,
                     [v.name if isinstance(v, Variable) else v for v in self.plotvars],
@@ -214,6 +265,7 @@ class JPTPlotter:
             dot.node(*args, **kwargs)
             if self.verbose:
                 progress.update(1)
+                progress.set_description(f'Rendering Leaf # {args[0]}')
 
         if self.verbose:
             progress.close()
