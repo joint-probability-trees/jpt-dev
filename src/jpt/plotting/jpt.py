@@ -1,6 +1,7 @@
 import html
 import math
 import os
+import pickle
 import tempfile
 from multiprocessing import Pool
 from typing import Iterable, Dict, Tuple
@@ -20,6 +21,100 @@ from jpt.variables import Variable
 
 LEAF_TEMPLATE = '''
 '''
+
+
+def render_leaf(args) -> Tuple[Tuple, Dict]:
+    jpt, leaf_idx, directory, plotvars, max_symb_values, alphabet, leaffill = args
+    jpt = pickle.loads(jpt)
+    imgs = ''
+
+    leaf = jpt.leaves[leaf_idx]
+
+    # plot and save distributions for later use in tree plot
+    rc = math.ceil(
+        math.sqrt(
+            len(plotvars)
+        )
+    )
+    img = ''
+    for i, pvar in enumerate(plotvars):
+        if type(pvar) is str:
+            pvar = jpt.varnames[pvar]
+        img_name = html.escape(f'{pvar.name}-{leaf.idx}')
+
+        params = {} if pvar.numeric else {
+            'horizontal': True,
+            'max_values': max_symb_values,
+            'alphabet': alphabet
+        }
+
+        leaf.distributions[pvar].plot(
+            title=html.escape(pvar.name),
+            fname=img_name,
+            directory=directory,
+            view=False,
+            **params
+        )
+        img += f'''
+            {"<TR>" if i % rc == 0 else ""}
+                <TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
+            {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
+        '''
+
+        # close current figure to allow for other plots
+        plt.close()
+
+    if plotvars:
+        imgs = f'''
+            <TR>
+                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
+                    <TABLE>
+                        {img}
+                    </TABLE>
+                </TD>
+            </TR>
+        '''
+
+    land = '<BR/>\u2227 '
+    element = ' \u2208 '
+
+    # content for node labels
+    leaf_label = 'Leaf #%s (p = %.4f)' % (leaf.idx, leaf.prior)
+    nodelabel = f'''
+        <TR>
+            <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(leaf.str_node)}</TD>
+        </TR>
+    '''
+
+    nodelabel = f'''{nodelabel}{imgs}
+        <TR>
+            <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
+            <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{leaf.samples} ({leaf.prior * 100:.3f}%)</TD>
+        </TR>
+        <TR>
+            <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
+            <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" if jpt.targets is not None and v in jpt.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in leaf.value.items()])}</TD>
+        </TR>
+        <TR>
+            <TD BORDER="1" ROWSPAN="{len(leaf.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
+            <TD BORDER="1" ROWSPAN="{len(leaf.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in leaf.path.items()])}</TD>
+        </TR>
+    '''
+
+    # stitch together
+    lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
+        {nodelabel}
+    </TABLE>>'''
+
+    return (
+        (str(leaf.idx),),
+        dict(
+            label=lbl,
+            shape='box',
+            style='rounded,filled',
+            fillcolor=leaffill or green
+        )
+    )
 
 
 class JPTPlotter:
@@ -58,98 +153,6 @@ class JPTPlotter:
         self.leaffill = leaffill
         self.alphabet = alphabet
         self.verbose = verbose
-
-    def render_leaf(self, args) -> Tuple[Tuple, Dict]:
-        leaf_idx, directory = args
-        imgs = ''
-
-        leaf = self.jpt.leaves[leaf_idx]
-
-        # plot and save distributions for later use in tree plot
-        rc = math.ceil(
-            math.sqrt(
-                len(self.plotvars)
-            )
-        )
-        img = ''
-        for i, pvar in enumerate(self.plotvars):
-            if type(pvar) is str:
-                pvar = self.jpt.varnames[pvar]
-            img_name = html.escape(f'{pvar.name}-{leaf.idx}')
-
-            params = {} if pvar.numeric else {
-                'horizontal': True,
-                'max_values': self.max_symb_values,
-                'alphabet': self.alphabet
-            }
-
-            leaf.distributions[pvar].plot(
-                title=html.escape(pvar.name),
-                fname=img_name,
-                directory=directory,
-                view=False,
-                **params
-            )
-            img += f'''
-                {"<TR>" if i % rc == 0 else ""}
-                    <TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
-                {"</TR>" if i % rc == rc - 1 or i == len(self.plotvars) - 1 else ""}
-            '''
-
-            # close current figure to allow for other plots
-            plt.close()
-
-        if self.plotvars:
-            imgs = f'''
-                <TR>
-                    <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
-                        <TABLE>
-                            {img}
-                        </TABLE>
-                    </TD>
-                </TR>
-            '''
-
-        land = '<BR/>\u2227 '
-        element = ' \u2208 '
-
-        # content for node labels
-        leaf_label = 'Leaf #%s (p = %.4f)' % (leaf.idx, leaf.prior)
-        nodelabel = f'''
-            <TR>
-                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(leaf.str_node)}</TD>
-            </TR>
-        '''
-
-        nodelabel = f'''{nodelabel}{imgs}
-            <TR>
-                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{leaf.samples} ({leaf.prior * 100:.3f}%)</TD>
-            </TR>
-            <TR>
-                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" if self.jpt.targets is not None and v in self.jpt.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in leaf.value.items()])}</TD>
-            </TR>
-            <TR>
-                <TD BORDER="1" ROWSPAN="{len(leaf.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                <TD BORDER="1" ROWSPAN="{len(leaf.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in leaf.path.items()])}</TD>
-            </TR>
-        '''
-
-        # stitch together
-        lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
-            {nodelabel}
-        </TABLE>>'''
-
-        return (
-            (str(leaf.idx),),
-            dict(
-                label=lbl,
-                shape='box',
-                style='rounded,filled',
-                fillcolor=self.leaffill or green
-            )
-        )
 
     def render_decision_node(self, node: DecisionNode) -> Tuple[Tuple, Dict]:
         return (
@@ -190,13 +193,23 @@ class JPTPlotter:
         )
 
         # create nodes
-        # sep = ",<BR/>"
         pool = Pool()
         if self.verbose:
             progress = tqdm(total=len(self.jpt.leaves))
+
+        jpt_pickled = pickle.dumps(self.jpt)
+
         for args, kwargs in pool.imap_unordered(
-                self.render_leaf,
-                iterable=[(i, directory) for i in self.jpt.leaves.keys()]
+                render_leaf,
+                iterable=[(
+                    jpt_pickled,
+                    i,
+                    directory,
+                    [v.name if isinstance(v, Variable) else v for v in self.plotvars],
+                    self.max_symb_values,
+                    self.alphabet,
+                    self.leaffill
+                ) for i in self.jpt.leaves.keys()]
         ):
             dot.node(*args, **kwargs)
             if self.verbose:
@@ -204,6 +217,8 @@ class JPTPlotter:
 
         if self.verbose:
             progress.close()
+        pool.close()
+        pool.join()
 
         # for leaf in self.jpt.leaves.values():
         #     args, kwargs = self.render_leaf(leaf, directory)
