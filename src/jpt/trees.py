@@ -7,6 +7,7 @@ import numbers
 import os
 import pickle
 import signal
+import sys
 import tempfile
 import threading
 from collections import defaultdict, deque, ChainMap, OrderedDict
@@ -37,7 +38,7 @@ from .base.utils import (
     setstr_int
 )
 
-from .distributions import Integer
+from .distributions import Integer, Distribution
 from .distributions import Multinomial, Numeric
 from .inference import MPESolver
 from .variables import (
@@ -761,7 +762,22 @@ class JPTPartition:
         self.path = path
 
 
-def c45(partition: JPTPartition) -> Tuple[Node, JPTPartition, Optional[JPTPartition], Optional[JPTPartition]]:
+# ----------------------------------------------------------------------------------------------------------------------
+
+def learn_prior(
+        variable: Variable,
+        column: int
+):
+    d = variable.distribution()._fit(
+        data=_locals.data,
+        col=column
+    )
+    return d.type_to_json(), d.to_json()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def c45(partition: JPTPartition, prune_or_split) -> Tuple[Node, JPTPartition, Optional[JPTPartition], Optional[JPTPartition]]:
     """
     Creates a node in the decision tree according to the C4.5 algorithm
     """
@@ -776,8 +792,7 @@ def c45(partition: JPTPartition) -> Tuple[Node, JPTPartition, Optional[JPTPartit
     n_samples = end - start
     split_pos = -1
     split_var = None
-    prune_or_split = _locals.prune_or_split  # Fixme
-    distributions = _locals.distributions
+    # prune_or_split = _locals.prune_or_split  # Fixme
     parent = partition.parent_idx  # Fixme
     child_idx = partition.child_idx  # Fixme
 
@@ -795,18 +810,13 @@ def c45(partition: JPTPartition) -> Tuple[Node, JPTPartition, Optional[JPTPartit
     impurity.min_samples_leaf = min_samples_leaf
 
     # Fixme
-    # prune = (
-    #     prune_or_split is not None and prune_or_split(
-    #         data,
-    #         indices,
-    #         start,
-    #         end,
-    #         parent,
-    #         child_idx,
-    #         depth,
-    #         distributions
-    #     )
-    # )
+    prune = (
+        prune_or_split is not None and prune_or_split(
+            jpt,
+            partition,
+            indices
+        )
+    )
 
     max_gain = impurity.compute_best_split(start, end)
 
@@ -818,8 +828,8 @@ def c45(partition: JPTPartition) -> Tuple[Node, JPTPartition, Optional[JPTPartit
     )
 
     # Fixme
-    # if not prune and max_gain >= min_impurity_improvement and depth < jpt.max_depth:  # Create a decision node -----------------------
-    if max_gain >= min_impurity_improvement and depth < jpt.max_depth:  # Create a decision node -----------------------
+    if not prune and max_gain >= min_impurity_improvement and depth < jpt.max_depth:  # Create a decision node -----------------------
+    # if max_gain >= min_impurity_improvement and depth < jpt.max_depth:  # Create a decision node -----------------------
         split_pos = impurity.best_split_pos
         split_var_idx = impurity.best_var
         split_var = jpt.variables[split_var_idx]
@@ -1817,6 +1827,10 @@ class JPT:
                 data_[:, i] = [var.domain.values[v] for v in col]
         return data_
 
+    def _error_detected(self, err: BaseException):
+        sys.stderr.write(str(err.__cause__))
+        raise err
+
     def _node_created(
             self,
             args: Tuple
@@ -1851,13 +1865,15 @@ class JPT:
                 self.__queue_length += 2
                 self.c45queue.apply_async(
                     c45,
-                    args=(left,),
-                    callback=self._node_created
+                    args=(left,self._prune_or_split),
+                    callback=self._node_created,
+                    error_callback=self._error_detected
                 )
                 self.c45queue.apply_async(
                     c45,
-                    args=(right,),
-                    callback=self._node_created
+                    args=(right,self._prune_or_split),
+                    callback=self._node_created,
+                    error_callback=self._error_detected
                 )
 
             if self.root is None:
@@ -1876,7 +1892,8 @@ class JPT:
             keep_samples: bool = False,
             close_convex_gaps: bool = True,
             verbose: bool = False,
-            prune_or_split: Optional[Callable] = None
+            prune_or_split: Optional[Callable] = None,
+            multicore: Optional[int] = None
     ) -> 'JPT':
         """
         Fit the jpt to ``data``
@@ -1890,6 +1907,7 @@ class JPT:
                         purposes only. Default is false.
         :param close_convex_gaps:
         :param prune_or_split:
+        :param multicore: The number of cores to use for learning. If ``None``, all cores available will be used.
         :param verbose:
 
         :return: the fitted model
@@ -1921,8 +1939,6 @@ class JPT:
         np.cumsum(indices, out=indices)
         _locals.indices = Array(c.c_long, indices.shape[0])
         _locals.indices[:] = indices
-        manager = Manager()
-        _locals.distributions = manager.dict()
         JPT.logger.info('Data transformation... %d x %d' % _data.shape)
 
         # --------------------------------------------------------------------------------------------------------------
@@ -1931,25 +1947,32 @@ class JPT:
         JPT.logger.info('Learning prior distributions...')
 
         if self.verbose:
-            progress_priors = tqdm(
+            self._progressbar = tqdm(
                 total=len(self.variables),
-                desc='Learning prior distributions',
-                colour="green"
+                desc='Learning prior distributions'
             )
 
-        for i, (vname, var) in enumerate(self.varnames.items()):
-            self.priors[var] = var.distribution()._fit(
-                data=_data,
-                col=i
-            )
+        pool = Pool(
+            multicore,
+            initializer=_initialize_worker_process
+        )
+        for i, (dtype, dist) in enumerate(
+                pool.starmap(
+                    learn_prior,
+                    iterable=[(v, i) for i, v in enumerate(self.variables)]
+                )
+        ):
+            self.priors[self.variables[i]] = Distribution.from_json(dtype).from_json(dist)
             if self.verbose:
-                progress_priors.update(1)
+                self._progressbar.update(1)
+
+        pool.close()
+        pool.join()
 
         if self.verbose:
-            progress_priors.close()
+            self._progressbar.close()
 
-        JPT.logger.info(
-            '%d prior distributions learnt in %s.' % (
+        JPT.logger.info('%d prior distributions learnt in %s.' % (
                 len(self.priors),
                 datetime.datetime.now() - started
             )
@@ -2029,8 +2052,10 @@ class JPT:
                         [],
                         0
                     ),
+                    prune_or_split
                 ),
-                callback=self._node_created
+                callback=self._node_created,
+                error_callback=self._error_detected
             )
 
         while 1:
