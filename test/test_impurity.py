@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from jpt.distributions import SymbolicType, Bool, Numeric
+from jpt.learning.preprocessing import preprocess_data
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable, NumericVariable, infer_from_dataframe
 
@@ -59,7 +60,7 @@ class ImpurityTest(TestCase):
             variables=self.variables,
             targets=[self.wa]
         )
-        data = jpt._preprocess_data(self.data)
+        data = preprocess_data(jpt, self.data)
         impurity = Impurity.from_tree(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
         impurity.setup(data, np.array(list(range(data.shape[0]))))

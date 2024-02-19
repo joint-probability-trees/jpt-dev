@@ -20,6 +20,7 @@ from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 
 from jpt.learning.c45 import C45Algorithm
+from jpt.learning.preprocessing import preprocess_data
 from utils import gaussian_data_1d
 
 plt.switch_backend('agg')
@@ -1039,7 +1040,7 @@ class PreprocessingTest(TestCase):
         )
 
         # Act
-        data_ = jpt._preprocess_data(data)
+        data_ = preprocess_data(jpt, data)
 
         # Assert
         assert_array_equal(
@@ -1051,6 +1052,29 @@ class PreprocessingTest(TestCase):
                  [0., 0., 6.]]
             ),
             data_
+        )
+
+    # noinspection PyMethodMayBeStatic
+    def test_parallel_processing(self):
+        # Arrange
+        df = pd.DataFrame.from_records([
+                [2.5, 1, 'A'],
+                [4.5, 2, 'B']
+             ],
+            columns=['a', 'b', 'c']
+        )
+        jpt = JPT(variables=infer_from_dataframe(df, scale_numeric_types=False))
+        print(df)
+        # Act
+        data = preprocess_data(jpt, df)
+
+        # Assert
+        np.testing.assert_array_equal(
+            np.array([
+                [2.5, 0.,  0.],
+                [4.5, 1.,  1.]
+            ], dtype=np.float64),
+            data
         )
 
 
@@ -1474,3 +1498,4 @@ class TestPruneOrPslitHook(TestCase):
         )
 
 
+# ----------------------------------------------------------------------------------------------------------------------
