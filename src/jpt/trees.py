@@ -203,6 +203,9 @@ class DecisionNode(Node):
         super().__init__(idx, parent=parent)
         self.children: None or List[Node] = None  # [None] * len(self.splits)
 
+    def __hash__(self):
+        return id(self)
+
     def __eq__(self, o) -> bool:
         return (
             type(self) is type(o) and
@@ -389,7 +392,7 @@ class Leaf(Node):
         return f'Leaf<{self.idx}> object at {hex(id(self))}'
 
     def __hash__(self):
-        return hash((type(self), ((k.name, v) for k, v in self.distributions.items()), self.prior))
+        return id(self)
 
     def to_json(self) -> Dict[str, Any]:
         """
