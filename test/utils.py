@@ -1,6 +1,8 @@
 import os
 import pickle
 
+import pandas as pd
+
 from jpt import JPT
 from jpt.distributions import Numeric
 
@@ -29,6 +31,14 @@ def gaussian_jpt() -> JPT:
 def gaussian_numeric() -> Numeric:
     with open(os.path.join('resources', 'gaussian_100.dat'), 'rb') as f:
         return Numeric().fit(pickle.load(f).reshape(-1, 1))
+
+
+def gaussian_data_1d() -> pd.DataFrame:
+    with open(os.path.join('resources', 'gaussian_100.dat'), 'rb') as f:
+        return pd.DataFrame.from_records(
+            pickle.load(f).reshape(-1, 1),
+            columns=['X']
+        )
 
 
 def uniform_numeric(a: float, b: float) -> Numeric:

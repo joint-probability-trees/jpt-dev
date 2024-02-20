@@ -60,9 +60,15 @@ def main():
     # tree = JPT(variables=variables, min_samples_leaf=data.shape[0]*.01)
     # tree = JPT(variables=variables, max_depth=8)
     tree = JPT(variables=variables, min_samples_leaf=int(data.shape[0] * 0.1 / len(variables)))
-    tree.learn(columns=data.values.T)
+    tree.learn(data, verbose=True)
     tree.save(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-airline.json'))
-    tree.plot(title='airline', directory=d, view=True)
+    tree.plot(
+        title='airline',
+        directory=d,
+        view=True,
+        verbose=True,
+        plotvars=tree.variables
+    )
     logger.info(tree)
 
 

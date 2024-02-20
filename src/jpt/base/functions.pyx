@@ -1912,6 +1912,8 @@ class PLFApproximator:
             plf: PiecewiseFunction,
             replace_by: type = LinearFunction
         ):
+        if plf is None:
+            raise TypeError()
         self.plf: PiecewiseFunction = plf
         self.replace_by: type = replace_by
 
