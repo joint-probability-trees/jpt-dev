@@ -869,24 +869,24 @@ class TestJPTFeaturesTargets(TestCase):
 
     def test_no_features_no_targets(self):
         model = JPT(variables=self.variables, min_samples_leaf=1)
-        self.assertEqual(list(model.variables), model.features)
-        self.assertEqual(list(model.variables), model.targets)
+        self.assertEqual(tuple(model.variables), model.features)
+        self.assertEqual(tuple(model.variables), model.targets)
 
     def test_no_features_targets(self):
         model = JPT(variables=self.variables, targets=["WillWait"], min_samples_leaf=1)
-        self.assertEqual([model.varnames["WillWait"]], model.targets)
-        self.assertEqual([v for n, v in model.varnames.items() if v not in model.targets], model.features)
+        self.assertEqual((model.varnames["WillWait"],), model.targets)
+        self.assertEqual(tuple([v for n, v in model.varnames.items() if v not in model.targets]), model.features)
 
     def test_features_no_targets(self):
         model = JPT(variables=self.variables, features=["Price"], min_samples_leaf=1)
-        self.assertEqual(list(model.variables), model.targets)
-        self.assertEqual([model.varnames["Price"]], model.features)
+        self.assertEqual(tuple(model.variables), model.targets)
+        self.assertEqual((model.varnames["Price"],), model.features)
 
     def test_features_targets(self):
         model = JPT(variables=self.variables, features=["Price", "Food"], targets=["Price", "WillWait"],
                     min_samples_leaf=1)
-        self.assertEqual([model.varnames["Price"], model.varnames["WillWait"]], model.targets)
-        self.assertEqual([model.varnames["Price"], model.varnames["Food"]], model.features)
+        self.assertEqual((model.varnames["Price"], model.varnames["WillWait"]), model.targets)
+        self.assertEqual((model.varnames["Price"], model.varnames["Food"]), model.features)
 
 
 class TestGaussianConditionalJPT(TestCase):
@@ -1118,26 +1118,29 @@ class ConditionalJPTTest(TestCase):
         # calculate conditional likelihood using model
         conditional_likelihood = np.average(np.log(conditional_model.likelihood(cropped_df)))
 
-        self.assertTrue(conditional_likelihood > likelihood)
+        self.assertGreater(conditional_likelihood, likelihood)
 
     def test_likelihood_numeric_intervals(self):
 
         # get original likelihood
-        likelihood = np.average(np.log(self.model.likelihood(self.data)))
-
+        likelihood = np.average(self.model.likelihood(self.data))
+        print(self.data)
         # create evidence
-        evidence = self.model.bind({"sepal length (cm)": [5, 6]})
+        evidence = self.model.bind({"sepal length (cm)": ContinuousSet.parse('(5, 6)')})
 
         # create conditional jpt using the method
         conditional_model = self.model.conditional_jpt(evidence)
+        print(self.model)
 
         # crop the dataframe to match evidence
         cropped_df = self.apply_evidence(evidence)
-
+        self.model.plot(view=True, plotvars=self.model.variables)
+        print(cropped_df.to_string())
+        print(conditional_model.likelihood(cropped_df))
         # calculate conditional likelihood using model
-        conditional_likelihood = np.average(np.log(conditional_model.likelihood(cropped_df)))
+        conditional_likelihood = np.average(conditional_model.likelihood(cropped_df))
 
-        self.assertTrue(conditional_likelihood > likelihood)
+        self.assertGreater(conditional_likelihood, likelihood)
 
     def test_posterior(self):
 

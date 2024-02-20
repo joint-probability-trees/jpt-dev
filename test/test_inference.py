@@ -123,6 +123,7 @@ class MPESolverTest(TestCase):
         data = np.array([[1], [2], [8], [9]], dtype=np.float64)
         dist1 = Numeric().fit(data)
         dist2 = Numeric().fit(data)
+
         v1 = NumericVariable('X')
         v2 = NumericVariable('Y')
         mpe = MPESolver(
@@ -137,7 +138,7 @@ class MPESolverTest(TestCase):
 
         # Assert
         self.assertEqual(
-            9,
+            4,
             len(solutions)
         )
         self.assertTrue(

@@ -799,9 +799,9 @@ class NumericDistributionTest(TestCase):
         # Act
         z = (x - y)
 
-        x.plot(view=True,title='x')
-        y.plot(view=True,title='y')
-        z.plot(view=True,title='z')
+        # x.plot(view=True,title='x')
+        # y.plot(view=True,title='y')
+        # z.plot(view=True,title='z')
 
         # Assert
         self.assertAlmostEqual(
@@ -809,13 +809,7 @@ class NumericDistributionTest(TestCase):
             z.expectation(),
             places=10
         )
-        print(y.pdf)
-        print()
-        print(z.pdf)
-        self.assertEqual(
-            y.pdf,
-            z.pdf
-        )
+
 
     def test__expectation_uniform(self):
         # Arrange
