@@ -21,7 +21,7 @@ from jpt.variables import Variable
 
 IMG_TEMPLATE = '''
 {begin_row}
-<TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
+<TD><IMG SCALE="TRUE" SRC="{img_name}"/></TD>
 {end_row}
 '''
 
@@ -86,7 +86,7 @@ def render_leaf(args) -> Tuple[Tuple, Dict]:
         if type(pvar) is str:
             pvar = jpt.varnames[pvar]
 
-        img_name = html.escape(f'{pvar.name}-{leaf.idx}')
+        img_name = html.escape(f'{pvar.name}-{leaf.idx}.png')
 
         params = {} if pvar.numeric else {
             'horizontal': True,
