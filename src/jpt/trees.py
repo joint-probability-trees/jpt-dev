@@ -1840,7 +1840,7 @@ class JPT:
                     rm = True
 
                 # else recurse into its children
-                else:
+                elif len(node.children) == 2:
                     fringe.extendleft(node.children)
                     continue
 
@@ -1853,7 +1853,6 @@ class JPT:
                 probability = 1  # leaf.probability(evidence_)
                 for var, val in evidence_.items():
                     probability *= leaf.distributions[var]._p(val)
-                #probability = leaf.probability(evidence_)
 
                 # if the leaf's probability is 0 with the evidence
                 if probability > 0:
