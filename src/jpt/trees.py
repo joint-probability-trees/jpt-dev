@@ -1454,25 +1454,54 @@ class JPT:
                     repr(var)
                 )
 
-    def apply(self, query: VariableAssignment) -> Iterator[Leaf]:
+    def apply(
+            self,
+            query: Union[VariableAssignment, Dict]
+    ) -> Iterator[Leaf]:
         """
-        Iterator that yields leaves that are consistent with ``query``.
-        :param query: the preprocessed query
+        Iterator that yields leaves tha are consistent with a ``query``.
+
+        A leaf is consistent with a query, if either of the following propositions hold
+        for all constaints expressed by its path to the root node:
+
+            1. the variable is not constrained by the query
+            2. the variable is constrained by the query and the query is not consistent with the path
+
+        :param query: the preprocessed query, either an instance of a subclass of ``VariableAssignment``
+                      or a dict mapping variables to their respective labels.
         :return:
         """
+        if isinstance(query, dict):
+            query = self.bind(query)
+
         if isinstance(query, LabelAssignment):
             query = query.value_assignment()
-        # if the sample doesn't match the features of the tree, there is no valid prediction possible
-        if not set(query.keys()).issubset(set(self._variables)):
-            raise TypeError(f'Invalid query. Query contains variables that are not '
-                            f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}')
 
-        # find the leaf (or the leaves) that have each variable either
-        # - not occur in the path to this node OR
-        # - match the boolean/symbolic value in the path OR
-        # - lie in the interval of the numeric value in the path
-        # -> return leaf that matches query
-        yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
+        # if the sample doesn't match the features of the tree, there is no valid prediction possible
+        if not set(query.keys()).issubset(set(self.variables)):
+            raise TypeError(
+                f'Invalid query. Query contains variables that are not '
+                f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}'
+            )
+
+        if self.root is None:
+            raise RuntimeError(
+                'JPT not fitted yet.'
+            )
+
+        fringe = deque([self.root])
+        while fringe:
+            node = fringe.popleft()
+
+            if isinstance(node, Leaf):
+                yield node
+                continue
+            else:
+                node: DecisionNode
+
+            for child, split in zip(node.children, node.splits):
+                if node.variable not in query or not query[node.variable].isdisjoint(split):
+                    fringe.appendleft(child)
 
     def c45(
             self,
