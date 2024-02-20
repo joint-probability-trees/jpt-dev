@@ -2212,7 +2212,7 @@ class JPT:
                     rm = True
 
                 # else recurse into its children
-                else:
+                elif len(node.children) == 2:
                     fringe.extendleft(node.children)
                     continue
 
