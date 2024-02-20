@@ -1,4 +1,5 @@
-"""© Copyright 2021, Mareike Picklum, Daniel Nyga."""
+"""© Copyright 2021-23, Mareike Picklum, Daniel Nyga."""
+import bz2
 import datetime
 import html
 import json
@@ -14,14 +15,13 @@ from collections import defaultdict, deque, ChainMap, OrderedDict
 from itertools import zip_longest
 from multiprocessing import Pool, Lock, Event, RLock, Array, cpu_count, Manager
 from operator import attrgetter, itemgetter
+from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Set, IO, Literal, Callable
 from types import FunctionType
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Set, Callable
 
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from dnutils import first, ifnone, mapstr, fst, ifnot, getlogger, logs
-from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs
+from dnutils import first, ifnone, mapstr, err, fst, ifnot, getlogger, logs
 from graphviz import Digraph
 from matplotlib import style, pyplot as plt
 
@@ -740,6 +740,7 @@ class JPTPartition:
             data: Optional[np.ndarray],
             start: int,
             end: int,
+            node_idx: int,
             parent_idx: Optional[int],
             child_idx: Optional[int],
             path: List[Set or ContinuousSet],
@@ -760,6 +761,7 @@ class JPTPartition:
         self.child_idx = child_idx
         self.depth = depth
         self.path = path
+        self.node_idx = node_idx
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -792,9 +794,6 @@ def c45(partition: JPTPartition, prune_or_split) -> Tuple[Node, JPTPartition, Op
     n_samples = end - start
     split_pos = -1
     split_var = None
-    # prune_or_split = _locals.prune_or_split  # Fixme
-    parent = partition.parent_idx  # Fixme
-    child_idx = partition.child_idx  # Fixme
 
     impurity = Impurity.from_tree(jpt)
     impurity.setup(data, indices)
@@ -829,13 +828,12 @@ def c45(partition: JPTPartition, prune_or_split) -> Tuple[Node, JPTPartition, Op
 
     # Fixme
     if not prune and max_gain >= min_impurity_improvement and depth < jpt.max_depth:  # Create a decision node -----------------------
-    # if max_gain >= min_impurity_improvement and depth < jpt.max_depth:  # Create a decision node -----------------------
         split_pos = impurity.best_split_pos
         split_var_idx = impurity.best_var
         split_var = jpt.variables[split_var_idx]
 
         node = DecisionNode(
-            idx=None,
+            idx=partition.node_idx,
             variable=split_var,
             parent=None
         )
@@ -878,6 +876,7 @@ def c45(partition: JPTPartition, prune_or_split) -> Tuple[Node, JPTPartition, Op
             partition.data,
             start,
             start + split_pos + 1,
+            None,
             node.idx,
             0,
             path + [(split_var, splits[0])],
@@ -887,6 +886,7 @@ def c45(partition: JPTPartition, prune_or_split) -> Tuple[Node, JPTPartition, Op
             partition.data,
             start + split_pos + 1,
             end,
+            None,
             node.idx,
             1,
             path + [(split_var, splits[1])],
@@ -894,7 +894,7 @@ def c45(partition: JPTPartition, prune_or_split) -> Tuple[Node, JPTPartition, Op
         )
 
     else:  # Create a leaf node ----------------------------------------------------------------------------------------
-        leaf = node = Leaf(idx=None, parent=None)
+        leaf = node = Leaf(idx=partition.node_idx, parent=None)
 
         for i, v in enumerate(jpt.variables):
             leaf.distributions[v] = v.distribution()._fit(
@@ -1158,10 +1158,18 @@ class JPT:
         return jpt
 
     def __getstate__(self):
-        return self.to_json()
+        json_data = self.to_json()
+        pickled = pickle.dumps(json_data)
+        compressed = bz2.compress(pickled)
+        return compressed
 
     def __setstate__(self, state):
-        self.__dict__ = JPT.from_json(state).__dict__
+        if isinstance(state, dict):
+            json_data = state
+        else:
+            pickled = bz2.decompress(state)
+            json_data = pickle.loads(pickled)
+        self.__dict__ = JPT.from_json(json_data).__dict__
 
     def __eq__(self, o) -> bool:
         eq = (
@@ -1848,7 +1856,7 @@ class JPT:
             json_node = node  # .to_json()
             json_node['parent'] = partition.parent_idx
             json_node['child_idx'] = partition.child_idx
-            json_node['idx'] = len(self.allnodes)
+            json_node['idx'] = partition.node_idx  # len(self.allnodes)
 
             if 'children' in json_node:
                 node = DecisionNode.from_json(self, json_node)
@@ -1857,21 +1865,24 @@ class JPT:
                 if self.verbose:
                     self._progress_learning.update(partition.end - partition.start)
             # print(node)
-
+            self._node_counter += 1
             if isinstance(node, DecisionNode):
                 left.parent_idx = node.idx
                 right.parent_idx = node.idx
+                left.node_idx = self._node_counter
+                self._node_counter += 1
+                right.node_idx = self._node_counter
 
                 self.__queue_length += 2
                 self.c45queue.apply_async(
                     c45,
-                    args=(left,self._prune_or_split),
+                    args=(left, self._prune_or_split),
                     callback=self._node_created,
                     error_callback=self._error_detected
                 )
                 self.c45queue.apply_async(
                     c45,
-                    args=(right,self._prune_or_split),
+                    args=(right, self._prune_or_split),
                     callback=self._node_created,
                     error_callback=self._error_detected
                 )
@@ -1991,10 +2002,10 @@ class JPT:
 
         self._keep_samples = keep_samples
 
-        # Initialize the impurity calculation
-        self.impurity = Impurity.from_tree(self)
-        self.impurity.setup(_data, self.indices)
-        self.impurity.min_samples_leaf = min_samples_leaf
+        # # Initialize the impurity calculation
+        # self.impurity = Impurity.from_tree(self)
+        # self.impurity.setup(_data, self.indices)
+        # self.impurity.min_samples_leaf = min_samples_leaf
 
         started = datetime.datetime.now()
         JPT.logger.info(
@@ -2047,6 +2058,7 @@ class JPT:
                         None,
                         0,
                         _data.shape[0],
+                        self._node_counter,
                         None,
                         None,
                         [],
@@ -2226,16 +2238,18 @@ class JPT:
 
         return candidates
 
-    def plot(self,
-             title: str = "unnamed",
-             filename: str or None = None,
-             directory: str = None,
-             plotvars: Iterable[Variable] = None,
-             view: bool = True,
-             max_symb_values: int = 10,
-             nodefill=None,
-             leaffill=None,
-             alphabet=False
+    def plot(
+            self,
+            title: str = "unnamed",
+            filename: str or None = None,
+            directory: str = None,
+            plotvars: Iterable[Variable] = None,
+            view: bool = True,
+            max_symb_values: int = 10,
+            nodefill: str = None,
+            leaffill: str = None,
+            alphabet: bool = False,
+            verbose: bool = False
     ) -> str:
         """
         Generates an SVG representation of the generated regression tree.
@@ -2250,141 +2264,23 @@ class JPT:
         :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
         :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
         probability (descending); default is False
+        :param verbose:
 
         :return:   (str) the path under which the renderd image has been saved.
         """
-        if directory is None:
-            directory = tempfile.mkdtemp(
-                prefix=f'jpt_{title}-{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")}',
-                dir=tempfile.gettempdir()
-            )
-        else:
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-        if plotvars is None:
-            plotvars = []
-
-        plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
-
-        dot = Digraph(
-            format='svg',
-            name=title,
-            directory=directory,
-            filename=f'{filename or title}'
-        )
-
-        pbar = tqdm(
-            total=len(self.leaves),
-            desc='Plotting nodes',
-            colour="green"
-        )
-
-        # create nodes
-        sep = ",<BR/>"
-        for idx, n in self.leaves.items():
-            imgs = ''
-
-            # plot and save distributions for later use in tree plot
-            rc = math.ceil(math.sqrt(len(plotvars)))
-            img = ''
-            for i, pvar in enumerate(plotvars):
-                img_name = html.escape(f'{pvar.name}-{n.idx}.png')
-
-                params = {} if pvar.numeric else {
-                    'horizontal': True,
-                    'max_values': max_symb_values,
-                    'alphabet': alphabet
-                }
-
-                n.distributions[pvar].plot(
-                    title=html.escape(pvar.name),
-                    fname=img_name,
-                    directory=directory,
-                    view=False,
-                    **params
-                )
-                img += (f'''{"<TR>" if i % rc == 0 else ""}
-                        <TD><IMG SCALE="TRUE" SRC="{img_name}"/></TD>
-                        {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
-                ''')
-
-                # close current figure to allow for other plots
-                plt.close()
-
-            if plotvars:
-                imgs = f'''
-                            <TR>
-                                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
-                                    <TABLE>
-                                        {img}
-                                    </TABLE>
-                                </TD>
-                            </TR>
-                            '''
-
-            land = '<BR/>\u2227 '
-            element = ' \u2208 '
-
-            # content for node labels
-            leaf_label = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
-            nodelabel = f'''
-            <TR>
-                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(n.str_node)}</TD>
-            </TR>'''
-
-            nodelabel = f'''{nodelabel}{imgs}
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{n.samples} ({n.prior * 100:.3f}%)</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in n.path.items()])}</TD>
-                            </TR>
-                            '''
-
-            # stitch together
-            lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
-                            {nodelabel}
-                      </TABLE>>'''
-
-            dot.node(str(idx),
-                     label=lbl,
-                     shape='box',
-                     style='rounded,filled',
-                     fillcolor=leaffill or green)
-
-            pbar.update(1)
-
-        pbar.close()
-
-        for idx, node in self.innernodes.items():
-            dot.node(str(idx),
-                     label=node.str_node,
-                     shape='ellipse',
-                     style='rounded,filled',
-                     fillcolor=nodefill or orange)
-
-        # create edges
-        for idx, n in self.innernodes.items():
-            for i, c in enumerate(n.children):
-                if c is None:
-                    continue
-                dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
-
-        # show graph
-        filepath = '%s.svg' % os.path.join(directory, ifnone(filename, title))
-        JPT.logger.info(f'Saving rendered image to {filepath}.')
-
-        # improve aspect ratio of graph having many leaves or disconnected nodes
-        dot = dot.unflatten(stagger=3)
-        dot.render(view=view, cleanup=False)
-        return filepath
+        from .plotting.jpt import JPTPlotter
+        return JPTPlotter(
+            self,
+            title,
+            filename,
+            directory,
+            plotvars,
+            max_symb_values,
+            nodefill,
+            leaffill,
+            alphabet,
+            verbose
+        ).plot(view)
 
 
     def pickle(self, fpath: str) -> None:
@@ -2396,25 +2292,25 @@ class JPT:
         with open(os.path.abspath(fpath), 'wb') as f:
             pickle.dump(self, f)
 
-    @staticmethod
-    def load(fpath) -> 'JPT':
-        """
-        Loads the pickled regression tree from the file at the given location ``fpath``.
-
-        :param fpath: the location of the pickled file
-        :type fpath: str
-        """
-        with open(os.path.abspath(fpath), 'rb') as f:
-            try:
-                JPT.logger.info(f'Loading JPT {os.path.abspath(fpath)}')
-                return pickle.load(f)
-            except ModuleNotFoundError:
-                JPT.logger.error(
-                    f'Could not load file {os.path.abspath(fpath)}'
-                )
-                raise Exception(
-                    f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.'
-                )
+    # @staticmethod
+    # def load(fpath) -> 'JPT':
+    #     """
+    #     Loads the pickled regression tree from the file at the given location ``fpath``.
+    #
+    #     :param fpath: the location of the pickled file
+    #     :type fpath: str
+    #     """
+    #     with open(os.path.abspath(fpath), 'rb') as f:
+    #         try:
+    #             JPT.logger.info(f'Loading JPT {os.path.abspath(fpath)}')
+    #             return pickle.load(f)
+    #         except ModuleNotFoundError:
+    #             JPT.logger.error(
+    #                 f'Could not load file {os.path.abspath(fpath)}'
+    #             )
+    #             raise Exception(
+    #                 f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.'
+    #             )
 
     @staticmethod
     def calcnorm(sigma: float, mu: float, intervals):
@@ -2588,30 +2484,54 @@ class JPT:
             self.leaves[idx].prior /= probability_mass
         return self
 
-    def save(self, file) -> None:
+    def save(
+            self,
+            file: Union[str, IO],
+            protocol: Literal['pickle', 'json'] = 'pickle'
+    ) -> None:
         """
         Write this JPT persistently to disk.
+
         :param file: either a string or file-like object.
+        :param protocol:
         """
-        if type(file) is str:
-            with open(file, 'w+') as f:
-                json.dump(self.to_json(), f)
+        writer = {'json': json, 'pickle': pickle}[protocol]
+        if protocol == 'json':
+            data = self.to_json()
         else:
-            json.dump(self.to_json(), file)
+            data = self
+
+        if type(file) is str:
+            with open(file, {'json': 'w', 'pickle': 'wb'}[protocol]) as f:
+                writer.dump(data, f)
+        else:
+            writer.dump(data, file)
 
     @staticmethod
-    def load(file) -> 'JPT':
+    def load(
+            file: Union[str, IO],
+            protocol: Literal['pickle', 'json'] = 'pickle'
+    ) -> 'JPT':
         """
         Load a JPT from disk.
+
         :param file: either a string or file-like object.
+        :param protocol:
+
         :return: the JPT described in ``file``
         """
+        loader = {'json': json, 'pickle': pickle}[protocol]
         if type(file) is str:
-            with open(file, 'r') as f:
-                t = json.load(f)
+            with open(file, {'json': 'r', 'pickle': 'rb'}[protocol]) as f:
+                data = loader.load(f)
         else:
-            t = json.load(file)
-        return JPT.from_json(t)
+            data = loader.load(file)
+
+        if protocol == 'json':
+            model = JPT.from_json(data)
+        else:
+            model = data
+        return model
 
     def depth(self) -> int:
         """

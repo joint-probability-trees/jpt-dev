@@ -172,11 +172,43 @@ class JPTTest(TestCase):
 
     def test_pickle(self):
         '''(de)serialization of JPTs using pickle'''
+        # Arrange
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
-        jpt_ = pickle.loads(pickle.dumps(jpt))
-        self.assertEqual(jpt, jpt_)
+
+        # Act
+        jpt_ = pickle.loads(
+            pickle.dumps(jpt)
+        )
+
+        # Assert
+        self.assertEqual(
+            jpt,
+            jpt_
+        )
+
+    def test_save_and_load(self):
+        # Arrange
+        jpt = JPT([NumericVariable('X')])
+        fname_json = tempfile.mktemp()
+        fname_pickle = tempfile.mktemp()
+
+        # Act
+        jpt.save(fname_json, protocol='json')
+        jpt_json = JPT.load(fname_json, protocol='json')
+        jpt.save(fname_pickle, protocol='pickle')
+        jpt_pickle = JPT.load(fname_pickle, protocol='pickle')
+
+        # Assert
+        self.assertEqual(
+            jpt,
+            jpt_json
+        )
+        self.assertEqual(
+            jpt,
+            jpt_pickle
+        )
 
     def learn(self):
         trees = []
@@ -284,7 +316,7 @@ class JPTTest(TestCase):
         self.assertEqual(len(mpe), 1)
 
     def test_conditional_jpt(self):
-        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'))
+        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'), protocol='json')
         evidence = jpt.bind(Arson=[20, 30])
         cjpt = jpt.conditional_jpt(evidence)
         marginals = cjpt.posterior(evidence=VariableMap())
@@ -292,7 +324,7 @@ class JPTTest(TestCase):
 
     def test_reverse_inference(self):
         pass
-        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'))
+        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'), protocol='json')
         q = {
             "District": ["Spandau"],
             "Graffiti": ContinuousSet(20, 40),
