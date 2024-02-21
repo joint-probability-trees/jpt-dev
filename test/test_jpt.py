@@ -1212,16 +1212,22 @@ class ConditionalJPTTest(TestCase):
         jpt.learn(df)
 
         # Act
-        leaves = list(
+        leaves = set(
             jpt.apply({'s': 'A'})
+        )
+        all_leaves = set(
+            jpt.apply({})
         )
 
         # Assert
         self.assertEqual(
-            [jpt.leaves[1]],
+            {jpt.leaves[1]},
             leaves
         )
-
+        self.assertEqual(
+            set(jpt.leaves.values()),
+            all_leaves
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
