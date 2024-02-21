@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, 
 
 import numpy as np
 import pandas as pd
+from deprecated.classic import deprecated
 from dnutils import first, ifnone, fst, ifnot, getlogger, logs
 from matplotlib import style
 
@@ -560,7 +561,7 @@ class Leaf(Node):
         else:
             raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
 
-    def parallel_likelihood(
+    def likelihood(
             self,
             queries: np.ndarray,
             dirac_scaling: float = 2.,
@@ -661,7 +662,7 @@ class Leaf(Node):
             explanation, likelihood = distribution.mpe()
 
             # apply upper cap for infinities
-            likelihood = minimal_distances[variable] if np.isinf(likelihood) else likelihood
+            likelihood = minimal_distances.get(variable, 1) if np.isinf(likelihood) else likelihood
 
             # update likelihood
             result_likelihood *= likelihood
@@ -789,6 +790,7 @@ class JPT:
         self.innernodes.clear()
         self.leaves.clear()
         self.priors = VariableMap(variables=self.variables) # .clear()
+        self.minimal_distances: VariableMap = VariableMap(variables=self.variables)
         self.root = None
 
     @property
@@ -1556,7 +1558,7 @@ class JPT:
             rows: Optional[Union[np.ndarray, List]] = None,
             columns: Optional[Union[np.ndarray, List]] = None,
             keep_samples: bool = False,
-            close_convex_gaps: bool = True,
+            close_convex_gaps: bool = False,
             verbose: bool = False,
             prune_or_split: Optional[Callable] = None,
             multicore: Optional[int] = None
@@ -1624,15 +1626,63 @@ class JPT:
 
     def likelihood(
             self,
-            queries: Union[np.ndarray, pd.DataFrame],
+            data: Union[np.ndarray, pd.DataFrame],
+            dirac_scaling: float = 2.,
+            min_distances: Dict = None,
+            preprocess: bool = True,
+            multicore: Optional[int] = None,
+            verbose: bool = False
+    ) -> np.ndarray:
+        """
+        Get the probabilities of a list of worlds. The worlds must be fully assigned with
+        scalar values (no intervals or sets).
+
+        :param data:            An array containing the worlds. The shape is (x, len(variables)).
+        :param dirac_scaling:   the minimal distance between the samples within a dimension are multiplied by this factor
+                                if a durac impulse is used to model the variable.
+        :param min_distances:   A dict mapping the variables to the minimal distances between the observations.
+                                This can be useful to use the same likelihood parameters for different test
+                                sets for example in cross validation processes.
+        :param verbose:         print status information to the console
+        :param multicore:       how many cores should be used (defaults to all)
+        :param preprocess:      whether to apply the preprocessing to the data passed.
+
+        :returns: An np.array with shape (x, ) containing the probabilities.
+        """
+        if preprocess:
+            from .learning.preprocessing import preprocess_data
+            data_ = preprocess_data(
+                self,
+                data,
+                verbose=verbose
+            )
+        elif isinstance(data, pd.DataFrame):
+            data_ = data.values.astype(np.float64)
+        else:
+            data_ = data
+
+        from .inference.likelihood import parallel_likelihood
+        return parallel_likelihood(
+            self,
+            data_,
+            dirac_scaling=dirac_scaling,
+            min_distances=min_distances,
+            multicore=multicore,
+            verbose=verbose
+        )
+
+    @deprecated
+    def parallel_likelihood(
+            self,
+            data: Union[np.ndarray, pd.DataFrame],
             dirac_scaling: float = 2.,
             min_distances: Dict = None
     ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
-        single numbers (no intervals).
+        scalar values (no intervals or sets).
 
-        :param queries: An array containing the worlds. The shape is (x, len(variables)).
+        :param data: An array containing the worlds. The shape is (x, len(variables)).
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
@@ -1647,17 +1697,17 @@ class JPT:
             min_distances = self.minimal_distances
 
         # preprocess the queries
-        queries = preprocess_data(self, queries)
+        data = preprocess_data(self, data)
 
         # initialize probabilities
-        probabilities = np.zeros(len(queries))
+        probabilities = np.zeros(len(data))
 
         # for all leaves
         for leaf in self.leaves.values():
 
             # calculate likelihood
-            leaf_probabilities = leaf.parallel_likelihood(
-                queries,
+            leaf_probabilities = leaf.likelihood(
+                data,
                 dirac_scaling,
                 min_distances
             )
