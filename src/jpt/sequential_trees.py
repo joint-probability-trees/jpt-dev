@@ -96,7 +96,7 @@ class SequentialJPT:
             },
             variables=self.template_tree.variables
         )
-        out(self.template_tree.priors)
+
         transition_data = None
 
         for sequence in sequences:
