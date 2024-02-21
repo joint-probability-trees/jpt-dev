@@ -436,11 +436,6 @@ class C45Algorithm:
 
         self.keep_samples = keep_samples
 
-        # Initialize the impurity calculation
-        # self.impurity = Impurity.from_tree(self.jpt)
-        # self.impurity.setup(_data, self.indices)
-        # self.impurity.min_samples_leaf = min_samples_leaf
-
         started = datetime.datetime.now()
         JPT.logger.info(
             'Started learning of %s x %s at %s '
