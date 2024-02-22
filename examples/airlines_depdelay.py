@@ -66,7 +66,7 @@ def main():
     tree.plot(
         title='airline',
         directory=d,
-        view=True,
+        view=False,
         verbose=True,
         plotvars=tree.variables
     )
@@ -75,12 +75,12 @@ def main():
     logger.info('Computing likelihood...')
     test_data = all_data.sample(frac=.1)
     print(
-        tree.parallel_likelihood(
+        tree.likelihood(
             test_data,
-            verbose=True
+            verbose=True,
+            single_likelihoods=False
         )
     )
-
 
 
 if __name__ == '__main__':

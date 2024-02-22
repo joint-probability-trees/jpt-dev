@@ -1221,7 +1221,7 @@ class ConditionalJPTTest(TestCase):
 
         # Assert
         self.assertEqual(
-            {jpt.leaves[1]},
+            {leaf for leaf in jpt.leaves.values() if leaf.path.get('s') == {0}},
             leaves
         )
         self.assertEqual(

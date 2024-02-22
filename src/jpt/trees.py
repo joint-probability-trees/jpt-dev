@@ -295,7 +295,7 @@ class DecisionNode(Node):
                 fmt='logic'
             )
         elif self.variable.symbolic:
-            negate = len(self.splits[1]) > 1
+            negate = len(self.splits) > 1 and len(self.splits[1]) > 1
             if negate:
                 label = self.variable.domain.labels[fst(self.splits[0])]
                 return '%s%s' % ('\u00AC' if idx_split > 0 else '', label)
@@ -565,10 +565,12 @@ class Leaf(Node):
             self,
             queries: np.ndarray,
             dirac_scaling: float = 2.,
-            min_distances: VariableMap = None
+            min_distances: VariableMap = None,
+            single_likelihoods: bool = False
     ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
+        :param single_likelihoods:
         :param queries: An array-like object that represents variable assignments in value space.
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
@@ -580,7 +582,10 @@ class Leaf(Node):
         """
 
         # create result vector
-        result = np.ones(len(queries))
+        if single_likelihoods:
+            result = np.ones(queries.shape)
+        else:
+            result = np.ones(len(queries))
 
         # for each idx, variable and distribution
         for idx, (variable, distribution) in enumerate(self.distributions.items()):
@@ -609,7 +614,10 @@ class Leaf(Node):
                 raise ValueError("Variable of type %s is not known!" % type(variable))
 
             # multiply results
-            result *= probs
+            if single_likelihoods:
+                result[:, idx] = probs.T
+            else:
+                result *= probs
 
         return result
 
@@ -1631,7 +1639,8 @@ class JPT:
             min_distances: Dict = None,
             preprocess: bool = True,
             multicore: Optional[int] = None,
-            verbose: bool = False
+            verbose: bool = False,
+            single_likelihoods: bool = False
     ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
@@ -1646,6 +1655,7 @@ class JPT:
         :param verbose:         print status information to the console
         :param multicore:       how many cores should be used (defaults to all)
         :param preprocess:      whether to apply the preprocessing to the data passed.
+        :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
 
         :returns: An np.array with shape (x, ) containing the probabilities.
         """
@@ -1668,7 +1678,8 @@ class JPT:
             dirac_scaling=dirac_scaling,
             min_distances=min_distances,
             multicore=multicore,
-            verbose=verbose
+            verbose=verbose,
+            single_likelihoods=single_likelihoods
         )
 
     @deprecated
@@ -1676,7 +1687,8 @@ class JPT:
             self,
             data: Union[np.ndarray, pd.DataFrame],
             dirac_scaling: float = 2.,
-            min_distances: Dict = None
+            min_distances: Dict = None,
+            single_likelihoods: bool = False
     ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
@@ -1688,6 +1700,7 @@ class JPT:
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
+        :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
         :returns: An np.array with shape (x, ) containing the probabilities.
         """
         from .learning.preprocessing import preprocess_data
@@ -1701,6 +1714,7 @@ class JPT:
 
         # initialize probabilities
         probabilities = np.zeros(len(data))
+        probs_per_var = np.zeros(data.shape)
 
         # for all leaves
         for leaf in self.leaves.values():
@@ -1709,11 +1723,19 @@ class JPT:
             leaf_probabilities = leaf.likelihood(
                 data,
                 dirac_scaling,
-                min_distances
+                min_distances,
+                single_likelihoods=single_likelihoods
             )
+
+            if single_likelihoods:
+                leaf_probabilities, leaf_probs_per_var = leaf_probabilities
+                probs_per_var += [l * leaf.prior for l in leaf_probs_per_var]
 
             # multiply likelihood by leaf prior
             probabilities += (leaf.prior * leaf_probabilities)
+
+        if single_likelihoods:
+            return probabilities, probs_per_var
 
         return probabilities
 
@@ -1953,9 +1975,8 @@ class JPT:
             # normalize probability
             leaf.prior /= probability_mass
 
+            # adjust leaf distributions
             for variable, value in evidence_.items():
-                # adjust leaf distributions
-                # if variable.symbolic or variable.integer:
                 leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
 
         # recalculate the priors for the conditional jpt
