@@ -1215,7 +1215,7 @@ cdef class PiecewiseFunction(Function):
             if interval.max > i_.min:
                 insert_pos += 1
         intervals.insert(insert_pos, interval.boundaries(left=0, right=EXC))
-        functions.insert(insert_pos, func)
+        functions.insert(insert_pos, func.copy())
         result.intervals = list(intervals)
         result.functions = list(functions)
         return result
@@ -2003,12 +2003,6 @@ class PLFApproximator:
             ):
                 break
 
-            # Remove the left and right segments of the replacement from the original function
-            del result.intervals[result.intervals.index(replacement.left.i)]
-            del result.functions[result.functions.index(replacement.left.f)]
-            del result.intervals[result.intervals.index(replacement.right.i)]
-            del result.functions[result.functions.index(replacement.right.f)]
-
             # Insert the new segment at the interval union of the former left and right segments
             result = result.overwrite_at(
                 replacement.new.i,
@@ -2049,5 +2043,4 @@ class PLFApproximator:
             if None not in (new_replacement_left, new_replacement_right):
                 new_replacement_left.next = new_replacement_right
                 new_replacement_right.prev = new_replacement_left
-
         return result
