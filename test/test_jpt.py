@@ -1203,6 +1203,33 @@ class ConditionalJPTTest(TestCase):
             l_ = leaf.conditional_leaf(evidence)
             self.assertAlmostEqual(1, l_.probability(evidence))
 
+    def test_apply(self):
+        # Arrange
+        df = pd.DataFrame.from_records(
+            [[1.2, 2, 'A'], [2.3, 3, 'B']],
+            columns=['d', 'i', 's']
+        )
+        jpt = JPT(infer_from_dataframe(df))
+        jpt.learn(df)
+
+        # Act
+        leaves = set(
+            jpt.apply({'s': 'A'})
+        )
+        all_leaves = set(
+            jpt.apply({})
+        )
+
+        # Assert
+        self.assertEqual(
+            {jpt.leaves[1]},
+            leaves
+        )
+        self.assertEqual(
+            set(jpt.leaves.values()),
+            all_leaves
+        )
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 

@@ -55,34 +55,6 @@ pyxfiles = [
     "jpt/learning/impurity.pyx",
 ]
 
-extensions = [
-    Extension("cutils", sources=[os.path.join(basedir, pyxfiles[0])],
-              include_dirs=[numpy.get_include()],
-              extra_compile_args=["-O3"],
-              language="c++"),
-    Extension("intervals", sources=[os.path.join(basedir, pyxfiles[1]), os.path.join(basedir, pyxfiles[0])],
-              include_dirs=[numpy.get_include()],
-              extra_compile_args=["-O3"],
-              language="c++"),
-    Extension("functions", sources=[os.path.join(basedir, pyxfiles[1]), os.path.join(basedir, pyxfiles[0])],
-              include_dirs=[numpy.get_include()],
-              extra_compile_args=["-O3"],
-              language="c++"),
-    Extension("quantiles", sources=[os.path.join(basedir, pyxfiles[2]), os.path.join(basedir, pyxfiles[0])],
-              include_dirs=[numpy.get_include()],
-              extra_compile_args=["-O3"],
-              language="c++"),
-    Extension("cdfreg", sources=[os.path.join(basedir, pyxfiles[3]), os.path.join(basedir, pyxfiles[0])],
-              include_dirs=[numpy.get_include()],
-              extra_compile_args=["-O3"],
-              language="c++"),
-    Extension("impurity", sources=[os.path.join(basedir, pyxfiles[4]), os.path.join(basedir, pyxfiles[0])],
-              include_dirs=[numpy.get_include()],
-              extra_compile_args=["-O3"],
-              language="c++"),
-]
-
-
 # ----------------------------------------------------------------------------------------------------------------------
 # We set the CPATH variable because the "include_dir" argument doesn't seem to work properly
 

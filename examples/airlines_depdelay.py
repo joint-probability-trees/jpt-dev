@@ -45,10 +45,11 @@ def preprocess_airline():
 
 
 def main():
-    data = preprocess_airline()
-    data = data[['DayOfWeek', 'CRSDepTime', 'Distance', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest']]  #
-    data = data.sample(frac=0.1)
-    variables = infer_from_dataframe(data, scale_numeric_types=True)
+    all_data = preprocess_airline()
+    all_data = all_data[['DayOfWeek', 'CRSDepTime', 'Distance', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest']]  #
+    data = all_data.sample(frac=0.1)
+
+    variables = infer_from_dataframe(all_data, scale_numeric_types=True)
     d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-airline')
     Path(d).mkdir(parents=True, exist_ok=True)
 
@@ -70,6 +71,16 @@ def main():
         plotvars=tree.variables
     )
     logger.info(tree)
+
+    logger.info('Computing likelihood...')
+    test_data = all_data.sample(frac=.1)
+    print(
+        tree.parallel_likelihood(
+            test_data,
+            verbose=True
+        )
+    )
+
 
 
 if __name__ == '__main__':

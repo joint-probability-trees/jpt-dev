@@ -373,8 +373,12 @@ class IntegerVariable(Variable):
             return '%s = %s' % (self.name, str(assignment))
 
     def assignment2set(self, assignment: Union[int, Set[int]]) -> Set[int]:
-        if isinstance(assignment, numbers.Integral):
-            return {assignment}
+        if isinstance(assignment, numbers.Number):
+            if int(assignment) != assignment:
+                raise ValueError(
+                    f'Illegal assignment for IntegerVariable "{self.name}": {assignment}'
+                )
+            return {int(assignment)}
         return assignment
 
     @staticmethod

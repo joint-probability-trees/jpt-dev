@@ -96,7 +96,7 @@ def preprocess_data(
 
     # Allocate shared memory for the training data
     shm = shared_memory.SharedMemory(
-        name=str(threading.get_ident()),
+        name=f"preprocessing-{str(threading.get_ident())}",
         create=True,
         size=shape[0] * shape[1] * ctypes.sizeof(ctypes.c_double)
     )

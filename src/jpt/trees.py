@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, 
 
 import numpy as np
 import pandas as pd
+from deprecated.classic import deprecated
 from dnutils import first, ifnone, fst, ifnot, getlogger, logs
 from matplotlib import style
 
@@ -201,6 +202,9 @@ class DecisionNode(Node):
         super().__init__(idx, parent=parent)
         self.children: None or List[Node] = None  # [None] * len(self.splits)
 
+    def __hash__(self):
+        return id(self)
+
     def __eq__(self, o) -> bool:
         return (
             type(self) is type(o) and
@@ -388,7 +392,7 @@ class Leaf(Node):
         return f'Leaf<{self.idx}> object at {hex(id(self))}'
 
     def __hash__(self):
-        return hash((type(self), ((k.name, v) for k, v in self.distributions.items()), self.prior))
+        return id(self)
 
     def to_json(self) -> Dict[str, Any]:
         """
@@ -558,7 +562,7 @@ class Leaf(Node):
         else:
             raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
 
-    def parallel_likelihood(
+    def likelihood(
             self,
             queries: np.ndarray,
             dirac_scaling: float = 2.,
@@ -567,6 +571,7 @@ class Leaf(Node):
     ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
+        :param single_likelihoods:
         :param queries: An array-like object that represents variable assignments in value space.
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
@@ -578,8 +583,10 @@ class Leaf(Node):
         """
 
         # create result vector
-        result = np.ones(len(queries))
-        result_vars = np.ones(queries.shape)
+        if single_likelihoods:
+            result = np.ones(queries.shape)
+        else:
+            result = np.ones(len(queries))
 
         # for each idx, variable and distribution
         for idx, (variable, distribution) in enumerate(self.distributions.items()):
@@ -608,11 +615,10 @@ class Leaf(Node):
                 raise ValueError("Variable of type %s is not known!" % type(variable))
 
             # multiply results
-            result *= probs
-            result_vars[:, idx] = probs.T
-
-        if single_likelihoods:
-            return result, result_vars
+            if single_likelihoods:
+                result[:, idx] = probs.T
+            else:
+                result *= probs
 
         return result
 
@@ -665,7 +671,7 @@ class Leaf(Node):
             explanation, likelihood = distribution.mpe()
 
             # apply upper cap for infinities
-            likelihood = minimal_distances[variable] if np.isinf(likelihood) else likelihood
+            likelihood = minimal_distances.get(variable, 1) if np.isinf(likelihood) else likelihood
 
             # update likelihood
             result_likelihood *= likelihood
@@ -712,7 +718,7 @@ class JPT:
     Implementation Joint Probability Trees (JPTs).
     """
 
-    logger = getlogger('/jpt', level=logs.DEBUG)
+    logger = getlogger('/jpt', level=logs.INFO)
 
     def __init__(
             self,
@@ -788,18 +794,12 @@ class JPT:
                 variables=self.variables
             )
 
-        # progress bar is a non-serializable attribute
-        self._progress_learning = None
-
-        # temporarily store a hook to decide whether a partition
-        # should be split further or a leaf shall be created at the current position in the tree
-        self._prune_or_split: Optional[FunctionType] = None
-
     def _reset(self) -> None:
         """ Delete all parameters of this model (not the hyperparameters)"""
         self.innernodes.clear()
         self.leaves.clear()
         self.priors = VariableMap(variables=self.variables) # .clear()
+        self.minimal_distances: VariableMap = VariableMap(variables=self.variables)
         self.root = None
 
     @property
@@ -1478,25 +1478,54 @@ class JPT:
                     repr(var)
                 )
 
-    def apply(self, query: VariableAssignment) -> Iterator[Leaf]:
+    def apply(
+            self,
+            query: Union[VariableAssignment, Dict]
+    ) -> Iterator[Leaf]:
         """
-        Iterator that yields leaves that are consistent with ``query``.
-        :param query: the preprocessed query
+        Iterator that yields leaves tha are consistent with a ``query``.
+
+        A leaf is consistent with a query, if either of the following propositions hold
+        for all constaints expressed by its path to the root node:
+
+            1. the variable is not constrained by the query
+            2. the variable is constrained by the query and the query is not consistent with the path
+
+        :param query: the preprocessed query, either an instance of a subclass of ``VariableAssignment``
+                      or a dict mapping variables to their respective labels.
         :return:
         """
+        if isinstance(query, dict):
+            query = self.bind(query)
+
         if isinstance(query, LabelAssignment):
             query = query.value_assignment()
-        # if the sample doesn't match the features of the tree, there is no valid prediction possible
-        if not set(query.keys()).issubset(set(self._variables)):
-            raise TypeError(f'Invalid query. Query contains variables that are not '
-                            f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}')
 
-        # find the leaf (or the leaves) that have each variable either
-        # - not occur in the path to this node OR
-        # - match the boolean/symbolic value in the path OR
-        # - lie in the interval of the numeric value in the path
-        # -> return leaf that matches query
-        yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
+        # if the sample doesn't match the features of the tree, there is no valid prediction possible
+        if not set(query.keys()).issubset(set(self.variables)):
+            raise TypeError(
+                f'Invalid query. Query contains variables that are not '
+                f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}'
+            )
+
+        if self.root is None:
+            raise RuntimeError(
+                'JPT not fitted yet.'
+            )
+
+        fringe = deque([self.root])
+        while fringe:
+            node = fringe.popleft()
+
+            if isinstance(node, Leaf):
+                yield node
+                continue
+            else:
+                node: DecisionNode
+
+            for child, split in zip(node.children, node.splits):
+                if node.variable not in query or not query[node.variable].isdisjoint(split):
+                    fringe.appendleft(child)
 
     def __str__(self) -> str:
         return (
@@ -1538,7 +1567,7 @@ class JPT:
             rows: Optional[Union[np.ndarray, List]] = None,
             columns: Optional[Union[np.ndarray, List]] = None,
             keep_samples: bool = False,
-            close_convex_gaps: bool = True,
+            close_convex_gaps: bool = False,
             verbose: bool = False,
             prune_or_split: Optional[Callable] = None,
             multicore: Optional[int] = None
@@ -1606,22 +1635,72 @@ class JPT:
 
     def likelihood(
             self,
-            queries: Union[np.ndarray, pd.DataFrame],
+            data: Union[np.ndarray, pd.DataFrame],
+            dirac_scaling: float = 2.,
+            min_distances: Dict = None,
+            preprocess: bool = True,
+            multicore: Optional[int] = None,
+            verbose: bool = False,
+            single_likelihoods: bool = False
+    ) -> np.ndarray:
+        """
+        Get the probabilities of a list of worlds. The worlds must be fully assigned with
+        scalar values (no intervals or sets).
+
+        :param data:            An array containing the worlds. The shape is (x, len(variables)).
+        :param dirac_scaling:   the minimal distance between the samples within a dimension are multiplied by this factor
+                                if a durac impulse is used to model the variable.
+        :param min_distances:   A dict mapping the variables to the minimal distances between the observations.
+                                This can be useful to use the same likelihood parameters for different test
+                                sets for example in cross validation processes.
+        :param verbose:         print status information to the console
+        :param multicore:       how many cores should be used (defaults to all)
+        :param preprocess:      whether to apply the preprocessing to the data passed.
+        :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
+
+        :returns: An np.array with shape (x, ) containing the probabilities.
+        """
+        if preprocess:
+            from .learning.preprocessing import preprocess_data
+            data_ = preprocess_data(
+                self,
+                data,
+                verbose=verbose
+            )
+        elif isinstance(data, pd.DataFrame):
+            data_ = data.values.astype(np.float64)
+        else:
+            data_ = data
+
+        from .inference.likelihood import parallel_likelihood
+        return parallel_likelihood(
+            self,
+            data_,
+            dirac_scaling=dirac_scaling,
+            min_distances=min_distances,
+            multicore=multicore,
+            verbose=verbose,
+            single_likelihoods=single_likelihoods
+        )
+
+    @deprecated
+    def parallel_likelihood(
+            self,
+            data: Union[np.ndarray, pd.DataFrame],
             dirac_scaling: float = 2.,
             min_distances: Dict = None,
             single_likelihoods: bool = False
     ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
-        single numbers (no intervals).
+        scalar values (no intervals or sets).
 
-        :param queries: An array containing the worlds. The shape is (x, len(variables)).
+        :param data: An array containing the worlds. The shape is (x, len(variables)).
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
-        :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
         :returns: An np.array with shape (x, ) containing the probabilities.
         """
         from .learning.preprocessing import preprocess_data
@@ -1631,18 +1710,18 @@ class JPT:
             min_distances = self.minimal_distances
 
         # preprocess the queries
-        queries = preprocess_data(self, queries)
+        data = preprocess_data(self, data)
 
         # initialize probabilities
-        probabilities = np.zeros(len(queries))
-        probs_per_var = np.zeros(queries.shape)
+        probabilities = np.zeros(len(data))
+        probs_per_var = np.zeros(data.shape)
 
         # for all leaves
         for leaf in self.leaves.values():
 
             # calculate likelihood
-            leaf_probabilities = leaf.parallel_likelihood(
-                queries,
+            leaf_probabilities = leaf.likelihood(
+                data,
                 dirac_scaling,
                 min_distances,
                 single_likelihoods=single_likelihoods
