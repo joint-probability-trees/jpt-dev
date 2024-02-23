@@ -1,15 +1,12 @@
 """© Copyright 2021-23, Mareike Picklum, Daniel Nyga."""
 import bz2
-import datetime
-import html
 import json
-import math
 import numbers
 import os
 import pickle
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from operator import attrgetter, itemgetter
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal, Set
+from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal
 
 import numpy as np
 import pandas as pd
@@ -20,14 +17,11 @@ from matplotlib import style
 from .base.constants import plotstyle
 from .base.errors import Unsatisfiability
 from .base.utils import (
-    list2intset,
     list2set,
-    list2interval,
     format_path,
     normalized,
     Heap,
     prod,
-    setstr_int
 )
 
 from .distributions import Integer
@@ -45,7 +39,7 @@ from .variables import (
     ValueAssignment
 )
 
-from .base.intervals import ContinuousSet, Interval, EXC, INC, R, UnionSet, IntSet, Z
+from .base.intervals import ContinuousSet, Interval, EXC, R, UnionSet, IntSet, Z
 
 
 try:

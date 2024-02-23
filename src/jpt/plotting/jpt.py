@@ -13,10 +13,10 @@ from graphviz import Digraph
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from jpt import JPT
-from jpt.base.constants import green, orange
-from jpt.trees import Leaf, DecisionNode
-from jpt.variables import Variable
+from ..trees import JPT
+from ..base.constants import green, orange
+from ..trees import DecisionNode
+from ..variables import Variable
 
 
 IMG_TEMPLATE = '''

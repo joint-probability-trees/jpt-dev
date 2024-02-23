@@ -250,8 +250,10 @@ class VariableTest(TestCase):
         A, B, C = VariableTest.TEST_DATA
         self.assertEqual('C = True', C.str(True, fmt='logic'))
         self.assertEqual('C = True', C.str(True, fmt='set'))
-        self.assertIn(C.str({True, False}, fmt='logic'),
-                      ['C = False ∨ C = True', 'C = True ∨ C = False'])
+        self.assertIn(
+            C.str({True, False}, fmt='logic'),
+            {'C = False ∨ C = True', 'C = True ∨ C = False'}
+        )
         self.assertIn(C.str({True, False}, fmt='set'),
                       ['C ∈ {False, True}', 'C ∈ {True, False}'])
         self.assertEqual('A = 2.0 ∨ A = 3.0', A.str({2, 3}, fmt='logic'))

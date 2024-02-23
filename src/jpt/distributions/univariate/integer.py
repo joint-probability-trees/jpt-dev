@@ -6,7 +6,6 @@ from types import FunctionType
 from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple
 
 import numpy as np
-from deprecated.classic import deprecated
 from dnutils import edict, ifnone, project, first
 from matplotlib import pyplot as plt
 

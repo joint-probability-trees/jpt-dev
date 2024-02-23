@@ -3,6 +3,8 @@ import sys
 import unittest
 from unittest import TestCase
 
+from matplotlib import pyplot as plt
+
 try:
     import regression
     import restaurant
@@ -10,6 +12,7 @@ try:
 except ModuleNotFoundError:
     sys.path.append(os.path.join('..', 'examples'))
 
+plt.switch_backend('agg')
 
 # noinspection PyMethodMayBeStatic
 class ExamplesTestRun(TestCase):

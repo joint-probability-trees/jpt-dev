@@ -21,7 +21,6 @@ from matplotlib import pyplot as plt
 
 from jpt.learning.c45 import C45Algorithm
 from jpt.learning.preprocessing import preprocess_data
-from utils import gaussian_data_1d
 
 plt.switch_backend('agg')
 
@@ -1058,15 +1057,15 @@ class PreprocessingTest(TestCase):
             columns=['a', 'b', 'c']
         )
         jpt = JPT(variables=infer_from_dataframe(df, scale_numeric_types=False))
-        print(df)
+
         # Act
         data = preprocess_data(jpt, df)
 
         # Assert
         np.testing.assert_array_equal(
             np.array([
-                [2.5, 0.,  0.],
-                [4.5, 1.,  1.]
+                [2.5, 1.,  0.],
+                [4.5, 2.,  1.]
             ], dtype=np.float64),
             data
         )

@@ -9,7 +9,7 @@ import pandas as pd
 from dnutils import mapstr, logs, out
 from tqdm import tqdm
 
-from jpt import JPT
+from ..trees import JPT
 
 _locals = threading.local()
 
@@ -135,7 +135,7 @@ def preprocess_data(
             )
 
         _locals.transformations = {
-            v: jpt.varnames[v].domain.values.transformer()
+            v: jpt.varnames[v].domain.values.map
             for v in data.columns
         }
         if verbose:

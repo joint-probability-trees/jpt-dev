@@ -10,7 +10,7 @@ import numpy as np
 from dnutils import ifnone, getlogger
 from tqdm import tqdm
 
-from jpt import JPT
+from jpt.trees import JPT
 from jpt.base.multicore import Pool
 from jpt.variables import ValueAssignment
 

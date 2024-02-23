@@ -463,7 +463,7 @@ class SymbolicVariable(Variable):
                 valstr = ', '.join(mapstr([self.domain.labels[a] for a in assignment], limit=limit))
                 return f'{self.name} {SYMBOL.IN} {{{valstr}}}'
             elif fmt == 'logic':
-                return ' ∨ '.join([self.str(a, fmt=fmt) for a in assignment])
+                return f' {SYMBOL.LOR} '.join([self.str(a, fmt=fmt) for a in assignment])
         if isinstance(assignment, numbers.Number):
             return '%s = %s' % (self.name, self.domain.labels[assignment])
         else:
