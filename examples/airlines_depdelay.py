@@ -45,10 +45,11 @@ def preprocess_airline():
 
 
 def main():
-    data = preprocess_airline()
-    data = data[['DayOfWeek', 'CRSDepTime', 'Distance', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest']]  #
-    data = data.sample(frac=0.1)
-    variables = infer_from_dataframe(data, scale_numeric_types=True)
+    all_data = preprocess_airline()
+    all_data = all_data[['DayOfWeek', 'CRSDepTime', 'Distance', 'CRSArrTime', 'UniqueCarrier', 'Origin', 'Dest']]  #
+    data = all_data.sample(frac=0.1)
+
+    variables = infer_from_dataframe(all_data, scale_numeric_types=True)
     d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-airline')
     Path(d).mkdir(parents=True, exist_ok=True)
 
@@ -60,10 +61,26 @@ def main():
     # tree = JPT(variables=variables, min_samples_leaf=data.shape[0]*.01)
     # tree = JPT(variables=variables, max_depth=8)
     tree = JPT(variables=variables, min_samples_leaf=int(data.shape[0] * 0.1 / len(variables)))
-    tree.learn(columns=data.values.T)
+    tree.learn(data, verbose=True)
     tree.save(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-airline.json'))
-    tree.plot(title='airline', directory=d, view=True)
+    tree.plot(
+        title='airline',
+        directory=d,
+        view=False,
+        verbose=True,
+        plotvars=tree.variables
+    )
     logger.info(tree)
+
+    logger.info('Computing likelihood...')
+    test_data = all_data.sample(frac=.1)
+    print(
+        tree.likelihood(
+            test_data,
+            verbose=True,
+            single_likelihoods=False
+        )
+    )
 
 
 if __name__ == '__main__':

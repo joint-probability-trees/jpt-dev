@@ -7,18 +7,22 @@ from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List, Type
 
 import numpy as np
 import pandas as pd
+from .preprocessing import preprocess_data
 from dnutils import mapstr, ifnone
 from tqdm import tqdm
 import ctypes as c
 
+from ..base.utils import _write_error
+from ..distributions import Distribution
+
+
+from ..trees import JPT, DecisionNode, Leaf, Node
+from ..variables import Variable
 from .impurity import Impurity
 from ..base.functions import PiecewiseFunction
 from ..base.intervals import ContinuousSet, INC, EXC, IntSet
-from ..base.utils import _write_error
-from ..distributions import Distribution
 from ..distributions.quantile.quantiles import QuantileDistribution
-from ..trees import JPT, DecisionNode, Leaf, Node
-from ..variables import Variable
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 # Global constants
@@ -39,7 +43,6 @@ def _initialize_worker_process():
 
 # ----------------------------------------------------------------------------------------------------------------------
 # C4.5 splitting criterion to generate recursive partitions
-
 
 class JPTPartition:
     """
@@ -141,7 +144,12 @@ def c45split(
         )
     )
 
-    if not prune and max_gain >= min_impurity_improvement and depth < jpt.max_depth:  # Create a decision node ---------
+    if (
+            not prune
+            and max_gain >= min_impurity_improvement
+            and depth < jpt.max_depth
+    ):
+        # Create a decision node ---------------------------------------------------------------------------------------
         split_pos = impurity.best_split_pos
         split_var_idx = impurity.best_var
         split_var = jpt.variables[split_var_idx]
@@ -298,6 +306,14 @@ class C45Algorithm:
                     self._progressbar.update(
                         partition.n_samples
                     )
+            if self._progressbar is not None:
+                self._progressbar.set_description(
+                    'Learning [Leaves: %.4d, Nodes: %.4d, Queue: %.4d]' % (
+                        len(self.jpt.leaves),
+                        len(self.jpt.innernodes),
+                        self.queue_length - 1,
+                    )
+                )
 
             if self.jpt.root is None:
                 self.jpt.root = node
@@ -337,7 +353,12 @@ class C45Algorithm:
         """
         # --------------------------------------------------------------------------------------------------------------
         # Check and prepare the data
-        _data = self.jpt._preprocess_data(data=data, rows=rows, columns=columns)
+        _data = preprocess_data(
+            self.jpt,
+            data=data,
+            rows=rows,
+            columns=columns
+        )
 
         for idx, variable in enumerate(self.jpt.variables):
             if variable.numeric:
@@ -412,11 +433,6 @@ class C45Algorithm:
 
         self.keep_samples = keep_samples
 
-        # Initialize the impurity calculation
-        # self.impurity = Impurity.from_tree(self.jpt)
-        # self.impurity.setup(_data, self.indices)
-        # self.impurity.min_samples_leaf = min_samples_leaf
-
         started = datetime.datetime.now()
         JPT.logger.info(
             'Started learning of %s x %s at %s '
@@ -452,7 +468,7 @@ class C45Algorithm:
         )
         self.lock = Lock()
         self.finish = Event()
-        JPT.logger.info('Data set size:', _data.nbytes / 1e6, 'MB')
+        JPT.logger.info(f'Data set size: {_data.nbytes / 1e6:,.2f} MB')
         if verbose:
             self._progressbar = tqdm(
                 total=_data.shape[0],
@@ -482,7 +498,6 @@ class C45Algorithm:
             )
 
         while 1:
-            print('Waiting for JPT learning to finish:', repr(self), self.queue_length)
             if self.finish.wait(timeout=10):
                 break
 
@@ -500,7 +515,7 @@ class C45Algorithm:
         # Print the statistics
         JPT.logger.info(
             'Learning took %s' % (datetime.datetime.now() - started),
-            repr(self)
+            repr(self.jpt)
         )
 
         # --------------------------------------------------------------------------------------------------------------

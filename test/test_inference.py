@@ -59,8 +59,19 @@ class JPTInferenceSymbolic(unittest.TestCase):
         self.assertAlmostEqual(0.210199, res, places=5)
 
     def test_likelihood_discrete(self):
-        probs = JPTInferenceSymbolic.jpt.likelihood(self.data)
-        self.assertGreater(sum(np.log(probs)), -np.inf)
+        # Act
+        probs = JPTInferenceSymbolic.jpt.likelihood(
+            self.data,
+            preprocess=False,
+            verbose=True,
+            single_likelihoods=False
+        )
+
+        # Assert
+        self.assertGreater(
+            sum(np.log(probs)),
+            -np.inf
+        )
 
 
 class JPTInferenceNumeric(unittest.TestCase):
@@ -128,6 +139,7 @@ class MPESolverTest(TestCase):
         data = np.array([[1], [2], [8], [9]], dtype=np.float64)
         dist1 = Numeric().fit(data)
         dist2 = Numeric().fit(data)
+
         v1 = NumericVariable('X')
         v2 = NumericVariable('Y')
         mpe = MPESolver(
@@ -149,4 +161,65 @@ class MPESolverTest(TestCase):
             all(
                 l1 >= l2 for l1, l2 in pairwise(project(solutions, 1))
             )
+        )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class LikelihoodTest(TestCase):
+
+    # noinspection PyMethodMayBeStatic
+    def test_likelihood(self):
+        # Arrange
+        df = pd.DataFrame([
+                [1.2, 2, 'A'],
+                [1.5, 3, 'B'],
+                [1.6, 2, 'B']
+            ],
+            columns=['a', 'b', 'c']
+        )
+        jpt = JPT(infer_from_dataframe(df, scale_numeric_types=False))
+        jpt.learn(df)
+
+        # Act
+        likelihoods = jpt.likelihood(
+            df,
+            dirac_scaling=1
+        )
+
+        # Assert
+        np.testing.assert_array_equal(
+            np.ones(3),
+            likelihoods
+        )
+
+    def test_single_likelihoods(self):
+        # Arrange
+        df = pd.DataFrame([
+                [1.2, 2, 'A'],
+                [1.5, 3, 'B'],
+                [1.6, 2, 'B']
+            ],
+            columns=['a', 'b', 'c']
+        )
+        jpt = JPT(infer_from_dataframe(df, scale_numeric_types=False))
+        jpt.learn(df)
+
+        # Act
+        likelihoods_single = jpt.likelihood(
+            df,
+            dirac_scaling=1,
+            single_likelihoods=True
+        )
+
+        likelihoods = jpt.likelihood(
+            df,
+            dirac_scaling=1,
+            single_likelihoods=False
+        )
+
+        # Assert
+        np.testing.assert_array_equal(
+            likelihoods,
+            likelihoods_single.prod(axis=1)
         )

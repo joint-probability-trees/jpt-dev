@@ -250,6 +250,21 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(d, d_inst)
         self.assertTrue(DistABC.equiv(d_type))
 
+    def test_pickle(self):
+        # Arrange
+        DistABC = self.DistABC
+        d = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
+
+        # Act
+        pickled = pickle.dumps(d)
+        unpickled = pickle.loads(pickled)
+
+        # Assert
+        self.assertEqual(
+            d,
+            unpickled
+        )
+
     def test_distribution_manipulation(self):
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])

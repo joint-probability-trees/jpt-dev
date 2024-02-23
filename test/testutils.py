@@ -5,6 +5,8 @@ import pandas as pd
 
 from jpt.trees import JPT
 from jpt.distributions import Numeric
+from jpt.base.intervals import ContinuousSet, INC, EXC
+from jpt.base.functions import PiecewiseFunction, ConstantFunction
 
 try:
     from jpt.distributions.quantile.quantiles import __module__
@@ -13,8 +15,6 @@ except ModuleNotFoundError:
     pyximport.install()
 finally:
     from jpt.distributions.quantile.quantiles import QuantileDistribution
-    from jpt.base.intervals import ContinuousSet, INC, EXC
-    from jpt.base.functions import PiecewiseFunction, ConstantFunction
 
 
 def gaussian_jpt() -> JPT:

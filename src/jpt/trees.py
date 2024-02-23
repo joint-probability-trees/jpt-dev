@@ -7,28 +7,33 @@ import math
 import numbers
 import os
 import pickle
-import tempfile
 from collections import defaultdict, deque, ChainMap, OrderedDict
-from itertools import zip_longest
 from operator import attrgetter, itemgetter
 from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal, Set
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-from dnutils import first, ifnone, mapstr, fst, ifnot, getlogger, logs, err
-from graphviz import Digraph
-from matplotlib import style, pyplot as plt
+from deprecated.classic import deprecated
+from dnutils import first, ifnone, fst, ifnot, getlogger, logs
+from matplotlib import style
 
-from .base.constants import plotstyle, orange, green
+from .base.constants import plotstyle
 from .base.errors import Unsatisfiability
-from .base.utils import list2set
-from .base.utils import format_path, normalized, Heap
-from .base.utils import prod
+from .base.utils import (
+    list2intset,
+    list2set,
+    list2interval,
+    format_path,
+    normalized,
+    Heap,
+    prod,
+    setstr_int
+)
+
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
-from .distributions.quantile.quantiles import QuantileDistribution
 from .inference import MPESolver
+
 from .variables import (
     VariableMap,
     SymbolicVariable,
@@ -183,6 +188,9 @@ class DecisionNode(Node):
         super().__init__(idx, parent=parent)
         self.children: None or List[Node] = None  # [None] * len(self.splits)
 
+    def __hash__(self):
+        return id(self)
+
     def __eq__(self, o) -> bool:
         return (
             type(self) is type(o) and
@@ -283,7 +291,7 @@ class DecisionNode(Node):
                 fmt='logic'
             )
         elif self.variable.symbolic:
-            negate = len(self.splits[1]) > 1
+            negate = len(self.splits) > 1 and len(self.splits[1]) > 1
             if negate:
                 label = self.variable.domain.labels[fst(self.splits[0])]
                 return '%s%s' % ('\u00AC' if idx_split > 0 else '', label)
@@ -391,7 +399,7 @@ class Leaf(Node):
         return f'Leaf<{self.idx}> object at {hex(id(self))}'
 
     def __hash__(self):
-        return hash((type(self), ((k.name, v) for k, v in self.distributions.items()), self.prior))
+        return id(self)
 
     def to_json(self) -> Dict[str, Any]:
         """
@@ -496,12 +504,6 @@ class Leaf(Node):
 
             # if the variable is symbolic
             elif variable.symbolic or variable.integer:
-
-                # force the evidence to be a set
-                # if not isinstance(value, set):
-                #     value = set([value])
-
-
                 # return false if the evidence is impossible in this leaf
                 result *= self.distributions[variable]._p(value)
 
@@ -570,11 +572,12 @@ class Leaf(Node):
         else:
             raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
 
-    def parallel_likelihood(
+    def likelihood(
             self,
             queries: np.ndarray,
             dirac_scaling: float = 2.,
-            min_distances: VariableMap = None
+            min_distances: VariableMap = None,
+            single_likelihoods: bool = False
     ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
@@ -586,10 +589,14 @@ class Leaf(Node):
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
         :type min_distances: A VariableMap from numeric variables to floats or None
+        :param single_likelihoods:
         """
 
         # create result vector
-        result = np.ones(len(queries))
+        if single_likelihoods:
+            result = np.ones(queries.shape)
+        else:
+            result = np.ones(len(queries))
 
         # for each idx, variable and distribution
         for idx, (variable, distribution) in enumerate(self.distributions.items()):
@@ -619,7 +626,10 @@ class Leaf(Node):
                 raise ValueError("Variable of type %s is not known!" % type(variable))
 
             # multiply results
-            result *= probs
+            if single_likelihoods:
+                result[:, idx] = probs.T
+            else:
+                result *= probs
 
         return result
 
@@ -672,7 +682,7 @@ class Leaf(Node):
             explanation, likelihood = distribution.mpe()
 
             # apply upper cap for infinities
-            likelihood = minimal_distances[variable] if np.isinf(likelihood) else likelihood
+            likelihood = minimal_distances.get(variable, 1) if np.isinf(likelihood) else likelihood
 
             # update likelihood
             result_likelihood *= likelihood
@@ -800,6 +810,7 @@ class JPT:
         self.innernodes.clear()
         self.leaves.clear()
         self.priors = VariableMap(variables=self.variables) # .clear()
+        self.minimal_distances: VariableMap = VariableMap(variables=self.variables)
         self.root = None
 
     @property
@@ -967,9 +978,10 @@ class JPT:
         :param samples: the samples to evaluate
         :return: A 1D numpy array of integers containing the leaf index of every sample.
         """
+        from .learning.preprocessing import preprocess_data
         result = np.zeros(len(samples))
         variable_index_map = VariableMap([(variable, idx) for (idx, variable) in enumerate(self.variables)])
-        samples = self._preprocess_data(samples)
+        samples = preprocess_data(self, samples)
         for idx, leaf in self.leaves.items():
             contains = leaf.contains(samples, variable_index_map)
             result[contains == 1] = idx
@@ -995,7 +1007,7 @@ class JPT:
 
         for var, val in values.items():
             if isinstance(var, (NumericVariable, IntegerVariable)):
-                if not isinstance(val, (ContinuousSet, IntSet)):
+                if not isinstance(val, Interval):
                     values_sets[var] = {
                         NumericVariable: ContinuousSet,
                         IntegerVariable: IntSet
@@ -1497,25 +1509,54 @@ class JPT:
                     repr(var)
                 )
 
-    def apply(self, query: VariableAssignment) -> Iterator[Leaf]:
+    def apply(
+            self,
+            query: Union[VariableAssignment, Dict]
+    ) -> Iterator[Leaf]:
         """
-        Iterator that yields leaves that are consistent with ``query``.
-        :param query: the preprocessed query
+        Iterator that yields leaves tha are consistent with a ``query``.
+
+        A leaf is consistent with a query, if either of the following propositions hold
+        for all constaints expressed by its path to the root node:
+
+            1. the variable is not constrained by the query
+            2. the variable is constrained by the query and the query is not consistent with the path
+
+        :param query: the preprocessed query, either an instance of a subclass of ``VariableAssignment``
+                      or a dict mapping variables to their respective labels.
         :return:
         """
+        if isinstance(query, dict):
+            query = self.bind(query)
+
         if isinstance(query, LabelAssignment):
             query = query.value_assignment()
-        # if the sample doesn't match the features of the tree, there is no valid prediction possible
-        if not set(query.keys()).issubset(set(self._variables)):
-            raise TypeError(f'Invalid query. Query contains variables that are not '
-                            f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}')
 
-        # find the leaf (or the leaves) that have each variable either
-        # - not occur in the path to this node OR
-        # - match the boolean/symbolic value in the path OR
-        # - lie in the interval of the numeric value in the path
-        # -> return leaf that matches query
-        yield from (leaf for leaf in self.leaves.values() if leaf.applies(query))
+        # if the sample doesn't match the features of the tree, there is no valid prediction possible
+        if not set(query.keys()).issubset(set(self.variables)):
+            raise TypeError(
+                f'Invalid query. Query contains variables that are not '
+                f'represented by this tree: {[v for v in query.keys() if v not in self._variables]}'
+            )
+
+        if self.root is None:
+            raise RuntimeError(
+                'JPT not fitted yet.'
+            )
+
+        fringe = deque([self.root])
+        while fringe:
+            node = fringe.popleft()
+
+            if isinstance(node, Leaf):
+                yield node
+                continue
+            else:
+                node: DecisionNode
+
+            for child, split in zip(node.children, node.splits):
+                if node.variable not in query or not query[node.variable].isdisjoint(split):
+                    fringe.appendleft(child)
 
     def __str__(self) -> str:
         return (
@@ -1551,76 +1592,13 @@ class JPT:
             if isinstance(node, DecisionNode) else ''
         )
 
-    def _preprocess_data(self, data=None, rows=None, columns=None) -> np.ndarray:
-        """
-        Transform the input data into an internal representation.
-        :param data: The data to transform
-        :param rows: The indices of the rows that will be transformed
-        :param columns: The indices of the columns that will be transformed
-        :return: the preprocessed data
-        """
-        if sum(d is not None for d in (data, rows, columns)) > 1:
-            raise ValueError('Only either of the three is allowed.')
-        elif sum(d is not None for d in (data, rows, columns)) < 1:
-            raise ValueError('No data passed.')
-
-        JPT.logger.info('Preprocessing data...')
-
-        if isinstance(data, np.ndarray) and data.shape[0] or isinstance(data, list):
-            rows = data
-
-        if isinstance(rows, list) and rows:  # Transpose the rows
-            columns = [[row[i] for row in rows] for i in range(len(self.variables))]
-        elif isinstance(rows, np.ndarray) and rows.shape[0]:
-            columns = rows.T
-
-        if isinstance(columns, list) and columns:
-            shape = len(columns[0]), len(columns)
-        elif isinstance(columns, np.ndarray) and columns.shape:
-            shape = columns.T.shape
-        elif isinstance(data, pd.DataFrame):
-            shape = data.shape
-            data = data.copy()
-        else:
-            raise ValueError('No data given.')
-
-        data_ = np.ndarray(shape=shape, dtype=np.float64, order='C')
-        if isinstance(data, pd.DataFrame):
-            if set(self.varnames).symmetric_difference(set(data.columns)):
-                raise ValueError(
-                    'Unknown variable names: %s'
-                    % ', '.join(mapstr(set(self.varnames).symmetric_difference(set(data.columns))))
-                )
-            # Check if the order of columns in the data frame is the same
-            # as the order of the variables.
-            if not all(c == v for c, v in zip_longest(data.columns, self.varnames)):
-                raise ValueError(
-                    'Columns in DataFrame must coincide with variable order: %s' % ', '.join(mapstr(self.varnames))
-                )
-            transformations = {v: self.varnames[v].domain.values.map for v in data.columns}
-            try:
-                for col in data.columns:
-                    data.loc[:, col] = data[col].map(
-                        transformations[col],
-                        na_action='ignore'
-                    )
-                data_[:] = data.values
-            except ValueError as e:
-                raise ValueError(
-                    f'{e} of {self.varnames[col].domain.__qualname__} of variable {col}'
-                )
-        else:
-            for i, (var, col) in enumerate(zip(self.variables, columns)):
-                data_[:, i] = [var.domain.values[v] for v in col]
-        return data_
-
     def learn(
             self,
-            data: Optional[pd.DataFrame] = None,
+            data: Optional[Union[np.ndarray, pd.DataFrame]] = None,
             rows: Optional[Union[np.ndarray, List]] = None,
             columns: Optional[Union[np.ndarray, List]] = None,
             keep_samples: bool = False,
-            close_convex_gaps: bool = True,
+            close_convex_gaps: bool = False,
             verbose: bool = False,
             prune_or_split: Optional[Callable] = None,
             multicore: Optional[int] = None
@@ -1688,45 +1666,108 @@ class JPT:
 
     def likelihood(
             self,
-            queries: Union[np.ndarray, pd.DataFrame],
+            data: Union[np.ndarray, pd.DataFrame],
             dirac_scaling: float = 2.,
-            min_distances: Dict = None
+            min_distances: Dict = None,
+            preprocess: bool = True,
+            multicore: Optional[int] = None,
+            verbose: bool = False,
+            single_likelihoods: bool = False
     ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
-        single numbers (no intervals).
+        scalar values (no intervals or sets).
 
-        :param queries: An array containing the worlds. The shape is (x, len(variables)).
+        :param data:            An array containing the worlds. The shape is (x, len(variables)).
+        :param dirac_scaling:   the minimal distance between the samples within a dimension are multiplied by this factor
+                                if a durac impulse is used to model the variable.
+        :param min_distances:   A dict mapping the variables to the minimal distances between the observations.
+                                This can be useful to use the same likelihood parameters for different test
+                                sets for example in cross validation processes.
+        :param verbose:         print status information to the console
+        :param multicore:       how many cores should be used (defaults to all)
+        :param preprocess:      whether to apply the preprocessing to the data passed.
+        :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
+
+        :returns: An np.array with shape (x, ) containing the probabilities.
+        """
+        if preprocess:
+            from .learning.preprocessing import preprocess_data
+            data_ = preprocess_data(
+                self,
+                data,
+                verbose=verbose
+            )
+        elif isinstance(data, pd.DataFrame):
+            data_ = data.values.astype(np.float64)
+        else:
+            data_ = data
+
+        from .inference.likelihood import parallel_likelihood
+        return parallel_likelihood(
+            self,
+            data_,
+            dirac_scaling=dirac_scaling,
+            min_distances=min_distances,
+            multicore=multicore,
+            verbose=verbose,
+            single_likelihoods=single_likelihoods
+        )
+
+    @deprecated
+    def parallel_likelihood(
+            self,
+            data: Union[np.ndarray, pd.DataFrame],
+            dirac_scaling: float = 2.,
+            min_distances: Dict = None,
+            single_likelihoods: bool = False
+    ) -> np.ndarray:
+        """
+        Get the probabilities of a list of worlds. The worlds must be fully assigned with
+        scalar values (no intervals or sets).
+
+        :param data: An array containing the worlds. The shape is (x, len(variables)).
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
+        :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
         :returns: An np.array with shape (x, ) containing the probabilities.
         """
+        from .learning.preprocessing import preprocess_data
 
         # set min distances if not overwritten
         if min_distances is None:
             min_distances = self.minimal_distances
 
         # preprocess the queries
-        queries = self._preprocess_data(queries)
+        data = preprocess_data(self, data)
 
         # initialize probabilities
-        probabilities = np.zeros(len(queries))
+        probabilities = np.zeros(len(data))
+        probs_per_var = np.zeros(data.shape)
 
         # for all leaves
         for leaf in self.leaves.values():
 
             # calculate likelihood
-            leaf_probabilities = leaf.parallel_likelihood(
-                queries,
+            leaf_probabilities = leaf.likelihood(
+                data,
                 dirac_scaling,
-                min_distances
+                min_distances,
+                single_likelihoods=single_likelihoods
             )
+
+            if single_likelihoods:
+                leaf_probabilities, leaf_probs_per_var = leaf_probabilities
+                probs_per_var += [l * leaf.prior for l in leaf_probs_per_var]
 
             # multiply likelihood by leaf prior
             probabilities += (leaf.prior * leaf_probabilities)
+
+        if single_likelihoods:
+            return probabilities, probs_per_var
 
         return probabilities
 
@@ -1783,16 +1824,18 @@ class JPT:
 
         return candidates
 
-    def plot(self,
-             title: str = "unnamed",
-             filename: str or None = None,
-             directory: str = None,
-             plotvars: Iterable[Variable or str] = None,
-             view: bool = True,
-             max_symb_values: int = 10,
-             nodefill=None,
-             leaffill=None,
-             alphabet=False
+    def plot(
+            self,
+            title: str = "unnamed",
+            filename: str or None = None,
+            directory: str = None,
+            plotvars: Iterable[Variable] = None,
+            view: bool = True,
+            max_symb_values: int = 10,
+            nodefill: str = None,
+            leaffill: str = None,
+            alphabet: bool = False,
+            verbose: bool = False
     ) -> str:
         """
         Generates an SVG representation of the generated regression tree.
@@ -1807,140 +1850,23 @@ class JPT:
         :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
         :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
         probability (descending); default is False
+        :param verbose:
 
         :return:   (str) the path under which the renderd image has been saved.
         """
-        if directory is None:
-            directory = tempfile.mkdtemp(
-                prefix=f'jpt_{title}-{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")}',
-                dir=tempfile.gettempdir()
-            )
-        else:
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-        if plotvars is None:
-            plotvars = []
-
-        plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
-
-        dot = Digraph(
-            format='svg',
-            name=title,
-            directory=directory,
-            filename=f'{filename or title}'
-        )
-
-        pbar = tqdm(
-            total=len(self.leaves),
-            desc='Plotting nodes'
-        )
-
-        # create nodes
-        sep = ",<BR/>"
-        for idx, n in self.leaves.items():
-            imgs = ''
-
-            # plot and save distributions for later use in tree plot
-            rc = math.ceil(math.sqrt(len(plotvars)))
-            img = ''
-            for i, pvar in enumerate(plotvars):
-                img_name = html.escape(f'{pvar.name}-{n.idx}')
-
-                params = {} if pvar.numeric else {
-                    'horizontal': True,
-                    'max_values': max_symb_values,
-                    'alphabet': alphabet
-                }
-
-                n.distributions[pvar].plot(
-                    title=html.escape(pvar.name),
-                    fname=img_name,
-                    directory=directory,
-                    view=False,
-                    **params
-                )
-                img += (f'''{"<TR>" if i % rc == 0 else ""}
-                        <TD><IMG SCALE="TRUE" SRC="./{img_name}.png"/></TD>
-                        {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
-                ''')
-
-                # close current figure to allow for other plots
-                plt.close()
-
-            if plotvars:
-                imgs = f'''
-                            <TR>
-                                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
-                                    <TABLE>
-                                        {img}
-                                    </TABLE>
-                                </TD>
-                            </TR>
-                            '''
-
-            land = '<BR/>\u2227 '
-            element = ' \u2208 '
-
-            # content for node labels
-            leaf_label = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
-            nodelabel = f'''
-            <TR>
-                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(n.str_node)}</TD>
-            </TR>'''
-
-            nodelabel = f'''{nodelabel}{imgs}
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{n.samples} ({n.prior * 100:.3f}%)</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in n.path.items()])}</TD>
-                            </TR>
-                            '''
-
-            # stitch together
-            lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
-                            {nodelabel}
-                      </TABLE>>'''
-
-            dot.node(str(idx),
-                     label=lbl,
-                     shape='box',
-                     style='rounded,filled',
-                     fillcolor=leaffill or green)
-
-            pbar.update(1)
-
-        pbar.close()
-
-        for idx, node in self.innernodes.items():
-            dot.node(str(idx),
-                     label=node.str_node,
-                     shape='ellipse',
-                     style='rounded,filled',
-                     fillcolor=nodefill or orange)
-
-        # create edges
-        for idx, n in self.innernodes.items():
-            for i, c in enumerate(n.children):
-                if c is None:
-                    continue
-                dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
-
-        # show graph
-        filepath = '%s.svg' % os.path.join(directory, ifnone(filename, title))
-        JPT.logger.info(f'Saving rendered image to {filepath}.')
-
-        # improve aspect ratio of graph having many leaves or disconnected nodes
-        dot = dot.unflatten(stagger=3)
-        dot.render(view=view, cleanup=False)
-        return filepath
+        from .plotting.jpt import JPTPlotter
+        return JPTPlotter(
+            self,
+            title,
+            filename,
+            directory,
+            plotvars,
+            max_symb_values,
+            nodefill,
+            leaffill,
+            alphabet,
+            verbose
+        ).plot(view)
 
     def pickle(self, fpath: str) -> None:
         """
@@ -2027,7 +1953,7 @@ class JPT:
                     rm = True
 
                 # else recurse into its children
-                else:
+                elif len(node.children) == 2:
                     fringe.extendleft(node.children)
                     continue
 
@@ -2083,9 +2009,8 @@ class JPT:
             # normalize probability
             leaf.prior /= probability_mass
 
+            # adjust leaf distributions
             for variable, value in evidence_.items():
-                # adjust leaf distributions
-                # if variable.symbolic or variable.integer:
                 leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
 
         # recalculate the priors for the conditional jpt

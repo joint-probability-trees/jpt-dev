@@ -88,6 +88,7 @@ def main(verbose=True):
                    color={0: 'r', 1: 'b', None: 'gray'}[first(leaf.path[varcolor])
                    if varcolor in leaf.path else None])
     if visualize:
+        jpt.plot(plotvars=jpt.variables, view=True)
         plt.show()
 
     print('10-MPE states:')

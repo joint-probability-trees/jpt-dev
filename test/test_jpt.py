@@ -3,7 +3,6 @@ import json
 import os
 import pickle
 import random
-import statistics
 import tempfile
 import unittest
 from math import prod
@@ -21,12 +20,13 @@ from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 
 from jpt.learning.c45 import C45Algorithm
+from jpt.learning.preprocessing import preprocess_data
+from utils import gaussian_data_1d
 
 plt.switch_backend('agg')
 
 from numpy.testing import assert_array_equal
 from pandas import DataFrame
-from scipy.stats import norm
 
 import jpt.variables
 from jpt.distributions import SymbolicType
@@ -141,8 +141,6 @@ class JPTTest(TestCase):
 
         # Assert
         self.assertIsNone(jpt.root.parent)
-        print(jpt.to_json())
-        print(jpt_.to_json())
         self.assertEqual(jpt, jpt_)
 
         q = jpt.bind(X=[-1, 1])
@@ -1036,7 +1034,7 @@ class PreprocessingTest(TestCase):
         )
 
         # Act
-        data_ = jpt._preprocess_data(data)
+        data_ = preprocess_data(jpt, data)
 
         # Assert
         assert_array_equal(
@@ -1048,6 +1046,29 @@ class PreprocessingTest(TestCase):
                  [0., 0., 6.]]
             ),
             data_
+        )
+
+    # noinspection PyMethodMayBeStatic
+    def test_parallel_processing(self):
+        # Arrange
+        df = pd.DataFrame.from_records([
+                [2.5, 1, 'A'],
+                [4.5, 2, 'B']
+             ],
+            columns=['a', 'b', 'c']
+        )
+        jpt = JPT(variables=infer_from_dataframe(df, scale_numeric_types=False))
+        print(df)
+        # Act
+        data = preprocess_data(jpt, df)
+
+        # Assert
+        np.testing.assert_array_equal(
+            np.array([
+                [2.5, 0.,  0.],
+                [4.5, 1.,  1.]
+            ], dtype=np.float64),
+            data
         )
 
 
@@ -1174,6 +1195,33 @@ class ConditionalJPTTest(TestCase):
         for leaf in self.model.apply(evidence):
             l_ = leaf.conditional_leaf(evidence)
             self.assertAlmostEqual(1, l_.probability(evidence))
+
+    def test_apply(self):
+        # Arrange
+        df = pd.DataFrame.from_records(
+            [[1.2, 2, 'A'], [2.3, 3, 'B']],
+            columns=['d', 'i', 's']
+        )
+        jpt = JPT(infer_from_dataframe(df))
+        jpt.learn(df)
+
+        # Act
+        leaves = set(
+            jpt.apply({'s': 'A'})
+        )
+        all_leaves = set(
+            jpt.apply({})
+        )
+
+        # Assert
+        self.assertEqual(
+            {leaf for leaf in jpt.leaves.values() if leaf.path.get('s') == {0}},
+            leaves
+        )
+        self.assertEqual(
+            set(jpt.leaves.values()),
+            all_leaves
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1471,3 +1519,4 @@ class TestPruneOrPslitHook(TestCase):
         )
 
 
+# ----------------------------------------------------------------------------------------------------------------------
