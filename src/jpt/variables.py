@@ -388,13 +388,13 @@ class IntegerVariable(Variable):
                 f'Unexpected type for assignment: {type(assignment)}'
             )
 
-    def assignment2set(self, assignment: Union[int, Set[int]]) -> Set[int]:
+    def assignment2set(self, assignment: Union[int, IntSet]) -> IntSet:
         if isinstance(assignment, numbers.Number):
             if int(assignment) != assignment:
                 raise ValueError(
                     f'Illegal assignment for IntegerVariable "{self.name}": {assignment}'
                 )
-            return {int(assignment)}
+            return IntSet(int(assignment), int(assignment))
         return assignment
 
     @staticmethod
