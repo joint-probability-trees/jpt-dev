@@ -6,6 +6,7 @@ import multiprocessing as mp
 from typing import Tuple, Optional, Dict, Any
 
 import numpy as np
+import datetime as dt
 
 from dnutils import ifnone, getlogger
 from tqdm import tqdm
@@ -53,7 +54,10 @@ def _initialize_worker(shm_name, single_likelihoods):
 
 
 def single_likelihood(args) -> Tuple[int, Any]:
-    # print('worker', os.getpid())
+    logger.debug(
+        f'entering worker func {os.getpid()} with {args}"'
+    )
+    starttime = dt.datetime.now()
     idx, single_likelihoods = args
     jpt = _locals.jpt
     data = _locals.data
@@ -86,6 +90,10 @@ def single_likelihood(args) -> Tuple[int, Any]:
         raise ValueError(
             f'No leaf applies for {values}'
         )
+
+    logger.debug(
+        f'leaving worker func {os.getpid()} after {dt.datetime.now() - starttime}"'
+    )
 
     return idx
 
