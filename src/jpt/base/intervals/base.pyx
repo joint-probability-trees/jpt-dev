@@ -63,9 +63,11 @@ cdef class NumberSet:
             )
 
     def __getstate__(self):
+        self.__suppress_inheritance()
         return ()
 
     def __setstate__(self, _):
+        self.__suppress_inheritance()
         pass
 
     def __and__(self, other):
@@ -261,7 +263,6 @@ cdef class Interval(NumberSet):
     cpdef NumberSet xmirror(self):
         self.__suppress_inheritance()
         return Interval.emptyset()
-
 
     cpdef SIZE_t isninf(self):
         self.__suppress_inheritance()
