@@ -548,8 +548,12 @@ class Leaf(Node):
         else:
             raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
 
-    def parallel_likelihood(self, queries: np.ndarray, dirac_scaling: float = 2.,  min_distances: VariableMap = None) \
-            -> np.ndarray:
+    def parallel_likelihood(
+                    self,
+               queries: np.ndarray,
+            dirac_scaling: float = 2.,
+            min_distances: VariableMap = None
+    ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
         :param queries: A VariableMap that maps to singular values (numeric or symbolic)
@@ -1354,11 +1358,14 @@ class JPT:
                 pass
             count += 1
 
-    def _preprocess_query(self,
-                          query: Union[dict, VariableMap],
-                          remove_none: bool = True,
-                          skip_unknown_variables: bool = False,
-                          allow_singular_values: bool = False) -> LabelAssignment:
+    def _preprocess_query(
+            self,
+            query: Union[dict, VariableMap],
+            remove_none: bool = True,
+            skip_unknown_variables: bool = False,
+            allow_singular_values: bool = False,
+            space: Literal['labels', 'values'] = 'labels'
+    ) -> LabelAssignment:
         """
         Transform a query entered by a user into an internal representation that can be further processed.
         :param query: the raw query
@@ -1371,7 +1378,15 @@ class JPT:
         :return: the preprocessed VariableMap
         """
         # Transform lists into a numeric interval:
-        query_ = LabelAssignment(variables=self.variables)
+        if space == 'labels':
+            query_ = LabelAssignment(variables=self.variables)
+        elif space == 'values':
+            query_ = ValueAssignment(variables=self.variables)
+        else:
+            raise ValueError(
+                f'Illegal value for space argument: expected one of {{"labels", "values"}}, got {space}'
+            )
+
         # parameter of the respective variable:
         for key, arg in query.items():
             if arg is None and remove_none:
@@ -1395,18 +1410,25 @@ class JPT:
                     # Apply a "blur" to single value evidences, if any blur is set
                     elif var.blur:
                         prior = self.priors[var.name]
+                        transformer = var.domain.label2value if space == 'labels' else var.domain.value2label
                         quantile = prior.cdf.functions[
-                            max(1, min(len(prior.cdf) - 2, prior.cdf.idx_at(var.domain.label2value(val))))
+                            max(
+                                1,
+                                min(
+                                    len(prior.cdf) - 2,
+                                    prior.cdf.idx_at(transformer(val))
+                                )
+                            )
                         ].eval(val)
-                        lower = var.domain.label2value(quantile - var.blur / 2)
-                        upper = var.domain.label2value(quantile + var.blur / 2)
+                        lower = transformer(quantile - var.blur / 2)
+                        upper = transformer(quantile + var.blur / 2)
                         query_[var] = ContinuousSet(
-                            var.domain.value2label(
+                            transformer(
                                 prior.ppf.functions[max(1, min(len(prior.cdf) - 2, prior.ppf.idx_at(lower)))].eval(
                                     lower
                                 )
                             ),
-                            var.domain.value2label(
+                            transformer(
                                 prior.ppf.functions[min(len(prior.ppf) - 2, max(1, prior.ppf.idx_at(upper)))].eval(
                                     upper
                                 )
@@ -2446,8 +2468,13 @@ class JPT:
 
         :param allow_singular_values: Allow singular values, such that they are transformed to the daomain
             specification of numeric variables but not transformed to intervals via the PPF.
+        :param space:  Literal['values', 'labels'] Whether the variables shall be assigned to
+                       terms in value or label space of the JPT.
         '''
-        options = {'allow_singular_values': False}
+        options = {
+            'allow_singular_values': False,
+            'space': 'labels'
+        }
         if len(arg) > 1 or arg and not isinstance(arg[0], dict) and not arg[0] is None:
             raise ValueError(
                 'Illegal argument: positional '
