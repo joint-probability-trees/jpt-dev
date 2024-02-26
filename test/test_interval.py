@@ -457,6 +457,27 @@ class ContinuousSetTest(TestCase):
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    @data(('[-10, 5]',), (']5, 10]',),
+          ('[0, 1]',), ('[2, 3]',),
+          (']-inf,0[',), ('[0, inf[',),
+          ('[0, 1]',), (']0,0[',),
+          (']-1,-1[',), (']-1,-1[',))
+    @unpack
+    def test_pickle(self, i):
+        # Arrange
+        i = ContinuousSet.parse(i)
+
+        # Act
+        result = pickle.loads(pickle.dumps(i))
+
+        # Assert
+        self.assertEqual(
+            i,
+            result
+        )
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     @data(
         (ContinuousSet.parse('[0,1]'), UnionSet([ContinuousSet(np.NINF, 0, EXC, EXC), ContinuousSet(1, np.PINF, EXC, EXC)])),
         (ContinuousSet.emptyset(), R),
@@ -1979,6 +2000,38 @@ class IntSetTest(TestCase):
             Z,
             intset_inf_
         )
+
+    def test_pickle(self):
+        # Arrange
+        intset_finite = IntSet(1, 2)
+        intset_ninf = IntSet(np.NINF, 0)
+        intset_pinf = IntSet(0, np.PINF)
+        intset_inf = Z
+
+        # Act
+        intset_finite_ = pickle.loads(pickle.dumps(intset_finite))
+        intset_ninf_ = pickle.loads(pickle.dumps(intset_ninf))
+        intset_pinf_ = pickle.loads(pickle.dumps(intset_pinf))
+        intset_inf_ = pickle.loads(pickle.dumps(intset_inf))
+
+        # Assert
+        self.assertEqual(
+            intset_finite,
+            intset_finite_
+        )
+        self.assertEqual(
+            intset_ninf,
+            intset_ninf_
+        )
+        self.assertEqual(
+            intset_pinf,
+            intset_pinf_
+        )
+        self.assertEqual(
+            Z,
+            intset_inf_
+        )
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 

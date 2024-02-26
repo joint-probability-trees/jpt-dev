@@ -62,6 +62,15 @@ cdef class IntSet(Interval):
         self._lower = lower
         self._upper = upper
 
+    def __getstate__(self):
+        return (
+            self._lower,
+            self._upper
+        )
+
+    def __setstate__(self, state):
+        self._lower, self._upper = state
+
     @staticmethod
     def parse(str s) -> IntSet:
         if s == _CHAR_EMPTYSET:
