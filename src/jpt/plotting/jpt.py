@@ -86,7 +86,7 @@ def render_leaf(args) -> Tuple[Tuple, Dict]:
         if type(pvar) is str:
             pvar = jpt.varnames[pvar]
 
-        img_name = html.escape(f'{pvar.name}-{leaf.idx}')
+        img_name = html.escape(f'./{pvar.name}-{leaf.idx}')
 
         params = {} if pvar.numeric else {
             'horizontal': True,
