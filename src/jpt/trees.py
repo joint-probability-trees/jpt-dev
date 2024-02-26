@@ -571,10 +571,12 @@ class Leaf(Node):
             queries: np.ndarray,
             dirac_scaling: float = 2.,
             min_distances: VariableMap = None,
-            single_likelihoods: bool = False
+            single_likelihoods: bool = False,
+            variables: Iterable[Variable] = None
     ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
+
         :param queries: An array-like object that represents variable assignments in value space.
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
@@ -584,16 +586,22 @@ class Leaf(Node):
             validation processes.
         :type min_distances: A VariableMap from numeric variables to floats or None
         :param single_likelihoods:
+        :param variables: the variables to consider in the likelihood calculation
         """
-
         # create result vector
         if single_likelihoods:
             result = np.ones(queries.shape)
         else:
             result = np.ones(len(queries))
 
+        variables = ifnone(variables, list(self.distributions.keys()))
+        variables = [v for v in self.distributions if v in variables]
+
         # for each idx, variable and distribution
         for idx, (variable, distribution) in enumerate(self.distributions.items()):
+
+            if variable not in variables:
+                continue
 
             # if the variable is symbolic
             if isinstance(variable, SymbolicVariable):
