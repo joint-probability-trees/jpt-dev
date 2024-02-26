@@ -1472,13 +1472,16 @@ class TestPruneOrPslitHook(TestCase):
 
     @staticmethod
     def prune_or_split(
+        jpt,
         data,
         indices,
         start,
         end,
-        parent,
+        node_idx,
+        parent_idx,
         child_idx,
-        depth
+        depth,
+        path
     ):
         return depth > 4
 

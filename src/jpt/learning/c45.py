@@ -3,6 +3,7 @@ import math
 import signal
 import threading
 from multiprocessing import Lock, Event, Pool, Array
+from operator import attrgetter
 from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List, Type
 
 import numpy as np
@@ -20,7 +21,7 @@ from ..trees import JPT, DecisionNode, Leaf, Node
 from ..variables import Variable
 from .impurity import Impurity
 from ..base.functions import PiecewiseFunction
-from ..base.intervals import ContinuousSet, INC, EXC, IntSet
+from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
 from ..distributions.quantile.quantiles import QuantileDistribution
 
 
@@ -54,9 +55,10 @@ class JPTPartition:
             data: Optional[np.ndarray],
             start: int,
             end: int,
+            node_idx: int,
             parent_idx: Optional[int],
             child_idx: Optional[int],
-            path: List[Set or ContinuousSet],
+            path: List[Set or Interval],
             min_samples_leaf: int,
             depth: int
     ):
@@ -71,6 +73,7 @@ class JPTPartition:
         self.data = data
         self.start = start
         self.end = end
+        self.node_idx = node_idx
         self.parent_idx = parent_idx
         self.child_idx = child_idx
         self.depth = depth
@@ -108,6 +111,7 @@ def c45split(
     start = partition.start
     end = partition.end
     depth = partition.depth
+    node_idx = partition.node_idx
     parent_idx = partition.parent_idx
     child_idx = partition.child_idx
     data = _locals.data if hasattr(_locals, 'data') else partition.data
@@ -115,33 +119,42 @@ def c45split(
     indices = np.frombuffer(_locals.indices.get_obj(), dtype=np.int64)
     min_impurity_improvement = ifnone(jpt.min_impurity_improvement, 0)
     n_samples = end - start
-    split_pos = -1
-    split_var = None
 
     impurity = Impurity.from_tree(jpt)
     impurity.setup(data, indices)
     impurity.min_samples_leaf = partition.min_samples_leaf
 
     max_gain = impurity.compute_best_split(start, end)
+    split_pos = impurity.best_split_pos
+    split_var_idx = impurity.best_var
+    split_var = jpt.variables[split_var_idx]
 
     jpt.logger.debug(
         'data range: %d-%d,' % (start, end),
         'split var:', split_var,
         ', split_pos:', split_pos,
-        ', gain:', max_gain
+        ', gain:', max_gain,
+        ', path:', path
     )
 
     prune = (
         prune_or_split is not None
         and prune_or_split(
+            jpt,
             data,
             indices,
             start,
             end,
+            node_idx,
             parent_idx,
             child_idx,
-            depth
+            depth,
+            list(path)
         )
+    )
+
+    jpt.logger.debug(
+        f'prune_or_split() returned {prune}'
     )
 
     if (
@@ -150,12 +163,9 @@ def c45split(
             and depth < jpt.max_depth
     ):
         # Create a decision node ---------------------------------------------------------------------------------------
-        split_pos = impurity.best_split_pos
-        split_var_idx = impurity.best_var
-        split_var = jpt.variables[split_var_idx]
 
         node = DecisionNode(
-            idx=None,
+            idx=node_idx,
             variable=split_var,
             parent=None
         )
@@ -195,32 +205,37 @@ def c45split(
                 'Unknown variable type: %s.' % type(split_var).__name__
             )
 
-        node.splits = splits
+        node.splits = [s.copy() for s in splits]
 
         # recurse left and right
         left = JPTPartition(
-            partition.data,
-            start,
-            start + split_pos + 1,
-            node.idx,
-            0,
-            path + [(split_var, splits[0])],
-            partition.min_samples_leaf,
-            depth + 1
+            data=partition.data,
+            start=start,
+            end=start + split_pos + 1,
+            node_idx=None,
+            parent_idx=node.idx,
+            child_idx=0,
+            path=path + [(split_var, splits[0].copy())],
+            min_samples_leaf=partition.min_samples_leaf,
+            depth=depth + 1
         )
         right = JPTPartition(
-            partition.data,
-            start + split_pos + 1,
-            end,
-            node.idx,
-            1,
-            path + [(split_var, splits[1])],
-            partition.min_samples_leaf,
-            depth + 1
+            data=partition.data,
+            start=start + split_pos + 1,
+            end=end,
+            node_idx=None,
+            parent_idx=node.idx,
+            child_idx=1,
+            path=path + [(split_var, splits[1].copy())],
+            min_samples_leaf=partition.min_samples_leaf,
+            depth=depth + 1
         )
 
     else:  # Create a leaf node ----------------------------------------------------------------------------------------
-        leaf = node = Leaf(idx=None, parent=None)
+        leaf = node = Leaf(
+            idx=node_idx,
+            parent=None
+        )
 
         for i, v in enumerate(jpt.variables):
             leaf.distributions[v] = v.distribution()._fit(
@@ -236,8 +251,12 @@ def c45split(
 
         left = right = None
 
-    JPT.logger.debug('Created', str(node))
     node._path = list(path)
+    JPT.logger.debug(
+        'Created', str(node),
+        'left=', ifnone(left, None, attrgetter('path')),
+        'right=', ifnone(right, None, attrgetter('path'))
+    )
 
     return node.to_json(), partition, left, right
 
@@ -259,6 +278,7 @@ class C45Algorithm:
         self.queue_length = 0
         self.indices = None
         self.min_samples_leaf = None
+        self.node_counter = 0
 
     def _node_created(
             self,
@@ -277,16 +297,20 @@ class C45Algorithm:
             json_node = node  # .to_json()
             json_node['parent'] = partition.parent_idx
             json_node['child_idx'] = partition.child_idx
-            json_node['idx'] = len(self.jpt.allnodes)
 
             if 'children' in json_node:
                 node = DecisionNode.from_json(self.jpt, json_node)
             else:
                 node = Leaf.from_json(self.jpt, json_node)
 
+            self.node_counter += 1
+
             if isinstance(node, DecisionNode):
                 left.parent_idx = node.idx
+                left.node_idx = self.node_counter
+                self.node_counter += 1
                 right.parent_idx = node.idx
+                right.node_idx = self.node_counter
 
                 self.queue_length += 2
                 self.c45queue.apply_async(
@@ -322,6 +346,8 @@ class C45Algorithm:
 
             if not self.queue_length:
                 self.finish.set()
+
+        print(self.jpt)
 
     def learn(
             self,
@@ -485,6 +511,7 @@ class C45Algorithm:
                         data=None,
                         start=0,
                         end=_data.shape[0],
+                        node_idx=self.node_counter,
                         parent_idx=None,
                         child_idx=None,
                         path=[],
