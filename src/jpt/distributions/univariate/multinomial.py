@@ -160,11 +160,27 @@ class Multinomial(Distribution):
 
         return intersect / union
 
+    def mover_dist(
+            self,
+            other: 'Multinomial'
+    ) -> float:
+        # if the domains of the given distributions are not identical, they are considered maximally distant
+        if any([len(set(i)) != 1 for i in zip(self.values, other.values)]): return np.PINF
+
+        # otherwise determine the "effort" that is required to transform one distribution into
+        # the other, defined as the sum of the absolute values of the differences in relative frequency of each
+        # label, e.g.:
+        # d1 = [.1, .4, .5]
+        # d2 = [.2, .4, .4]
+        # mover_dist(d1, d2) = |.1 - .2 | + | .4 - .4 | + | .5 - .4 | = .2
+        return sum([abs(a-b) for a, b in zip(self.probabilities, other.probabilities)])
+
     def similarity(
             self,
             other: 'Multinomial'
     ) -> float:
-        return Multinomial.jaccard_similarity(self, other)
+        return self.mover_dist(other)
+        # return Multinomial.jaccard_similarity(self, other)
 
     def distance(
             self,
