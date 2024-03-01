@@ -190,7 +190,7 @@ class Distribution:
     @staticmethod
     def type_from_json(data: Dict[str, Any]) -> Type['Distribution']:
         from .numeric import Numeric, ScaledNumeric
-        from .multinomial import Multinomial
+        from .multinomial import Multinomial, Bool
         from .integer import Integer
 
         DISTRIBUTION_TYPES = {
@@ -203,6 +203,8 @@ class Distribution:
         cls = DISTRIBUTION_TYPES.get(data['type'])
         if cls is None:
             raise TypeError('Unknown distribution type: %s' % data['type'])
+        elif cls is Multinomial and data['class'] == 'Bool':
+            return Bool
         return cls.type_from_json(data)
 
     @staticmethod
