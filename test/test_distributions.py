@@ -352,6 +352,35 @@ class MultinomialDistributionTest(TestCase):
         jacc2 = Multinomial.jaccard_similarity(d2, d1)
         self.assertEqual(jacc1, jacc2)
 
+    def test_mover_dist_identity(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        md = Multinomial.mover_dist(d1, d1)
+        self.assertEqual(0., md)
+
+    def test_mover_dist_symmetry(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        d2 = self.DistABC().set([.2, .4, .4])
+        md1 = Multinomial.mover_dist(d1, d2)
+        md2 = Multinomial.mover_dist(d2, d1)
+        self.assertEqual(md1, md2)
+
+    def test_mover_dist_triangle_inequality(self):
+        a = self.DistABC().set([.1, .4, .5])
+        b = self.DistABC().set([.2, .4, .4])
+        c = self.DistABC().set([.2, .2, .6])
+        ab = Multinomial.mover_dist(a, b)
+        bc = Multinomial.mover_dist(b, c)
+        ac = Multinomial.mover_dist(a, c)
+        self.assertLessEqual(ac, ab + bc)
+
+    def test_temp_goal(self):
+        v1 = self.DistABC().set([.1, .4, .5])
+        other = {'A', 'B'}
+
+        v2_ = SymbolicVariable(v1.__class__.__name__, type(v1))
+        v2 = v2_.distribution().set([(1 if x in other else 0) / len(other) for x in list(v2_.domain.labels)])
+        self.assertEqual(1,1)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
