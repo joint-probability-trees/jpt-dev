@@ -39,8 +39,6 @@ def single_likelihood(args) -> Tuple[int, Any]:
         buffer=shm.buf
     )
 
-    results[:]=0
-
     for leaf in jpt.apply(values):
         if found_leaf:
             raise ValueError(
