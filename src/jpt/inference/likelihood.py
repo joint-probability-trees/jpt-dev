@@ -3,7 +3,7 @@ import os
 import sys
 import threading
 import multiprocessing as mp
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Optional, Dict, Any, Iterable
 
 import numpy as np
 import datetime as dt
@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from jpt.trees import JPT
 from jpt.base.multicore import Pool
-from jpt.variables import ValueAssignment
+from jpt.variables import ValueAssignment, Variable
 
 
 _locals = threading.local()
@@ -61,6 +61,7 @@ def single_likelihood(args) -> Tuple[int, Any]:
     idx, single_likelihoods = args
     jpt = _locals.jpt
     data = _locals.data
+    variables = _locals.variables
 
     values = ValueAssignment(
         [(var, var.assignment2set(val)) for var, val in zip(jpt.variables, data[idx, :])],
@@ -83,7 +84,8 @@ def single_likelihood(args) -> Tuple[int, Any]:
             data[idx:idx + 1, :],
             dirac_scaling=_locals.dirac_scaling,
             min_distances=ifnone(_locals.min_distances, jpt.minimal_distances),
-            single_likelihoods=single_likelihoods
+            single_likelihoods=single_likelihoods,
+            variables=variables
         )
 
     if not found_leaf:
@@ -106,7 +108,8 @@ def parallel_likelihood(
         min_distances: Dict = None,
         multicore: Optional[int] = None,
         verbose: bool = False,
-        single_likelihoods: bool = False
+        single_likelihoods: bool = False,
+        variables: Iterable[Variable] = None
 ) -> np.ndarray:
 
     _locals.data = data
@@ -114,9 +117,12 @@ def parallel_likelihood(
     _locals.dirac_scaling = dirac_scaling
     _locals.min_distances = min_distances
     _locals.single_likelihoods = single_likelihoods
+    _locals.variables = variables
+
+    n_variables = ifnone(variables, data.shape[0], len)
 
     if single_likelihoods:
-        shape = data.shape
+        shape = (data.shape[0], n_variables)
     else:
         shape = (data.shape[0], 1)
 

@@ -589,12 +589,13 @@ class Leaf(Node):
         :param variables: the variables to consider in the likelihood calculation
         """
         # create result vector
+        variables = ifnone(variables, list(self.distributions.keys()))
+
         if single_likelihoods:
-            result = np.ones(queries.shape)
+            result = np.ones(len(variables))
         else:
             result = np.ones(len(queries))
 
-        variables = ifnone(variables, list(self.distributions.keys()))
         variables = [v for v in self.distributions if v in variables]
 
         # for each idx, variable and distribution
@@ -1690,7 +1691,8 @@ class JPT:
             preprocess: bool = True,
             multicore: Optional[int] = None,
             verbose: bool = False,
-            single_likelihoods: bool = False
+            single_likelihoods: bool = False,
+            variables: Iterable[Variable] = None
     ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
@@ -1729,7 +1731,8 @@ class JPT:
             min_distances=min_distances,
             multicore=multicore,
             verbose=verbose,
-            single_likelihoods=single_likelihoods
+            single_likelihoods=single_likelihoods,
+            variables=variables
         )
 
     @deprecated
