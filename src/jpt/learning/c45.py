@@ -4,12 +4,12 @@ import signal
 import threading
 from multiprocessing import Lock, Event, Pool, Array
 from operator import attrgetter
-from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List, Type
+from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List,
 
 import numpy as np
 import pandas as pd
 from .preprocessing import preprocess_data
-from dnutils import mapstr, ifnone
+from dnutils import mapstr, ifnone, getlogger
 from tqdm import tqdm
 import ctypes as c
 
@@ -23,6 +23,8 @@ from .impurity import Impurity
 from ..base.functions import PiecewiseFunction
 from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
 from ..distributions.quantile.quantiles import QuantileDistribution
+
+logger = getlogger('/jpt/learning/c45')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -153,7 +155,7 @@ def c45split(
         )
     )
 
-    jpt.logger.debug(
+    logger.debug(
         f'prune_or_split() returned {prune}'
     )
 
@@ -252,7 +254,7 @@ def c45split(
         left = right = None
 
     node._path = list(path)
-    JPT.logger.debug(
+    logger.debug(
         'Created', str(node),
         'left=', ifnone(left, None, attrgetter('path')),
         'right=', ifnone(right, None, attrgetter('path'))
@@ -347,8 +349,6 @@ class C45Algorithm:
             if not self.queue_length:
                 self.finish.set()
 
-        print(self.jpt)
-
     def learn(
             self,
             data: Optional[pd.DataFrame] = None,
@@ -386,6 +386,9 @@ class C45Algorithm:
             columns=columns
         )
 
+        logger.debug('Initializing JPT learning...')
+        self.jpt._reset()
+
         for idx, variable in enumerate(self.jpt.variables):
             if variable.numeric:
                 samples = np.unique(_data[:, idx])
@@ -397,8 +400,6 @@ class C45Algorithm:
 
         # --------------------------------------------------------------------------------------------------------------
         # Initialize the internal data structures
-
-        self.jpt._reset()
         indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
         indices[0] = 0
         np.cumsum(indices, out=indices)
@@ -407,7 +408,10 @@ class C45Algorithm:
         _locals.indices = Array(c.c_long, indices.shape[0])
         _locals.indices[:] = indices
 
-        JPT.logger.info('Data transformation... %d x %d' % _data.shape)
+        logger.debug(
+            f'Data transformation... {_data.shape[0]} x {_data.shape[1]}: '
+            f'{_data.nbytes / 1e6:,.2f} MB'
+        )
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
@@ -494,7 +498,6 @@ class C45Algorithm:
         )
         self.lock = Lock()
         self.finish = Event()
-        JPT.logger.info(f'Data set size: {_data.nbytes / 1e6:,.2f} MB')
         if verbose:
             self._progressbar = tqdm(
                 total=_data.shape[0],
