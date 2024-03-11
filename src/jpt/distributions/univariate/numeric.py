@@ -690,6 +690,24 @@ class Numeric(Distribution):
         )
 
     @staticmethod
+    def wasserstein_distance(
+            d1: 'Numeric',
+            d2: 'Numeric',
+    ) -> float:
+        points = list(
+            sorted(
+                set(d1.cdf.boundaries()) | set(d2.cdf.boundaries())
+            )
+        )
+        minpt = min(points)
+        maxpt = max(points)
+
+        diff_ = PiecewiseFunction.abs(d1.cdf - d2.cdf)
+        ar = diff_.integrate(ContinuousSet(minpt, maxpt))
+
+        return ar
+
+    @staticmethod
     def jaccard_similarity(
             d1: 'Numeric',
             d2: 'Numeric',
