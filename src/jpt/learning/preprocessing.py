@@ -139,7 +139,11 @@ def preprocess_data(
             for v in data.columns
         }
         if verbose:
-            progressbar = tqdm(total=len(data.columns))
+            progressbar = tqdm(
+                total=len(data.columns),
+                desc='Preprocessing data'
+            )
+
         with Pool(multicore) as pool:
             for v in pool.imap_unordered(
                     map_col,
@@ -153,10 +157,17 @@ def preprocess_data(
     else:
         for i, (var, col) in enumerate(zip(jpt.variables, columns)):
             data_[:, i] = [var.domain.values[v] for v in col]
+
+    logger.debug(
+        f'Copying data ({data_.nbytes / 1e6} MB)...'
+    )
     result = np.copy(data_, order='C')
+
+    logger.debug(
+        f'Clearing shared data structures...'
+    )
     shm.close()
     shm.unlink()
-
     _locals.__dict__.clear()
 
     return result
