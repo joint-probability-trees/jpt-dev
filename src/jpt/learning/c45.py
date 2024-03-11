@@ -4,7 +4,7 @@ import signal
 import threading
 from multiprocessing import Lock, Event, Pool, Array
 from operator import attrgetter
-from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List,
+from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List
 
 import numpy as np
 import pandas as pd
