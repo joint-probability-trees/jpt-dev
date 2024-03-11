@@ -986,8 +986,6 @@ cdef class PiecewiseFunction(Function):
             result.functions = [g + f for g in result.functions]
             return result
         elif isinstance(f, PiecewiseFunction):
-            print(self.intervals)
-            print(f.intervals)
             domain = UnionSet(self.intervals).intersections(UnionSet(f.intervals))
             undefined = self.domain().union(f.domain()).difference(domain)
             if not isinstance(undefined, UnionSet):
