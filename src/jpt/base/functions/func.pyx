@@ -119,7 +119,10 @@ cdef class Function:
         return self * other
 
     def __eq__(self, other):
-        raise NotImplementedError()
+        raise NotImplementedError(f'{type(self).__qualname__}')
+
+    def __neg__(self):
+        raise NotImplementedError(f'{type(self).__qualname__}')
 
     cpdef Function simplify(self):
         """
@@ -136,7 +139,7 @@ cdef class Function:
         raise NotImplementedError()
 
     cpdef Function xmirror(self):
-        raise NotImplementedError()
+        raise NotImplementedError(f'{type(self)}')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -180,62 +183,11 @@ cdef class Undefined(Function):
     cpdef Function xshift(self, DTYPE_t delta):
         return Undefined()
 
+    cpdef Function xmirror(self):
+        return Undefined()
 
-# ----------------------------------------------------------------------------------------------------------------------
-
-# cdef class Jump(KnotFunction):
-#     """
-#     Implementation of jump functions.
-#     """
-#
-#     def __init__(self, DTYPE_t knot, np.int32_t alpha, DTYPE_t weight):
-#         super(Jump, self).__init__(knot, weight)
-#         assert alpha in (1, -1), 'alpha must be in {1,-1}'
-#         self.alpha = alpha
-#
-#     cpdef DTYPE_t eval(self, DTYPE_t x):
-#         return max(0, (-1 if ((self.knot - x) if self.alpha == 1 else (x - self.knot)) < 0 else 1)) * self.weight
-#
-#     def __str__(self):
-#         return '%.3f * max(0, sgn(%s))' % (self.weight,
-#                                            ('x - %s' % self.knot) if self.alpha == 1 else ('%s - x' % self.knot))
-#
-#     def __repr__(self):
-#         return '<Jump 0x%X: k=%.3f a=%d w=%.3f>' % (id(self), self.knot, self.alpha, self.weight)
-#
-#     @staticmethod
-#     def from_point(p1, alpha):
-#         x, y = p1
-#         return Jump(x, alpha, y)
-#
-#     cpdef Function differentiate(self):
-#         return Impulse(self.knot, self.weight)
-#
-#
-# # ----------------------------------------------------------------------------------------------------------------------
-#
-# cdef class Impulse(KnotFunction):
-#     """
-#     Represents a function that is non-zero at exactly one x-position and zero at all other positions.
-#     """
-#
-#     def __init__(self, DTYPE_t knot, DTYPE_t weight):
-#         super(Impulse, self).__init__(knot, weight)
-#
-#     cpdef DTYPE_t eval(self, DTYPE_t x):
-#         return self.weight if x == self.knot else 0
-#
-#     cpdef Function differentiate(self):
-#         return Impulse(self.knot, np.nan)
-#
-#     cpdef np.int32_t is_invertible(self):
-#         return False
-#
-#     def __repr__(self):
-#         return '<Impulse )x%X: k=%.3f w=%.3f>' % (id(self), self.knot, self.weight)
-#
-#     def __str__(self):
-#         return '%.3f if x=%.3f else 0' % (self.weight, self.knot)
+    def __neg__(self):
+        return Undefined()
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -386,6 +338,9 @@ cdef class ConstantFunction(Function):
         :return:
         '''
         return self.copy()
+
+    def __neg__(self):
+        return ConstantFunction(-self.value)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -552,6 +507,9 @@ cdef class LinearFunction(Function):
             return False
         else:
             raise TypeError('Can only compare objects of type "Function", but got type "%s".' % type(other).__name__)
+
+    def __neg__(self):
+        return self * -1
 
     cpdef Function set(self, Function f):
         if not isinstance(f, LinearFunction):
@@ -798,6 +756,13 @@ cdef class QuadraticFunction(Function):
 
     def __repr__(self):
         return '<QuadraticFunction 0x%X: %s>' % (id(self), str(self))
+
+    def __neg__(self):
+        return QuadraticFunction(
+            -self.a,
+            -self.b,
+            -self.c
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
