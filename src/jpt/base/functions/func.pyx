@@ -810,6 +810,9 @@ cdef class PiecewiseFunction(Function):
             ConstantFunction(1 / float(other))
         )
 
+    def __neg__(self) -> PiecewiseFunction:
+        return self * -1
+
     @classmethod
     def zero(cls, interval: ContinuousSet = None) -> PiecewiseFunction:
         '''
