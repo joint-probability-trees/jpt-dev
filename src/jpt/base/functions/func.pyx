@@ -774,13 +774,27 @@ cdef class QuadraticFunction(Function):
 
     cpdef DTYPE_t argvertex(self):
         return self.differentiate().simplify().root()
+    
+    @staticmethod
+    def from_vertexform(
+        DTYPE_t scale,
+        DTYPE_t x_vertex,
+        DTYPE_t y_vertex
+    ):
+        return QuadraticFunction(
+            scale,
+            - 2 * scale * x_vertex,
+            scale * x_vertex * x_vertex + y_vertex
+        )
 
     def __str__(self):
-        return ('%.3fx² %s%.3fx %s%.3f' % (self.a,
-                                           {1: '+ ', 0: ''}[self.b >= 0],
-                                           self.b,
-                                           {1: '+ ', 0: ''}[self.c >= 0],
-                                           self.c)).strip()
+        return ('%.3fx² %s%.3fx %s%.3f' % (
+            self.a,
+            {1: '+ ', 0: ''}[self.b >= 0],
+            self.b,
+            {1: '+ ', 0: ''}[self.c >= 0],
+            self.c
+        )).strip()
 
     def __repr__(self):
         return '<QuadraticFunction 0x%X: %s>' % (id(self), str(self))

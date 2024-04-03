@@ -387,6 +387,21 @@ class QuadraticFunctionTest(TestCase):
             list(roots)
         )
 
+    @data(
+        ((3, 1, 4), QuadraticFunction(3, 6, 7)),
+        ((-2, -2, 3), QuadraticFunction(-2, 8, -5))
+    )
+    @unpack
+    def test_vertexform(self, params, result):
+        # Act
+        vertex = QuadraticFunction.from_vertexform(*params)
+
+        # Assert
+        self.assertEqual(
+            result,
+            vertex
+        )
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 @ddt
