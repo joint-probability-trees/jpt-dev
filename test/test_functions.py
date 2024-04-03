@@ -991,7 +991,6 @@ class PLFTest(TestCase):
             plf2.rectify()
         )
 
-
     @data(
         (
             PiecewiseFunction.zero().overwrite({
@@ -1024,6 +1023,30 @@ class PLFTest(TestCase):
             np.inf,
             ContinuousSet(np.inf, np.inf),
         ),
+        (
+            PiecewiseFunction.zero().overwrite_at(
+                ContinuousSet(0, 1, INC, EXC),
+                QuadraticFunction.from_vertexform(-1, .5, 2)
+            ),
+            2,
+            ContinuousSet(.5, .5)
+        ),
+        (
+            PiecewiseFunction.zero().overwrite_at(
+                ContinuousSet(0, 1, INC, EXC),
+                QuadraticFunction.from_vertexform(1, .5, 2)
+            ),
+            2.25,
+            UnionSet([ContinuousSet(0, 0), ContinuousSet(1 - eps, 1 - eps)])
+        ),
+        (
+            PiecewiseFunction.zero().overwrite_at(
+                ContinuousSet(0, 1 + eps, INC, EXC),
+                QuadraticFunction.from_vertexform(-1, 2, 4)
+            ),
+            3,
+            UnionSet([ContinuousSet(1, 1)])
+        )
     )
     @unpack
     def test_maximize(self, f, f_max, f_argmax):

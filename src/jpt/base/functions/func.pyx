@@ -732,7 +732,7 @@ cdef class QuadraticFunction(Function):
 
     cpdef DTYPE_t argvertex(self):
         return self.differentiate().simplify().root()
-    
+
     @staticmethod
     def from_vertexform(
         DTYPE_t scale,
@@ -1666,34 +1666,51 @@ cdef class PiecewiseFunction(Function):
         :return:
         '''
         f_max = np.nan
-        f_argmax = EMPTY.copy()
-        d = self.domain()
+        f_argmax = UnionSet.emptyset()
 
-        for b in itertools.chain(
-                [i.min for i in self.intervals],
-                [i.max for i in self.intervals]
-        ):
-            idx = self.idx_at(b)
-            f = self.functions[idx]
-            i = self.intervals[idx]
-            f_ = f(b)
-            if np.isnan(f_) or not np.isnan(f_max) and f_max > f_:
+        for i, f in self.iter():
+            candidates = []
+            left = ContinuousSet(i.min, i.min), f(i.min)
+            right = ContinuousSet(i.max, i.max), f(i.max)
+
+            if isinstance(f, Undefined):
                 continue
-            if isinstance(f, LinearFunction):
-                argmax = ContinuousSet(b, b)
-            elif isinstance(f, ConstantFunction):
-                argmax = i.copy()
-            else:
+
+            if isinstance(f, (ConstantFunction, LinearFunction)):
+                if left[1] == right[1]:
+                    candidates = [(i, f(i.any_point()))]
+                else:
+                    candidates = [left, right]
+
+            if isinstance(f, QuadraticFunction):
+                argvertex = f.argvertex()
+                vertex = ContinuousSet(argvertex, argvertex), f.eval(argvertex)
+                if left[1] == right[1] == vertex[1]:
+                    candidates = [(i, f(i.any_point()))]
+                else:
+                    if left[1] == right[1]:
+                        candidates = [(UnionSet([left[0], right[0]]), left[1])]
+                    else:
+                        candidates = [left, right]
+                    if i.issuperseteq(vertex[0]):
+                        candidates.append(vertex)
+
+            if not candidates:
                 raise TypeError(
                     'Maximizing functions of type %s '
                     'is currently not supported.' % type(self).__name__
                 )
-            if f_max == f_:
-                f_argmax = f_argmax.union(argmax)
-            else:
-                f_argmax = argmax
-            f_max = f_
-        return f_argmax, f_max
+
+            for arg, fval in candidates:
+                if np.isnan(fval):
+                    continue
+                elif np.isnan(f_max) or f_max < fval:
+                    f_argmax = arg
+                    f_max = fval
+                elif f_max == fval:
+                    f_argmax = f_argmax.union(arg)
+
+        return f_argmax.simplify(), f_max
 
     def approximate(
             self,
