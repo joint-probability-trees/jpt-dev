@@ -170,6 +170,9 @@ cdef class NumberSet:
     cpdef DTYPE_t[::1] _sample(self, SIZE_t k=1, DTYPE_t[::1] result=None):
         raise NotImplementedError()
 
+    cpdef NumberSet simplify(self):
+        raise NotImplementedError()
+
     def __hash__(self):
         self.__suppress_inheritance()
         return hash(frozenset())

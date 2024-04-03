@@ -55,6 +55,8 @@ cdef class NumberSet:
 
     cpdef DTYPE_t[::1] _sample(self, SIZE_t k=*, DTYPE_t[::1] result=*)
 
+    cpdef NumberSet simplify(self)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 

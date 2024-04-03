@@ -827,6 +827,9 @@ cdef class ContinuousSet(Interval):
         result.left, result.right = result.right, result.left
         return result
 
+    cpdef NumberSet simplify(self):
+        return self.copy()
+
     def __round__(self, n: int = None):
         return ContinuousSet(
             round(self.lower, n),

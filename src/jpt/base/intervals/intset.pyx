@@ -352,5 +352,8 @@ cdef class IntSet(Interval):
 
         return result
 
+    cpdef NumberSet simplify(self):
+        return self.copy()
+
     EMPTY = IntSet.emptyset()
     ALL = _Z
