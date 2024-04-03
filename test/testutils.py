@@ -17,22 +17,25 @@ finally:
     from jpt.distributions.quantile.quantiles import QuantileDistribution
 
 
+__path__, _ = os.path.split(__file__)
+
+
 def gaussian_jpt() -> JPT:
     '''
     Returns a JPT with one single variable representing a Gaussian distribution.
 
     :return:
     '''
-    return JPT.load(os.path.join('resources', 'gaussian-jpt.dat'))
+    return JPT.load(os.path.join(__path__, 'resources', 'gaussian-jpt.dat'))
 
 
 def gaussian_numeric() -> Numeric:
-    with open(os.path.join('resources', 'gaussian_100.dat'), 'rb') as f:
+    with open(os.path.join(__path__, 'resources', 'gaussian_100.dat'), 'rb') as f:
         return Numeric().fit(pickle.load(f).reshape(-1, 1))
 
 
 def gaussian_data_1d() -> pd.DataFrame:
-    with open(os.path.join('resources', 'gaussian_100.dat'), 'rb') as f:
+    with open(os.path.join(__path__, 'resources', 'gaussian_100.dat'), 'rb') as f:
         return pd.DataFrame.from_records(
             pickle.load(f).reshape(-1, 1),
             columns=['X']
