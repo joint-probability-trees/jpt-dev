@@ -463,7 +463,11 @@ cdef class LinearFunction(Function):
         if isinstance(f, ConstantFunction):
             return LinearFunction(self.m * f.value, self.c * f.value)
         elif isinstance(f, LinearFunction):
-            return QuadraticFunction(self.m * f.m, self.m * f.c + f.m * self.c, self.c * f.c).simplify()
+            return QuadraticFunction(
+                self.m * f.m,
+                self.m * f.c + f.m * self.c,
+                self.c * f.c
+            ).simplify()
         else:
             raise TypeError('No operator "*" defined for objects of '
                             'types %s and %s' % (type(self).__name__, type(f).__name__))
