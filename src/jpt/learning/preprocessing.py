@@ -1,14 +1,17 @@
 import ctypes
+import os
 import threading
 from itertools import zip_longest
-from multiprocessing import shared_memory, Pool
+from multiprocessing import shared_memory
 from typing import Union, Optional, List
 
 import numpy as np
 import pandas as pd
-from dnutils import mapstr, logs, out
+from dnutils import mapstr, logs, out, ifnone
+from joblib._multiprocessing_helpers import mp
 from tqdm import tqdm
 
+from ..base.multicore import Pool
 from ..trees import JPT
 
 _locals = threading.local()
@@ -17,20 +20,36 @@ _locals = threading.local()
 logger = logs.getlogger('/jpt/learning/preprocessing')
 
 
-def map_col(args) -> None:
-    i, col = args
+def _terminate_worker():
+    logger.debug(
+       f'Closing shared memory "{_locals.shm.name}" in PID {os.getpid()}'
+    )
+    _locals.shm.close()
+
+
+# noinspection PyUnresolvedReferences
+def _initialize_worker(shm_name):
+    logger.debug(
+        f'Initializing worker {os.getpid()} with shared memory "{shm_name}"'
+    )
+    shm = mp.shared_memory.SharedMemory(
+        shm_name
+    )
+    _locals.shm = shm
     df = _locals.df
 
-    shm = shared_memory.SharedMemory(
-        _locals.shm
-    )
-
-    data_ = np.ndarray(
+    _locals.data = np.ndarray(
         shape=(len(df), len(df.columns)),
         dtype=np.float64,
         order='C',
         buffer=shm.buf
     )
+
+
+def map_col(args) -> None:
+    i, col = args
+    df = _locals.df
+    data_ = _locals.data
 
     try:
         if col in _locals.transformations:
@@ -44,7 +63,6 @@ def map_col(args) -> None:
         raise ValueError(
             f'{e} of {_locals.jpt.varnames[col].domain.__qualname__} of variable {col}'
         )
-    shm.close()
 
     return col
 
@@ -60,6 +78,9 @@ def preprocess_data(
     """
     Transform the input data into an internal representation.
 
+    :param jpt:
+    :param verbose:
+    :param multicore:
     :param data: The data to transform
     :param rows: The indices of the rows that will be transformed
     :param columns: The indices of the columns that will be transformed
@@ -94,13 +115,29 @@ def preprocess_data(
     else:
         raise ValueError('No data given.')
 
+    memory_required = shape[0] * shape[1] * ctypes.sizeof(ctypes.c_double)
+
+    try:
+        import psutil
+        memory_available = psutil.virtual_memory().available
+        logger.info(
+            f'Required RAM: {memory_required / 1e6:,.2f} MB,'
+            f'Available RAM: {memory_available / 1e6:,.2f} MB'
+        )
+        if memory_available < memory_required:
+            logger.warning(
+                f'Out of memory: {memory_required / 1e6:,.2f} MB required, '
+                f'{memory_available / 1e6:,.2f} MB available.'
+            )
+    except ModuleNotFoundError:
+        pass
+
     # Allocate shared memory for the training data
     shm = shared_memory.SharedMemory(
         name=f"preprocessing-{str(threading.get_ident())}",
         create=True,
-        size=shape[0] * shape[1] * ctypes.sizeof(ctypes.c_double)
+        size=memory_required
     )
-    _locals.shm = shm.name
 
     data_ = np.ndarray(
         shape=shape,
@@ -144,8 +181,16 @@ def preprocess_data(
                 desc='Preprocessing data'
             )
 
-        with Pool(multicore) as pool:
-            for v in pool.imap_unordered(
+        n_processes = ifnone(multicore, mp.cpu_count())
+
+        with Pool(
+            processes=n_processes,
+            local=_locals,
+            initializer=_initialize_worker,
+            initargs=(shm.name,),
+            terminator=_terminate_worker
+        ) as processes:
+            for _ in processes.imap_unordered(
                     map_col,
                     iterable=[(i, c) for i, c in enumerate(data.columns)]
             ):
