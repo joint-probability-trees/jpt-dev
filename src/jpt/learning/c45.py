@@ -383,7 +383,8 @@ class C45Algorithm:
             self.jpt,
             data=data,
             rows=rows,
-            columns=columns
+            columns=columns,
+            verbose=verbose
         )
 
         logger.debug('Initializing JPT learning...')
