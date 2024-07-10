@@ -105,8 +105,10 @@ def worker(
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# noinspection PyUnresolvedReferences
-class Pool(mp.pool.Pool):
+_Pool = type(mp.Pool())
+
+
+class Pool(_Pool):
     '''
     Class which supports an async version of applying functions to arguments.
     '''
