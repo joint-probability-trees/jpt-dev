@@ -1,4 +1,5 @@
 import datetime
+import gc
 import math
 import signal
 import threading
@@ -387,7 +388,7 @@ class C45Algorithm:
             verbose=verbose
         )
 
-        logger.debug('Initializing JPT learning...')
+        logger.info('Initializing JPT learning...')
         self.jpt._reset()
 
         for idx, variable in enumerate(self.jpt.variables):
@@ -409,7 +410,7 @@ class C45Algorithm:
         _locals.indices = Array(c.c_long, indices.shape[0])
         _locals.indices[:] = indices
 
-        logger.debug(
+        logger.info(
             f'Data transformation... {_data.shape[0]} x {_data.shape[1]}: '
             f'{_data.nbytes / 1e6:,.2f} MB'
         )
@@ -417,7 +418,7 @@ class C45Algorithm:
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
         started = datetime.datetime.now()
-        JPT.logger.info('Learning prior distributions...')
+        logger.info('Learning prior distributions...')
 
         if verbose:
             self._progressbar = tqdm(
@@ -444,7 +445,7 @@ class C45Algorithm:
         if verbose:
             self._progressbar.close()
 
-        JPT.logger.info(
+        logger.info(
             '%d prior distributions learnt in %s.' % (
                 len(self.jpt.priors),
                 datetime.datetime.now() - started
@@ -465,7 +466,7 @@ class C45Algorithm:
         self.keep_samples = keep_samples
 
         started = datetime.datetime.now()
-        JPT.logger.info(
+        logger.info(
             'Started learning of %s x %s at %s '
             'requiring at least %s samples per leaf' % (
                 _data.shape[0],
@@ -477,10 +478,10 @@ class C45Algorithm:
         learning = GENERATIVE if (
                 self.jpt.targets == self.jpt.variables or self.jpt.targets is None
         ) else DISCRIMINATIVE
-        JPT.logger.info('Learning is %s. ' % learning)
+        logger.info('Learning is %s. ' % learning)
 
         if learning == DISCRIMINATIVE:
-            JPT.logger.info(
+            logger.info(
                 'Target variables (%d): %s\n'
                 'Feature variables (%d): %s' % (
                     len(self.jpt.targets),
@@ -544,7 +545,7 @@ class C45Algorithm:
 
         # --------------------------------------------------------------------------------------------------------------
         # Print the statistics
-        JPT.logger.info(
+        logger.info(
             'Learning took %s' % (datetime.datetime.now() - started),
             repr(self.jpt)
         )
@@ -552,6 +553,7 @@ class C45Algorithm:
         # --------------------------------------------------------------------------------------------------------------
         # Clean up
         _locals.__dict__.clear()
+        gc.collect()
 
     def postprocess_leaves(self) -> None:
         """

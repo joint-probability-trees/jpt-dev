@@ -1,4 +1,5 @@
 import ctypes
+import gc
 import os
 import threading
 from itertools import zip_longest
@@ -7,8 +8,7 @@ from typing import Union, Optional, List
 
 import numpy as np
 import pandas as pd
-from dnutils import mapstr, logs, out, ifnone
-from joblib._multiprocessing_helpers import mp
+from dnutils import mapstr, logs, ifnone
 from tqdm import tqdm
 
 from ..base.multicore import Pool
@@ -32,7 +32,7 @@ def _initialize_worker(shm_name):
     logger.debug(
         f'Initializing worker {os.getpid()} with shared memory "{shm_name}"'
     )
-    shm = mp.shared_memory.SharedMemory(
+    shm = shared_memory.SharedMemory(
         shm_name
     )
     _locals.shm = shm
@@ -146,9 +146,9 @@ def preprocess_data(
         buffer=shm.buf
     )
 
-    # print(data_)
     # Make the original data available to worker processes
     _locals.df = data
+    _locals.jpt = jpt
 
     if isinstance(data, pd.DataFrame):
         if set(jpt.varnames).symmetric_difference(set(data.columns)):
@@ -181,7 +181,7 @@ def preprocess_data(
                 desc='Preprocessing data'
             )
 
-        n_processes = ifnone(multicore, mp.cpu_count())
+        n_processes = ifnone(multicore, os.cpu_count())
 
         with Pool(
             processes=n_processes,
@@ -203,16 +203,17 @@ def preprocess_data(
         for i, (var, col) in enumerate(zip(jpt.variables, columns)):
             data_[:, i] = [var.domain.values[v] for v in col]
 
-    logger.debug(
+    logger.info(
         f'Copying data ({data_.nbytes / 1e6} MB)...'
     )
     result = np.copy(data_, order='C')
 
-    logger.debug(
+    logger.info(
         f'Clearing shared data structures...'
     )
     shm.close()
     shm.unlink()
     _locals.__dict__.clear()
+    gc.collect()
 
     return result
