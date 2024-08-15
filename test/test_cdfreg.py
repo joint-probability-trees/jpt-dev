@@ -8,13 +8,7 @@ import numpy.random
 
 from jpt.base.errors import Unsatisfiability
 
-try:
-    from jpt.distributions.quantile.quantiles import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from jpt.distributions.quantile.quantiles import QuantileDistribution
+from jpt.distributions.qpd import QuantileDistribution
 
 from jpt.base.intervals import ContinuousSet, INC, EXC
 from jpt.base.functions import (PiecewiseFunction, ConstantFunction, LinearFunction)

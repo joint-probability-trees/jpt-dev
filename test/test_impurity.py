@@ -10,19 +10,13 @@ from jpt.learning.preprocessing import preprocess_data
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable, NumericVariable, infer_from_dataframe
 
-try:
-    from jpt.learning.impurity import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from jpt.learning.impurity.impurity import (
-        Impurity,
-        _sum_at,
-        _sq_sum_at,
-        _variances,
-        _compute_var_improvements
-    )
+from jpt.learning.impurity.impurity import (
+    Impurity,
+    _sum_at,
+    _sq_sum_at,
+    _variances,
+    _compute_var_improvements
+)
 
 
 class ImpurityTest(TestCase):
@@ -63,7 +57,10 @@ class ImpurityTest(TestCase):
         data = preprocess_data(jpt, self.data)
         impurity = Impurity.from_tree(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
-        impurity.setup(data, np.array(list(range(data.shape[0]))))
+        impurity.setup(
+            data.values,
+            np.array(list(range(data.shape[0])))
+        )
         impurity.compute_best_split(0, data.shape[0])
 
         self.assertNotEqual(impurity.best_var, -1)

@@ -17,13 +17,7 @@ from jpt.distributions.univariate.multinomial import MultinomialValueMap
 from jpt.distributions.univariate.numeric import NumericValueToLabelMap, NumericLabelToValueMap
 from testutils import uniform_numeric
 
-try:
-    from jpt.distributions.quantile.quantiles import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from jpt.distributions.quantile.quantiles import QuantileDistribution
+from jpt.distributions.qpd import QuantileDistribution
 
 from jpt.base.functions import PiecewiseFunction, LinearFunction, ConstantFunction
 from jpt.base.intervals import ContinuousSet, EXC, INC, UnionSet, R, IntSet, Z
@@ -874,6 +868,19 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(
             (round(1 / 3, 10), ContinuousSet.parse('[2,3)')),
             (round(likelihood, 10), mpe_state)
+        )
+
+    def test_entropy(self):
+        # Arrange
+        numeric = uniform_numeric(0, 1)
+
+        # Act
+        entropy = numeric.entropy()
+
+        # Assert
+        self.assertEqual(
+            0,
+            entropy
         )
 
 

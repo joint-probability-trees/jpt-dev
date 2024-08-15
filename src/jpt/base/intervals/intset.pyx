@@ -25,7 +25,7 @@ from .base import (
 
 import re
 
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Set, Callable
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -354,6 +354,23 @@ cdef class IntSet(Interval):
 
     cpdef NumberSet simplify(self):
         return self.copy()
+
+    def transform(self, func: Callable) -> IntSet:
+        lower = func(self._lower) if np.isfinite(self._lower) else self._lower
+        upper = func(self._upper) if np.isfinite(self.upper) else self._upper
+
+        if np.isfinite(self._lower) and not is_int(lower):
+            raise ValueError(
+                f'Result of func ({func}) must be an integer, {lower}'
+            )
+        if np.isfinite(self._upper) and not is_int(upper):
+            raise ValueError(
+                f'Result of func ({func}) must be an integer, {upper}'
+            )
+        return IntSet(
+            lower,
+            upper
+        )
 
     EMPTY = IntSet.emptyset()
     ALL = _Z

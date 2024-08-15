@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 from dnutils import out, ifnone
-from jpt.distributions.quantile.quantiles import QuantileDistribution
+from jpt.distributions.qpd import QuantileDistribution
 from jpt.distributions import Numeric, Bool, SymbolicType, NumericType
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable, NumericVariable
@@ -121,13 +121,13 @@ def muesli_tree(visualize=True):
 
     x = NumericVariable('X', Numeric, blur=.01)
     y = NumericVariable('Y', Numeric, blur=.01)
-    o = SymbolicVariable('Object', ObjectType)
+    o = SymbolicVariable('Class', ObjectType)
     s = SymbolicVariable('Success', SuccessType)
 
     # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
-
+    print(data)
     jpt = JPT([x, y, o, s], min_samples_leaf=.2)
-    jpt.learn(columns=data.values.T)
+    jpt.learn(data)
 
     # json_data = jpt.to_json()
     # pprint.pprint(json_data)

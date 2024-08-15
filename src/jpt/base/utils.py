@@ -18,7 +18,6 @@ from functools import reduce
 
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from numpy import iterable
 
 from dnutils import ifnone, ifnot
 

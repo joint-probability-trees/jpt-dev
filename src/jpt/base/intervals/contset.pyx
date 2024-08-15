@@ -9,7 +9,7 @@ __module__ = 'contset.pyx'
 
 import numbers
 import traceback
-from typing import List, Iterable, Dict, Any
+from typing import List, Iterable, Dict, Any, Callable
 
 from dnutils import ifnot, ifnone
 
@@ -323,7 +323,9 @@ cdef class ContinuousSet(Interval):
         a value for infinite intervals and is deterministic.
         :return:
         '''
-        if self.ispinf() and self.isninf():
+        if self.isempty():
+            return np.nan
+        elif self.ispinf() and self.isninf():
             return 0
         elif self.isninf():
             return self.max - eps
@@ -956,6 +958,14 @@ cdef class ContinuousSet(Interval):
 
     def ifin(self, x, else_=None):
         return x if x in self else else_
+
+    def transform(self, func: Callable) -> ContinuousSet:
+        return ContinuousSet(
+            func(self.lower) if np.isfinite(self.lower) else self.lower,
+            func(self.upper) if np.isfinite(self.upper) else self.upper,
+            left=self.left,
+            right=self.right
+        )
 
     EMPTY = ContinuousSet.emptyset()
     ALL = _R

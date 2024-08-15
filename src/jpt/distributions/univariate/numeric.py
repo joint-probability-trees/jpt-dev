@@ -14,13 +14,7 @@ from .distribution import ValueMap, Identity
 from jpt.base.utils import save_plot, pairwise, normalized, none2nan
 from . import Distribution
 
-try:
-    from ..quantile.quantiles import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from ..quantile.quantiles import QuantileDistribution
+from ..qpd import QuantileDistribution
 
 from jpt.base.intervals import ContinuousSet, UnionSet, NumberSet
 from jpt.base.functions import (
@@ -714,6 +708,8 @@ class Numeric(Distribution):
     ) -> float:
         if d1 == d2:
             return 1
+        elif d1.is_dirac_impulse() or d2.is_dirac_impulse():
+            return 0
         points = list(
             sorted(
                 set(d1.pdf.boundaries()) | set(d2.pdf.boundaries())
@@ -731,6 +727,17 @@ class Numeric(Distribution):
             intersection += min(v1, v2) * (p2 - p1)
             union += max(v1, v2) * (p2 - p1)
         return intersection / union
+
+    def entropy(self) -> float:
+        entropy = 0
+        i: ContinuousSet
+        f: ConstantFunction
+        for i, f in self.pdf.iter():
+            if not f.value or not i.width:
+                continue
+            value = f.value * np.log(f.value)
+            entropy -= value * i.width
+        return entropy
 
     def plot(
             self,

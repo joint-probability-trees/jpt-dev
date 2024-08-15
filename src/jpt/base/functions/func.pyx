@@ -9,7 +9,7 @@ import itertools
 import numbers
 from collections import deque
 from operator import attrgetter
-from typing import Iterator, Iterable, Tuple, Union, Dict, Any, Optional
+from typing import Iterator, Iterable, Tuple, Union, Dict, Any, Optional, Callable
 
 from dnutils import ifnot, ifnone, pairwise, fst, last
 from dnutils.tools import ifstr, first
@@ -342,6 +342,9 @@ cdef class ConstantFunction(Function):
     def __neg__(self):
         return ConstantFunction(-self.value)
 
+    def as_sympy(self):
+        return self.value
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -551,7 +554,7 @@ cdef class LinearFunction(Function):
             return ConstantFunction(y2)
         cdef DTYPE_t m = (y2 - y1) / (x2 - x1)
         cdef DTYPE_t c = y1 - m * x1
-        assert not np.isnan(m) and not np.isnan(c), \
+        assert np.isfinite(m) and np.isfinite(c), \
             'Fitting linear function from %s to %s resulted in m=%s, c=%s' % (p1, p2, m, c)
         return cls(m, c)
 
@@ -626,6 +629,11 @@ cdef class LinearFunction(Function):
             -self.m,
             self.c
         )
+
+    def as_sympy(self):
+        import sympy as sp
+        x = sp.symbols('x')
+        return self.m * x + self.c
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -767,6 +775,11 @@ cdef class QuadraticFunction(Function):
             -self.b,
             -self.c
         )
+
+    def as_sympy(self):
+        import sympy as sp
+        x = sp.symbols('x')
+        return self.a * x ** 2 + self.b * x + self.c
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1746,6 +1759,42 @@ cdef class PiecewiseFunction(Function):
             k=n_segments
         )
 
+    def as_sympy(self):
+        '''
+        Rerturn a ``sympy`` representation of this ``PiecewiseFunction``.
+        :return:
+        '''
+        import sympy as sp
+        x = sp.symbols('x')
+        return sp.Piecewise(
+            *(
+                (f.m * x + f.c, (i.lower <= x) & (x < i.upper)) for i, f in self.iter()
+            )
+        )
+
+    @staticmethod
+    def from_function(
+            f: Callable,
+            domain: ContinuousSet,
+            n: int,
+            **approx_args
+    ) -> PiecewiseFunction:
+        if domain.isinf():
+            raise ValueError(
+                f'Infinite domains are unsupported in PiecewiseFunction.from_function(): {domain}'
+            )
+        samples = np.linspace(
+            domain.min,
+            domain.max,
+            n
+        )
+        plf = PiecewiseFunction.from_points(
+            ((x, f(x)) for x in samples)
+        )
+        return PLFApproximator(
+            plf
+        ).run(**approx_args)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -1859,7 +1908,7 @@ class PLFApproximator:
             raise ValueError(
                 'Minimum value for k is 3, got %s.' % k
             )
-        error_max = ifnone(error_max, np.inf)
+        error_max = ifnone(error_max, .0)
         result = self.plf.copy()
         replacements = []
         # Loop through all pairs of consecutive function segments
@@ -1891,10 +1940,10 @@ class PLFApproximator:
                 break
 
             # Remove the left and right segments of the replacement from the original function
-            del result.intervals[result.intervals.index(replacement.left.i)]
-            del result.functions[result.functions.index(replacement.left.f)]
-            del result.intervals[result.intervals.index(replacement.right.i)]
-            del result.functions[result.functions.index(replacement.right.f)]
+            # del result.intervals[result.intervals.index(replacement.left.i)]
+            # del result.functions[result.functions.index(replacement.left.f)]
+            # del result.intervals[result.intervals.index(replacement.right.i)]
+            # del result.functions[result.functions.index(replacement.right.f)]
 
             # Insert the new segment at the interval union of the former left and right segments
             result = result.overwrite_at(

@@ -1,9 +1,9 @@
-import datetime
+import datetime as dt
 import gc
 import math
 import signal
 import threading
-from multiprocessing import Lock, Event, Pool, Array
+from multiprocessing import Lock, Event, Pool, Array, RLock
 from operator import attrgetter
 from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List
 
@@ -14,6 +14,7 @@ from dnutils import mapstr, ifnone, getlogger
 from tqdm import tqdm
 import ctypes as c
 
+from ..base.multicore import DummyPool
 from ..base.utils import _write_error
 from ..distributions import Distribution
 
@@ -23,7 +24,7 @@ from ..variables import Variable
 from .impurity import Impurity
 from ..base.functions import PiecewiseFunction
 from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
-from ..distributions.quantile.quantiles import QuantileDistribution
+from ..distributions.qpd import QuantileDistribution
 
 logger = getlogger('/jpt/learning/c45')
 
@@ -342,7 +343,7 @@ class C45Algorithm:
                     )
                 )
 
-            if self.jpt.root is None:
+            if self.jpt.root is None and node.parent is None:
                 self.jpt.root = node
 
             self.queue_length -= 1
@@ -352,9 +353,9 @@ class C45Algorithm:
 
     def learn(
             self,
-            data: Optional[pd.DataFrame] = None,
-            rows: Optional[Union[np.ndarray, List]] = None,
-            columns: Optional[Union[np.ndarray, List]] = None,
+            data: pd.DataFrame = None,
+            # rows: Optional[Union[np.ndarray, List]] = None,
+            # columns: Optional[Union[np.ndarray, List]] = None,
             keep_samples: bool = False,
             close_convex_gaps: bool = True,
             verbose: bool = False,
@@ -383,9 +384,8 @@ class C45Algorithm:
         _data = preprocess_data(
             self.jpt,
             data=data,
-            rows=rows,
-            columns=columns,
-            verbose=verbose
+            verbose=verbose,
+            multicore=multicore
         )
 
         logger.info('Initializing JPT learning...')
@@ -393,11 +393,11 @@ class C45Algorithm:
 
         for idx, variable in enumerate(self.jpt.variables):
             if variable.numeric:
-                samples = np.unique(_data[:, idx])
+                samples = np.unique(_data.values[:, idx])
                 distances = np.diff(samples)
                 self.jpt.minimal_distances[variable] = min(distances) if len(distances) > 0 else 2.
 
-        if not _data.shape[0]:
+        if not len(_data):
             raise ValueError('No data for learning.')
 
         # --------------------------------------------------------------------------------------------------------------
@@ -406,18 +406,18 @@ class C45Algorithm:
         indices[0] = 0
         np.cumsum(indices, out=indices)
 
-        _locals.data = _data
+        _locals.data = _data.values
         _locals.indices = Array(c.c_long, indices.shape[0])
         _locals.indices[:] = indices
 
         logger.info(
             f'Data transformation... {_data.shape[0]} x {_data.shape[1]}: '
-            f'{_data.nbytes / 1e6:,.2f} MB'
+            f'{_data.values.nbytes / 1e6:,.2f} MB'
         )
 
         # --------------------------------------------------------------------------------------------------------------
         # Determine the prior distributions
-        started = datetime.datetime.now()
+        started = dt.datetime.now()
         logger.info('Learning prior distributions...')
 
         if verbose:
@@ -426,7 +426,12 @@ class C45Algorithm:
                 desc='Learning prior distributions'
             )
 
-        pool = Pool(
+        if not multicore:
+            PoolCls = DummyPool
+        else:
+            PoolCls = Pool
+
+        pool = PoolCls(
             multicore,
             initializer=_initialize_worker_process
         )
@@ -448,7 +453,7 @@ class C45Algorithm:
         logger.info(
             '%d prior distributions learnt in %s.' % (
                 len(self.jpt.priors),
-                datetime.datetime.now() - started
+                dt.datetime.now() - started
             )
         )
 
@@ -465,7 +470,7 @@ class C45Algorithm:
 
         self.keep_samples = keep_samples
 
-        started = datetime.datetime.now()
+        started = dt.datetime.now()
         logger.info(
             'Started learning of %s x %s at %s '
             'requiring at least %s samples per leaf' % (
@@ -494,11 +499,11 @@ class C45Algorithm:
 
         _locals.jpt = self.jpt
         self._prune_or_split = prune_or_split
-        self.c45queue = Pool(
+        self.c45queue = PoolCls(
             multicore,
             initializer=_initialize_worker_process
         )
-        self.lock = Lock()
+        self.lock = RLock()
         self.finish = Event()
         if verbose:
             self._progressbar = tqdm(
@@ -546,7 +551,7 @@ class C45Algorithm:
         # --------------------------------------------------------------------------------------------------------------
         # Print the statistics
         logger.info(
-            'Learning took %s' % (datetime.datetime.now() - started),
+            'Learning took %s' % (dt.datetime.now() - started),
             repr(self.jpt)
         )
 

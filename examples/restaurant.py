@@ -46,7 +46,12 @@ def restaurant_manual_sample(visualize=True):
 
     variables = [al, ba, fr, hu, pa, pr, ra, re, fo, we, wa]
     jpt = JPT(variables, min_samples_leaf=30, min_impurity_improvement=0)
-    jpt.learn(data)
+    jpt.learn(
+        pd.DataFrame(
+            data,
+            columns=list(jpt.varnames)
+        )
+    )
 
     jpt.plot(plotvars=variables,
              view=visualize,
@@ -163,7 +168,12 @@ def restaurant_auto_sample(visualize=True):
     data = [rec(variables, []) for _ in range(500)]
 
     jpt = JPT(variables, min_samples_leaf=30, min_impurity_improvement=0)
-    jpt.learn(rows=data)
+    jpt.learn(
+        pd.DataFrame(
+            data,
+            columns=list(jpt.varnames)
+        )
+    )
 
     jpt.plot(
         plotvars=variables,

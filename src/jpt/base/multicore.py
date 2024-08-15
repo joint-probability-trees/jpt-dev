@@ -2,6 +2,7 @@ import os
 import queue
 import threading
 import multiprocessing as mp
+from collections import deque
 from typing import Callable, Any, Tuple, Optional
 
 
@@ -105,7 +106,87 @@ def worker(
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-_Pool = type(mp.Pool())
+
+class DummyPool:
+
+    def __init__(
+            self,
+            processes: Optional[int] = None,
+            initializer: Optional[Callable] = None,
+            initargs: Tuple = (),
+            terminator: Optional[Callable] = None,
+            termargs: Tuple = (),
+            maxtasksperchild: Optional[int] = None,
+            local: Optional[threading.local] = None
+    ):
+        self.initializer = initializer
+        self.initargs = initargs
+        self.terminator = terminator
+        self.termargs = termargs
+        self._queue = deque()
+        self._execting = False
+
+    def imap_unordered(self, func, iterable, chunksize=1):
+        return self.map(func, iterable, chunksize)
+
+    def map(self, func, iterable, chunksize=None):
+        if self.initializer is not None:
+            self.initializer(*self.initargs)
+
+        for it in iterable:
+            yield func(it)
+
+        if self.terminator is not None:
+            self.terminator(*self.termargs)
+
+    def starmap(self, func, iterable, chunksize=None):
+        if self.initializer is not None:
+            self.initializer(*self.initargs)
+
+        for it in iterable:
+            yield func(*it)
+
+        if self.terminator is not None:
+            self.terminator(*self.termargs)
+
+    def apply_async(self, func, args, callback, error_callback):
+        self._queue.append((func, args, callback, error_callback))
+        if not self._execting:
+            self._execting = True
+            while self._queue:
+                f, a, c, e = self._queue.popleft()
+                try:
+                    result = f(*a)
+
+                    if c:
+                        c(result)
+                except Exception as e_:
+                    if e is not None:
+                        e_(e)
+                    else:
+                        raise
+        self._execting = False
+
+    def join(self):
+        pass
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        return False
+
+
+try:
+    _pool = mp.Pool()
+    _Pool = type(_pool)
+except AssertionError:
+    _Pool = DummyPool
+else:
+    _pool.close()
 
 
 class Pool(_Pool):
@@ -254,3 +335,4 @@ class Pool(_Pool):
             w.start()
             pool.append(w)
             mp.util.debug('added worker')
+

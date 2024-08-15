@@ -2,6 +2,7 @@ import ctypes
 import gc
 import os
 import threading
+import uuid
 from itertools import zip_longest
 from multiprocessing import shared_memory
 from typing import Union, Optional, List
@@ -11,7 +12,7 @@ import pandas as pd
 from dnutils import mapstr, logs, ifnone
 from tqdm import tqdm
 
-from ..base.multicore import Pool
+from ..base.multicore import Pool, DummyPool
 from ..trees import JPT
 
 _locals = threading.local()
@@ -69,12 +70,12 @@ def map_col(args) -> None:
 
 def preprocess_data(
         jpt: JPT,
-        data: Union[np.ndarray, pd.DataFrame],
-        rows: Optional[Union[np.ndarray, List]] = None,
-        columns: Optional[Union[np.ndarray, List]] = None,
+        data: pd.DataFrame,
+        # rows: Optional[Union[np.ndarray, List[int]]] = None,
+        # columns: Optional[Union[np.ndarray, List[int]]] = None,
         multicore: int = None,
         verbose: bool = False
-) -> np.ndarray:
+) -> pd.DataFrame:
     """
     Transform the input data into an internal representation.
 
@@ -82,38 +83,44 @@ def preprocess_data(
     :param verbose:
     :param multicore:
     :param data: The data to transform
-    :param rows: The indices of the rows that will be transformed
-    :param columns: The indices of the columns that will be transformed
+    # :param rows: The indices of the rows that will be transformed
+    # :param columns: The indices of the columns that will be transformed
     :return: the preprocessed data
     """
-    if sum(d is not None for d in (data, rows, columns)) > 1:
-        raise ValueError('Only either of the three is allowed.')
-    elif sum(d is not None for d in (data, rows, columns)) < 1:
-        raise ValueError('No data passed.')
+    # if sum(d is not None for d in (data, rows, columns)) > 1:
+    #     raise ValueError('Only either of the three is allowed.')
+    # elif sum(d is not None for d in (data, rows, columns)) < 1:
+    #     raise ValueError('No data passed.')
 
     logger.info('Preprocessing data...')
 
-    if isinstance(data, np.ndarray) and data.shape[0] or isinstance(data, list):
-        rows = data
+    if not len(data):
+        raise ValueError(
+            'Empty data frame.'
+        )
+
+    # if isinstance(data, np.ndarray) and data.shape[0] or isinstance(data, list):
+    #     rows = data
 
     # Transpose the rows
-    if isinstance(rows, list) and rows:
-        columns = [
-            [row[i] for row in rows]
-            for i in range(len(jpt.variables))
-        ]
-    elif isinstance(rows, np.ndarray) and rows.shape[0]:
-        columns = rows.T
+    # if isinstance(rows, list) and rows:
+    #     columns = [
+    #         [row[i] for row in rows]
+    #         for i in range(len(jpt.variables))
+    #     ]
+    # elif isinstance(rows, np.ndarray) and rows.shape[0]:
+    #     columns = rows.T
+    #
+    # if isinstance(columns, list) and columns:
+    #     shape = len(columns[0]), len(columns)
+    #
+    # elif isinstance(columns, np.ndarray) and columns.shape:
+    #     shape = columns.T.shape
+    #
+    # elif isinstance(data, pd.DataFrame):
 
-    if isinstance(columns, list) and columns:
-        shape = len(columns[0]), len(columns)
-    elif isinstance(columns, np.ndarray) and columns.shape:
-        shape = columns.T.shape
-    elif isinstance(data, pd.DataFrame):
-        shape = data.shape
-        data = data.copy()
-    else:
-        raise ValueError('No data given.')
+    shape = data.shape
+    # data = data.copy()
 
     memory_required = shape[0] * shape[1] * ctypes.sizeof(ctypes.c_double)
 
@@ -133,34 +140,31 @@ def preprocess_data(
         pass
 
     # Allocate shared memory for the training data
-    shm = shared_memory.SharedMemory(
-        name=f"preprocessing-{str(threading.get_ident())}",
-        create=True,
-        size=memory_required
-    )
+    shm = None
+    try:
+        shm = shared_memory.SharedMemory(
+            name=f"preprocessing-{str(threading.get_ident())}-{uuid.uuid4()}",
+            create=True,
+            size=memory_required
+        )
 
-    data_ = np.ndarray(
-        shape=shape,
-        dtype=np.float64,
-        order='C',
-        buffer=shm.buf
-    )
+        data_ = np.ndarray(
+            shape=shape,
+            dtype=np.float64,
+            order='C',
+            buffer=shm.buf
+        )
 
-    # Make the original data available to worker processes
-    _locals.df = data
-    _locals.jpt = jpt
+        # Make the original data available to worker processes
+        _locals.df = data
+        _locals.jpt = jpt
 
-    if isinstance(data, pd.DataFrame):
-        if set(jpt.varnames).symmetric_difference(set(data.columns)):
+        # if isinstance(data, pd.DataFrame):
+        unknown_variables = set(jpt.varnames).symmetric_difference(set(data.columns))
+        if unknown_variables:
             raise ValueError(
-                'Unknown variable names: %s'
-                % ', '.join(
-                    mapstr(
-                        set(jpt.varnames)
-                        .symmetric_difference(
-                            set(data.columns)
-                        )
-                    )
+                'Unknown variable names: %s' % ', '.join(
+                    mapstr(unknown_variables)
                 )
             )
         # Check if the order of columns in the data frame is the same
@@ -183,7 +187,12 @@ def preprocess_data(
 
         n_processes = ifnone(multicore, os.cpu_count())
 
-        with Pool(
+        if not multicore:
+            PoolCls = DummyPool
+        else:
+            PoolCls = Pool
+
+        with PoolCls(
             processes=n_processes,
             local=_locals,
             initializer=_initialize_worker,
@@ -199,21 +208,27 @@ def preprocess_data(
         if verbose:
             progressbar.close()
 
-    else:
-        for i, (var, col) in enumerate(zip(jpt.variables, columns)):
-            data_[:, i] = [var.domain.values[v] for v in col]
+        # else:
+        #     for i, (var, col) in enumerate(zip(jpt.variables, columns)):
+        #         data_[:, i] = [var.domain.values[v] for v in col]
 
-    logger.info(
-        f'Copying data ({data_.nbytes / 1e6} MB)...'
-    )
-    result = np.copy(data_, order='C')
+        logger.info(
+            f'Copying data ({data_.nbytes / 1e6} MB)...'
+        )
+        result = np.copy(data_, order='C')
 
-    logger.info(
-        f'Clearing shared data structures...'
-    )
-    shm.close()
-    shm.unlink()
-    _locals.__dict__.clear()
-    gc.collect()
+        logger.info(
+            f'Clearing shared data structures...'
+        )
 
-    return result
+        return pd.DataFrame(
+            result,
+            columns=data.columns
+        )
+    finally:
+        if shm is not None:
+            shm.close()
+            shm.unlink()
+        _locals.__dict__.clear()
+        gc.collect()
+

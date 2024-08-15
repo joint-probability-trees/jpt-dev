@@ -3,16 +3,18 @@ import os
 import sys
 import threading
 import multiprocessing as mp
-from typing import Tuple, Optional, Dict, Any, Iterable
+from typing import Tuple, Optional, Dict, Iterable
 
 import numpy as np
 import datetime as dt
+import uuid
 
+import pandas as pd
 from dnutils import ifnone, getlogger
 from tqdm import tqdm
 
 from jpt.trees import JPT
-from jpt.base.multicore import Pool
+from jpt.base.multicore import Pool, DummyPool
 from jpt.variables import ValueAssignment, Variable
 
 
@@ -40,8 +42,10 @@ def _initialize_worker(shm_name, single_likelihoods):
 
     data = _locals.data
 
+    n_variables = ifnone(_locals.variables, data.shape[1], len)
+
     if single_likelihoods:
-        shape = data.shape
+        shape = (data.shape[0], n_variables)
     else:
         shape = (data.shape[0], 1)
 
@@ -53,7 +57,7 @@ def _initialize_worker(shm_name, single_likelihoods):
     )
 
 
-def single_likelihood(args) -> Tuple[int, Any]:
+def single_likelihood(args: Tuple[int, bool]) -> int:
     logger.debug(
         f'entering worker func {os.getpid()} with {args}"'
     )
@@ -64,7 +68,7 @@ def single_likelihood(args) -> Tuple[int, Any]:
     variables = _locals.variables
 
     values = ValueAssignment(
-        [(var, var.assignment2set(val)) for var, val in zip(jpt.variables, data[idx, :])],
+        [(var, var.assignment2set(val)) for var, val in zip(jpt.variables, data.values[idx, :])],
         jpt.variables
     )
 
@@ -81,7 +85,7 @@ def single_likelihood(args) -> Tuple[int, Any]:
         found_leaf = True
 
         results[idx:idx + 1, :] = leaf.likelihood(
-            data[idx:idx + 1, :],
+            data.iloc[idx:idx + 1],
             dirac_scaling=_locals.dirac_scaling,
             min_distances=ifnone(_locals.min_distances, jpt.minimal_distances),
             single_likelihoods=single_likelihoods,
@@ -103,7 +107,7 @@ def single_likelihood(args) -> Tuple[int, Any]:
 # noinspection PyUnresolvedReferences
 def parallel_likelihood(
         jpt: JPT,
-        data: np.ndarray,
+        data: pd.DataFrame,
         dirac_scaling: float = 2.,
         min_distances: Dict = None,
         multicore: Optional[int] = None,
@@ -119,60 +123,67 @@ def parallel_likelihood(
     _locals.single_likelihoods = single_likelihoods
     _locals.variables = variables
 
-    n_variables = ifnone(variables, data.shape[0], len)
+    n_variables = ifnone(variables, data.shape[1], len)
 
     if single_likelihoods:
         shape = (data.shape[0], n_variables)
     else:
         shape = (data.shape[0], 1)
 
-    shm = mp.shared_memory.SharedMemory(
-        name=f"likelihood-{threading.get_ident():d}",
-        create=True,
-        size=shape[0] * shape[1] * ctypes.sizeof(ctypes.c_double)
-    )
+    shm = None
+    try:
+        shm = mp.shared_memory.SharedMemory(
+            name=f"likelihood-{threading.get_ident():d}-{uuid.uuid4()}",
+            create=True,
+            size=shape[0] * shape[1] * ctypes.sizeof(ctypes.c_double)
+        )
+        data_ = np.ndarray(
+            shape=shape,
+            dtype=np.float64,
+            order='C',
+            buffer=shm.buf
+        )
 
-    data_ = np.ndarray(
-        shape=shape,
-        dtype=np.float64,
-        order='C',
-        buffer=shm.buf
-    )
+        progress = None
+        if verbose:
+            progress = tqdm(total=data.shape[0], desc='Computing likelihoods')
 
-    progress = None
-    if verbose:
-        progress = tqdm(total=data.shape[0], desc='Computing likelihoods')
+        n_processes = ifnone(multicore, mp.cpu_count())
+        chunksize = max(1, int(data.shape[0] / n_processes / 2))
 
-    n_processes = ifnone(multicore, mp.cpu_count())
-    chunksize = max(1, int(data.shape[0] / n_processes / 2))
+        if not multicore:
+            PoolCls = DummyPool
+        else:
+            PoolCls = Pool
 
-    with Pool(
-        processes=n_processes,
-        local=_locals,
-        initializer=_initialize_worker,
-        initargs=(shm.name, single_likelihoods),
-        terminator=_terminate_worker
-    ) as processes:
-        for _ in processes.imap_unordered(
-            single_likelihood,
-            iterable=((i, single_likelihoods) for i in range(data.shape[0])),
-            chunksize=chunksize
-        ):
-            if verbose:
-                progress.update(1)
-                sys.stderr.flush()
+        with PoolCls(
+            processes=n_processes,
+            local=_locals,
+            initializer=_initialize_worker,
+            initargs=(shm.name, single_likelihoods),
+            terminator=_terminate_worker
+        ) as processes:
+            for _ in processes.imap_unordered(
+                single_likelihood,
+                iterable=((i, single_likelihoods) for i in range(data.shape[0])),
+                chunksize=chunksize
+            ):
+                if verbose:
+                    progress.update(1)
+                    sys.stderr.flush()
 
-    if verbose:
-        progress.close()
+        if verbose:
+            progress.close()
 
-    results = np.copy(data_, order='C')
+        results = np.copy(data_, order='C')
 
-    shm.close()
-    shm.unlink()
+        if single_likelihoods:
+            return results
+        else:
+            return results[:, 0].T
+    finally:
+        if shm is not None:
+            shm.close()
+            shm.unlink()
+        _locals.__dict__.clear()
 
-    _locals.__dict__.clear()
-
-    if single_likelihoods:
-        return results
-    else:
-        return results[:, 0].T

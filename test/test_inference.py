@@ -36,8 +36,13 @@ class JPTInferenceSymbolic(unittest.TestCase):
         cls.jpt = JPT(
             variables=[cls.E, cls.B, cls.A, cls.M, cls.J],
             min_impurity_improvement=0
-        ).learn(rows=cls.data)
-        cls.jpt.learn(rows=cls.data)
+        )
+        cls.jpt.learn(
+            pd.DataFrame(
+                cls.data,
+                columns=list(cls.jpt.varnames)
+            )
+        )
 
     def test_infer_alarm_given_mary(self):
         q = {'Alarm': True}
@@ -81,7 +86,13 @@ class JPTInferenceNumeric(unittest.TestCase):
             self.data = pickle.load(f)
             x = NumericVariable('x')
             self.jpt = JPT(variables=[x])
-            self.jpt.fit(self.data.reshape(-1, 1), close_convex_gaps=False)
+            self.jpt.fit(
+                pd.DataFrame(
+                    self.data.reshape(-1, 1),
+                    columns=list(self.jpt.varnames)
+                ),
+                close_convex_gaps=False
+            )
 
     def test_realset_evidence(self):
         r1 = self.jpt.infer(query={'x': UnionSet(['[-1,0.5]', '[1,inf['])})
@@ -184,13 +195,15 @@ class LikelihoodTest(TestCase):
         # Act
         likelihoods = jpt.likelihood(
             df,
-            dirac_scaling=1
+            dirac_scaling=.1,
+            variables=jpt.variables,
         )
 
         # Assert
-        np.testing.assert_array_equal(
+        np.testing.assert_array_almost_equal(
             np.ones(3),
-            likelihoods
+            likelihoods,
+            decimal=8
         )
 
     def test_single_likelihoods(self):
@@ -209,13 +222,15 @@ class LikelihoodTest(TestCase):
         likelihoods_single = jpt.likelihood(
             df,
             dirac_scaling=1,
-            single_likelihoods=True
+            single_likelihoods=True,
+            variables=jpt.variables
         )
 
         likelihoods = jpt.likelihood(
             df,
             dirac_scaling=1,
-            single_likelihoods=False
+            single_likelihoods=False,
+            variables=jpt.variables
         )
 
         # Assert

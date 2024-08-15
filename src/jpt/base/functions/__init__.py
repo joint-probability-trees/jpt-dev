@@ -1,18 +1,18 @@
 
 __module__ = 'functions'
 
-try:
-    from .func import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from .func import (
-        LinearFunction,
-        QuadraticFunction,
-        ConstantFunction,
-        Undefined,
-        Function,
-        PiecewiseFunction,
-        PLFApproximator
-    )
+from ..pyximporter import pyx_import
+
+pyx_import(
+    '.func'
+)
+
+from .func import (
+    LinearFunction,
+    QuadraticFunction,
+    ConstantFunction,
+    Undefined,
+    Function,
+    PiecewiseFunction,
+    PLFApproximator
+)

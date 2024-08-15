@@ -218,7 +218,9 @@ class JPTTest(TestCase):
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
-        probs = jpt.likelihood(self.data.reshape(-1, 1))
+        probs = jpt.likelihood(
+            self.data.reshape(-1, 1)
+        )
         self.assertTrue(all(probs > 0))
 
     def test_unsatisfiability(self):
@@ -305,7 +307,9 @@ class JPTTest(TestCase):
     def test_exact_mpe_continuous(self):
         var = NumericVariable('X')
         tree = JPT([var], min_samples_leaf=.1)
-        tree.learn(self.data.reshape(-1, 1))
+        tree.learn(
+            self.data.reshape(-1, 1),
+        )
 
         mpe, likelihood = tree.mpe()
         self.assertEqual(len(mpe), 1)
@@ -544,7 +548,7 @@ class TestCasePosteriorSymbolic(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL (typically target variable)
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.learn(data=cls.data.values)
 
     def test_posterior_symbolic_single_candidate_T(self):
         self.q = [self.variables[-1]]
@@ -606,7 +610,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         import logging
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
         JPT.logger.setLevel(logging.DEBUG)
-        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.learn(data=cls.data.values)
 
     # @unittest.skip
     def test_plot(self):
@@ -722,7 +726,7 @@ class TestCaseExpectation(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(columns=cls.data.values.T)
+        cls.jpt.learn(data=cls.data.values)
 
     # @unittest.skip
     def test_plot(self):
@@ -792,7 +796,7 @@ class TestCaseInference(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(columns=cls.data.values.T, close_convex_gaps=False)
+        cls.jpt.learn(cls.data.values, close_convex_gaps=False)
 
     def test_plot(self):
         # Act
@@ -1441,7 +1445,7 @@ class PruningTest(TestCase):
         jpt = JPT(
             variables=[NumericVariable('x'), NumericVariable('y')],
             min_samples_leaf=100
-        ).learn(rows=data.T)
+        ).learn(data=data.T)
         # jpt.plot(plotvars=jpt.variables, view=True)
 
         # Act

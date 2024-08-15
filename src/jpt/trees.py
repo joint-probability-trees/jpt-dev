@@ -568,11 +568,11 @@ class Leaf(Node):
 
     def likelihood(
             self,
-            queries: np.ndarray,
+            queries: pd.DataFrame,
             dirac_scaling: float = 2.,
             min_distances: VariableMap = None,
             single_likelihoods: bool = False,
-            variables: Iterable[Variable] = None
+            variables: Iterable[Variable | str] = None
     ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
@@ -585,54 +585,65 @@ class Leaf(Node):
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
         :type min_distances: A VariableMap from numeric variables to floats or None
-        :param single_likelihoods:
-        :param variables: the variables to consider in the likelihood calculation
+        :param single_likelihoods: wether likelihoods of each variable shall be reported
+        :param variables: the variables indices to consider in the likelihood calculation
         """
         # create result vector
-        variables = ifnone(variables, list(self.distributions.keys()))
+        if variables is None:
+            variables = queries.columns
+
+        variables = [self.distributions.varnames[v] if isinstance(v, str) else v for v in variables]
 
         if single_likelihoods:
-            result = np.ones(len(variables))
+            shape = (len(queries), len(variables))
         else:
-            result = np.ones(len(queries))
+            shape = (len(queries), 1)
 
-        variables = [v for v in self.distributions if v in variables]
+        result = np.ones(
+            shape=shape,
+            dtype=np.float64
+        )
 
         # for each idx, variable and distribution
-        for idx, (variable, distribution) in enumerate(self.distributions.items()):
-
-            if variable not in variables:
-                continue
+        for idx, variable in enumerate(variables):
+            distribution = self.distributions[variable]
+            query = queries[variable.name]
 
             # if the variable is symbolic
             if isinstance(variable, SymbolicVariable):
                 # multiply by probability
-                probs = distribution.probabilities[queries[:, idx].astype(int)]
+                probs = distribution.probabilities[query.values.astype(int)]
 
             elif isinstance(variable, IntegerVariable):
-                probs = np.array([distribution._p(int(q)) for q in queries[:, idx]])
+                probs = np.array(
+                    [distribution._p(int(q)) for q in query.values]
+                )
 
             # if the variable is numeric
             elif isinstance(variable, NumericVariable):
                 # get the likelihoods
-                probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C').astype(float)))
+
+                probs = np.asarray(
+                    distribution.pdf.multi_eval(
+                        query.values.copy(order='C').astype(float)
+                    )
+                )
 
                 if min_distances:
                     # replace them with dirac scaling if they are infinite
-                    probs[(probs == float("inf")).nonzero()] = dirac_scaling / min_distances[variable]
+                    probs[np.isinf(probs).nonzero()] = dirac_scaling / min_distances[variable]
 
                 # if no distances are provided replace infinite values with 1.
                 else:
-                    probs[(probs == float("inf")).nonzero()] = 1.
-
+                    probs[np.isinf(probs)] = dirac_scaling
             else:
                 raise ValueError("Variable of type %s is not known!" % type(variable))
 
             # multiply results
             if single_likelihoods:
-                result[:, idx] = probs.T
+                result[:, idx] = probs.reshape(-1, 1)
             else:
-                result *= probs
+                result[:, 0] *= probs
 
         return result
 
@@ -1592,13 +1603,16 @@ class JPT:
             f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)>'
         )
 
+    def to_string(self) -> str:
+        return self.pfmt()
+
     def pfmt(self) -> str:
         """
         :return: a pretty-format string representation of this JPT.
         """
         return self._pfmt(self.root, 0)
 
-    def _pfmt(self, node, indent) -> str:
+    def _pfmt(self, node: Node, indent: int) -> str:
         """
         :param node: The starting node
         :param indent: the indentation of each new level
@@ -1613,9 +1627,7 @@ class JPT:
 
     def learn(
             self,
-            data: Optional[Union[np.ndarray, pd.DataFrame]] = None,
-            rows: Optional[Union[np.ndarray, List]] = None,
-            columns: Optional[Union[np.ndarray, List]] = None,
+            data: pd.DataFrame | np.ndarray,
             keep_samples: bool = False,
             close_convex_gaps: bool = False,
             verbose: bool = False,
@@ -1626,10 +1638,6 @@ class JPT:
         Fit the jpt to ``data``
         :param data:    The training examples (assumed in row-shape)
         :type data:     [[str or float or bool]]; (according to `self.variables`)
-        :param rows:    The training examples (assumed in row-shape)
-        :type rows:     [[str or float or bool]]; (according to `self.variables`)
-        :param columns: The training examples (assumed in column-shape)
-        :type columns:  [[str or float or bool]]; (according to `self.variables`)
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
                         purposes only. Default is false.
         :param close_convex_gaps:
@@ -1641,10 +1649,13 @@ class JPT:
         """
         from .learning.c45 import C45Algorithm
         c45 = C45Algorithm(self)
+        if isinstance(data, np.ndarray):
+            data = pd.DataFrame(
+                data,
+                columns=list(self.varnames)
+            )
         c45.learn(
             data=data,
-            rows=rows,
-            columns=columns,
             keep_samples=keep_samples,
             close_convex_gaps=close_convex_gaps,
             verbose=verbose,
@@ -1685,7 +1696,7 @@ class JPT:
 
     def likelihood(
             self,
-            data: Union[np.ndarray, pd.DataFrame],
+            data: pd.DataFrame | np.ndarray,
             dirac_scaling: float = 2.,
             min_distances: Dict = None,
             preprocess: bool = True,
@@ -1698,6 +1709,7 @@ class JPT:
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
         scalar values (no intervals or sets).
 
+        :param variables:       Which variables in consider for their likelihood computat
         :param data:            An array containing the worlds. The shape is (x, len(variables)).
         :param dirac_scaling:   the minimal distance between the samples within a dimension are multiplied by this factor
                                 if a durac impulse is used to model the variable.
@@ -1709,8 +1721,13 @@ class JPT:
         :param preprocess:      whether to apply the preprocessing to the data passed.
         :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
 
-        :returns: An np.array with shape (x, ) containing the probabilities.
+        :returns: A np.ndarray with shape (x, ) containing the probabilities.
         """
+        if isinstance(data, np.ndarray):
+            data = pd.DataFrame(
+                data,
+                columns=list(self.varnames)
+            )
         if preprocess:
             from .learning.preprocessing import preprocess_data
             data_ = preprocess_data(
@@ -1718,8 +1735,8 @@ class JPT:
                 data,
                 verbose=verbose
             )
-        elif isinstance(data, pd.DataFrame):
-            data_ = data.values.astype(np.float64)
+        # elif isinstance(data, pd.DataFrame):
+        #     data_ = data.values.astype(np.float64)
         else:
             data_ = data
 

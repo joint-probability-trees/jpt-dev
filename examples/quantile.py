@@ -1,16 +1,6 @@
-import pyximport
 
-pyximport.install()
-
-# from jpt.base.quantiles import QuantileDistribution
-
-from jpt.distributions.quantile.cdfreg import CDFRegressor
-
-
-# from jpt.base.intervals import ContinuousSet, INC, EXC
-
-
-from jpt.distributions.quantile.quantiles import QuantileDistribution
+from jpt.distributions.qpd.cdfreg import CDFRegressor
+from jpt.distributions.qpd import QuantileDistribution
 
 
 import numpy as np

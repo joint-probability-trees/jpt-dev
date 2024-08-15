@@ -163,6 +163,9 @@ class Distribution:
     def _crop(self, restriction: Set) -> 'Distribution':
         raise NotImplementedError()
 
+    def entropy(self) -> float:
+        raise NotImplementedError()
+
     @staticmethod
     def merge(
             distributions: Iterable['Distribution'],

@@ -784,6 +784,18 @@ class ContinuousSetTest(TestCase):
             issuperset
         )
 
+    def test_transform(self):
+        # Arrange
+        interval = ContinuousSet(0, 1, INC, EXC)
+
+        # Act
+        result = interval.transform(np.exp)
+
+        # Assert
+        self.assertEqual(
+            ContinuousSet(1, np.e, INC, EXC),
+            result
+        )
 
 @ddt
 class UnionSetContinuousTest(TestCase):
@@ -1081,9 +1093,31 @@ class UnionSetContinuousTest(TestCase):
         R, '[0,1]', '(-inf,-1)', '[0,inf]'
     )
     def test_any_point(self, i):
+        # Arrange
         i = ifstr(i, ContinuousSet.parse)
+
+        # Act
         p = i.any_point()
+
+        # Assert
         self.assertTrue(i.contains_value(p))
+
+    def test_transform(self):
+        # Arrange
+        interval = UnionSet(
+            ['[0, 1]', '(1, 2)']
+        )
+
+        # Act
+        result = interval.transform(lambda x: x + 1)
+
+        # Assert
+        self.assertEqual(
+            UnionSet(
+                ['[1, 2]', '(2, 3)']
+            ),
+            result
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1484,9 +1518,31 @@ class UnionSetIntegerTest(TestCase):
         R, '[0,1]', '(-inf,-1)', '[0,inf]'
     )
     def test_any_point(self, i):
+        # Arrange
         i = ifstr(i, ContinuousSet.parse)
+
+        # Act
         p = i.any_point()
+
+        # Assert
         self.assertTrue(i.contains_value(p))
+
+    def test_transform(self):
+        # Arrange
+        interval = UnionSet(
+            ['{0..1}', '{1..2}']
+        )
+
+        # Act
+        result = interval.transform(lambda x: x + 1)
+
+        # Assert
+        self.assertEqual(
+            UnionSet(
+                ['{1..2}', '{2..3}']
+            ),
+            result
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -2032,6 +2088,18 @@ class IntSetTest(TestCase):
             intset_inf_
         )
 
+    def test_transform(self):
+        # Arrange
+        interval = IntSet(0, 3)
+
+        # Act
+        result = interval.transform(lambda x: x + 1)
+
+        # Assert
+        self.assertEqual(
+            IntSet(1, 4),
+            result
+        )
 
 # ----------------------------------------------------------------------------------------------------------------------
 

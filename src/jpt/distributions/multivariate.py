@@ -3,23 +3,13 @@
 
 from dnutils import first
 
-from scipy.stats import multivariate_normal, mvn, norm
+from scipy.stats import multivariate_normal, mvn
 
 import numpy as np
 
 import matplotlib.pyplot as plt
 
 from .univariate import Gaussian
-
-try:
-    from ..base.intervals import __module__
-    from ..base.quantiles import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from ..base.intervals import R, ContinuousSet
-    from ..base.quantiles import QuantileDistribution, LinearFunction
 
 
 # ----------------------------------------------------------------------------------------------------------------------

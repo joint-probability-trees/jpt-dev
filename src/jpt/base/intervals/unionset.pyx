@@ -24,7 +24,7 @@ from .intset cimport IntSet
 from .base import _CHAR_EMPTYSET, _CHAR_CUP, EXC, INC
 from .base cimport Interval
 
-from typing import List, Dict, Any, Iterable
+from typing import List, Dict, Any, Iterable, Callable
 import numbers
 
 import numpy as np
@@ -149,6 +149,7 @@ cdef class UnionSet(NumberSet):
         for i in self.intervals:
             if not i.isempty():
                 return i.any_point()
+        return np.nan
 
     def to_json(self) -> Dict[str, Any]:
         return {
@@ -506,5 +507,9 @@ cdef class UnionSet(NumberSet):
     def __or__(self, other):
         return self.union(other)
 
+    def transform(self, func: Callable) -> UnionSet:
+        return UnionSet(
+            [i.transform(func) for i in self.intervals]
+        )
 
 RealSet = UnionSet

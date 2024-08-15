@@ -8,7 +8,7 @@ __module__ = 'base.pyx'
 
 from itertools import tee
 
-from typing import Iterable, Any, Tuple, Dict
+from typing import Iterable, Any, Tuple, Dict, Callable
 
 import numpy as np
 cimport numpy as np
@@ -176,6 +176,16 @@ cdef class NumberSet:
     def __hash__(self):
         self.__suppress_inheritance()
         return hash(frozenset())
+
+    def transform(self, func: Callable) -> NumberSet:
+        '''
+        Transform this ``NumberSet`` into a different number space by applying
+        ``func`` to all finite interval boundaries.
+
+        :param func:    a function or callable object mapping float -> float
+        :return:
+        '''
+        raise NotImplementedError(self.__class__.__qualname__)
 
 
 # ----------------------------------------------------------------------------------------------------------------------

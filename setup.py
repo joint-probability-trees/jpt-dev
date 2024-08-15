@@ -52,8 +52,8 @@ pyxfiles = [
     "jpt/base/intervals/intset.pyx",
     "jpt/base/intervals/contset.pyx",
     "jpt/base/intervals/unionset.pyx",
-    "jpt/distributions/quantile/quantiles.pyx",
-    "jpt/distributions/quantile/cdfreg.pyx",
+    "jpt/distributions/qpd/quantiles.pyx",
+    "jpt/distributions/qpd/cdfreg.pyx",
     "jpt/learning/impurity/impurity.pyx",
 ]
 
