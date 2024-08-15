@@ -1,7 +1,7 @@
-from jpt.base.pyximporter import pyx_import
-
-pyx_import(
-    '.quantiles'
-)
-
-from .quantiles import QuantileDistribution
+try:
+    from .quantiles import __module__
+except ModuleNotFoundError:
+    from jpt.base import pyximporter
+    pyximporter.install()
+finally:
+    from .quantiles import QuantileDistribution
