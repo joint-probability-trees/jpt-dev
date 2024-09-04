@@ -91,7 +91,7 @@ setup(
         'jpt.base.cutils',
         'jpt.base.functions',
         'jpt.distributions',
-        'jpt.distributions.quantile',
+        'jpt.distributions.qpd',
         'jpt.distributions.univariate',
     ],
     package_dir={'': 'src'},
