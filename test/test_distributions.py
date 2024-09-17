@@ -278,6 +278,7 @@ class MultinomialDistributionTest(TestCase):
         DistABC = self.DistABC
         d1 = DistABC().set(params=[.5, .25, .25])
         d1.plot(
+            engine='plotly',
             view=True,
             horizontal=False
         )
@@ -286,6 +287,7 @@ class MultinomialDistributionTest(TestCase):
         fr = SymbolicVariable('BiasedCoin', Bool)
         d1 = fr.distribution().set(5/12.)
         d1.plot(
+            engine='plotly',
             view=True,
             horizontal=False
         )
@@ -712,7 +714,8 @@ class NumericDistributionTest(TestCase):
     def test_plot(self):
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         d.plot(
-            view=False,
+            engine='plotly',
+            view=True,
             title="Fancy Title",
             xlabel='my value',
             # color="#800080",
@@ -802,9 +805,9 @@ class NumericDistributionTest(TestCase):
         # Act
         z = (x + y)
 
-        x.plot(view=True)
-        y.plot(view=True)
-        z.plot(view=True)
+        x.plot(engine="plotly", view=True)
+        y.plot(engine="plotly", view=True)
+        z.plot(engine="plotly", view=True)
         # Assert
         self.assertAlmostEqual(
             x.expectation() + y.expectation(),
@@ -1231,11 +1234,13 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(res, list(sumpos.probabilities))
 
         d1.plot(
+            engine="plotly",
             view=False,
             color="rgb(0,104,180)"
         )
 
         sumpos.plot(
+            engine="plotly",
             view=False,
             color="rgb(0,104,180)"
         )
@@ -1245,6 +1250,7 @@ class IntegerDistributionTest(TestCase):
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([1 / 6] * 6)
         d1.plot(
+            engine="plotly",
             title="Test",
             view=False,
             horizontal=False

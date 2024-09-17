@@ -1,20 +1,18 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import copy
 import numbers
-import os
 from collections import deque
 from operator import itemgetter
 from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, Tuple
 
 import numpy as np
-from dnutils import ifnone, ifnot, first
+from dnutils import ifnone, first
 from plotly.graph_objs import Figure
-import plotly.graph_objects as go
 
-from ..utils import Identity, DataScaler, DataScalerProxy
-from ...base.utils import save_plot, pairwise, normalized, none2nan
 from . import Distribution
-from ...plotting.helpers import color_to_rgb
+from ..utils import Identity, DataScaler, DataScalerProxy
+from ...base.utils import pairwise, normalized, none2nan
+from ...plotting.rendering import DistributionRendering
 
 try:
     from ...base.intervals import __module__
@@ -682,156 +680,15 @@ class Numeric(Distribution):
 
     def plot(
             self,
-            title: Union[str, bool] = None,
-            fname: str = None,
-            xlabel: str = 'value',
-            directory: str = '/tmp',
-            view: bool = False,
-            color: str = 'rgb(15,21,110)',
-            fill: str = None,
+            engine,
             **kwargs
     ) -> Figure:
-        '''
-        Generates a plot of the piecewise linear function representing
-        the variable's cumulative distribution function
 
-        :param title:       the title of the plot. defaults to the type of this distribution, can be left
-                            empty by passing `False`.
-        :param fname:       the name of the file to be stored. Available file formats: png, svg, jpeg, webp, html
-        :param xlabel:      the label of the x-axis
-        :param directory:   the directory to store the generated plot files
-        :param view:        whether to display generated plots, default False (only stores files)
-        :param color:       the color of the plot traces; accepts str of form:
-                            * rgb(r,g,b) with r,g,b being int or float
-                            * rgba(r,g,b,a) with r,g,b being int or float, a being float
-                            * #f0c (as short form of #ff00cc) or #f0cf (as short form of #ff00ccff)
-                            * #ff00cc
-                            * #ff00ccff
-        :return:            plotly.graph_objs.Figure
-        '''
-
-        # generate data
-        if len(self.cdf.intervals) == 2:
-            std = abs(self.cdf.intervals[0].upper) * .1
-        else:
-            std = ifnot(
-                np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
-                self.cdf.intervals[1].upper - self.cdf.intervals[1].lower
-            ) * 2
-
-        # add horizontal line before first interval of distribution
-        X = np.array([self.cdf.intervals[0].upper - std])
-
-        for i, f in zip(self.cdf.intervals[:-1], self.cdf.functions[:-1]):
-            if isinstance(f, ConstantFunction):
-                X = np.append(X, [np.nextafter(i.upper, i.upper - 1), i.upper])
-            else:
-                X = np.append(X, i.upper)
-
-        # add horizontal line after last interval of distribution
-        X = np.append(X, self.cdf.intervals[-1].lower + std)
-        X_ = np.array([self.labels[x] for x in X])
-        Y = np.array(self.cdf.multi_eval(X))
-
-        # hacky workaround to clip very small numbers close to zero
-        X_[abs(X_) < 5.e-306] = 0
-
-        bounds = np.array([i.upper for i in self.cdf.intervals[:-1]])
-        bounds_ = np.array([self.labels[b] for b in bounds])
-
-        mainfig = go.Figure()
-
-        # extract rgb colors from given hex, rgb or rgba string
-        rgb, rgba = color_to_rgb(color)
-
-        # plot dashed CDF
-        mainfig.add_trace(
-            go.Scatter(
-                x=X_,
-                y=Y,
-                mode='lines',
-                name='Piecewise linear CDF from bounds',
-                line=dict(
-                    color=rgb,
-                    width=4,
-                    dash='dash'
-                ),
-                fill=fill
-            )
+        return DistributionRendering(engine).plot_numeric(
+            self,
+            **kwargs
         )
 
-        # scatter function limits
-        mainfig.add_trace(
-            go.Scatter(
-                x=bounds_,
-                y=np.asarray(self.cdf.multi_eval(bounds)),
-                marker=dict(
-                    symbol='circle',
-                    color=rgba,
-                    size=15,
-                    line=dict(
-                        color=rgb,
-                        width=2
-                    ),
-                ),
-                mode='markers',
-                name="Piecewise Function Limits",
-            )
-        )
-
-        mainfig.update_layout(
-            xaxis=dict(
-                title=xlabel,
-                side='bottom'
-            ),
-            yaxis=dict(
-                title='%'
-            ),
-            title=None if title is False else f'{title or f"Distribution of {self._cl}"}',
-            height=1000,
-            width=1200
-        )
-
-        if fname is not None:
-
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-            fpath = os.path.join(directory, fname or self.__class__.__name__)
-
-            if fname.endswith('html'):
-                mainfig.write_html(
-                    fpath,
-                    config=dict(
-                        displaylogo=False,
-                        toImageButtonOptions=dict(
-                            format='svg',  # one of png, svg, jpeg, webp
-                            filename=fname or self.__class__.__name__,
-                            scale=1
-                        )
-                    ),
-                    include_plotlyjs="cdn"
-                )
-                mainfig.write_json(fpath.replace(".html", ".json"))
-            else:
-                mainfig.write_image(
-                    fpath,
-                    scale=1
-                )
-
-        if view:
-            mainfig.show(
-                config=dict(
-                    displaylogo=False,
-                    toImageButtonOptions=dict(
-                        format='svg',  # one of png, svg, jpeg, webp
-                        filename=fname or self.__class__.__name__,
-                        scale=1
-                   )
-                )
-            )
-
-        return mainfig
 
 # ----------------------------------------------------------------------------------------------------------------------
 

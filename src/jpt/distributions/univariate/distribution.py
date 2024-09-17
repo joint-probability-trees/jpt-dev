@@ -156,6 +156,7 @@ class Distribution:
 
     def plot(
             self,
+            engine: str,
             title: str = None,
             fname: str = None,
             directory: str = '/tmp',

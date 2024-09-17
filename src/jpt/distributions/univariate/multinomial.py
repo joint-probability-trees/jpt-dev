@@ -1,6 +1,5 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import numbers
-import os
 from collections import Counter
 from itertools import tee
 from operator import itemgetter
@@ -9,16 +8,15 @@ from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Colle
 
 import numpy as np
 from deprecated import deprecated
-from dnutils import ifnone, project, first
+from dnutils import ifnone, first
 from plotly.graph_objs import Figure
-import plotly.graph_objects as go
 
 from . import Distribution
 from ..utils import OrderedDictProxy
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
-from ...base.utils import mapstr, classproperty, save_plot, Symbol, Collections
-from ...plotting.helpers import color_to_rgb
+from ...base.utils import mapstr, classproperty, Symbol, Collections
+from ...plotting.rendering import DistributionRendering
 
 
 # noinspection DuplicatedCode
@@ -559,132 +557,14 @@ class Multinomial(Distribution):
 
     def plot(
             self,
-            title: str = None,
-            fname: str = None,
-            directory: str = '/tmp',
-            view: bool = False,
-            horizontal: bool = False,
-            max_values: int = None,
-            alphabet: bool = False,
-            color: str = 'rgb(15,21,110)',
-            xvar: str = None,
+            engine: str,
             **kwargs
     ) -> Figure:
-        '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
 
-        :param title:       the title of the plot. defaults to the type of this distribution, can be left
-                            empty by passing `False`.
-        :param fname:       the name of the file to be stored. Available file formats: png, svg, jpeg, webp, html
-        :param directory:   the directory to store the generated plot files
-        :param view:        whether to display generated plots, default False (only stores files)
-        :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
-        :param max_values:  maximum number of values to plot
-        :param alphabet:    whether the bars are sorted in alphabetical order of the variable names. If False, the bars
-                            are sorted by probability (descending); default is False
-        :param color:       the color of the plot traces; accepts str of form:
-                            * rgb(r,g,b) with r,g,b being int or float
-                            * rgba(r,g,b,a) with r,g,b being int or float, a being float
-                            * #f0c (as short form of #ff00cc) or #f0cf (as short form of #ff00ccff)
-                            * #ff00cc
-                            * #ff00ccff
-        :return:            plotly.graph_objs.Figure
-        '''
-
-        # generate data
-        max_values = min(ifnone(max_values, len(self.labels)), len(self.labels))
-
-        # prepare prob-label pairs containing only the first `max_values` highest probability tuples
-        pairs = sorted(
-            [
-                (self._params[idx], lbl) for idx, lbl in enumerate(self.labels.values())
-            ],
-            key=lambda x: x[0],
-            reverse=True
-        )[:max_values]
-
-        if alphabet:
-            # re-sort remaining values alphabetically
-            pairs = sorted(pairs, key=lambda x: x[1])
-
-        probs = project(pairs, 0)
-        labels = project(pairs, 1)
-
-        # extract rgb colors from given hex, rgb or rgba string
-        rgb, rgba = color_to_rgb(color)
-
-        mainfig = go.Figure(
-            [
-                go.Bar(
-                    x=probs if horizontal else labels,  # labels if horizontal else probs,
-                    y=labels if horizontal else probs, # probs if horizontal else x,
-                    name=title or "Multinomial Distribution",
-                    text=probs,
-                    orientation='h' if horizontal else 'v',
-                    marker=dict(
-                        color=rgba,
-                        line=dict(color=rgb, width=3)
-                    )
-                )
-            ]
+        return DistributionRendering(engine).plot_multinomial(
+            self,
+            **kwargs
         )
-
-        # determine variable name from class (qualname only works for Multinomial, empty on Bool,
-        # therefore xvar would be required)
-        xname = xvar if xvar is not None else "_".join(self.__class__.__qualname__.split("_")[:-2]).lower()
-        mainfig.update_layout(
-            xaxis=dict(
-                title=f'P({xname})' if horizontal else xname,
-                range=[0, 1] if horizontal else None,
-            ),
-            yaxis=dict(
-                title=xname if horizontal else f'P({xname})',
-                range=None if horizontal else [0, 1]
-            ),
-            title=None if title is False else f'{title or f"Distribution of {self._cl}"}',
-            height=1000,
-            width=1000
-        )
-
-        if fname is not None:
-
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-            fpath = os.path.join(directory, fname or self.__class__.__name__)
-
-            if fname.endswith('.html'):
-                mainfig.write_html(
-                    fpath,
-                    config=dict(
-                        displaylogo=False,
-                        toImageButtonOptions=dict(
-                            format='svg',  # one of png, svg, jpeg, webp
-                            filename=fname or self.__class__.__name__,
-                            scale=1
-                        )
-                    ),
-                    include_plotlyjs="cdn"
-                )
-                mainfig.write_json(fpath.replace(".html", ".json"))
-            else:
-                mainfig.write_image(
-                    fpath,
-                    scale=1
-                )
-
-        if view:
-            mainfig.show(
-                config=dict(
-                    displaylogo=False,
-                    toImageButtonOptions=dict(
-                        format='svg',  # one of png, svg, jpeg, webp
-                        filename=fname or self.__class__.__name__,
-                        scale=1
-                   )
-                )
-            )
-
-        return mainfig
 
 # ----------------------------------------------------------------------------------------------------------------------
 
