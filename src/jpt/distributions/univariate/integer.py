@@ -1,23 +1,20 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import numbers
-import os
 from itertools import tee
 from operator import itemgetter
 from types import FunctionType
-from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple, List
+from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple, List, Literal
 
 import numpy as np
-from dnutils import edict, ifnone, project, first
+from dnutils import edict, ifnone, first
 from plotly.graph_objs import Figure
-import plotly.graph_objects as go
 
 from . import Distribution
 from ..utils import OrderedDictProxy
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
-from ...base.utils import setstr, normalized, classproperty, save_plot
-from ...plotting.helpers import color_to_rgb
-from ...plotting.rendering import DistributionRendering
+from ...base.utils import setstr, normalized, classproperty
+from ...plotting.engines.rendering import DistributionRendering, MATPLOTLIB, PLOTLY
 
 try:
     from ...base.functions import __module__
@@ -515,10 +512,18 @@ class Integer(Distribution):
 
     def plot(
             self,
-            engine,
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering],
             **kwargs
     ) -> Figure:
-        return DistributionRendering(engine).plot_integer(
+        '''Plots the distribution using the given engine.
+        :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
+                        `jpt.plotting.engines.rendering.DistributionRendering`.
+        :param kwargs:  The keyword arguments to pass to the engine as defined in the `.plot_integer()` function of
+                        `jpt.plotting.engines.rendering.DistributionRendering` or its respective subclass defined by
+                        `engine`.
+        :return:
+        '''
+        return DistributionRendering.instantiate_engine(engine).plot_integer(
             self,
             **kwargs
         )

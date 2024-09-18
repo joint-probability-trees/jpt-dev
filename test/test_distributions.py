@@ -714,7 +714,7 @@ class NumericDistributionTest(TestCase):
     def test_plot(self):
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         d.plot(
-            engine='plotly',
+            engine='matplotlib',
             view=True,
             title="Fancy Title",
             xlabel='my value',

@@ -5,76 +5,12 @@ import numpy as np
 import plotly.graph_objects as go
 from dnutils import ifnone, project, ifnot
 
-from ..base.functions import ConstantFunction
-from .helpers import color_to_rgb
-
-# engines
-PLOTLY = 'plotly'
-MATPLOTLIB = 'matplotlib'
-
-
-class DistributionRendering:
-    '''
-    Abstract supertype of distribution rendering engines. Instantiating this class with the `engine` parameter will
-    overriding this class's __new__ method and automatically create an instance of the respective subclass.
-    '''
-    def __new__(
-            cls,
-            engine: str
-    ):
-        subclass_map = {subclass.engine: subclass for subclass in cls.__subclasses__()}
-        subclass = subclass_map.get(engine, cls)
-        instance = super(DistributionRendering, subclass).__new__(subclass)
-        return instance
-
-    def plot_multinomial(
-            self,
-            dist: Any,
-            title: str = None,
-            fname: str = None,
-            directory: str = '/tmp',
-            view: bool = False,
-            horizontal: bool = False,
-            max_values: int = None,
-            alphabet: bool = False,
-            color: str = 'rgb(15,21,110)',
-            xvar: str = None,
-            **kwargs
-    ):
-        raise NotImplementedError
-
-    def plot_numeric(
-            self,
-            dist: Any,
-            title: Union[str, bool] = None,
-            fname: str = None,
-            xlabel: str = 'value',
-            directory: str = '/tmp',
-            view: bool = False,
-            color: str = 'rgb(15,21,110)',
-            fill: str = None,
-            **kwargs
-    ):
-        raise NotImplementedError
-
-    def plot_integer(
-            self,
-            dist: Any,
-            title: str = None,
-            fname: str = None,
-            directory: str = '/tmp',
-            view: bool = False,
-            horizontal: bool = False,
-            max_values: int = None,
-            alphabet: bool = False,
-            color: str = 'rgb(15,21,110)',
-            **kwargs
-    ):
-        raise NotImplementedError
+from .rendering import DistributionRendering
+from ..helpers import color_to_rgb
+from ...base.functions import ConstantFunction
 
 
 class PlotlyRendering(DistributionRendering):
-    engine = PLOTLY
 
     def plot_multinomial(
             self,
@@ -475,19 +411,3 @@ class PlotlyRendering(DistributionRendering):
             )
 
         return mainfig
-
-
-class MatplotlibRendering(DistributionRendering):
-    engine = MATPLOTLIB
-
-
-
-if __name__ == '__main__':
-    c1 = DistributionRendering(PLOTLY)
-    c2 = DistributionRendering(MATPLOTLIB)
-    c3 = DistributionRendering(None)
-    print(type(c1))
-    print(type(c2))
-    print(type(c3))
-    # c1.plot_multinomial()
-    # c2.plot_multinomial()

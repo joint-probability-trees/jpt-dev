@@ -4,7 +4,7 @@ from collections import Counter
 from itertools import tee
 from operator import itemgetter
 from types import FunctionType
-from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Collection
+from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Collection, Literal
 
 import numpy as np
 from deprecated import deprecated
@@ -16,7 +16,7 @@ from ..utils import OrderedDictProxy
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
 from ...base.utils import mapstr, classproperty, Symbol, Collections
-from ...plotting.rendering import DistributionRendering
+from ...plotting.engines.rendering import DistributionRendering, PLOTLY, MATPLOTLIB
 
 
 # noinspection DuplicatedCode
@@ -557,11 +557,18 @@ class Multinomial(Distribution):
 
     def plot(
             self,
-            engine: str,
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering],
             **kwargs
     ) -> Figure:
-
-        return DistributionRendering(engine).plot_multinomial(
+        '''Plots the distribution using the given engine.
+        :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
+                        `jpt.plotting.engines.rendering.DistributionRendering`.
+        :param kwargs:  The keyword arguments to pass to the engine as defined in the `.plot_multinomial()` function of
+                        `jpt.plotting.engines.rendering.DistributionRendering` or its respective subclass defined by
+                        `engine`.
+        :return:
+        '''
+        return DistributionRendering.instantiate_engine(engine).plot_multinomial(
             self,
             **kwargs
         )
