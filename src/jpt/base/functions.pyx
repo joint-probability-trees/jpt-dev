@@ -1,4 +1,4 @@
-# cython: infer_types=True
+# cython: infer_types=False
 # cython: language_level=3
 # cython: cdivision=True
 # cython: wraparound=True
@@ -93,11 +93,9 @@ cdef class Function:
         raise NotImplementedError()
 
     def __add__(self, other):
-        if isinstance(other, numbers.Real):
-            return self.add(
-                ConstantFunction(other)
-            ).simplify()
-        elif isinstance(other, Function):
+        if isinstance(other, numbers.Number):
+            other = ConstantFunction(other)
+        if isinstance(other, Function):
             return self.add(other).simplify()
         else:
             raise TypeError(
@@ -107,7 +105,7 @@ cdef class Function:
                 )
             )
 
-    def __mul__(self, other: Union[float, Function]) -> 'Function':
+    def __mul__(self, other: Union[float, Function]) -> Function:
         if isinstance(other, numbers.Real):
             return self.mul(
                 ConstantFunction(other)
@@ -118,7 +116,8 @@ cdef class Function:
             raise TypeError(
                 'Unsupported operand type(s) for *: %s and %s' % (
                     type(self).__name__,
-                    type(other).__name__)
+                    type(other).__name__
+                )
             )
 
     def __iadd__(self, other):
@@ -128,13 +127,16 @@ cdef class Function:
         return self.set(self * other)
 
     def __radd__(self, other):
-        return other + self
+        return self + other
 
     def __rmul__(self, other):
-        return other * self
+        return self * other
 
     def __eq__(self, other):
-        raise NotImplementedError()
+        raise NotImplementedError(f'{type(self).__qualname__}')
+
+    def __neg__(self):
+        raise NotImplementedError(f'{type(self).__qualname__}')
 
     cpdef Function simplify(self):
         """
@@ -151,7 +153,7 @@ cdef class Function:
         raise NotImplementedError()
 
     cpdef Function xmirror(self):
-        raise NotImplementedError()
+        raise NotImplementedError(f'{type(self)}')
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -176,7 +178,7 @@ cdef class Undefined(Function):
             return True
         elif isinstance(other, ConstantFunction) and np.isnan(other.value):
             return True
-        elif isinstance(other, LinearFunction) and any(np.isnan(other.m), np.isnan(other.c)):
+        elif isinstance(other, LinearFunction) and any([np.isnan(other.m), np.isnan(other.c)]):
             return True
         return False
 
@@ -326,7 +328,7 @@ cdef class ConstantFunction(Function):
     cpdef Function differentiate(self):
         return ConstantFunction(0)
 
-    cpdef np.int32_t is_invertible(self):
+    cpdef SIZE_t is_invertible(self):
         return False
 
     cpdef Function copy(self):
@@ -398,7 +400,7 @@ cdef class ConstantFunction(Function):
     def c(self):
         return self.value
 
-    cpdef np.int32_t intersects(self, Function f) except +:
+    cpdef SIZE_t intersects(self, Function f):
         """
         Determine if the function crosses another function ``f``.
         :param f: the other ``Function``
@@ -412,7 +414,7 @@ cdef class ConstantFunction(Function):
             raise TypeError('Argument must be of type LinearFunction '
                             'or ConstantFunction, not %s' % type(f).__name__)
 
-    cpdef ContinuousSet intersection(self, Function f) except +:
+    cpdef ContinuousSet intersection(self, Function f):
         """
         Determine where the function crosses another function ``f``.
         :param f: the other ``Function``
@@ -446,9 +448,12 @@ cdef class ConstantFunction(Function):
         '''
         Returns a modification of the functino that has been mirrored
         at position x=0.
-        :return: 
+        :return:
         '''
         return self.copy()
+
+    def __neg__(self):
+        return ConstantFunction(-self.value)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -495,14 +500,14 @@ cdef class LinearFunction(Function):
         else:
             return ConstantFunction(float(match[0].replace(' ', '')))
 
-    cpdef DTYPE_t root(self) except +:
+    cpdef DTYPE_t root(self):
         """
-        Find the root of the function, i.e. the ``x`` positions subject to ``self.eval(x) = 0``. 
+        Find the root of the function, i.e. the ``x`` positions subject to ``self.eval(x) = 0``.
         :return: root of this function as float
         """
         return -self.c / self.m
 
-    cpdef Function invert(self) except +:
+    cpdef Function invert(self):
         """
         Return the inverted linear function of this LF.
         :return: the inverted function as ``LinearFunction``
@@ -519,7 +524,7 @@ cdef class LinearFunction(Function):
     cpdef Function copy(self):
         return LinearFunction(self.m, self.c)
 
-    cpdef np.int32_t intersects(self, Function f) except +:
+    cpdef SIZE_t intersects(self, Function f):
         """
         Determine if the function crosses another function ``f``.
         :param f: the other ``Function``
@@ -539,7 +544,7 @@ cdef class LinearFunction(Function):
             raise TypeError('Argument must be of type '
                             'LinearFunction or ConstantFunction, not %s' % type(f).__name__)
 
-    cpdef ContinuousSet intersection(self, Function f) except +:
+    cpdef ContinuousSet intersection(self, Function f):
         """
         Determine the interval where this function intersects the other function ``f``.
         :param f: the other ``Function``
@@ -571,7 +576,11 @@ cdef class LinearFunction(Function):
         if isinstance(f, ConstantFunction):
             return LinearFunction(self.m * f.value, self.c * f.value)
         elif isinstance(f, LinearFunction):
-            return QuadraticFunction(self.m * f.m, self.m * f.c + f.m * self.c, self.c * f.c).simplify()
+            return QuadraticFunction(
+                self.m * f.m,
+                self.m * f.c + f.m * self.c,
+                self.c * f.c
+            ).simplify()
         else:
             raise TypeError('No operator "*" defined for objects of '
                             'types %s and %s' % (type(self).__name__, type(f).__name__))
@@ -579,25 +588,18 @@ cdef class LinearFunction(Function):
     cpdef Function add(self, Function f):
         if isinstance(f, LinearFunction):
             return LinearFunction(self.m + f.m, self.c + f.c)
-        elif isinstance(f, (int, float)):
+        elif isinstance(f, numbers.Number):
             return LinearFunction(self.m, self.c + f)
         elif isinstance(f, ConstantFunction):
             return LinearFunction(self.m, self.c + f.value)
         else:
-            raise TypeError('Operator "+" undefined for types %s '
-                            'and %s' % (type(f).__name__, type(self).__name__))
+            raise TypeError(
+                'Operator "+" undefined for types %s '
+                'and %s' % (type(f).__name__, type(self).__name__)
+            )
 
     def __sub__(self, x):
         return -x + self
-
-    def __radd__(self, x):
-        return self + x
-
-    def __rsub__(self, x):
-        return self - x
-
-    def __rmul__(self, o):
-        return self * o
 
     def __iadd__(self, other):
         return self.set(self + other)
@@ -623,6 +625,9 @@ cdef class LinearFunction(Function):
         else:
             raise TypeError('Can only compare objects of type "Function", but got type "%s".' % type(other).__name__)
 
+    def __neg__(self):
+        return self * -1
+
     cpdef Function set(self, Function f):
         if not isinstance(f, LinearFunction):
             raise TypeError('Unable to assign object parameters of '
@@ -641,7 +646,7 @@ cdef class LinearFunction(Function):
             return self.copy()
 
     @classmethod
-    def from_points(cls, (DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2) -> 'Function':
+    def from_points(cls, (DTYPE_t, DTYPE_t) p1, (DTYPE_t, DTYPE_t) p2) -> Function:
         """
         Construct a linear function for two points.
         :param p1: the first point
@@ -659,21 +664,21 @@ cdef class LinearFunction(Function):
             return ConstantFunction(y2)
         cdef DTYPE_t m = (y2 - y1) / (x2 - x1)
         cdef DTYPE_t c = y1 - m * x1
-        assert not np.isnan(m) and not np.isnan(c), \
+        assert np.isfinite(m) and np.isfinite(c), \
             'Fitting linear function from %s to %s resulted in m=%s, c=%s' % (p1, p2, m, c)
         return cls(m, c)
 
-    cpdef np.int32_t is_invertible(self):
+    cpdef SIZE_t is_invertible(self):
         """
         Checks if this function can be inverted.
         :return: True if it is possible, False if not
         """
         return abs(self.m) >= 1e-4
 
-    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +:
+    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y):
         """
         Perform a linear regression of the form x -> y.
-        :param x: The x values 
+        :param x: The x values
         :param y: The y values
         :return: The best solution as ``LinearFunction``
         """
@@ -728,7 +733,7 @@ cdef class LinearFunction(Function):
         '''
         Returns a modification of the functino that has been mirrored
         at position x=0.
-        :return: 
+        :return:
         '''
         return LinearFunction(
             -self.m,
@@ -789,16 +794,16 @@ cdef class QuadraticFunction(Function):
             result = np.ndarray(shape=(0,), dtype=np.float64)
         return result
 
-    cpdef Function invert(self) except +:
+    cpdef Function invert(self):
         raise NotImplementedError()
 
     cpdef Function copy(self):
         return QuadraticFunction(self.a, self.b, self.c)
 
-    cpdef np.int32_t intersects(self, Function f) except +:
+    cpdef SIZE_t intersects(self, Function f):
         raise NotImplementedError()
 
-    cpdef ContinuousSet intersection(self, Function f) except +:
+    cpdef ContinuousSet intersection(self, Function f):
         raise NotImplementedError()
 
     cpdef Function differentiate(self):
@@ -811,10 +816,10 @@ cdef class QuadraticFunction(Function):
             return LinearFunction(self.b, self.c)
         return self.copy()
 
-    cpdef np.int32_t is_invertible(self):
+    cpdef SIZE_t is_invertible(self):
         return False
 
-    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t[::1] z) except +:
+    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t[::1] z):
         cdef DTYPE_t denom = (x[0] - y[0]) * (x[0] - z[0]) * (y[0] - z[0])
         self.a = (z[0] * (y[1] - x[1]) + y[0] *
                           (x[1] - z[1]) + x[0] * (z[1] - y[1])) / denom

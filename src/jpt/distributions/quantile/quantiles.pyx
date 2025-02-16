@@ -1,4 +1,4 @@
-# cython: auto_cpdef=True,
+# cython: auto_cpdef=False,
 # cython: infer_types=False,
 # cython: language_level=3
 # cython: boundscheck=False
@@ -53,11 +53,13 @@ cdef class QuantileDistribution:
         self._ppf = None
 
     def __hash__(self):
-        return hash((QuantileDistribution,
-                     self.epsilon,
-                     self.verbose,
-                     self.min_samples_mars,
-                     self._cdf))
+        return hash((
+            QuantileDistribution,
+            self.epsilon,
+            self.verbose,
+            self.min_samples_mars,
+            self._cdf
+        ))
 
     def __eq__(self, o):
         if not isinstance(o, QuantileDistribution):
@@ -73,13 +75,13 @@ cdef class QuantileDistribution:
         return result
 
     @staticmethod
-    def from_cdf(cdf: PiecewiseFunction) -> 'QuantileDistribution':
+    def from_cdf(cdf: PiecewiseFunction) -> QuantileDistribution:
         d = QuantileDistribution()
         d.cdf = cdf
         return d
 
     @staticmethod
-    def from_pdf(pdf: PiecewiseFunction) -> 'QuantileDistribution':
+    def from_pdf(pdf: PiecewiseFunction) -> QuantileDistribution:
         d = QuantileDistribution()
         d.pdf = pdf
         return d

@@ -1,4 +1,3 @@
-# cython: infer_types=True
 # cython: language_level=3
 # cython: cdivision=True
 # cython: wraparound=True
@@ -133,11 +132,11 @@ cdef class ConstantFunction(Function):
 
     cpdef Function differentiate(self)
 
-    cpdef np.int32_t is_invertible(self)
+    cpdef SIZE_t is_invertible(self)
 
-    cpdef np.int32_t intersects(self, Function f) except +
+    cpdef SIZE_t intersects(self, Function f)
 
-    cpdef ContinuousSet intersection(self, Function f) except +
+    cpdef ContinuousSet intersection(self, Function f)
 
     cpdef Function copy(self)
 
@@ -159,21 +158,21 @@ cdef class LinearFunction(Function):
 
     # Class methods
 
-    cpdef DTYPE_t root(self) except +
+    cpdef DTYPE_t root(self)
 
-    cpdef Function invert(self) except +
+    cpdef Function invert(self)
 
     cpdef Function hmirror(self)
 
-    cpdef np.int32_t intersects(self, Function f) except +
+    cpdef SIZE_t intersects(self, Function f)
 
-    cpdef ContinuousSet intersection(self, Function f) except +
+    cpdef ContinuousSet intersection(self, Function f)
 
     cpdef Function differentiate(self)
 
-    cpdef np.int32_t is_invertible(self)
+    cpdef SIZE_t is_invertible(self)
 
-    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y) except +
+    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y)
 
     cpdef DTYPE_t integrate(self, DTYPE_t x1, DTYPE_t x2)
 
@@ -195,17 +194,17 @@ cdef class QuadraticFunction(Function):
 
     cpdef DTYPE_t[::1] roots(self)
 
-    cpdef Function invert(self) except +
+    cpdef Function invert(self)
 
-    cpdef np.int32_t intersects(self, Function f) except +
+    cpdef SIZE_t intersects(self, Function f)
 
-    cpdef ContinuousSet intersection(self, Function f) except +
+    cpdef ContinuousSet intersection(self, Function f)
 
     cpdef Function differentiate(self)
 
-    cpdef np.int32_t is_invertible(self)
+    cpdef SIZE_t is_invertible(self)
 
-    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t[::1] z) except +
+    cpdef Function fit(self, DTYPE_t[::1] x, DTYPE_t[::1] y, DTYPE_t[::1] z)
 
     cpdef DTYPE_t argvertex(self)
 

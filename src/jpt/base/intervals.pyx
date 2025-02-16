@@ -224,7 +224,7 @@ cdef class RealSet(NumberSet):
         }
 
     @staticmethod
-    def from_json(data: Dict[str, Any]) -> 'RealSet':
+    def from_json(data: Dict[str, Any]) -> RealSet:
         return RealSet(
             intervals=[ContinuousSet.from_json(d) for d in data['intervals']]
         )
@@ -828,7 +828,7 @@ cdef class ContinuousSet(NumberSet):
 
         val = start
         cdef np.int64_t i
-        cdef np.int32_t pos = math.floor(num / 2) - (0 if num % 2 else 1)
+        cdef np.int32_t pos = <np.int32_t> math.floor(num / 2) - (0 if num % 2 else 1)
 
         if num == 1:
             if alternate == -1:
@@ -842,7 +842,7 @@ cdef class ContinuousSet(NumberSet):
 
         else:
             for i in range(num - 1, -1, -1) if space < 0 else range(num):
-                pos += i * (-1) ** (i + 1)
+                pos += <np.int32_t> round(i * (-1) ** (i + 1))
                 samples[i if alternate == 1 else pos] = val if (alternate != -1 or i % 2) else -val
                 if alternate != -1 or (not i % 2 or val == 0):
                     val += space
