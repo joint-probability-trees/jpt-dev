@@ -49,7 +49,7 @@ class DataScaler:
         return (x - self.mean) / self.scale
 
     def __getitem__(self, x):
-        if x in (np.NINF, np.PINF):
+        if x in (-np.inf, np.inf):
             return x
         return self.inverse_transform(x)
 
@@ -114,7 +114,7 @@ class DataScalerProxy:
         return lambda a: self[a]
 
     def __getitem__(self, item):
-        if item in (np.NINF, np.PINF):
+        if item in (-np.inf, np.inf):
             return item
         if item is None or isnan(item):
             return 0

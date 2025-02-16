@@ -273,8 +273,8 @@ def list2interval(l: List[int]) -> ContinuousSet:
     '''
     lower, upper = l
     return ContinuousSet(
-        np.NINF if lower in (np.NINF, -float('inf'), None, ...) else np.float64(lower),
-        np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper)
+        -np.inf if lower in (-np.inf, -float('inf'), None, ...) else np.float64(lower),
+        np.inf if upper in (np.inf, float('inf'), None, ...) else np.float64(upper)
     )
 
 

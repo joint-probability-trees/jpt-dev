@@ -37,7 +37,7 @@ INC = np.int32(_INC)
 EXC = np.int32(_EXC)
 
 EMPTY = ContinuousSet(0, 0, _EXC, _EXC)
-R = ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)
+R = ContinuousSet(-np.inf, np.inf, _EXC, _EXC)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -720,7 +720,7 @@ cdef class ContinuousSet(NumberSet):
         Create a ContinuousSet that contains all numbers but infinity and -infinity
         :return: Infinitely big ContinuousSet
         """
-        return ContinuousSet(np.NINF, np.inf, _EXC, _EXC)
+        return ContinuousSet(-np.inf, np.inf, _EXC, _EXC)
 
     @staticmethod
     def allnumbers():
@@ -806,16 +806,16 @@ cdef class ContinuousSet(NumberSet):
         cdef DTYPE_t space, val
         cdef np.int32_t alternate = 1
 
-        if self.lower == np.NINF and self.upper == np.PINF:
+        if self.lower == -np.inf and self.upper == np.inf:
             alternate = -1
             space = default_step
             start = 0
 
-        elif self.lower == np.NINF:
+        elif self.lower == -np.inf:
             space = -default_step
             start = self.upper
 
-        elif self.upper == np.PINF:
+        elif self.upper == np.inf:
             space = default_step
             start = self.lower
 
@@ -833,9 +833,9 @@ cdef class ContinuousSet(NumberSet):
         if num == 1:
             if alternate == -1:
                 samples[0] = 0
-            elif self.lower == np.NINF:
+            elif self.lower == -np.inf:
                 samples[0] = self.upper
-            elif self.upper == np.PINF:
+            elif self.upper == np.inf:
                 samples[0] = self.lower
             else:
                 samples[0] = (stop + start) / 2
@@ -847,10 +847,10 @@ cdef class ContinuousSet(NumberSet):
                 if alternate != -1 or (not i % 2 or val == 0):
                     val += space
 
-        if self.left == EXC and self.lower != np.NINF:
+        if self.left == EXC and self.lower != -np.inf:
             samples[0] = np.nextafter(samples[0], samples[0] + 1)
 
-        if self.right == EXC and self.upper != np.PINF:
+        if self.right == EXC and self.upper != np.inf:
             samples[-1] = np.nextafter(samples[-1], samples[-1] - 1)
 
         return samples
@@ -1098,7 +1098,7 @@ cdef class ContinuousSet(NumberSet):
         """
         if self.isempty():
             return np.nan
-        if self.lower != np.NINF:
+        if self.lower != -np.inf:
             if self.left == _INC:
                 return self.lower
             else:
@@ -1277,7 +1277,7 @@ cdef class ContinuousSet(NumberSet):
         brackets = NOTATIONS[ifnone(notation, interval_notation)]
         return '{}{},{}{}'.format(
             brackets[LEFT][int(self.left)],
-            '-∞' if self.lower == np.NINF else (precision % float(self.lower)),
+            '-∞' if self.lower == -np.inf else (precision % float(self.lower)),
             '∞' if self.upper == np.inf else (precision % float(self.upper)),
             brackets[RIGHT][int(self.right)]
         )
@@ -1287,7 +1287,7 @@ cdef class ContinuousSet(NumberSet):
             self.__class__.__name__,
             '{}{},{}{}'.format(
                 {INC: '[', EXC: '('}[int(self.left)],
-                '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
+                '-∞' if self.lower == -np.inf else ('%.3f' % self.lower),
                 '∞' if self.upper == np.inf else ('%.3f' % self.upper),
                 {INC: ']', EXC: ')'}[int(self.right)]
             )

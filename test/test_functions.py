@@ -53,10 +53,10 @@ class ConstantFunctionTest(TestCase):
         (ConstantFunction(0), -1, 0),
         (ConstantFunction(0), 0, 0),
         (ConstantFunction(0), 1, 0),
-        (ConstantFunction(0), np.NINF, 0),
-        (ConstantFunction(0), np.PINF, 0),
-        (ConstantFunction(.5), np.NINF, .5),
-        (ConstantFunction(.5), np.PINF, .5)
+        (ConstantFunction(0), -np.inf, 0),
+        (ConstantFunction(0), np.inf, 0),
+        (ConstantFunction(.5), -np.inf, .5),
+        (ConstantFunction(.5), np.inf, .5)
     )
     @unpack
     def test_eval(self, f, x, y):
@@ -90,7 +90,7 @@ class ConstantFunctionTest(TestCase):
         (ConstantFunction(1), (0, 1), 1),
         (ConstantFunction(1), (0, 2), 2),
         (ConstantFunction(-1), (-1, 1), -2),
-        (ConstantFunction(0), (np.NINF, np.PINF), 0)
+        (ConstantFunction(0), (-np.inf, np.inf), 0)
     )
     @unpack
     def test_integrate(self, f, x, i):
@@ -257,9 +257,9 @@ class LinearFunctionTest(TestCase):
         (LinearFunction(1, 1), (0, 1), 1.5),
         (LinearFunction(1, -1), (0, 2), 0),
         (LinearFunction(1, -1), (0, 1), -.5),
-        (LinearFunction(1, 0), (0, np.PINF), np.PINF),
-        (LinearFunction(-1, 0), (0, np.PINF), np.NINF),
-        (LinearFunction(-1, 0), (np.NINF, np.PINF), np.nan)
+        (LinearFunction(1, 0), (0, np.inf), np.inf),
+        (LinearFunction(-1, 0), (0, np.inf), -np.inf),
+        (LinearFunction(-1, 0), (-np.inf, np.inf), np.nan)
     )
     @unpack
     def test_integration(self, f, x, i):
@@ -827,7 +827,7 @@ class PLFTest(TestCase):
             PiecewiseFunction.from_dict({
                 ']-∞,-1.0[': 0,
                 ContinuousSet(-1, 1+eps, INC, EXC): 1,
-                ContinuousSet(1+eps, np.PINF, INC,  EXC): 0
+                ContinuousSet(1+eps, np.inf, INC,  EXC): 0
             }),
             mirror
         )
@@ -898,11 +898,11 @@ class PLFTest(TestCase):
                     ContinuousSet(-2, 2, INC, EXC), ConstantFunction(.5)
                 ),
                 PiecewiseFunction.from_dict({
-                    ContinuousSet(np.NINF, -3, EXC, EXC): 0,
+                    ContinuousSet(-np.inf, -3, EXC, EXC): 0,
                     ContinuousSet(-3, -1, INC, EXC): LinearFunction(.5, 1.5),
                     ContinuousSet(-1, 1, INC, EXC): 1,
                     ContinuousSet(1, 3, INC, EXC): LinearFunction(-.5, 1.5),
-                    ContinuousSet(3, np.PINF, INC, EXC): 0,
+                    ContinuousSet(3, np.inf, INC, EXC): 0,
                 })
         ),
         (

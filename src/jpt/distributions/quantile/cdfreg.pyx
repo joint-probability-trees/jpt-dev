@@ -10,7 +10,7 @@ from libc.stdio cimport printf
 
 from dnutils import ifnone
 
-cdef DTYPE_t pinf = np.PINF
+cdef DTYPE_t pinf = np.inf
 
 
 cdef class CDFRegressor:

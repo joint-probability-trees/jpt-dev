@@ -218,7 +218,7 @@ cdef class QuantileDistribution:
             regressor.fit(data_buffer)
             self._cdf = PiecewiseFunction()
             self._cdf.functions.append(ConstantFunction(0))
-            self._cdf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
+            self._cdf.intervals.append(ContinuousSet(-np.inf, np.inf, EXC, EXC))
             for left, right in pairwise(regressor.support_points):
                 self._cdf.functions.append(LinearFunction.from_points(tuple(left), tuple(right)))
                 self._cdf.intervals[-1].upper = left[0]
@@ -230,14 +230,14 @@ cdef class QuantileDistribution:
                                                                  self._cdf.intervals[-1].upper + 1), INC, EXC)
 
             self._cdf.functions.append(ConstantFunction(1))
-            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.PINF, INC, EXC))
+            self._cdf.intervals.append(ContinuousSet(self._cdf.intervals[-1].upper, np.inf, INC, EXC))
         else:
             x = data_buffer[0, :]
             y = data_buffer[1, :]
             self._cdf = PiecewiseFunction()
-            self._cdf.intervals.append(ContinuousSet(np.NINF, x[0], EXC, EXC))
+            self._cdf.intervals.append(ContinuousSet(-np.inf, x[0], EXC, EXC))
             self._cdf.functions.append(ConstantFunction(0))
-            self._cdf.intervals.append(ContinuousSet(x[0], np.PINF, INC, EXC))
+            self._cdf.intervals.append(ContinuousSet(x[0], np.inf, INC, EXC))
             self._cdf.functions.append(ConstantFunction(1))
 
         self._assert_consistency()
@@ -275,7 +275,7 @@ cdef class QuantileDistribution:
 
         # everything left of the leftmost point of the cropped function evaluates to 0
         cdf = PiecewiseFunction()
-        cdf.intervals.append(ContinuousSet(np.NINF, cdf_.intervals[0].lower, EXC, EXC))
+        cdf.intervals.append(ContinuousSet(-np.inf, cdf_.intervals[0].lower, EXC, EXC))
         cdf.functions.append(ConstantFunction(0.))
 
         # III: stretch function to represent a proper quantile fn
@@ -299,7 +299,7 @@ cdef class QuantileDistribution:
                 cdf.functions.append(LinearFunction.from_points((i.lower, y + c),
                                                                 (upper_, (f.m / alpha) * (upper_ - i.lower) + y + c)))
         if cdf.functions[-1] == ConstantFunction(1.):
-            cdf.intervals[-1].upper = np.PINF
+            cdf.intervals[-1].upper = np.inf
             cdf.intervals[-1].right = EXC
             if len(cdf.intervals) > 1:
                 cdf.intervals[-1].lower = cdf.intervals[-2].upper
@@ -309,7 +309,7 @@ cdef class QuantileDistribution:
 
             # everything right of the rightmost point of the cropped function evaluates to 1
             cdf.functions.append(ConstantFunction(1.))
-            cdf.intervals.append(ContinuousSet(cdf.intervals[-1].upper, np.PINF, INC, EXC))
+            cdf.intervals.append(ContinuousSet(cdf.intervals[-1].upper, np.inf, INC, EXC))
 
         # Clean the function segments that might have become empty
         intervals_ = []
@@ -356,7 +356,7 @@ cdef class QuantileDistribution:
                     )
                 )
                 pdf.intervals[-1].lower += eps
-                pdf.functions.insert(1, ConstantFunction(np.PINF))
+                pdf.functions.insert(1, ConstantFunction(np.inf))
             self._pdf = pdf
         return self._pdf
 
@@ -378,7 +378,7 @@ cdef class QuantileDistribution:
 
         elif self._ppf is None:
 
-            ppf.intervals.append(ContinuousSet(np.NINF, np.PINF, EXC, EXC))
+            ppf.intervals.append(ContinuousSet(-np.inf, np.inf, EXC, EXC))
 
             self._assert_consistency()
 
@@ -387,7 +387,7 @@ cdef class QuantileDistribution:
                 ppf.functions.append(Undefined())
                 ppf.intervals.append(ContinuousSet(1, one_plus_eps, INC, EXC))
                 ppf.functions.append(ConstantFunction(self._cdf.intervals[-1].lower))
-                ppf.intervals.append(ContinuousSet(one_plus_eps, np.PINF, INC, EXC))
+                ppf.intervals.append(ContinuousSet(one_plus_eps, np.inf, INC, EXC))
                 ppf.functions.append(Undefined())
                 self._ppf = ppf
                 return ppf
@@ -410,7 +410,7 @@ cdef class QuantileDistribution:
                 else:
                     ppf.intervals[-1].upper = one_plus_eps
 
-                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.PINF, INC, EXC))
+                ppf.intervals.append(ContinuousSet(ppf.intervals[-1].upper, np.inf, INC, EXC))
                 y_cdf = min(one_plus_eps, f(interval.upper))
 
             ppf.intervals[-2].upper = ppf.intervals[-1].lower = one_plus_eps
@@ -445,7 +445,7 @@ cdef class QuantileDistribution:
         '''
         Construct a merged quantile-distribution from the passed distributions using the ``weights``.
         '''
-        intervals = [ContinuousSet(np.NINF, np.PINF, EXC, EXC)]
+        intervals = [ContinuousSet(-np.inf, np.inf, EXC, EXC)]
         functions = [ConstantFunction(0)]
         if weights is None:
             weights = [1. / len(distributions)] * len(distributions)
@@ -504,10 +504,10 @@ cdef class QuantileDistribution:
 
             # Process all function intervals whose lower bound is minimal and
             # smaller than the smallest upper interval bound
-            while lower and (pivot is None and first(lower, first) <= first(upper, first, np.PINF) or
-                   pivot == first(lower, first, np.PINF)):
+            while lower and (pivot is None and first(lower, first) <= first(upper, first, np.inf) or
+                   pivot == first(lower, first, np.inf)):
                 l, f, w = lower.pop(0)
-                if isinstance(f, ConstantFunction) or l == np.NINF or isinstance(f, LinearFunction) and f.m == 0:
+                if isinstance(f, ConstantFunction) or l == -np.inf or isinstance(f, LinearFunction) and f.m == 0:
                     continue
                 if isinstance(f, Jump):  # and isinstance(functions[-1], LinearFunction):
                     offset += w
@@ -516,10 +516,10 @@ cdef class QuantileDistribution:
                 pivot = l
 
             # Do the same for the upper bounds...
-            while upper and (pivot is None and first(upper, first) <= first(lower, first, np.PINF) or
-                   pivot == first(upper, first, np.PINF)):
+            while upper and (pivot is None and first(upper, first) <= first(lower, first, np.inf) or
+                   pivot == first(upper, first, np.inf)):
                 u, f, w = upper.pop(0)
-                if isinstance(f, (ConstantFunction, Jump)) or u == np.PINF or isinstance(f, LinearFunction) and f.m == 0:
+                if isinstance(f, (ConstantFunction, Jump)) or u == np.inf or isinstance(f, LinearFunction) and f.m == 0:
                     continue
                 m_ -= f.m * w
                 pivot = u
@@ -534,7 +534,7 @@ cdef class QuantileDistribution:
             intervals[-1].upper = pivot
             if (c or m) and (m != functions[-1].m or c != functions[-1].c):
                 # Split the last interval at the pivot point
-                intervals.append(ContinuousSet(pivot, np.PINF, INC, EXC))
+                intervals.append(ContinuousSet(pivot, np.inf, INC, EXC))
                 # Evaluate the old function at the new pivot point to get the intercept
                 functions.append(LinearFunction(m, c) if abs(m) > 1e-8 else ConstantFunction(c))
 

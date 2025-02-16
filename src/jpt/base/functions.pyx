@@ -705,15 +705,15 @@ cdef class LinearFunction(Function):
         elif np.isinf(x1) and np.isinf(x2):
             if self.m != 0:
                 return np.nan
-            return np.PINF if self.c > 0 else np.NINF
+            return np.inf if self.c > 0 else -np.inf
         elif np.isinf(x1):
             if self.m <= 0:
-                return np.PINF
-            return np.NINF
+                return np.inf
+            return -np.inf
         elif np.isinf(x2):
             if self.m >= 0:
-                return np.PINF
-            return np.NINF
+                return np.inf
+            return -np.inf
         return (.5 * self.m * x2 ** 2 + self.c * x2) - (.5 * self.m * x1 ** 2 + self.c * x1)
 
     cpdef LinearFunction xshift(self, DTYPE_t delta):
@@ -1072,8 +1072,8 @@ cdef class PiecewiseFunction(Function):
         cdef int i
         cdef ContinuousSet interval
         for i, interval in enumerate(self.intervals):
-            if x in interval or ((x == np.NINF and interval.lower == np.NINF) or
-                                 (x == np.PINF and interval.upper == np.PINF)):
+            if x in interval or ((x == -np.inf and interval.lower == -np.inf) or
+                                 (x == np.inf and interval.upper == np.inf)):
                 return i
         return -1
 
@@ -1304,12 +1304,12 @@ cdef class PiecewiseFunction(Function):
         if xing == R:  # With all points are crossing points, we are done
             return
         elif xing and xing.lower < self.intervals[0].upper and xing.upper >= x:
-            self.intervals.insert(0, ContinuousSet(np.NINF, xing.lower, EXC, EXC))
+            self.intervals.insert(0, ContinuousSet(-np.inf, xing.lower, EXC, EXC))
             self.intervals[1].lower = xing.lower
             self.intervals[1].left = INC
             self.functions.insert(0, left)
         else:
-            self.intervals.insert(0, ContinuousSet(np.NINF, x, EXC, EXC))
+            self.intervals.insert(0, ContinuousSet(-np.inf, x, EXC, EXC))
             self.intervals[1].lower = x
             self.intervals[1].left = INC
             self.functions.insert(0, left)
@@ -1323,12 +1323,12 @@ cdef class PiecewiseFunction(Function):
         if xing == R:  # With all points are crossing points, we are done
             return
         elif xing and xing.upper > self.intervals[-1].lower and xing.lower <= x:
-            self.intervals.append(ContinuousSet(xing.lower, np.PINF, INC, EXC))
+            self.intervals.append(ContinuousSet(xing.lower, np.inf, INC, EXC))
             self.intervals[-2].upper = xing.upper
             self.intervals[-2].left = INC
             self.functions.append(right)
         else:
-            self.intervals.append(ContinuousSet(x, np.PINF, INC, EXC))
+            self.intervals.append(ContinuousSet(x, np.inf, INC, EXC))
             self.intervals[-2].upper = x
             self.intervals[-2].left = INC
             self.functions.append(right)
@@ -1348,20 +1348,20 @@ cdef class PiecewiseFunction(Function):
         cdef np.int32_t nopen = 2
         cdef DTYPE_t tmp_
         for interval, f in zip(self.intervals, self.functions):
-            if interval.lower != np.NINF and interval.upper != np.PINF:
+            if interval.lower != -np.inf and interval.upper != np.inf:
                 interval.linspace(n, default_step=1, result=samples_x[i:i + n])
                 i += n
         if len(self.intervals) >= 2:
-            if self.intervals[0].lower != np.NINF:
+            if self.intervals[0].lower != -np.inf:
                 nopen -= 1
-            if self.intervals[-1].upper != np.PINF:
+            if self.intervals[-1].upper != np.inf:
                 nopen -= 1
             if nopen:
                 stepsize = ifnot(np.mean(np.abs(np.diff(samples_x[:i]))), 1)
-        if self.intervals[0].lower == np.NINF:
+        if self.intervals[0].lower == -np.inf:
             self.intervals[0].linspace(n, default_step=stepsize, result=samples_x[i:i + n])
             i += n
-        if self.intervals[-1].upper == np.PINF:
+        if self.intervals[-1].upper == np.inf:
             self.intervals[-1].linspace(n, default_step=stepsize, result=samples_x[i:i + n])
             i += n
         if sort:
@@ -1392,15 +1392,15 @@ cdef class PiecewiseFunction(Function):
             if x.size() == 1 and x.lower in i:
                 if f.m > 0:
                     if current is None:
-                        result_set.intervals.append(ContinuousSet(np.NINF, x.upper, 2, 2))
+                        result_set.intervals.append(ContinuousSet(-np.inf, x.upper, 2, 2))
                     else:
                         current.upper = x.upper
                         result_set.intervals.append(current)
                         current = None
                 elif f.m < 0:
-                    current = ContinuousSet(x.lower, np.PINF, 2, 2)
+                    current = ContinuousSet(x.lower, np.inf, 2, 2)
             elif not x and f(i.lower) < y and current is None:
-                current = ContinuousSet(i.lower, np.PINF, 2, 2)
+                current = ContinuousSet(i.lower, np.inf, 2, 2)
             elif not x and f(i.lower) >= y and current is not None:
                 current.upper = i.lower
                 result_set.intervals.append(current)
@@ -1419,15 +1419,15 @@ cdef class PiecewiseFunction(Function):
             if x.size() == 1 and x.lower in i:
                 if f.m < 0:
                     if current is None:
-                        result_set.intervals.append(ContinuousSet(np.NINF, x.upper, 2, 2))
+                        result_set.intervals.append(ContinuousSet(-np.inf, x.upper, 2, 2))
                     else:
                         current.upper = x.upper
                         result_set.intervals.append(current)
                         current = None
                 elif f.m > 0:
-                    current = ContinuousSet(x.lower, np.PINF, 2, 2)
+                    current = ContinuousSet(x.lower, np.inf, 2, 2)
             elif not x and f(i.lower) > y and current is None:
-                current = ContinuousSet(i.lower, np.PINF, 1, 2)
+                current = ContinuousSet(i.lower, np.inf, 1, 2)
             elif (not x and f(i.lower) < y or x == R and f(i.lower) == y) and current is not None:
                 current.upper = i.lower
                 result_set.intervals.append(current)
@@ -1461,9 +1461,9 @@ cdef class PiecewiseFunction(Function):
     cpdef list knots(PiecewiseFunction self, DTYPE_t lastx=np.nan):
         result = []
         for i, f in zip(self.intervals, self.functions):
-            if i.lower != np.NINF:
+            if i.lower != -np.inf:
                 result.append((i.lower, f.eval(i.lower)))
-        if self.intervals and self.intervals[-1].upper != np.PINF:
+        if self.intervals and self.intervals[-1].upper != np.inf:
             result.append((self.intervals[-1].upper, self.functions[-1].eval(self.intervals[-1].upper)))
         elif not np.isnan(lastx):
             result.append((lastx, self.functions[-1].eval(lastx)))

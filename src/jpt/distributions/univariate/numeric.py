@@ -278,8 +278,8 @@ class Numeric(Distribution):
         if probspace.isdisjoint(value):
             return 0
         probmass = (
-                (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
-                (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+                (self.cdf.eval(value.upper) if value.upper != np.inf else 1.) -
+                (self.cdf.eval(value.lower) if value.lower != -np.inf else 0.)
         )
         if not probmass:
             return probspace in value
@@ -448,7 +448,7 @@ class Numeric(Distribution):
         """
 
         # create intervals used in the new distribution
-        points = [np.NINF]
+        points = [-np.inf]
 
         if left:
             points.extend([left.lower, left.upper])
@@ -456,7 +456,7 @@ class Numeric(Distribution):
         if right:
             points.extend([right.lower, right.upper])
 
-        points.append(np.PINF)
+        points.append(np.inf)
 
         intervals = [ContinuousSet(a, b) for a, b in pairwise(points)]
 

@@ -1593,8 +1593,8 @@ class JPT:
                     data[self.indices[start + split_pos + 1], split_var_idx]
                 ) / 2
                 splits = [
-                    Interval(np.NINF, split_value, EXC, EXC),
-                    Interval(split_value, np.PINF, INC, EXC)
+                    Interval(-np.inf, split_value, EXC, EXC),
+                    Interval(split_value, np.inf, INC, EXC)
                 ]
 
             elif split_var.integer:  # Integer domain ------------------------------------------------------------------
@@ -1861,13 +1861,13 @@ class JPT:
     def sample(sample, ft):
         # NOTE: This sampling is NOT uniform for intervals that are infinity in any direction! TODO: FIX to sample from CATEGORICAL
         if ft not in sample:
-            return Interval(np.NINF, np.inf, EXC, EXC).sample()
+            return Interval(-np.inf, np.inf, EXC, EXC).sample()
         else:
             iv = sample[ft]
 
         if isinstance(iv, Interval):
             if iv.lower == -np.inf and iv.upper == np.inf:
-                return Interval(np.NINF, np.inf, EXC, EXC).sample()
+                return Interval(-np.inf, np.inf, EXC, EXC).sample()
             if iv.lower == -np.inf:
                 if any([i.right == EXC for i in iv.intervals]):
                     # workaround to be able to sample from open interval
@@ -2410,7 +2410,7 @@ class JPT:
                     right = None
 
                     # if the leaf is not the "lowest" in this dimension
-                    if np.NINF < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
+                    if -np.inf < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
                         # create uniform distribution as bridge between the leaves
                         left = ContinuousSet(
                             leaf.path[variable].lower,
@@ -2418,7 +2418,7 @@ class JPT:
                         )
 
                     # if the leaf is not the "highest" in this dimension
-                    if np.PINF > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
+                    if np.inf > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
                         # create uniform distribution as bridge between the leaves
                         right = ContinuousSet(
                             distribution.cdf.intervals[-2].upper,

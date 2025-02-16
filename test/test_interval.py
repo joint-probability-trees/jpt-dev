@@ -48,8 +48,8 @@ class ContinuousSetTest(unittest.TestCase):
           (']5, 10]', ContinuousSet(5, 10, EXC)),
           ('[0, 1]', ContinuousSet(0, 1)),
           ('[2, 3]', ContinuousSet(2, 3)),
-          (']-inf,0[', ContinuousSet(np.NINF, 0, EXC, EXC)),
-          ('[0, inf[', ContinuousSet(0, np.PINF, INC, EXC)),
+          (']-inf,0[', ContinuousSet(-np.inf, 0, EXC, EXC)),
+          ('[0, inf[', ContinuousSet(0, np.inf, INC, EXC)),
           (']0,0[', ContinuousSet(0, 0, EXC, EXC)),
           (']-1,-1[', ContinuousSet(-1, -1, EXC, EXC)))
     @unpack
@@ -73,7 +73,7 @@ class ContinuousSetTest(unittest.TestCase):
 
     @data(
         (ContinuousSet(0, 1), '[0.0,1.0]'),
-        (ContinuousSet(np.NINF, np.PINF, EXC, EXC), f'(-{_INFTY},{_INFTY})')
+        (ContinuousSet(-np.inf, np.inf, EXC, EXC), f'(-{_INFTY},{_INFTY})')
     )
     @unpack
     def test_pfmt_par(self, i, s):
@@ -86,7 +86,7 @@ class ContinuousSetTest(unittest.TestCase):
 
     @data(
         (ContinuousSet(0, 1), '[0.0,1.0]'),
-        (ContinuousSet(np.NINF, np.PINF, EXC, EXC), f']-{_INFTY},{_INFTY}[')
+        (ContinuousSet(-np.inf, np.inf, EXC, EXC), f']-{_INFTY},{_INFTY}[')
     )
     @unpack
     def test_pfmt_sq(self, i, s):
@@ -299,7 +299,7 @@ class ContinuousSetTest(unittest.TestCase):
           ('[0,1]', '[1,2]', ContinuousSet(0, 1, INC, EXC)),
           ('[-10, 10]', EMPTY, '[-10,10]'),
           (ContinuousSet(0, 0 + eps, INC, EXC), EMPTY, ContinuousSet(0, 0 + eps, INC, EXC)),
-          (ContinuousSet(0 + eps, np.PINF, INC, EXC), EMPTY, ContinuousSet(0 + eps, np.PINF, INC, EXC)),
+          (ContinuousSet(0 + eps, np.inf, INC, EXC), EMPTY, ContinuousSet(0 + eps, np.inf, INC, EXC)),
           # ('[-10, 10]', '[1,1]', '[1,1]')
           )
     @unpack
@@ -330,8 +330,8 @@ class ContinuousSetTest(unittest.TestCase):
     # ------------------------------------------------------------------------------------------------------------------
 
     @data(
-        (ContinuousSet.parse('[0,1]'), RealSet([ContinuousSet(np.NINF, 0, EXC, EXC),
-                                                ContinuousSet(1, np.PINF, EXC, EXC)])),
+        (ContinuousSet.parse('[0,1]'), RealSet([ContinuousSet(-np.inf, 0, EXC, EXC),
+                                                ContinuousSet(1, np.inf, EXC, EXC)])),
         (EMPTY, R),
         (R, EMPTY)
     )

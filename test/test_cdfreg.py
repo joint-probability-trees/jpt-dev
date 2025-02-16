@@ -166,7 +166,7 @@ class TestCasePPFTransform(unittest.TestCase):
             '[0.25,.5[': ConstantFunction(2),
             '[0.5,.75[': ConstantFunction(3),
             ContinuousSet(.75, np.nextafter(1, 2), INC, EXC): ConstantFunction(4),
-            ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC): None
+            ContinuousSet(np.nextafter(1, 2), np.inf, INC, EXC): None
         }))
 
     def test_ppf_transform(self):
@@ -187,7 +187,7 @@ class TestCasePPFTransform(unittest.TestCase):
             ']-∞,0.000[': None,
             '[0.0,.5[': str(LinearFunction.from_points((0, 0), (.5, 1))),
             ContinuousSet(.5, np.nextafter(1, 2), INC, EXC): LinearFunction(2, 1),
-            ContinuousSet(np.nextafter(1, 2), np.PINF, INC, EXC): None
+            ContinuousSet(np.nextafter(1, 2), np.inf, INC, EXC): None
         }))
 
 
@@ -234,7 +234,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
             ']-inf,.3[': 0.,
             ContinuousSet(.3, np.nextafter(0.7, 0.7 - 1), INC, EXC):
                 LinearFunction.parse('2.5000000000000013x - 0.7500000000000003'),
-            ContinuousSet(np.nextafter(0.7, 0.7 - 1), np.PINF, INC, EXC): 1.
+            ContinuousSet(np.nextafter(0.7, 0.7 - 1), np.inf, INC, EXC): 1.
         }
         self.interval = ContinuousSet(.3, .7, INC, EXC)
         self.actual = self.qdist.crop(self.interval)
