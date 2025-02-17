@@ -34,7 +34,7 @@ jobs:
     uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-test-and-build.yml@main'
     with:
       version: "${{ inputs.version || github.ref_name }}"
-      python-versions: "cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312"
+      python-versions: "cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311"
 
   # --------------------------------------------------------------------------------------------------------------------
 
