@@ -2,7 +2,7 @@ PKG_NAME=pyjpt
 
 PKG_VERSION=`test -f src/jpt/.version && cat src/jpt/.version || echo 0.0.0`
 
-ENV_PYTHON_VERSION=`test -n "${PYTHON_VERSION}" && echo ${PYTHON_VERSION} || echo 3.11`
+ENV_PYTHON_VERSION := $(shell test -n "$(PYTHON_VERSION)" && echo "$(PYTHON_VERSION)" || python --version 2>&1 | awk '{print $$2}')
 
 PY_VERSION_STR=$(shell echo ${ENV_PYTHON_VERSION} | tr -d '.')
 
