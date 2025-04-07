@@ -1240,10 +1240,10 @@ class JPT:
 
     def expectation(
             self,
-            variables: Iterable[Variable] = None,
-            evidence: VariableAssignment = None,
-            fail_on_unsatisfiability: bool = True
-    ) -> VariableMap or None:
+            variables: Optional[Iterable[Variable]] = None,
+            evidence: Optional[VariableAssignment | Dict[str, numbers.Number | Interval | str]] = None,
+            fail_on_unsatisfiability: Optional[bool] = True
+    ) -> VariableMap | None:
         """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
