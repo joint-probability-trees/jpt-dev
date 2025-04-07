@@ -8,4 +8,5 @@ arff>=0.9
 fglib>=0.2.3
 factorgraph>=0.0.3
 deprecated~=1.2.14
-tqdm~=4.65.0
+tqdm~=4.66.0
+anytree

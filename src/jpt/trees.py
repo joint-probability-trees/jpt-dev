@@ -1593,9 +1593,9 @@ class JPT:
 
     def __str__(self) -> str:
         return (
-            f'{self.__class__.__name__}\n'
-            f'{self.pfmt()}\n'
-            f'JPT stats: #innernodes = {len(self.innernodes)}, '
+            f'{self.__class__.__name__}'
+            # f'{self.pfmt()}\n'
+            f'#innernodes = {len(self.innernodes)}, '
             f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)'
         )
 
@@ -1607,7 +1607,21 @@ class JPT:
         )
 
     def to_string(self) -> str:
-        return self.pfmt()
+        return self.fancy_tree()
+
+    def fancy_tree(self) -> str:
+        import anytree
+        nodes = {}
+        root = None
+        q = [self.root]
+        while q:
+            n = q.pop(0)
+            if isinstance(n, DecisionNode):
+                q.extend(n.children)
+            nodes[n.idx] = anytree.Node(str(n), parent=nodes[n.parent.idx] if n is not self.root else None)
+            if n is self.root:
+                root = nodes[n.idx]
+        return "\n".join(f"{pre}{node.name}" for pre, _, node in anytree.RenderTree(root, style=anytree.ContRoundStyle))
 
     def pfmt(self) -> str:
         """
