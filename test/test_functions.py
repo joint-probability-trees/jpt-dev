@@ -388,8 +388,8 @@ class QuadraticFunctionTest(TestCase):
         )
 
     @data(
-        ((3, 1, 4), QuadraticFunction(3, 6, 7)),
-        ((-2, -2, 3), QuadraticFunction(-2, 8, -5))
+        ((3, 1, 4), QuadraticFunction(3, -6, 7)),
+        ((-2, 2, 3), QuadraticFunction(-2, 8, -5))
     )
     @unpack
     def test_vertexform(self, params, result):
@@ -1077,22 +1077,6 @@ class PLFTest(TestCase):
                 )
             )
         )
-
-    def test_as_sympy(self):
-        # Arrange
-        plf = PiecewiseFunction.zero().overwrite({
-            '[0,1)': '1x',
-            '[1,2)': '-1x+2'
-        })
-        from sympy import solveset, symbols, S
-        x = symbols('x', domain=S.Reals)
-
-        # Act
-        f = plf.as_sympy()
-
-        #
-        print(f.diff())
-        print(solveset(f.diff(), x))
 
     def test_from_function(self):
         # Act
