@@ -995,9 +995,12 @@ class JPT:
         from .learning.preprocessing import preprocess_data
         result = np.zeros(len(samples))
         variable_index_map = VariableMap([(variable, idx) for (idx, variable) in enumerate(self.variables)])
-        samples = preprocess_data(self, samples)
+        samples = preprocess_data(
+            self,
+            pd.DataFrame(samples, columns=[v.name for v in self.variables])
+        )
         for idx, leaf in self.leaves.items():
-            contains = leaf.contains(samples, variable_index_map)
+            contains = leaf.contains(samples.values, variable_index_map)
             result[contains == 1] = idx
         return result
 
