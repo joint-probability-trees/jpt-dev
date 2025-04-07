@@ -62,7 +62,6 @@ def main(verbose=True):
     vary = NumericVariable('Y', Numeric, precision=.05)
     varcolor = SymbolicVariable('Color', SymbolicType('ColorType', df.Color.unique()))
 
-    JPT.logger.level = logging.DEBUG
     jpt = JPT([varx, vary, varcolor], min_samples_leaf=.1)
     jpt.learn(df)
 
@@ -73,13 +72,13 @@ def main(verbose=True):
         yupper = vary.domain.labels[leaf.path[vary].upper if vary in leaf.path else np.inf]
         vlines = []
         hlines = []
-        if xlower != np.NINF:
+        if xlower != -np.inf:
             vlines.append(xlower)
-        if xupper != np.PINF:
+        if xupper != np.inf:
             vlines.append(xupper)
-        if ylower != np.NINF:
+        if ylower != -np.inf:
             hlines.append(ylower)
-        if yupper != np.PINF:
+        if yupper != np.inf:
             hlines.append(yupper)
         plt.vlines(vlines, max(ylower, -2), min(yupper, 2),
                    color={0: 'r', 1: 'b', None: 'gray'}[first(leaf.path[varcolor])

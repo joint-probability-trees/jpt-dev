@@ -26,5 +26,5 @@ import numpy as np
 
 
 EMPTY = ContinuousSet(0, 0, EXC, EXC)
-R = ContinuousSet(np.NINF, np.PINF, EXC, EXC)
-Z = IntSet(np.NINF, np.PINF)
+R = ContinuousSet(-np.inf, np.inf, EXC, EXC)
+Z = IntSet(-np.inf, np.inf)

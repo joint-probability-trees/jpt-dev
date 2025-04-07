@@ -296,10 +296,10 @@ class DecisionNode(Node):
                 IntSet(
                     self.variable.domain.value2label(
                         self.splits[idx_split].lower
-                    ) if not np.isneginf(self.splits[idx_split].lower) else np.NINF,
+                    ) if not np.isneginf(self.splits[idx_split].lower) else -np.inf,
                     self.variable.domain.value2label(
                         self.splits[idx_split].upper
-                    ) if not np.isposinf(self.splits[idx_split].upper) else np.PINF
+                    ) if not np.isposinf(self.splits[idx_split].upper) else np.inf
                 )
             )
 
@@ -1670,13 +1670,13 @@ class JPT:
     def sample(sample, ft):
         # NOTE: This sampling is NOT uniform for intervals that are infinity in any direction! TODO: FIX to sample from CATEGORICAL
         if ft not in sample:
-            return ContinuousSet(np.NINF, np.inf, EXC, EXC).sample()
+            return ContinuousSet(-np.inf, np.inf, EXC, EXC).sample()
         else:
             iv = sample[ft]
 
         if isinstance(iv, ContinuousSet):
             if iv.lower == -np.inf and iv.upper == np.inf:
-                return ContinuousSet(np.NINF, np.inf, EXC, EXC).sample()
+                return ContinuousSet(-np.inf, np.inf, EXC, EXC).sample()
             if iv.lower == -np.inf:
                 if any([i.right == EXC for i in iv.intervals]):
                     # workaround to be able to sample from open interval

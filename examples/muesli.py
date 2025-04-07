@@ -1,3 +1,4 @@
+import logging
 
 from jpt.base.utils import format_path
 
@@ -22,11 +23,7 @@ from jpt.base.intervals import ContinuousSet
 def plot_muesli(visualize=True):
     # Used to create the plots for the paper
 
-    # df = pd.read_pickle('data/human_muesli.dat')
     df = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
-    # pd.set_option('display.max_rows', 500)
-    # pd.set_option('display.max_columns', 500)
-    # pd.set_option('display.width', 1000)
 
     fig, ax = plt.subplots()
     # ax.set_title(f"Breakfast object positions")
@@ -69,13 +66,13 @@ def plot_muesli(visualize=True):
         yupper = y.domain.labels[leaf.path[y].upper if y in leaf.path else np.inf]
         vlines = []
         hlines = []
-        if xlower != np.NINF:
+        if xlower != -np.inf:
             vlines.append(xlower)
-        if xupper != np.PINF:
+        if xupper != np.inf:
             vlines.append(xupper)
-        if ylower != np.NINF:
+        if ylower != -np.inf:
             hlines.append(ylower)
-        if yupper != np.PINF:
+        if yupper != np.inf:
             hlines.append(yupper)
         plt.vlines(vlines, max(ylower, df['Y'].min()), min(yupper, df['Y'].max()))
         plt.hlines(hlines, max(xlower, df['X'].min()), min(xupper, df['X'].max()))

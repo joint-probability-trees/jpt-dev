@@ -1081,11 +1081,11 @@ class IntegerLabelMapTest(TestCase):
             intset_z
         )
         self.assertEqual(
-            IntSet(0, np.PINF),
+            IntSet(0, np.inf),
             intset_halfopen_pos
         )
         self.assertEqual(
-            IntSet(np.NINF, 0),
+            IntSet(-np.inf, 0),
             intset_halfopen_neg
         )
         self.assertEqual(
@@ -1625,7 +1625,7 @@ class TypeGeneratorTest(TestCase):
             (t_1.min, t_1.max)
         )
         self.assertEqual(
-            (np.NINF, np.PINF),
+            (-np.inf, np.inf),
             (t_2.min, t_2.max)
         )
         self.assertRaises(ValueError, IntegerType, 'Bla', 3, 2)

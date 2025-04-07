@@ -9,7 +9,7 @@ from jpt.base.cutils.cutils import test_sort
 class CUtilsTest(TestCase):
 
     def check_sorted(self, data, indices, length):
-        prev = np.NINF
+        prev = -np.inf
         for j in range(length):
             self.assertGreaterEqual(data[indices[j]], prev)
             prev = data[indices[j]]

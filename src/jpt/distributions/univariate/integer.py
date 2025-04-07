@@ -25,8 +25,8 @@ class IntegerMap(ValueMap):
     '''A mapping of external integers to their internal representation and vice versa.'''
 
     def __init__(self, lmin: Optional[int] = None, lmax: Optional[int] = None):
-        self._min = ifnone(lmin, np.NINF)
-        self._max = ifnone(lmax, np.PINF)
+        self._min = ifnone(lmin, -np.inf)
+        self._max = ifnone(lmax, np.inf)
         if not np.isinf(self._min):
             self._min = int(self._min)
         if not np.isinf(self._max):
@@ -70,14 +70,14 @@ class IntegerLabelToValueMap(IntegerMap):
     @property
     def min(self):
         if np.isinf(self._min):
-            return np.NINF
+            return -np.inf
         elif not np.isinf(self._min):
             return 0
 
     @property
     def max(self):
         if np.isinf(self._max):
-            return np.PINF
+            return np.inf
         elif not np.isinf(self._min):
             return self._max - self._min
         return 0
@@ -574,7 +574,7 @@ class Integer(Distribution):
                     'Unable to set unbounded integer distributions '
                     'with object of type %s' % type(params).__qualname__
                 )
-            if ifnone(self.n_values, np.PINF) != len(params):
+            if ifnone(self.n_values, np.inf) != len(params):
                 raise ValueError(
                     'Number of values and probabilities must coincide.'
                 )

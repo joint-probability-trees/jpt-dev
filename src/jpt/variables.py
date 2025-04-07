@@ -327,12 +327,12 @@ class NumericVariable(Variable):
                     s.append(
                         '%s%s%s' % (lower % (
                             self.domain.labels[i.lower],
-                            {INC: SYMBOL.LTE, EXC: SYMBOL.LT}[i.left]) if i.lower != np.NINF else '',
+                            {INC: SYMBOL.LTE, EXC: SYMBOL.LT}[i.left]) if i.lower != -np.inf else '',
                              self.name,
                              upper % (
                                  {INC: SYMBOL.LTE, EXC: SYMBOL.LT}[i.right],
                                  self.domain.labels[i.upper]
-                             ) if i.upper != np.PINF else ''
+                             ) if i.upper != np.inf else ''
                         )
                     )
             return f' {SYMBOL.LOR} '.join(s)

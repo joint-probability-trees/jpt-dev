@@ -190,8 +190,8 @@ def c45split(
                 data[indices[start + split_pos + 1], split_var_idx]
             ) / 2
             splits = [
-                ContinuousSet(np.NINF, split_value, EXC, EXC),
-                ContinuousSet(split_value, np.PINF, INC, EXC)
+                ContinuousSet(-np.inf, split_value, EXC, EXC),
+                ContinuousSet(split_value, np.inf, INC, EXC)
             ]
 
         elif split_var.integer:  # Integer domain ----------------------------------------------------------------------
@@ -200,8 +200,8 @@ def c45split(
                 data[indices[start + split_pos + 1], split_var_idx]
             ) / 2
             splits = [
-                IntSet(np.NINF, int(math.floor(split_value))),
-                IntSet(int(math.floor(split_value)) + 1, np.PINF)
+                IntSet(-np.inf, int(math.floor(split_value))),
+                IntSet(int(math.floor(split_value)) + 1, np.inf)
             ]
 
         else:  # -------------------------------------------------------------------------------------------------------
@@ -580,7 +580,7 @@ class C45Algorithm:
                     right = None
 
                     # if the leaf is not the "lowest" in this dimension
-                    if np.NINF < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
+                    if -np.inf < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
                         # create uniform distribution as bridge between the leaves
                         left = ContinuousSet(
                             leaf.path[variable].lower,
@@ -588,7 +588,7 @@ class C45Algorithm:
                         )
 
                     # if the leaf is not the "highest" in this dimension
-                    if np.PINF > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
+                    if np.inf > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
                         # create uniform distribution as bridge between the leaves
                         right = ContinuousSet(
                             distribution.cdf.intervals[-2].upper,

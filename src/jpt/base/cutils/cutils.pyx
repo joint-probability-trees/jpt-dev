@@ -11,8 +11,8 @@ __module__ = 'cutils.pyx'
 import numpy as np
 cimport numpy as np
 nan = np.nan
-ninf = np.NINF
-pinf = np.PINF
+ninf = -np.inf
+pinf = np.inf
 
 
 cdef class ConfInterval:
