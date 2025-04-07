@@ -121,4 +121,7 @@ def plot_conditional(jpt, qvarx, qvary, evidence=None, title=None):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.DEBUG
+    )
     main(verbose=True)

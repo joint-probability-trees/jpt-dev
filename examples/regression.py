@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -5,9 +7,7 @@ from matplotlib import pyplot as plt
 
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, VariableMap
-import logging
 
-logging.getLogger("/jpt").setLevel(0)
 
 # ----------------------------------------------------------------------------------------------------------------------
 # The function to predict
@@ -93,4 +93,7 @@ def main(visualize=True):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.INFO,
+    )
     main()

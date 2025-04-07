@@ -607,9 +607,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         # 9 WaitEstimate[WAITESTIMATE_TYPE(SYM)], 0, 9, 10, 29, 30, 59, 60 NUMERIC!
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
-        import logging
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        JPT.logger.setLevel(logging.DEBUG)
         cls.jpt.learn(data=cls.data.values)
 
     # @unittest.skip

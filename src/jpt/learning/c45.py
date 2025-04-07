@@ -3,6 +3,7 @@ import gc
 import math
 import signal
 import threading
+from logging import getLogger
 from multiprocessing import Lock, Event, Pool, Array, RLock
 from operator import attrgetter
 from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List
@@ -10,7 +11,7 @@ from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List
 import numpy as np
 import pandas as pd
 from .preprocessing import preprocess_data
-from dnutils import mapstr, ifnone, getlogger
+from dnutils import mapstr, ifnone
 from tqdm import tqdm
 import ctypes as c
 
@@ -26,7 +27,8 @@ from ..base.functions import PiecewiseFunction
 from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
 from ..distributions.qpd import QuantileDistribution
 
-logger = getlogger('/jpt/learning/c45')
+
+logger = getLogger('/jpt/learning/c45')
 
 
 # ----------------------------------------------------------------------------------------------------------------------

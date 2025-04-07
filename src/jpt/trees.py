@@ -743,7 +743,7 @@ class JPT:
     Implementation Joint Probability Trees (JPTs).
     """
 
-    logger = getlogger('/jpt', level=logs.INFO)
+    logger = getlogger('/jpt')
 
     def __init__(
             self,
