@@ -389,8 +389,11 @@ class Multinomial(Distribution):
             ) for state, likelihood in self._k_mpe(k=k)
         ]
 
-    mode = mpe
-    _mode = _mpe
+    def mode(self) -> Set:
+        return self.mpe()[0]
+
+    def _mode(self) -> Set:
+        return self._mpe()[0]
 
     def kl_divergence(self, other: 'Multinomial') -> float:
         '''

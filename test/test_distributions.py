@@ -199,7 +199,7 @@ class MultinomialDistributionTest(TestCase):
         abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
 
         # Act
-        result = abc.expectation()
+        result = abc.mode()
 
         # Assert
         self.assertEqual({'A'}, result)

@@ -61,7 +61,7 @@ def main(visualize=False):
         model = np.array([leaf.distributions[tree.varnames[pixel]].expectation() for pixel in pixels]).reshape(8, 8)
         idx = (i // 7, i % 7)
         axes[idx].imshow(model, cmap='gray')
-        axes[idx].set_title(leaf.distributions[tree.varnames['digit']].expectation())
+        axes[idx].set_title(leaf.distributions[tree.varnames['digit']].mode())
 
     if visualize:
         plt.tight_layout()

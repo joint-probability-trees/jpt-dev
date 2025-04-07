@@ -472,8 +472,11 @@ class Integer(Distribution):
     def _mpe(self) -> (Set[int], float):
         return first(self._k_mpe(k=1))
 
-    mode = mpe
-    _mode = _mpe
+    def mode(self):
+        return self.mpe()[0]
+
+    def _mode(self):
+        return self._mpe()[0]
 
     def crop(self, restriction: Union[NumberSet, int]) -> 'Integer':
         if isinstance(restriction, numbers.Integral):

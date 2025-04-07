@@ -136,7 +136,7 @@ def render_leaf(args) -> Tuple[Tuple, Dict]:
         if jpt.targets is not None and v in jpt.targets:
             varstr = f'<B>{varstr}</B>'
         if v.symbolic:
-            valstr = str(dist.mode()[0])
+            valstr = str(dist.mode())
         else:
             valstr = f'{dist.expectation():.2f}'
         expectations.append(f'{varstr}={html.escape(valstr)}')
