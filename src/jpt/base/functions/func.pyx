@@ -1939,12 +1939,6 @@ class PLFApproximator:
             ):
                 break
 
-            # Remove the left and right segments of the replacement from the original function
-            # del result.intervals[result.intervals.index(replacement.left.i)]
-            # del result.functions[result.functions.index(replacement.left.f)]
-            # del result.intervals[result.intervals.index(replacement.right.i)]
-            # del result.functions[result.functions.index(replacement.right.f)]
-
             # Insert the new segment at the interval union of the former left and right segments
             result = result.overwrite_at(
                 replacement.new.i,
