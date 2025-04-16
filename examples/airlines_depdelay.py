@@ -2,10 +2,9 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-
+import logging
 import pandas as pd
 
-import dnutils
 from jpt.trees import JPT
 from jpt.variables import infer_from_dataframe
 
@@ -17,12 +16,8 @@ prefix = f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-airline-FOLD-'
 data = variables = kf = None
 data_train = data_test = []
 
-dnutils.loggers({'/airline': dnutils.newlogger(dnutils.logs.console,
-                                               dnutils.logs.FileHandler(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-airline.log')),
-                                               level=dnutils.DEBUG)
-                 })
 
-logger = dnutils.getlogger('/airline', level=dnutils.DEBUG)
+logger = logging.getLogger('/airline')
 
 
 def preprocess_airline():

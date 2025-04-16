@@ -1,14 +1,12 @@
 import pandas
 import os
-import pickle
 from jpt.variables import infer_from_dataframe
 import jpt.trees
 from jpt import sequential_trees
-import numpy as np
 from datetime import datetime
-import plotly.express as px
+import logging
 import plotly.graph_objects as go
-import dnutils
+
 
 def main():
     start = datetime.now()
@@ -23,7 +21,7 @@ def main():
             del df_["event_date"]
             dfs.append(df_)
 
-    logger = dnutils.getlogger('/topsecret', level=dnutils.INFO)
+    logger = logging.getLogger('/topsecret')
 
     variables = infer_from_dataframe(pandas.concat(dfs), scale_numeric_types=True)
 

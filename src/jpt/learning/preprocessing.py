@@ -5,11 +5,10 @@ import threading
 import uuid
 from itertools import zip_longest
 from multiprocessing import shared_memory
-from typing import Union, Optional, List
-
+import logging
 import numpy as np
 import pandas as pd
-from dnutils import mapstr, logs, ifnone
+from dnutils import mapstr, ifnone
 from tqdm import tqdm
 
 from ..base.multicore import Pool, DummyPool
@@ -18,7 +17,7 @@ from ..trees import JPT
 _locals = threading.local()
 
 
-logger = logs.getlogger('/jpt/learning/preprocessing')
+logger = logging.getLogger('/jpt/learning/preprocessing')
 
 
 def _terminate_worker():

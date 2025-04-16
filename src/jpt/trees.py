@@ -13,7 +13,8 @@ from typing_extensions import Buffer
 import numpy as np
 import pandas as pd
 from deprecated.classic import deprecated
-from dnutils import first, ifnone, fst, ifnot, getlogger, logs
+from dnutils import first, ifnone, fst, ifnot
+import logging
 from matplotlib import style
 
 from .base.constants import plotstyle
@@ -745,7 +746,7 @@ class JPT:
     Implementation Joint Probability Trees (JPTs).
     """
 
-    logger = getlogger('/jpt')
+    logger = logging.getLogger('/jpt')
 
     def __init__(
             self,

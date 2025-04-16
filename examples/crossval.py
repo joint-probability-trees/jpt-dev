@@ -1,3 +1,4 @@
+import logging
 import multiprocessing
 import os
 import pickle
@@ -12,7 +13,6 @@ import pydot as pydot
 import tabulate
 from sklearn import datasets
 
-from dnutils import out
 from matplotlib import pyplot as plt
 from sklearn.metrics import f1_score, mean_absolute_error
 from sklearn.model_selection import KFold
@@ -39,7 +39,7 @@ data_train = data_test = []
 dataset = 'airline'
 folds = 10
 
-logger = dnutils.getlogger('/crossvalidation', level=dnutils.DEBUG)
+logger = logging.getLogger('/crossvalidation')
 
 MIN_SAMPLES_LEAF = 0.1
 
@@ -49,12 +49,12 @@ def init_globals():
     d = os.path.join(homedir, f'{start.strftime("%Y-%m-%d")}-{dataset}')
     Path(d).mkdir(parents=True, exist_ok=True)
     prefix = f'{start.strftime(timeformat)}-{dataset}'
-    dnutils.loggers({'/crossvalidation': dnutils.newlogger(dnutils.logs.console,
-                                                    dnutils.logs.FileHandler(os.path.join(d, f'{start.strftime(timeformat)}-{dataset}-learning.log')),
-                                                    level=dnutils.DEBUG)
-                     })
+    # dnutils.loggers({'/crossvalidation': dnutils.newlogger(dnutils.logs.console,
+    #                                                 dnutils.logs.FileHandler(os.path.join(d, f'{start.strftime(timeformat)}-{dataset}-learning.log')),
+    #                                                 level=dnutils.DEBUG)
+    #                  })
 
-    logger = dnutils.getlogger('/crossvalidation', level=dnutils.DEBUG)
+    logger = logging.getLogger('/crossvalidation')
 
 
 def preprocess():
@@ -363,8 +363,6 @@ if __name__ == '__main__':
     #                                                         level=dnutils.DEBUG),
     #                  })
     #
-    # logger = dnutils.getlogger('/crossval-learning', level=dnutils.DEBUG)
-    # logger = dnutils.getlogger('/crossval-results', level=dnutils.DEBUG)
     #
     # data, variables = preprocess_airline()
     #

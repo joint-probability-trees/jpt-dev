@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from datetime import datetime
@@ -9,7 +10,7 @@ import dnutils
 from jpt.trees import JPT
 from jpt.variables import infer_from_dataframe
 
-logger = dnutils.getlogger('/banana', level=dnutils.DEBUG)
+logger = logging.getLogger('/banana')
 start = datetime.now()
 d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-banana')
 Path(d).mkdir(parents=True, exist_ok=True)

@@ -6,8 +6,7 @@ import numpy as np
 import numpy.lib.stride_tricks
 import fglib
 import factorgraph
-from dnutils import out, getlogger
-
+import logging
 from jpt.trees import JPT
 from jpt.base.errors import Unsatisfiability
 from jpt.base.utils import normalized
@@ -16,7 +15,7 @@ from jpt.variables import LabelAssignment, VariableAssignment, VariableMap, Vari
 
 class SequentialJPT:
 
-    logger = getlogger('/jpt/seq')
+    logger = logging.getLogger('/jpt/seq')
 
     def __init__(self, template_tree: JPT):
         self.template_tree: JPT = template_tree
