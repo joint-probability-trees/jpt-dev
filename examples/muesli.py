@@ -131,11 +131,11 @@ def muesli_tree(visualize=True):
                 [x.name, y.name],
                 evidence={o.name: clazz}
         ):
-            out(exp)
+            logging.info(exp)
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
-    print(jpt.to_string())
+    logging.info(jpt.to_string())
 
     if visualize:
         plot_conditional(jpt, x, y, evidence={o: 'BaerenMarkeFrischeAlpenmilch'})
