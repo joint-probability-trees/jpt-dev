@@ -205,6 +205,23 @@ class JPTTest(TestCase):
             jpt_pickle
         )
 
+    def test_loads_and_dumps(self):
+        # Arrange
+        var = NumericVariable('X')
+        jpt = JPT([var], min_samples_leaf=.1)
+        jpt.learn(self.data.reshape(-1, 1))
+
+        # Act
+        jpt_ = JPT.loads(
+            jpt.dumps()
+        )
+
+        # Assert
+        self.assertEqual(
+            jpt,
+            jpt_
+        )
+
     def learn(self):
         trees = []
         for _ in range(1000):

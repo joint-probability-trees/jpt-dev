@@ -1,5 +1,6 @@
 """© Copyright 2021-23, Mareike Picklum, Daniel Nyga."""
 import bz2
+import io
 import json
 import numbers
 import os
@@ -7,6 +8,7 @@ import pickle
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from operator import attrgetter, itemgetter
 from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal
+from typing_extensions import Buffer
 
 import numpy as np
 import pandas as pd
@@ -2125,6 +2127,13 @@ class JPT:
         else:
             writer.dump(data, file)
 
+    dump = save
+
+    def dumps(self, protocol: Literal['pickle', 'json'] = 'pickle') -> bytes:
+        with io.BytesIO() as buf:
+            self.dump(buf, protocol)
+            return buf.getvalue()
+
     @staticmethod
     def load(
             file: Union[str, IO],
@@ -2150,6 +2159,17 @@ class JPT:
         else:
             model = data
         return model
+
+    @staticmethod
+    def loads(
+            data: Buffer,
+            protocol: Literal['pickle', 'json'] = 'pickle'
+    ) -> 'JPT':
+        with io.BytesIO(data) as buf:
+            return JPT.load(
+               buf,
+               protocol=protocol
+            )
 
     def depth(self) -> int:
         """
