@@ -70,6 +70,12 @@ jobs:
         with:
           path: "requirements-dev.txt"
 
+      - name: Install additional build dependencies
+        run: |
+          pip install -U pip
+          pip install -U numpy setuptools wheel
+          
+      
       # ----------------------------------------------------------------------------------------------------------------
 
       - name: "Create .version file if necessary [Version # passed is '${{ inputs.version }}'] 🔢"
