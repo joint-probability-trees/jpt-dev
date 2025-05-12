@@ -1,4 +1,5 @@
 -r requirements.txt
+setuptools
 numpy
 Cython<3.0.3
 ddt
