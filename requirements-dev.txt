@@ -1,5 +1,5 @@
 -r requirements.txt
-Cython
+Cython<3.0.3
 ddt
 jupyter
 auditwheel
