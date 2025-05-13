@@ -99,7 +99,9 @@ jobs:
         with:
           python-versions: ${{ inputs.python-versions || 'cp312-cp312' }}
           build-requirements: 'numpy cython<3.0.3'
-          pip-wheel-args: '-w ./dist-raw'
+          pip-wheel-args: '-w ./dist-raw --no-cache-dir --no-build-isolation'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
 
       # ----------------------------------------------------------------------------------------------------------------
 
