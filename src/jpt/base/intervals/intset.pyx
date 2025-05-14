@@ -82,8 +82,8 @@ cdef class IntSet(Interval):
             )
         m = m.groupdict()
         return IntSet(
-            int(m['lower']) if m.get('lower') is not None else -np.inf,
-            int(m['upper']) if m.get('upper') is not None else np.inf
+            np.int64(m['lower']) if m.get('lower') is not None else -np.inf,
+            np.int64(m['upper']) if m.get('upper') is not None else np.inf
         )
 
     cpdef SIZE_t isempty(self):
@@ -142,7 +142,7 @@ cdef class IntSet(Interval):
 
     @property
     def lower(self):
-        return int(self._lower) if not np.isinf(self._lower) else self._lower
+        return np.int64(self._lower) if not np.isinf(self._lower) else self._lower
 
     @lower.setter
     def lower(self, l):
@@ -150,7 +150,7 @@ cdef class IntSet(Interval):
 
     @property
     def upper(self):
-        return int(self._upper) if not np.isinf(self._upper) else self._upper
+        return np.int64(self._upper) if not np.isinf(self._upper) else self._upper
 
     @upper.setter
     def upper(self, u):
