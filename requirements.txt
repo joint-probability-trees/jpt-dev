@@ -10,3 +10,4 @@ factorgraph>=0.0.3
 deprecated~=1.2.14
 tqdm~=4.66.0
 anytree
+typing-extensions
