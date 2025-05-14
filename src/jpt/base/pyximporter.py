@@ -5,7 +5,7 @@ import traceback
 
 try:
     import cython, pyximport
-    if cython.__version__ <= '3.0':
+    if cython.__version__ < '3.1':
         pyximport_mod = pyximport._pyximport3
     else:
         import pyximport as pyximport_mod
