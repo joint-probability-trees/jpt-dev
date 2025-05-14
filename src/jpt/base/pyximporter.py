@@ -1,14 +1,21 @@
 import os
 import sys
+import traceback
+
 
 try:
-    from pyximport._pyximport3 import PyxImportLoader
+    import cython, pyximport
+    if cython.__version__ <= '3.0.11':
+        pyximport_mod = pyximport._pyximport3
+    else:
+        import pyximport as pyximport_mod
+
 except ModuleNotFoundError:
-    pass
+    traceback.print_exc()
 else:
     from portalocker import Lock
 
-    class ConcurrentPyxImportLoader(PyxImportLoader):
+    class ConcurrentPyxImportLoader(pyximport_mod.PyxImportLoader):
 
         def create_module(self, spec):
             with Lock(
@@ -32,11 +39,8 @@ else:
             language_level=None,
             enable_concurrency=True,
     ):
-        import pyximport as pyximport_mod
-
         if enable_concurrency:
-            from pyximport import _pyximport3
-            _pyximport3.PyxImportLoader = ConcurrentPyxImportLoader
+            pyximport_mod.PyxImportLoader = ConcurrentPyxImportLoader
 
         pyximport_mod.install(
             pyximport=pyximport,
