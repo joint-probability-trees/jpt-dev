@@ -54,14 +54,14 @@ pyxfiles = [
     "jpt/distributions/quantile/cdfreg.pyx",
     "jpt/learning/impurity.pyx",
 ]
-#
-# # ----------------------------------------------------------------------------------------------------------------------
-# # We set the CPATH variable because the "include_dir" argument doesn't seem to work properly
-#
-#
-# _numpy_include_dir = numpy.get_include()
-# os.environ['CPATH'] = _numpy_include_dir
-# print('Setting CPATH environment variable to', _numpy_include_dir)
+
+# ----------------------------------------------------------------------------------------------------------------------
+# We set the CPATH variable because the "include_dir" argument doesn't seem to work properly
+
+
+_numpy_include_dir = numpy.get_include()
+os.environ['CPATH'] = _numpy_include_dir
+print('Setting CPATH environment variable to', _numpy_include_dir)
 #
 #
 # ----------------------------------------------------------------------------------------------------------------------
@@ -78,4 +78,5 @@ compiled = cythonize(
 setup(
     ext_modules=compiled,
     version=__version__,
+    include_dirs=[numpy.get_include()]
 )
