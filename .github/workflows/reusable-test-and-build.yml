@@ -107,7 +107,7 @@ jobs:
         uses: RalfG/python-wheels-manylinux-build@v0.7.1
         with:
           python-versions: ${{ inputs.python-versions || 'cp312-cp312' }}
-          build-requirements: 'numpy cython<3.0.3'
+          build-requirements: 'numpy cython<3.0.3 setuptools wheel'
           pip-wheel-args: '-w ./dist-raw --no-cache-dir --no-build-isolation'
         env:
           PYTHONPATH: ${{ github.workspace }}/src
