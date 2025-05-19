@@ -91,6 +91,7 @@ setup(
     zip_safe=False,
     version=__version__,
     install_requires=requirements(),
+    setup_requires=["numpy"],
     long_description=__description__,
     package_data={'jpt': ['.version']},
     include_package_data=True,
