@@ -50,4 +50,11 @@ include-package-data = true
 jpt = [".version"]
 
 [tool.setuptools.ext-modules]
-# Extensions are described in a separate section via setup.cfg-style pattern
+ext-modules = [
+    { name = "jpt.base.cutils", sources = ["src/jpt/base/cutils.pyx"] },
+    { name = "jpt.base.functions", sources = ["src/jpt/base/functions.pyx"] },
+    { name = "jpt.base.intervals", sources = ["src/jpt/base/intervals.pyx"] },
+    { name = "jpt.distributions.quantile.quantiles", sources = ["src/jpt/distributions/quantile/quantiles.pyx"] },
+    { name = "jpt.distributions.quantile.cdfreg", sources = ["src/jpt/distributions/quantile/cdfreg.pyx"] },
+    { name = "jpt.learning.impurity", sources = ["src/jpt/learning/impurity.pyx"] }
+]
