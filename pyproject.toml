@@ -23,7 +23,6 @@ a promising alternative to classic probabilistic
 
 ## Documentation
 The documentation is hosted on readthedocs.org [here](https://joint-probability-trees.readthedocs.io/en/latest/).'''
-summary = "Joint Probability Trees (short JPTs) are a formalism for learning of and reasoning about joint probability distributions."
 readme = "README.md"
 requires-python = ">=3.7"
 license = "MIT"
