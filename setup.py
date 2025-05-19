@@ -36,7 +36,7 @@ __version__ = read_version(os.path.join('src', 'jpt', '.version'))
 
 
 def requirements():
-    with open('requirements-dev.txt', 'r') as f:
+    with open('requirements.txt', 'r') as f:
         return [_.strip() for _ in f.readlines() if _.strip()]
 
 
