@@ -44,12 +44,6 @@ packages = [
     "jpt.distributions.quantile",
     "jpt.distributions.univariate"
 ]
-include-package-data = true
-
-[tool.setuptools.package-data]
-jpt = [".version"]
-
-[tool.setuptools.ext-modules]
 ext-modules = [
     { name = "jpt.base.cutils", sources = ["src/jpt/base/cutils.pyx"] },
     { name = "jpt.base.functions", sources = ["src/jpt/base/functions.pyx"] },
@@ -58,3 +52,7 @@ ext-modules = [
     { name = "jpt.distributions.quantile.cdfreg", sources = ["src/jpt/distributions/quantile/cdfreg.pyx"] },
     { name = "jpt.learning.impurity", sources = ["src/jpt/learning/impurity.pyx"] }
 ]
+include-package-data = true
+
+[tool.setuptools.package-data]
+jpt = [".version"]
