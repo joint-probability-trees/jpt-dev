@@ -41,7 +41,7 @@ jobs:
     steps:
 
       - name: Checkout 🛎
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # ----------------------------------------------------------------------------------------------------------------
 
@@ -103,14 +103,17 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel
+
       - name: Build binary wheels 🔨
-        uses: RalfG/python-wheels-manylinux-build@v0.7.1-manylinux_2_17_x86_64
-        with:
-          python-versions: ${{ inputs.python-versions || 'cp312-cp312' }}
-          build-requirements: 'numpy cython<3.0.3 setuptools wheel'
-          pip-wheel-args: '-w ./dist-raw --no-cache-dir --no-build-isolation'
+        run: |
+          cibuildwheel --output-dir dist-raw
         env:
-          PYTHONPATH: ${{ github.workspace }}/src
+          CIBW_BUILD: ${{ inputs.python-versions || 'cp312' }}
+          CIBW_SKIP: "*-win32 *-manylinux_i686"
+          CIBW_ENVIRONMENT: PYTHONPATH=src
+          CIBW_BUILD_VERBOSITY: 1
 
       # ----------------------------------------------------------------------------------------------------------------
 
