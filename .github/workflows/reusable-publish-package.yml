@@ -22,6 +22,8 @@ jobs:
   publish-wheel:
     name: Publish Python distribution to the Python package index
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
 
     steps:
       - name: Checkout 🛎
@@ -53,7 +55,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
           skip-existing: true
           repository-url: https://test.pypi.org/legacy/
 
@@ -74,5 +75,4 @@ jobs:
       - name: Publish distribution Version ${{ github.ref_name }} to PyPI 🏁
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
           skip_existing: false

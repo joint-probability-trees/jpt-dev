@@ -42,6 +42,5 @@ jobs:
     name: '[${{ inputs.version || github.ref_name }}] Publish the distribution on PyPI'
     uses: 'joint-probability-trees/jpt-dev/.github/workflows/reusable-publish-package.yml@main'
     needs: build-and-test
-    secrets: inherit
     with:
       version: "${{ inputs.version || github.ref_name }}"
