@@ -22,8 +22,6 @@ jobs:
   publish-wheel:
     name: Publish Python distribution to the Python package index
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
 
     steps:
       - name: Checkout 🛎
@@ -34,7 +32,7 @@ jobs:
       - name: Setup python 🐍
         uses: actions/setup-python@v4
         with:
-          python-version: 3.12
+          python-version: 3.8
           cache: pip
 
       # ----------------------------------------------------------------------------------------------------------------
@@ -49,10 +47,10 @@ jobs:
       - name: Setup Graphviz 📊
         uses: ts-graphviz/setup-graphviz@v1
 
-
       # ----------------------------------------------------------------------------------------------------------------
 
       - name: Publish distribution Version ${{ github.ref_name }} to PyPI 🏁
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
           skip_existing: false
