@@ -49,26 +49,6 @@ jobs:
       - name: Setup Graphviz 📊
         uses: ts-graphviz/setup-graphviz@v1
 
-      # ----------------------------------------------------------------------------------------------------------------
-
-      - name: Publish distribution to Test PyPI 📢
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          verbose: true
-          skip-existing: true
-          repository-url: https://test.pypi.org/legacy/
-
-      # ----------------------------------------------------------------------------------------------------------------
-
-      - name: Install wheel from Test PyPI 🛞
-        run: >-
-          python -m pip install --extra-index-url https://test.pypi.org/simple/ pyjpt==${{ inputs.version }}
-
-      # ----------------------------------------------------------------------------------------------------------------
-
-      - name: Check the installation from Test PyPI ✅
-        run: >-
-          python -c "import jpt; print(jpt.__version__)"
 
       # ----------------------------------------------------------------------------------------------------------------
 
