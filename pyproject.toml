@@ -54,5 +54,8 @@ ext-modules = [
 ]
 include-package-data = true
 
+[tool.setuptools.dynamic]
+version = {attr = "jpt.version.__version__"}
+
 [tool.setuptools.package-data]
 jpt = [".version"]
