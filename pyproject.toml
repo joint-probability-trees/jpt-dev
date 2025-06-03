@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyjpt"
-version = "0.0.0"  # Placeholder; will be overwritten dynamically
+dynamic=["version"]
 description = '''Joint Probability Trees (short JPTs) are a formalism for learning of and reasoning about joint probability
 distributions, which is tractable for practical applications. JPTs support both symbolic and subsymbolic variables in a single
 hybrid model, and they do not rely on prior knowledge about variable dependencies or families of distributions.
