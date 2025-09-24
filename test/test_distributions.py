@@ -13,8 +13,9 @@ from dnutils.tools import ifstr
 from jpt.base.constants import eps
 from jpt.distributions.univariate import IntegerType, Integer
 from jpt.distributions.univariate.integer import IntegerMap, IntegerValueToLabelMap, IntegerLabelToValueMap
-from jpt.distributions.univariate.multinomial import MultinomialValueMap
+from jpt.distributions.univariate.multinomial import MultinomialValueMap, Bool
 from jpt.distributions.univariate.numeric import NumericValueToLabelMap, NumericLabelToValueMap
+from jpt.variables import SymbolicVariable
 from testutils import uniform_numeric
 
 from jpt.distributions.qpd import QuantileDistribution
@@ -298,6 +299,24 @@ class MultinomialDistributionTest(TestCase):
             d1.kl_divergence,
             Numeric()._fit(np.array([[1], [2], [3]], dtype=np.float64), col=0))
 
+    def test_plot(self):
+        DistABC = self.DistABC
+        d1 = DistABC().set(params=[.5, .25, .25])
+        d1.plot(
+            engine='plotly',
+            view=True,
+            horizontal=False
+        )
+
+    def test_plot_coin(self):
+        fr = SymbolicVariable('BiasedCoin', Bool)
+        d1 = fr.distribution().set(5/12.)
+        d1.plot(
+            engine='plotly',
+            view=True,
+            horizontal=False
+        )
+
     def test_value_conversion(self):
         DistABC = self.DistABC
         self.assertEqual(0, DistABC.label2value('A'))
@@ -359,6 +378,35 @@ class MultinomialDistributionTest(TestCase):
         jacc1 = Multinomial.jaccard_similarity(d1, d2)
         jacc2 = Multinomial.jaccard_similarity(d2, d1)
         self.assertEqual(jacc1, jacc2)
+
+    def test_mover_dist_identity(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        md = Multinomial.mover_dist(d1, d1)
+        self.assertEqual(0., md)
+
+    def test_mover_dist_symmetry(self):
+        d1 = self.DistABC().set([.1, .4, .5])
+        d2 = self.DistABC().set([.2, .4, .4])
+        md1 = Multinomial.mover_dist(d1, d2)
+        md2 = Multinomial.mover_dist(d2, d1)
+        self.assertEqual(md1, md2)
+
+    def test_mover_dist_triangle_inequality(self):
+        a = self.DistABC().set([.1, .4, .5])
+        b = self.DistABC().set([.2, .4, .4])
+        c = self.DistABC().set([.2, .2, .6])
+        ab = Multinomial.mover_dist(a, b)
+        bc = Multinomial.mover_dist(b, c)
+        ac = Multinomial.mover_dist(a, c)
+        self.assertLessEqual(ac, ab + bc)
+
+    def test_temp_goal(self):
+        v1 = self.DistABC().set([.1, .4, .5])
+        other = {'A', 'B'}
+
+        v2_ = SymbolicVariable(v1.__class__.__name__, type(v1))
+        v2 = v2_.distribution().set([(1 if x in other else 0) / len(other) for x in list(v2_.domain.labels)])
+        self.assertEqual(1,1)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -688,6 +736,19 @@ class NumericDistributionTest(TestCase):
         jacc = Numeric.jaccard_similarity(d1, d2)
         self.assertEqual(0., jacc)
 
+    def test_plot(self):
+        d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
+        d.plot(
+            engine='matplotlib',
+            view=True,
+            title="Fancy Title",
+            xlabel='my value',
+            # color="#800080",
+            color="#8000804D",
+            # color='rgb(128, 0, 128)'
+            # color='rgba(128, 0, 128, 179)'
+        )
+
     def test_jaccard_overlap(self):
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
@@ -768,6 +829,10 @@ class NumericDistributionTest(TestCase):
         y = uniform_numeric(-1, 1)
         # Act
         z = (x + y)
+
+        x.plot(engine="plotly", view=True)
+        y.plot(engine="plotly", view=True)
+        z.plot(engine="plotly", view=True)
         # Assert
         self.assertAlmostEqual(
             x.expectation() + y.expectation(),
@@ -782,6 +847,26 @@ class NumericDistributionTest(TestCase):
             }),
             z.pdf
         )
+
+    def test_sub(self):
+        # Arrange
+        x = uniform_numeric(-2, 2)
+        y = uniform_numeric(-1, 1)
+
+        # Act
+        z = (x - y)
+
+        # x.plot(view=True,title='x')
+        # y.plot(view=True,title='y')
+        # z.plot(view=True,title='z')
+
+        # Assert
+        self.assertAlmostEqual(
+            x.expectation() - y.expectation(),
+            z.expectation(),
+            places=10
+        )
+
 
     def test__expectation_uniform(self):
         # Arrange
@@ -1081,11 +1166,11 @@ class IntegerLabelMapTest(TestCase):
             intset_z
         )
         self.assertEqual(
-            IntSet(0, np.PINF),
+            IntSet(0, np.inf),
             intset_halfopen_pos
         )
         self.assertEqual(
-            IntSet(np.NINF, 0),
+            IntSet(-np.inf, 0),
             intset_halfopen_neg
         )
         self.assertEqual(
@@ -1510,6 +1595,18 @@ class IntegerDistributionTest(TestCase):
             sumpos.probabilities
         )
 
+        d1.plot(
+            engine="plotly",
+            view=False,
+            color="rgb(0,104,180)"
+        )
+
+        sumpos.plot(
+            engine="plotly",
+            view=False,
+            color="rgb(0,104,180)"
+        )
+
     def test_plot(self):
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([1/6, 2/6, 3/6, 0, 0, 0])
@@ -1559,7 +1656,20 @@ class IntegerDistributionTest(TestCase):
         # )
 
 
+
+
+    def test_plot(self):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([1 / 6] * 6)
+        d1.plot(
+            engine="plotly",
+            title="Test",
+            view=False,
+            horizontal=False
+        )
+
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 class DataScalerTest(TestCase):
     DATA = None
@@ -1625,7 +1735,7 @@ class TypeGeneratorTest(TestCase):
             (t_1.min, t_1.max)
         )
         self.assertEqual(
-            (np.NINF, np.PINF),
+            (-np.inf, np.inf),
             (t_2.min, t_2.max)
         )
         self.assertRaises(ValueError, IntegerType, 'Bla', 3, 2)

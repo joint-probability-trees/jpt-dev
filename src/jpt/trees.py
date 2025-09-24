@@ -6,7 +6,8 @@ import os
 import pickle
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from operator import attrgetter, itemgetter
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal
+from types import FunctionType
+from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal, Set
 
 import numpy as np
 import pandas as pd
@@ -24,7 +25,7 @@ from .base.utils import (
     prod,
 )
 
-from .distributions import Integer
+from .distributions import Integer, Distribution
 from .distributions import Multinomial, Numeric
 from .inference import MPESolver
 
@@ -296,10 +297,10 @@ class DecisionNode(Node):
                 IntSet(
                     self.variable.domain.value2label(
                         self.splits[idx_split].lower
-                    ) if not np.isneginf(self.splits[idx_split].lower) else np.NINF,
+                    ) if not np.isneginf(self.splits[idx_split].lower) else -np.inf,
                     self.variable.domain.value2label(
                         self.splits[idx_split].upper
-                    ) if not np.isposinf(self.splits[idx_split].upper) else np.PINF
+                    ) if not np.isposinf(self.splits[idx_split].upper) else np.inf
                 )
             )
 
@@ -572,20 +573,20 @@ class Leaf(Node):
             dirac_scaling: float = 2.,
             min_distances: VariableMap = None,
             single_likelihoods: bool = False,
-            variables: Iterable[Variable | str] = None
+            variables: Iterable[Union[Variable, str]] = None
     ) -> np.ndarray:
         """
         Calculate the probability of a (partial) query. Exploits the independence assumption
-
+        :param single_likelihoods:
         :param queries: An array-like object that represents variable assignments in value space.
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
-            if a durac impulse is used to model the variable.
+            if a dirac impulse is used to model the variable.
         :type dirac_scaling: float
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
         :type min_distances: A VariableMap from numeric variables to floats or None
-        :param single_likelihoods: wether likelihoods of each variable shall be reported
+        :param single_likelihoods: whether likelihoods of each variable shall be reported
         :param variables: the variables indices to consider in the likelihood calculation
         """
         # create result vector
@@ -1627,7 +1628,7 @@ class JPT:
 
     def learn(
             self,
-            data: pd.DataFrame | np.ndarray,
+            data: Union[pd.DataFrame, np.ndarray],
             keep_samples: bool = False,
             close_convex_gaps: bool = False,
             verbose: bool = False,
@@ -1670,13 +1671,13 @@ class JPT:
     def sample(sample, ft):
         # NOTE: This sampling is NOT uniform for intervals that are infinity in any direction! TODO: FIX to sample from CATEGORICAL
         if ft not in sample:
-            return ContinuousSet(np.NINF, np.inf, EXC, EXC).sample()
+            return ContinuousSet(-np.inf, np.inf, EXC, EXC).sample()
         else:
             iv = sample[ft]
 
         if isinstance(iv, ContinuousSet):
             if iv.lower == -np.inf and iv.upper == np.inf:
-                return ContinuousSet(np.NINF, np.inf, EXC, EXC).sample()
+                return ContinuousSet(-np.inf, np.inf, EXC, EXC).sample()
             if iv.lower == -np.inf:
                 if any([i.right == EXC for i in iv.intervals]):
                     # workaround to be able to sample from open interval
@@ -1696,7 +1697,7 @@ class JPT:
 
     def likelihood(
             self,
-            data: pd.DataFrame | np.ndarray,
+            data: Union[pd.DataFrame, np.ndarray],
             dirac_scaling: float = 2.,
             min_distances: Dict = None,
             preprocess: bool = True,

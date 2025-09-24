@@ -76,7 +76,7 @@ re_int = re.compile(
     r'(?P<ldelim>\(|\[|\])(?P<lval>.+),(?P<rval>.+)(?P<rdelim>\)|\]|\[)'
 )
 
-_R = ContinuousSet(np.NINF, np.PINF, EXC, EXC)
+_R = ContinuousSet(-np.inf, np.inf, EXC, EXC)
 
 _INC = 1
 _EXC = 2
@@ -209,8 +209,8 @@ cdef class ContinuousSet(Interval):
         '''
         lower, upper = l
         return ContinuousSet(
-            np.NINF if lower in (np.NINF, -float('inf'), None, ...) else np.float64(lower),
-            np.PINF if upper in (np.PINF, float('inf'), None, ...) else np.float64(upper)
+            -np.inf if lower in (-np.inf, -float('inf'), None, ...) else np.float64(lower),
+            np.inf if upper in (np.inf, float('inf'), None, ...) else np.float64(upper)
         )
 
     cpdef SIZE_t itype(self):
@@ -277,7 +277,7 @@ cdef class ContinuousSet(Interval):
         Create a ContinuousSet that contains all numbers but infinity and -infinity
         :return: Infinitely big ContinuousSet
         """
-        return ContinuousSet(np.NINF, np.PINF, _EXC, _EXC)
+        return ContinuousSet(-np.inf, np.inf, _EXC, _EXC)
 
     @staticmethod
     def allnumbers():
@@ -367,16 +367,16 @@ cdef class ContinuousSet(Interval):
         cdef DTYPE_t space, val
         cdef np.int32_t alternate = 1
 
-        if self.lower == np.NINF and self.upper == np.PINF:
+        if self.lower == -np.inf and self.upper == np.inf:
             alternate = -1
             space = default_step
             start = 0
 
-        elif self.lower == np.NINF:
+        elif self.lower == -np.inf:
             space = -default_step
             start = self.upper
 
-        elif self.upper == np.PINF:
+        elif self.upper == np.inf:
             space = default_step
             start = self.lower
 
@@ -394,9 +394,9 @@ cdef class ContinuousSet(Interval):
         if num == 1:
             if alternate == -1:
                 samples[0] = 0
-            elif self.lower == np.NINF:
+            elif self.lower == -np.inf:
                 samples[0] = self.upper
-            elif self.upper == np.PINF:
+            elif self.upper == np.inf:
                 samples[0] = self.lower
             else:
                 samples[0] = (stop + start) / 2
@@ -408,10 +408,10 @@ cdef class ContinuousSet(Interval):
                 if alternate != -1 or (not i % 2 or val == 0):
                     val += space
 
-        if self.left == EXC and self.lower != np.NINF:
+        if self.left == EXC and self.lower != -np.inf:
             samples[0] = np.nextafter(samples[0], samples[0] + 1)
 
-        if self.right == EXC and self.upper != np.PINF:
+        if self.right == EXC and self.upper != np.inf:
             samples[-1] = np.nextafter(samples[-1], samples[-1] - 1)
 
         return samples
@@ -727,26 +727,26 @@ cdef class ContinuousSet(Interval):
         """
         if self.isempty():
             return np.nan
-        if self.lower != np.NINF:
+        if self.lower != -np.inf:
             if self.left == _INC:
                 return self.lower
             else:
                 return np.nextafter(self.lower, self.lower + 1)
         else:
             # return np.finfo(np.float64).min
-            return np.NINF
+            return -np.inf
 
     cpdef DTYPE_t lst(self):
         if self.isempty():
             return np.nan
-        if self.upper != np.PINF:
+        if self.upper != np.inf:
             if self.right == _INC:
                 return self.upper
             else:
                 return self.upper - eps
         else:
             # return np.finfo(np.float64).max
-            return np.PINF
+            return np.inf
 
     cpdef DTYPE_t uppermost(self):
         """
@@ -907,7 +907,7 @@ cdef class ContinuousSet(Interval):
         brackets = NOTATIONS[ifnone(notation, interval_notation)]
         return '{}{},{}{}'.format(
             brackets[LEFT][int(self.left)],
-            '-∞' if self.lower == np.NINF else (precision % float(self.lower)),
+            '-∞' if self.lower == -np.inf else (precision % float(self.lower)),
             '∞' if self.upper == np.inf else (precision % float(self.upper)),
             brackets[RIGHT][int(self.right)]
         )
@@ -917,7 +917,7 @@ cdef class ContinuousSet(Interval):
             self.__class__.__name__,
             '{}{},{}{}'.format(
                 {INC: '[', EXC: '('}[int(self.left)],
-                '-∞' if self.lower == np.NINF else ('%.3f' % self.lower),
+                '-∞' if self.lower == -np.inf else ('%.3f' % self.lower),
                 '∞' if self.upper == np.inf else ('%.3f' % self.upper),
                 {INC: ']', EXC: ')'}[int(self.right)]
             )

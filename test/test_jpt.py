@@ -19,7 +19,7 @@ from jpt.base.utils import pairwise
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
 from matplotlib import pyplot as plt
 
-from jpt.learning.c45 import C45Algorithm
+from jpt.learning.c45 import C45Algorithm, JPTPartition
 from jpt.learning.preprocessing import preprocess_data
 
 plt.switch_backend('agg')
@@ -1157,6 +1157,7 @@ class ConditionalJPTTest(TestCase):
 
         # crop the dataframe to match evidence
         cropped_df = self.apply_evidence(evidence)
+        self.model.plot(view=True, plotvars=self.model.variables)
 
         # calculate conditional likelihood using model
         conditional_likelihood = np.average(np.log(conditional_model.likelihood(cropped_df)))
@@ -1472,22 +1473,15 @@ class PruningTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class TestPruneOrPslitHook(TestCase):
+class TestPruneOrSplitHook(TestCase):
 
     @staticmethod
     def prune_or_split(
-        jpt,
-        data,
-        indices,
-        start,
-        end,
-        node_idx,
-        parent_idx,
-        child_idx,
-        depth,
-        path
+        jpt: JPT,
+        partition: JPTPartition,
+        indices: np.ndarray
     ):
-        return depth > 4
+        return partition.depth > 4
 
     def test_prune_or_split_hook(self):
         # Arrange

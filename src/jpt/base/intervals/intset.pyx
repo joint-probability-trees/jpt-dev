@@ -29,7 +29,7 @@ from typing import Dict, Any, List, Set, Callable
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-_Z = IntSet(np.NINF, np.PINF)
+_Z = IntSet(-np.inf, np.inf)
 
 
 cdef SIZE_t is_int(DTYPE_t x):
@@ -82,8 +82,8 @@ cdef class IntSet(Interval):
             )
         m = m.groupdict()
         return IntSet(
-            int(m['lower']) if m.get('lower') is not None else np.NINF,
-            int(m['upper']) if m.get('upper') is not None else np.PINF
+            int(m['lower']) if m.get('lower') is not None else -np.inf,
+            int(m['upper']) if m.get('upper') is not None else np.inf
         )
 
     cpdef SIZE_t isempty(self):
@@ -97,7 +97,7 @@ cdef class IntSet(Interval):
 
     @staticmethod
     cdef NumberSet _emptyset():
-        return IntSet(np.PINF, np.NINF)
+        return IntSet(np.inf, -np.inf)
 
     @staticmethod
     def emptyset():
@@ -105,7 +105,7 @@ cdef class IntSet(Interval):
 
     @staticmethod
     cdef Interval _allnumbers():
-        return IntSet(np.NINF, np.PINF)
+        return IntSet(-np.inf, np.inf)
 
     @staticmethod
     def allnumbers():
@@ -119,7 +119,7 @@ cdef class IntSet(Interval):
 
     cpdef DTYPE_t size(self):
         if np.isneginf(self._lower) or np.isposinf(self._upper):
-            return np.PINF
+            return np.inf
         elif self.isempty():
             return 0
         else:

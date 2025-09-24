@@ -1,30 +1,28 @@
+import ctypes as c
 import datetime as dt
 import gc
 import math
 import signal
 import threading
-from multiprocessing import Lock, Event, Pool, Array, RLock
+from multiprocessing import Event, Pool, Array, RLock
 from operator import attrgetter
-from typing import Union, Dict, Tuple, Any, Optional, Callable, Set, List
+from typing import Dict, Tuple, Any, Optional, Callable, Set, List
 
 import numpy as np
 import pandas as pd
-from .preprocessing import preprocess_data
 from dnutils import mapstr, ifnone, getlogger
 from tqdm import tqdm
-import ctypes as c
 
+from .impurity import Impurity
+from .preprocessing import preprocess_data
+from ..base.functions import PiecewiseFunction
+from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
 from ..base.multicore import DummyPool
 from ..base.utils import _write_error
 from ..distributions import Distribution
-
-
+from ..distributions.qpd import QuantileDistribution
 from ..trees import JPT, DecisionNode, Leaf, Node
 from ..variables import Variable
-from .impurity import Impurity
-from ..base.functions import PiecewiseFunction
-from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
-from ..distributions.qpd import QuantileDistribution
 
 logger = getlogger('/jpt/learning/c45')
 
@@ -70,7 +68,8 @@ class JPTPartition:
         :param data:        the indices for the training samples used to calculate the gain.
         :param start:       the starting index in the data.
         :param end:         the stopping index in the data.
-        :param parent_idx:      the parent node of the current iteration, initially ``None``.
+        :param node_idx:    the node of the current iteration
+        :param parent_idx:  the parent node of the current iteration, initially ``None``.
         :param child_idx:   the index of the child in the current iteration.
         :param depth:       the depth of the tree in the current recursion level.
         """
@@ -115,9 +114,6 @@ def c45split(
     start = partition.start
     end = partition.end
     depth = partition.depth
-    node_idx = partition.node_idx
-    parent_idx = partition.parent_idx
-    child_idx = partition.child_idx
     data = _locals.data if hasattr(_locals, 'data') else partition.data
     path = partition.path
     indices = np.frombuffer(_locals.indices.get_obj(), dtype=np.int64)
@@ -145,15 +141,8 @@ def c45split(
         prune_or_split is not None
         and prune_or_split(
             jpt,
-            data,
-            indices,
-            start,
-            end,
-            node_idx,
-            parent_idx,
-            child_idx,
-            depth,
-            list(path)
+            partition,
+            indices
         )
     )
 
@@ -169,7 +158,7 @@ def c45split(
         # Create a decision node ---------------------------------------------------------------------------------------
 
         node = DecisionNode(
-            idx=node_idx,
+            idx=partition.node_idx,
             variable=split_var,
             parent=None
         )
@@ -190,8 +179,8 @@ def c45split(
                 data[indices[start + split_pos + 1], split_var_idx]
             ) / 2
             splits = [
-                ContinuousSet(np.NINF, split_value, EXC, EXC),
-                ContinuousSet(split_value, np.PINF, INC, EXC)
+                ContinuousSet(-np.inf, split_value, EXC, EXC),
+                ContinuousSet(split_value, np.inf, INC, EXC)
             ]
 
         elif split_var.integer:  # Integer domain ----------------------------------------------------------------------
@@ -200,8 +189,8 @@ def c45split(
                 data[indices[start + split_pos + 1], split_var_idx]
             ) / 2
             splits = [
-                IntSet(np.NINF, int(math.floor(split_value))),
-                IntSet(int(math.floor(split_value)) + 1, np.PINF)
+                IntSet(-np.inf, int(math.floor(split_value))),
+                IntSet(int(math.floor(split_value)) + 1, np.inf)
             ]
 
         else:  # -------------------------------------------------------------------------------------------------------
@@ -236,10 +225,7 @@ def c45split(
         )
 
     else:  # Create a leaf node ----------------------------------------------------------------------------------------
-        leaf = node = Leaf(
-            idx=node_idx,
-            parent=None
-        )
+        leaf = node = Leaf(idx=partition.node_idx, parent=None)
 
         for i, v in enumerate(jpt.variables):
             leaf.distributions[v] = v.distribution()._fit(
@@ -282,7 +268,7 @@ class C45Algorithm:
         self.queue_length = 0
         self.indices = None
         self.min_samples_leaf = None
-        self.node_counter = 0
+        self._node_counter = 0
 
     def _node_created(
             self,
@@ -301,20 +287,20 @@ class C45Algorithm:
             json_node = node  # .to_json()
             json_node['parent'] = partition.parent_idx
             json_node['child_idx'] = partition.child_idx
+            json_node['idx'] = partition.node_idx  # len(self.jpt.allnodes)
 
             if 'children' in json_node:
                 node = DecisionNode.from_json(self.jpt, json_node)
             else:
                 node = Leaf.from_json(self.jpt, json_node)
 
-            self.node_counter += 1
-
+            self._node_counter += 1
             if isinstance(node, DecisionNode):
                 left.parent_idx = node.idx
-                left.node_idx = self.node_counter
-                self.node_counter += 1
+                left.node_idx = self._node_counter
+                self._node_counter += 1
                 right.parent_idx = node.idx
-                right.node_idx = self.node_counter
+                right.node_idx = self._node_counter
 
                 self.queue_length += 2
                 self.c45queue.apply_async(
@@ -521,7 +507,7 @@ class C45Algorithm:
                         data=None,
                         start=0,
                         end=_data.shape[0],
-                        node_idx=self.node_counter,
+                        node_idx=self._node_counter,
                         parent_idx=None,
                         child_idx=None,
                         path=[],
@@ -580,7 +566,7 @@ class C45Algorithm:
                     right = None
 
                     # if the leaf is not the "lowest" in this dimension
-                    if np.NINF < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
+                    if -np.inf < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
                         # create uniform distribution as bridge between the leaves
                         left = ContinuousSet(
                             leaf.path[variable].lower,
@@ -588,7 +574,7 @@ class C45Algorithm:
                         )
 
                     # if the leaf is not the "highest" in this dimension
-                    if np.PINF > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
+                    if np.inf > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
                         # create uniform distribution as bridge between the leaves
                         right = ContinuousSet(
                             distribution.cdf.intervals[-2].upper,

@@ -1,27 +1,25 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import copy
 import numbers
-import os
 from collections import deque
 from operator import itemgetter
-from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, Tuple
+from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, Tuple, Literal
 
 import numpy as np
-from dnutils import ifnone, ifnot, first
-from matplotlib import pyplot as plt
+from dnutils import ifnone, first, ifnot
+from plotly.graph_objs import Figure
 
-from .distribution import ValueMap, Identity
-from jpt.base.utils import save_plot, pairwise, normalized, none2nan
-from . import Distribution
-
-from ..qpd import QuantileDistribution
-
-from jpt.base.intervals import ContinuousSet, UnionSet, NumberSet
 from jpt.base.functions import (
     LinearFunction,
     ConstantFunction,
     PiecewiseFunction,
 )
+from jpt.base.intervals import ContinuousSet, UnionSet, NumberSet
+from . import Distribution
+from .distribution import ValueMap, Identity
+from ..qpd import QuantileDistribution
+from ...base.utils import pairwise, normalized, none2nan
+from ...plotting.engines.rendering import DistributionRendering, MATPLOTLIB, PLOTLY
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -75,7 +73,7 @@ class NumericValueToLabelMap(NumericMap):
     '''
 
     def __getitem__(self, x) -> float:
-        if x in (np.NINF, np.PINF):
+        if x in (-np.inf, np.inf):
             return x
         return self.transform(x, make_copy=True)
 
@@ -94,7 +92,7 @@ class NumericLabelToValueMap(NumericMap):
     '''
 
     def __getitem__(self, x) -> float:
-        if x in (np.NINF, np.PINF):
+        if x in (-np.inf, np.inf):
             return x
         return self.transform(x, make_copy=True)
 
@@ -226,6 +224,17 @@ class Numeric(Distribution):
     def ppf(self):
         return self._quantile.ppf
 
+    def approximate_fast(self, eps: float):
+        return type(self)(**self.settings).set(
+            QuantileDistribution(
+                eps
+            ).fit(
+                np.ascontiguousarray(self.cdf.boundaries().reshape(-1, 1)),
+                None,
+                0
+            )
+        )
+
     def _sample(self, n):
         return self._quantile.sample(n)
 
@@ -269,7 +278,10 @@ class Numeric(Distribution):
 
     def is_dirac_impulse(self) -> bool:
         """Checks if this distribution is a dirac impulse."""
-        return len(self._quantile.cdf.intervals) == 2
+        return any(
+            np.isinf(f.value) for f in self._quantile.pdf.functions if isinstance(f, ConstantFunction)
+        )
+        # return len(self._quantile.cdf.intervals) == 2
 
     def mpe(self) -> (UnionSet, float):
         state, likelihood = self._mpe()
@@ -362,8 +374,8 @@ class Numeric(Distribution):
         if probspace.isdisjoint(value):
             return 0
         probmass = (
-                (self.cdf.eval(value.upper) if value.upper != np.PINF else 1.) -
-                (self.cdf.eval(value.lower) if value.lower != np.NINF else 0.)
+                (self.cdf.eval(value.upper) if value.upper != np.inf else 1.) -
+                (self.cdf.eval(value.lower) if value.lower != -np.inf else 0.)
         )
         if not probmass:
             return value.issuperseteq(probspace)
@@ -534,7 +546,7 @@ class Numeric(Distribution):
         """
 
         # create intervals used in the new distribution
-        points = [np.NINF]
+        points = [-np.inf]
 
         if left:
             points.extend([left.lower, left.upper])
@@ -542,7 +554,7 @@ class Numeric(Distribution):
         if right:
             points.extend([right.lower, right.upper])
 
-        points.append(np.PINF)
+        points.append(np.inf)
 
         intervals = [ContinuousSet(a, b) for a, b in pairwise(points)]
 
@@ -668,6 +680,18 @@ class Numeric(Distribution):
         )
         return result
 
+    def __sub__(self, other: 'Numeric') -> 'Numeric':
+        result = type(other)(**other.settings)
+
+        # multiply with -1, i.e. mirror at y-axis
+        # iv_rev = [i.xmirror() for i in reversed(other.pdf.intervals)]
+        result._quantile = QuantileDistribution.from_pdf(
+            other.pdf.xmirror()
+        )
+
+        # then add other
+        return self + result
+
     def approximate(
             self,
             error_max: float = None,
@@ -701,6 +725,12 @@ class Numeric(Distribution):
 
         return ar
 
+    def distance(
+            self,
+            other: 'Numeric'
+    ) -> float:
+        return Numeric.wasserstein_distance(self, other)
+
     @staticmethod
     def jaccard_similarity(
             d1: 'Numeric',
@@ -728,6 +758,12 @@ class Numeric(Distribution):
             union += max(v1, v2) * (p2 - p1)
         return intersection / union
 
+    def similarity(
+            self,
+            other: 'Numeric'
+    ) -> float:
+        return Numeric.jaccard_similarity(self, other)
+
     def entropy(self) -> float:
         entropy = 0
         i: ContinuousSet
@@ -741,93 +777,21 @@ class Numeric(Distribution):
 
     def plot(
             self,
-            title: str = None,
-            fname: str = None,
-            xlabel: str = 'value',
-            directory: str = '/tmp',
-            pdf: bool = False,
-            view=False,
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering],
             **kwargs
-    ):
+    ) -> Figure:
+        '''Plots the distribution using the given engine.
+        :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
+                        `jpt.plotting.engines.rendering.DistributionRendering`.
+        :param kwargs:  The keyword arguments to pass to the engine as defined in the `.plot_numeric()` function of
+                        `jpt.plotting.engines.rendering.DistributionRendering` or its respective subclass defined by
+                        `engine`.
+        :return:
         '''
-        Generates a plot of the piecewise linear function representing
-        the variable's cumulative distribution function
-
-        :param title:       the name of the variable this distribution represents
-        :param fname:       the name of the file to be stored
-        :param xlabel:      the label of the x-axis
-        :param directory:   the directory to store the generated plot files
-        :param pdf:         whether to store files as PDF. If false, a png is generated by default
-        :param view:        whether to display generated plots, default False (only stores files)
-
-        :return:            None
-        '''
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-        if not view:
-            plt.ioff()
-
-        fig, ax = plt.subplots()
-        ax.set_title(f'{title or f"CDF of {self._cl}"}')
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel('%')
-        ax.set_ylim(-.1, 1.1)
-
-        if len(self.cdf.intervals) == 2:
-            std = abs(self.cdf.intervals[0].upper) * .1
-        else:
-            std = ifnot(
-                np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
-                self.cdf.intervals[1].upper - self.cdf.intervals[1].lower
-            ) * 2
-
-        # add horizontal line before first interval of distribution
-        X = np.array([self.cdf.intervals[0].upper - std])
-
-        for i, f in zip(self.cdf.intervals[:-1], self.cdf.functions[:-1]):
-            if isinstance(f, ConstantFunction):
-                X = np.append(X, [np.nextafter(i.upper, i.upper - 1), i.upper])
-            else:
-                X = np.append(X, i.upper)
-
-        # add horizontal line after last interval of distribution
-        X = np.append(X, self.cdf.intervals[-1].lower + std)
-        X_ = np.array([self.labels[x] for x in X])
-        Y = np.array(self.cdf.multi_eval(X))
-        ax.plot(
-            X_,
-            Y,
-            color='cornflowerblue',
-            linestyle='dashed',
-            label='Piecewise linear CDF from bounds',
-            linewidth=2,
-            markersize=12
+        return DistributionRendering.instantiate_engine(engine).plot_numeric(
+            self,
+            **kwargs
         )
-
-        bounds = np.array([i.upper for i in self.cdf.intervals[:-1]])
-        bounds_ = np.array([self.labels[b] for b in bounds])
-        ax.scatter(
-            bounds_,
-            np.asarray(self.cdf.multi_eval(bounds)),
-            color='orange',
-            marker='o',
-            label='Piecewise Function limits'
-        )
-
-        ax.legend(loc='upper left', prop={'size': 8})  # do we need a legend with only one plotted line?
-        fig.tight_layout()
-
-        save_plot(
-            fig,
-            directory,
-            fname or self.__class__.__name__,
-            fmt='pdf' if pdf else 'svg'
-        )
-
-        if view:
-            plt.show()
-            plt.close()
 
 
 # ----------------------------------------------------------------------------------------------------------------------

@@ -53,8 +53,8 @@ class ContinuousSetTest(TestCase):
           (']5, 10]', ContinuousSet(5, 10, EXC)),
           ('[0, 1]', ContinuousSet(0, 1)),
           ('[2, 3]', ContinuousSet(2, 3)),
-          (']-inf,0[', ContinuousSet(np.NINF, 0, EXC, EXC)),
-          ('[0, inf[', ContinuousSet(0, np.PINF, INC, EXC)),
+          (']-inf,0[', ContinuousSet(-np.inf, 0, EXC, EXC)),
+          ('[0, inf[', ContinuousSet(0, np.inf, INC, EXC)),
           (']0,0[', ContinuousSet(0, 0, EXC, EXC)),
           (']-1,-1[', ContinuousSet(-1, -1, EXC, EXC)))
     @unpack
@@ -71,7 +71,7 @@ class ContinuousSetTest(TestCase):
         )
 
     @data(
-        (ContinuousSet.parse('(-inf,0]'), np.NINF),
+        (ContinuousSet.parse('(-inf,0]'), -np.inf),
         (ContinuousSet.parse('[0, 1]'), 0),
         (ContinuousSet.parse('(1,2]'), 1 + eps)
     )
@@ -119,7 +119,7 @@ class ContinuousSetTest(TestCase):
 
     @data(
         (ContinuousSet(0, 1), '[0.0,1.0]'),
-        (ContinuousSet(np.NINF, np.PINF, EXC, EXC), f'(-{STR_INFTY},{STR_INFTY})')
+        (ContinuousSet(-np.inf, np.inf, EXC, EXC), f'(-{STR_INFTY},{STR_INFTY})')
     )
     @unpack
     def test_pfmt_par(self, i, s):
@@ -132,7 +132,7 @@ class ContinuousSetTest(TestCase):
 
     @data(
         (ContinuousSet(0, 1), '[0.0,1.0]'),
-        (ContinuousSet(np.NINF, np.PINF, EXC, EXC), f']-{STR_INFTY},{STR_INFTY}[')
+        (ContinuousSet(-np.inf, np.inf, EXC, EXC), f']-{STR_INFTY},{STR_INFTY}[')
     )
     @unpack
     def test_pfmt_sq(self, i, s):
@@ -427,7 +427,7 @@ class ContinuousSetTest(TestCase):
           ('[0,1]', '[1,2]', ContinuousSet(0, 1, INC, EXC)),
           ('[-10, 10]', ContinuousSet.emptyset(), '[-10,10]'),
           (ContinuousSet(0, 0 + eps, INC, EXC), ContinuousSet.emptyset(), ContinuousSet(0, 0 + eps, INC, EXC)),
-          (ContinuousSet(0 + eps, np.PINF, INC, EXC), ContinuousSet.emptyset(), ContinuousSet(0 + eps, np.PINF, INC, EXC)),
+          (ContinuousSet(0 + eps, np.inf, INC, EXC), ContinuousSet.emptyset(), ContinuousSet(0 + eps, np.inf, INC, EXC)),
           ('[-1, 1]', '[-1,1]', ContinuousSet.emptyset())
           )
     @unpack
@@ -479,7 +479,7 @@ class ContinuousSetTest(TestCase):
     # ------------------------------------------------------------------------------------------------------------------
 
     @data(
-        (ContinuousSet.parse('[0,1]'), UnionSet([ContinuousSet(np.NINF, 0, EXC, EXC), ContinuousSet(1, np.PINF, EXC, EXC)])),
+        (ContinuousSet.parse('[0,1]'), UnionSet([ContinuousSet(-np.inf, 0, EXC, EXC), ContinuousSet(1, np.inf, EXC, EXC)])),
         (ContinuousSet.emptyset(), R),
         (R, ContinuousSet.emptyset())
     )
@@ -1591,7 +1591,7 @@ class IntSetTest(TestCase):
     def test_constructor(self):
         # Act
         i1 = IntSet(0, 1)
-        i2 = IntSet(np.NINF, np.PINF)
+        i2 = IntSet(-np.inf, np.inf)
 
         # Assert
         self.assertIsInstance(
@@ -1603,11 +1603,11 @@ class IntSetTest(TestCase):
             int
         )
         self.assertEqual(
-            np.NINF,
+            -np.inf,
             i2.lower
         )
         self.assertEqual(
-            np.PINF,
+            np.inf,
             i2.upper
         )
         self.assertRaises(
@@ -1655,8 +1655,8 @@ class IntSetTest(TestCase):
 
     @data(
         ('{0..2}', IntSet(0, 2)),
-        ('{..0}', IntSet(np.NINF, 0)),
-        ('{5..}', IntSet(5, np.PINF)),
+        ('{..0}', IntSet(-np.inf, 0)),
+        ('{5..}', IntSet(5, np.inf)),
         ('{..}', Z)
     )
     @unpack
@@ -1673,9 +1673,9 @@ class IntSetTest(TestCase):
 
     def test_str(self):
         # Arrange
-        i1 = IntSet(np.NINF, np.PINF)
-        i2 = IntSet(np.NINF, 3)
-        i3 = IntSet(-1, np.PINF)
+        i1 = IntSet(-np.inf, np.inf)
+        i2 = IntSet(-np.inf, 3)
+        i3 = IntSet(-1, np.inf)
 
         # Act
         s1 = str(i1)
@@ -1735,12 +1735,12 @@ class IntSetTest(TestCase):
     @data(
         (Z, -1, True),
         (Z, 1.2, False),
-        (Z, np.NINF, True),
-        (Z, np.PINF, True),
-        (IntSet(np.NINF, 4), 4, True),
-        (IntSet(np.NINF, 4), 5, False),
-        (IntSet(-1, np.PINF), -1, True),
-        (IntSet(-1, np.PINF), -2, False),
+        (Z, -np.inf, True),
+        (Z, np.inf, True),
+        (IntSet(-np.inf, 4), 4, True),
+        (IntSet(-np.inf, 4), 5, False),
+        (IntSet(-1, np.inf), -1, True),
+        (IntSet(-1, np.inf), -2, False),
         (IntSet(0, -1), 0, False)
     )
     @unpack
@@ -1862,7 +1862,7 @@ class IntSetTest(TestCase):
 
     def test_iter_neg_inf(self):
         # Arrange
-        int_set = IntSet(np.NINF, 3)
+        int_set = IntSet(-np.inf, 3)
         int_iter = iter(int_set)
 
         # Act
@@ -1876,7 +1876,7 @@ class IntSetTest(TestCase):
 
     def test_iter_pos_inf(self):
         # Arrange
-        int_set = IntSet(-1, np.PINF)
+        int_set = IntSet(-1, np.inf)
         int_iter = iter(int_set)
 
         # Act
@@ -1947,8 +1947,8 @@ class IntSetTest(TestCase):
 
     @data(
         (IntSet(0, 1), 2),
-        (IntSet(np.PINF, np.NINF), 0),
-        (IntSet(np.NINF, 0), np.PINF)
+        (IntSet(np.inf, -np.inf), 0),
+        (IntSet(-np.inf, 0), np.inf)
     )
     @unpack
     def test_size(self, interval, truth):
@@ -1961,8 +1961,8 @@ class IntSetTest(TestCase):
             size
         )
 
-        # i2 = IntSet(np.NINF, 0)
-        # i3 = IntSet(1, np.PINF)
+        # i2 = IntSet(-np.inf, 0)
+        # i3 = IntSet(1, np.inf)
         # i4 = IntSet.ALL
         # i5 = IntSet.emptyset()
     @data(
@@ -2029,8 +2029,8 @@ class IntSetTest(TestCase):
     def test_serialization(self):
         # Arrange
         intset_finite = IntSet(1, 2)
-        intset_ninf = IntSet(np.NINF, 0)
-        intset_pinf = IntSet(0, np.PINF)
+        intset_ninf = IntSet(-np.inf, 0)
+        intset_pinf = IntSet(0, np.inf)
         intset_inf = Z
 
         # Act
@@ -2060,8 +2060,8 @@ class IntSetTest(TestCase):
     def test_pickle(self):
         # Arrange
         intset_finite = IntSet(1, 2)
-        intset_ninf = IntSet(np.NINF, 0)
-        intset_pinf = IntSet(0, np.PINF)
+        intset_ninf = IntSet(-np.inf, 0)
+        intset_pinf = IntSet(0, np.inf)
         intset_inf = Z
 
         # Act

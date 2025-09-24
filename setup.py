@@ -86,6 +86,7 @@ setup(
         'jpt.learning.impurity',
         'jpt.inference',
         'jpt.plotting',
+        'jpt.plotting.engines',
         'jpt.base',
         'jpt.base.intervals',
         'jpt.base.cutils',

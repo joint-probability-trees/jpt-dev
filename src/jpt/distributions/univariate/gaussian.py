@@ -8,6 +8,9 @@ from dnutils.stats import Gaussian as Gaussian_, _matshape
 from matplotlib import pyplot as plt
 from scipy.stats import norm, multivariate_normal
 
+from jpt.base.functions import PiecewiseFunction
+
+from jpt.base.intervals import ContinuousSet
 from jpt.base.utils import save_plot
 
 
@@ -112,6 +115,25 @@ class Gaussian(Gaussian_):
         self._mean = result._mean
         self._cov = result._cov
         return self
+
+    @staticmethod
+    def wasserstein_distance(
+            d1: 'Gaussian',
+            d2: 'Gaussian',
+    ) -> float:
+        points = list(
+            sorted(
+                set(d1.pdf.boundaries()) | set(d2.pdf.boundaries())
+            )
+        )
+        minpt = min(points)
+        maxpt = max(points)
+
+        diff_ = PiecewiseFunction.abs(d1.cdf - d2.cdf)
+        ar = diff_.integrate(ContinuousSet(minpt, maxpt))
+
+        return ar
+
 
     @Gaussian_.dim.getter
     def dim(self):

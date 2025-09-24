@@ -147,6 +147,7 @@ def preprocess_data(
             create=True,
             size=memory_required
         )
+        _locals.shm = shm.name
 
         data_ = np.ndarray(
             shape=shape,
