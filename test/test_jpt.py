@@ -1466,7 +1466,7 @@ class PruningTest(TestCase):
 
         # Act
         pruned_jpt = jpt.prune(.6)
-        # pruned_jpt.plot(plotvars=pruned_jpt.variables, view=True)
+        pruned_jpt.plot(plotvars=pruned_jpt.variables, view=True)
 
         # Assert
         self.assertEqual(

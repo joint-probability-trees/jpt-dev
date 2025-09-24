@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-# from jpt import infer_from_dataframe, JPT
+from jpt.trees import JPT
+from jpt.variables import infer_from_dataframe
 from jpt.plotting.helpers import pdf_grid_3d
 
 
