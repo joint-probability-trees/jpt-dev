@@ -153,10 +153,12 @@ cdef class UnionSet(NumberSet):
 
     def to_json(self) -> Dict[str, Any]:
         return {
-            'intervals': {
-                'type': i.__class__.__qualname__,
-                'data': i.to_json()
-            } for i in self.intervals
+            'intervals': [
+                {
+                    'type': i.__class__.__qualname__,
+                    'data': i.to_json()
+                } for i in self.intervals
+            ]
         }
 
     @staticmethod
@@ -164,7 +166,7 @@ cdef class UnionSet(NumberSet):
         intervals = []
         for d in data['intervals']:
             if 'type' in d:
-                clazz = {'ContinousSet': ContinuousSet, 'IntSet': IntSet}[d['type']]
+                clazz = {'ContinuousSet': ContinuousSet, 'IntSet': IntSet}[d['type']]
                 d_ = d['data']
             else:
                 clazz = ContinuousSet
@@ -231,6 +233,7 @@ cdef class UnionSet(NumberSet):
         for i in range(n):
             resval = np.random.uniform(0, min([np.finfo(np.float64).max, upperbounds[-1]]))
             for j, bound in enumerate(upperbounds):
+                print(resval, bound)
                 if resval <= bound:
                     self.intervals[j].sample(result=result[i:i+1])
                     break

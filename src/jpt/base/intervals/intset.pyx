@@ -142,22 +142,31 @@ cdef class IntSet(Interval):
 
     @property
     def lower(self):
-        return np.int64(self._lower) if not np.isinf(self._lower) else self._lower
+        if not np.isinf(self._lower):
+            return int(self._lower)
+        else:
+            return float(self._lower)
 
     @lower.setter
-    def lower(self, l):
-        self._lower = l
+    def lower(self, l: int | float):
+        self._lower = np.float64(l)
 
     @property
     def upper(self):
-        return np.int64(self._upper) if not np.isinf(self._upper) else self._upper
+        if not np.isinf(self._upper):
+            return int(self._upper)
+        else:
+            return float(self._upper)
 
     @upper.setter
-    def upper(self, u):
-        self._upper = u
+    def upper(self, u: int | float):
+        self._upper = np.float64(u)
 
     cpdef DTYPE_t fst(self):
         return self.lower if not self.isempty() else np.nan
+
+    cpdef DTYPE_t lst(self):
+        return self.upper if not self.isempty() else np.nan
 
     @property
     def min(self):
@@ -252,8 +261,8 @@ cdef class IntSet(Interval):
     def to_json(self):
         return {
             'type': IntSet.__qualname__,
-            'upper': self.upper,
-            'lower': self.lower,
+            'upper': int(self.upper) if not np.isinf(self.upper) else self.upper,
+            'lower': int(self.lower) if not np.isinf(self.lower) else self.lower,
         }
 
     @staticmethod
@@ -285,7 +294,7 @@ cdef class IntSet(Interval):
             IntSet(n, n) for n in numbers
         ]).simplify(keep_type=False)
 
-    cpdef IntSet complement(self):
+    cpdef NumberSet complement(self):
         return _Z - self
 
     cpdef SIZE_t contiguous(self, Interval other):
@@ -339,16 +348,22 @@ cdef class IntSet(Interval):
         if self.isempty():
             raise ValueError('Cannot sample from an empty set.')
 
-        if self.isinf():
+        if np.isneginf(self._lower) or np.isposinf(self._upper):
             raise ValueError('Cannot sample uniformly from an infinite set.')
 
-        elif result is None:
-            result = np.ndarray(shape=k)
+        if result is None:
+            result = np.ndarray(shape=k, dtype=np.float64)
 
-        if self.size() == 1:
-            result[...] = np.ones(shape=k) * self._lower
+        # Check if this is a single-value set by comparing bounds directly
+        cdef SIZE_t i
+        
+        if self._lower == self._upper:
+            # Single value case - fill all positions with the same value
+            result[...] = self._lower
         else:
-            result[...] = np.random.randint(self.lower, self.upper, k)
+            # Multiple values case - sample integers from the range
+            for i in range(k):
+                result[i] = <np.float64_t> np.random.randint(self._lower, self._upper + 1)
 
         return result
 

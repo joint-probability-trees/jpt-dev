@@ -682,7 +682,7 @@ class Leaf(Node):
 
         return result
 
-    def mpe(self, minimal_distances: VariableMap) -> (VariableMap, float):
+    def mpe(self, minimal_distances: VariableMap) -> Tuple[VariableMap, float]:
         """
         Calculate the most probable explanation of this leaf as a fully factorized distribution.
         :return: the likelihood of the maximum as a float and the configuration as a VariableMap
@@ -751,13 +751,13 @@ class JPT:
     def __init__(
             self,
             variables: List[Variable],
-            targets: List[str or Variable] = None,
-            features: List[str or Variable] = None,
-            min_samples_leaf: float or int = 1,
-            min_impurity_improvement: float or None = None,
-            max_leaves: int or None = None,
-            max_depth: int or None = None,
-            dependencies: Dict[Variable, List[Variable]] or None = None
+            targets: List[str | Variable] = None,
+            features: List[str | Variable] = None,
+            min_samples_leaf: float | int = 1,
+            min_impurity_improvement: float | None = None,
+            max_leaves: int | None = None,
+            max_depth: int | None = None,
+            dependencies: Dict[Variable, List[Variable]] | None = None
     ) -> None:
         """
         Create a JPT.

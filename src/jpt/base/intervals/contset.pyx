@@ -73,7 +73,7 @@ interval_notation = 'par'
 # ----------------------------------------------------------------------------------------------------------------------
 
 re_int = re.compile(
-    r'(?P<ldelim>\(|\[|\])(?P<lval>.+),(?P<rval>.+)(?P<rdelim>\)|\]|\[)'
+    r'^(?P<ldelim>\(|\[|\])(?P<lval>.+),(?P<rval>.+)(?P<rdelim>\)|\]|\[)$'
 )
 
 _R = ContinuousSet(-np.inf, np.inf, EXC, EXC)
@@ -525,7 +525,7 @@ cdef class ContinuousSet(Interval):
                 return False
         else:
             raise TypeError(
-                f'Unsupprted argument type: {other.__class__.__qualname__}'
+                f'Unsupported argument type: {other.__class__.__qualname__}'
             )
         return True
 

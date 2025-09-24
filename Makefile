@@ -65,6 +65,7 @@ tests: preload virtualenv wheel
 
 clean: preload rmvirtualenv
 	rm -rf dist build src/*.egg-info *.log ~/.pyxbld/
+	find src/. -type f \( -name "*.so" -o -name "*.cpp" -o -name "*.h" \) -delete
 
 update_pkg: preload
 	@(. ${ENV_NAME}/bin/activate && pip install -U pip)
