@@ -1,3 +1,4 @@
+import logging
 
 from jpt.base.utils import format_path
 
@@ -19,14 +20,13 @@ from jpt.variables import SymbolicVariable, NumericVariable
 from jpt.base.intervals import ContinuousSet
 
 
+logger = logging.getLogger('/jpt/examples/muesli')
+
+
 def plot_muesli(visualize=True):
     # Used to create the plots for the paper
 
-    # df = pd.read_pickle('data/human_muesli.dat')
     df = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
-    # pd.set_option('display.max_rows', 500)
-    # pd.set_option('display.max_columns', 500)
-    # pd.set_option('display.width', 1000)
 
     fig, ax = plt.subplots()
     # ax.set_title(f"Breakfast object positions")
@@ -117,46 +117,39 @@ def muesli_tree(visualize=True):
     data["Success"] = data["Success"].astype(str)
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
     SuccessType = SymbolicType("Success", data['Success'].unique())
-    XType = NumericType('XType', data['X'].values)
 
     x = NumericVariable('X', Numeric, blur=.01)
     y = NumericVariable('Y', Numeric, blur=.01)
     o = SymbolicVariable('Class', ObjectType)
     s = SymbolicVariable('Success', SuccessType)
 
-    # pprint.pprint([x.to_json(), y.to_json(), o.to_json(), s.to_json()])
-    print(data)
     jpt = JPT([x, y, o, s], min_samples_leaf=.2)
     jpt.learn(data)
 
-    # json_data = jpt.to_json()
-    # pprint.pprint(json_data)
-    # jpt.plot(plotvars=[x, y, o], directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Muesli'))
-    # jpt = JPTBase.from_json(json_data)
-
     for clazz in data['Class'].unique():
-        out(jpt.infer(query={o.name: clazz}, evidence={x.name: [.9, None], y.name: [None, .45]}))
-    print()
-
-    for clazz in data['Class'].unique():
-        for exp in jpt.expectation([x.name, y.name], evidence={o.name: clazz}):
-            out(exp)
+        for exp in jpt.expectation(
+                [x.name, y.name],
+                evidence={o.name: clazz}
+        ):
+            logging.info(exp)
 
     # plotting vars does not really make sense here as all leaf-cdfs of numeric vars are only piecewise linear fcts
     # --> only for testing
-    print(jpt)
+    logging.info(jpt.to_string())
 
-    # jpt.plot(plotvars=[x, y, o, s])
-
-    # q = {o: ("BowlLarge_Bdvg", "JaNougatBits_UE0O"), x: [.812, .827]}
-    # r = jpt.reverse(q)
-    # out('Query:', q, 'result:', pprint.pformat(r))
     if visualize:
         plot_conditional(jpt, x, y, evidence={o: 'BaerenMarkeFrischeAlpenmilch'})
 
     for clazz in data['Class'].unique():
-        out(jpt.infer(query={o.name: clazz}, evidence={x.name: [.95 - FUZZYNESS, .95 + FUZZYNESS],
-                                                       y.name: [.45 - FUZZYNESS, .45 + FUZZYNESS]}))
+        logger.info(
+            jpt.infer(
+                query={o.name: clazz},
+                evidence={
+                    x.name: [.95 - FUZZYNESS, .95 + FUZZYNESS],
+                    y.name: [.45 - FUZZYNESS, .45 + FUZZYNESS]
+                }
+            )
+        )
 
 
 FUZZYNESS = .01
@@ -178,7 +171,7 @@ def plot_conditional(jpt, qvarx, qvary, evidence=None, title=None):
     # ax.contour(X, Y, Z, 10)
     ax.set_title(ifnone(title, 'P(%s, %s|%s)' % (qvarx.name,
                                                  qvary.name,
-                                                 format_path(evidence) if evidence else '$\emptyset$')))
+                                                 format_path(evidence) if evidence else r'$\emptyset$')))
     plt.show()
 
 
@@ -210,4 +203,4 @@ def main(visualize=True):
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    main('PyCharm')
+    main()

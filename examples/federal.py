@@ -1,22 +1,21 @@
 import fileinput
 import io
+import logging
 import os
 import re
 import sys
 from datetime import datetime
 
 import pandas as pd
-import arff
 import requests
 
-import dnutils
 from dnutils import out
 from jpt.base.utils import arfftocsv
 from jpt.distributions import Numeric, SymbolicType, Bool
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 
-logger = dnutils.getlogger('/federal', level=dnutils.DEBUG)
+logger = logging.getLogger('/federal')
 
 
 def main():

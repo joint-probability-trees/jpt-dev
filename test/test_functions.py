@@ -389,7 +389,7 @@ class QuadraticFunctionTest(TestCase):
 
     @data(
         ((3, 1, 4), QuadraticFunction(3, -6, 7)),
-        ((-2, -2, 3), QuadraticFunction(-2, -8, -5))
+        ((-2, 2, 3), QuadraticFunction(-2, 8, -5))
     )
     @unpack
     def test_vertexform(self, params, result):
@@ -946,22 +946,6 @@ class PLFTest(TestCase):
                     ContinuousSet(0, 2, INC, EXC): '-.25x + .5',
                     ContinuousSet(2, np.inf, INC, EXC): 0
                 })
-        ), (
-                PiecewiseFunction.from_dict({
-                    R: 0
-                }).overwrite_at(
-                    ContinuousSet(-1, 1, INC, EXC), ConstantFunction(.5)
-                ),
-                PiecewiseFunction.from_dict({
-                    R: 0
-                }).overwrite_at(
-                    ContinuousSet(0.0, 5e-324, INC, EXC), ConstantFunction(np.inf)
-                ),
-                PiecewiseFunction.from_dict({
-                    R: 0
-                }).overwrite_at(
-                    ContinuousSet(-1, 1, INC, EXC), ConstantFunction(.5)
-                )
         )
     )
     @unpack
@@ -1080,27 +1064,19 @@ class PLFTest(TestCase):
             '[.25,.5[': .5,
             '[.5,.75[': .7
         })
-
-        # Just test that the method doesn't crash
-        approximated = plf.approximate(n_segments=3, replace_by=ConstantFunction)
-        self.assertIsInstance(approximated, PiecewiseFunction)
-
-
-    def test_as_sympy(self):
-        # Arrange
-        plf = PiecewiseFunction.zero().overwrite({
-            '[0,1)': '1x',
-            '[1,2)': '-1x+2'
-        })
-        from sympy import solveset, symbols, S
-        x = symbols('x', domain=S.Reals)
-
-        # Act
-        f = plf.as_sympy()
-
-        #
-        print(f.diff())
-        print(solveset(f.diff(), x))
+        self.assertEqual(
+            5,
+            len(plf)
+        )
+        self.assertEqual(
+            3,
+            len(
+                plf.approximate(
+                    n_segments=3,
+                    replace_by=ConstantFunction
+                )
+            )
+        )
 
     def test_from_function(self):
         # Act

@@ -1,8 +1,10 @@
 PKG_NAME=pyjpt
 
+DEFAULT_PYTHON_VERSION=3.11
+
 PKG_VERSION=`test -f src/jpt/.version && cat src/jpt/.version || echo 0.0.0`
 
-ENV_PYTHON_VERSION=`test -n "${PYTHON_VERSION}" && echo ${PYTHON_VERSION} || echo 3.10`
+ENV_PYTHON_VERSION=`test -n "${PYTHON_VERSION}" && echo ${PYTHON_VERSION} || echo ${DEFAULT_PYTHON_VERSION}`
 
 PY_VERSION_STR=$(shell echo ${ENV_PYTHON_VERSION} | tr -d '.')
 
@@ -15,7 +17,6 @@ ENV_NAME=.venv/${PKG_NAME}-${PKG_VERSION}-cp${PY_VERSION_STR}
 BASEDIR=`pwd`
 
 RELEASE_NAME=${PKG_NAME}-${PKG_VERSION}
-
 
 preload:
 	@(echo Package Name: "${PKG_NAME}")
@@ -64,6 +65,7 @@ tests: preload virtualenv wheel
 
 clean: preload rmvirtualenv
 	rm -rf dist build src/*.egg-info *.log ~/.pyxbld/
+	find src/. -type f \( -name "*.so" -o -name "*.cpp" -o -name "*.h" \) -delete
 
 update_pkg: preload
 	@(. ${ENV_NAME}/bin/activate && pip install -U pip)

@@ -1,6 +1,5 @@
 import os
 import sys
-import unittest
 from unittest import TestCase
 
 from matplotlib import pyplot as plt
@@ -13,6 +12,7 @@ except ModuleNotFoundError:
     sys.path.append(os.path.join('..', 'examples'))
 
 plt.switch_backend('agg')
+
 
 # noinspection PyMethodMayBeStatic
 class ExamplesTestRun(TestCase):

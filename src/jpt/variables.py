@@ -478,15 +478,17 @@ class SymbolicVariable(Variable):
 # ----------------------------------------------------------------------------------------------------------------------
 # Convenience functions and classes
 
-def infer_from_dataframe(df,
-                         scale_numeric_types: bool = True,
-                         min_impurity_improvement: float = None,
-                         blur: float = None,
-                         max_std: float = None,
-                         precision: float = None,
-                         unique_domain_names: bool = False,
-                         excluded_columns: Dict[str, type] = None,
-                         remove_nan: bool = False):
+def infer_from_dataframe(
+        df,
+        scale_numeric_types: bool = True,
+        min_impurity_improvement: float = None,
+        blur: float = None,
+        max_std: float = None,
+        precision: float = None,
+        unique_domain_names: bool = False,
+        excluded_columns: Dict[str, type] = None,
+        remove_nan: bool = False
+):
     '''
     Creates the ``Variable`` instances from column types in a Pandas or Spark data frame.
 
@@ -531,12 +533,12 @@ def infer_from_dataframe(df,
                     labels=df[col].unique()
                 )
             var = SymbolicVariable(
-                col,
+                str(col),
                 dom,
                 min_impurity_improvement=min_impurity_improvement
             )
 
-        elif dtype in (np.float64, np.float32):
+        elif dtype in (np.float16, np.float64, np.float32):
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
             elif scale_numeric_types:
@@ -549,13 +551,15 @@ def infer_from_dataframe(df,
                 )
             else:
                 dom = Numeric
-            var = NumericVariable(col,
-                                  dom,
-                                  min_impurity_improvement=min_impurity_improvement,
-                                  blur=blur,
-                                  max_std=max_std,
-                                  precision=precision)
-        elif dtype in (np.int32, np.int64):
+            var = NumericVariable(
+                str(col),
+                dom,
+                min_impurity_improvement=min_impurity_improvement,
+                blur=blur,
+                max_std=max_std,
+                precision=precision
+            )
+        elif dtype in (np.int8, np.int16, np.int32, np.int64):
             if excluded_columns is not None and col in excluded_columns:
                 dom = excluded_columns[col]
             else:
@@ -564,7 +568,7 @@ def infer_from_dataframe(df,
                     # lmin=df[col].min(),
                     # lmax=df[col].max()
                 )
-            var = IntegerVariable(col, dom)
+            var = IntegerVariable(str(col), dom)
         else:
             raise TypeError('Unknown column type:', col, '[%s]' % dtype)
         variables.append(var)

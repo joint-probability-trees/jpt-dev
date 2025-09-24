@@ -4,13 +4,15 @@ import gc
 import math
 import signal
 import threading
+from logging import getLogger
 from multiprocessing import Event, Pool, Array, RLock
 from operator import attrgetter
 from typing import Dict, Tuple, Any, Optional, Callable, Set, List
 
 import numpy as np
 import pandas as pd
-from dnutils import mapstr, ifnone, getlogger
+from dnutils import getlogger
+from dnutils import mapstr, ifnone
 from tqdm import tqdm
 
 from .impurity import Impurity
@@ -24,7 +26,8 @@ from ..distributions.qpd import QuantileDistribution
 from ..trees import JPT, DecisionNode, Leaf, Node
 from ..variables import Variable
 
-logger = getlogger('/jpt/learning/c45')
+
+logger = getLogger('/jpt/learning/c45')
 
 
 # ----------------------------------------------------------------------------------------------------------------------

@@ -82,7 +82,6 @@ def main(verbose=True):
     vary = NumericVariable('Y', Numeric, precision=.05)
     varcolor = SymbolicVariable('Color', SymbolicType('ColorType', df.Color.unique()))
 
-    JPT.logger.level = logging.DEBUG
     jpt = JPT([varx, vary, varcolor], min_samples_leaf=.1)
     jpt.learn(df)
 
@@ -203,4 +202,7 @@ def plot_conditional(jpt, qvarx, qvary, evidence=None, title=None):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.DEBUG
+    )
     main(verbose=True)

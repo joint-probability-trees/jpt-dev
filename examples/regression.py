@@ -8,7 +8,6 @@ import plotly.graph_objects as go
 from jpt.trees import JPT
 from jpt.variables import NumericVariable
 
-logging.getLogger("/jpt").setLevel(0)
 
 # ----------------------------------------------------------------------------------------------------------------------
 # The function to predict
@@ -192,4 +191,7 @@ def main(visualize=True):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.INFO,
+    )
     main(visualize=True)

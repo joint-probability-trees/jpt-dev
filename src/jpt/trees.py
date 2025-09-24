@@ -1,18 +1,20 @@
 """© Copyright 2021-23, Mareike Picklum, Daniel Nyga."""
 import bz2
+import io
 import json
 import numbers
 import os
 import pickle
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from operator import attrgetter, itemgetter
-from types import FunctionType
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal, Set
+from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal
+from typing_extensions import Buffer
 
 import numpy as np
 import pandas as pd
 from deprecated.classic import deprecated
-from dnutils import first, ifnone, fst, ifnot, getlogger, logs
+from dnutils import first, ifnone, fst, ifnot
+import logging
 from matplotlib import style
 
 from .base.constants import plotstyle
@@ -25,7 +27,7 @@ from .base.utils import (
     prod,
 )
 
-from .distributions import Integer, Distribution
+from .distributions import Integer
 from .distributions import Multinomial, Numeric
 from .inference import MPESolver
 
@@ -680,7 +682,7 @@ class Leaf(Node):
 
         return result
 
-    def mpe(self, minimal_distances: VariableMap) -> (VariableMap, float):
+    def mpe(self, minimal_distances: VariableMap) -> Tuple[VariableMap, float]:
         """
         Calculate the most probable explanation of this leaf as a fully factorized distribution.
         :return: the likelihood of the maximum as a float and the configuration as a VariableMap
@@ -744,7 +746,7 @@ class JPT:
     Implementation Joint Probability Trees (JPTs).
     """
 
-    logger = getlogger('/jpt', level=logs.INFO)
+    logger = logging.getLogger('/jpt')
 
     def __init__(
             self,
@@ -996,9 +998,12 @@ class JPT:
         from .learning.preprocessing import preprocess_data
         result = np.zeros(len(samples))
         variable_index_map = VariableMap([(variable, idx) for (idx, variable) in enumerate(self.variables)])
-        samples = preprocess_data(self, samples)
+        samples = preprocess_data(
+            self,
+            pd.DataFrame(samples, columns=[v.name for v in self.variables])
+        )
         for idx, leaf in self.leaves.items():
-            contains = leaf.contains(samples, variable_index_map)
+            contains = leaf.contains(samples.values, variable_index_map)
             result[contains == 1] = idx
         return result
 
@@ -1238,10 +1243,10 @@ class JPT:
 
     def expectation(
             self,
-            variables: Iterable[Variable] = None,
-            evidence: VariableAssignment = None,
-            fail_on_unsatisfiability: bool = True
-    ) -> VariableMap or None:
+            variables: Optional[Iterable[Variable]] = None,
+            evidence: Optional[Union[VariableAssignment, Dict[str, Union[numbers.Number, Interval, str]]]] = None,
+            fail_on_unsatisfiability: Optional[bool] = True
+    ) -> Optional[VariableMap]:
         """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -1591,9 +1596,9 @@ class JPT:
 
     def __str__(self) -> str:
         return (
-            f'{self.__class__.__name__}\n'
-            f'{self.pfmt()}\n'
-            f'JPT stats: #innernodes = {len(self.innernodes)}, '
+            f'{self.__class__.__name__}'
+            # f'{self.pfmt()}\n'
+            f'#innernodes = {len(self.innernodes)}, '
             f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)'
         )
 
@@ -1605,7 +1610,21 @@ class JPT:
         )
 
     def to_string(self) -> str:
-        return self.pfmt()
+        return self.fancy_tree()
+
+    def fancy_tree(self) -> str:
+        import anytree
+        nodes = {}
+        root = None
+        q = [self.root]
+        while q:
+            n = q.pop(0)
+            if isinstance(n, DecisionNode):
+                q.extend(n.children)
+            nodes[n.idx] = anytree.Node(str(n), parent=nodes[n.parent.idx] if n is not self.root else None)
+            if n is self.root:
+                root = nodes[n.idx]
+        return "\n".join(f"{pre}{node.name}" for pre, _, node in anytree.RenderTree(root, style=anytree.ContRoundStyle))
 
     def pfmt(self) -> str:
         """
@@ -2109,6 +2128,13 @@ class JPT:
         else:
             writer.dump(data, file)
 
+    dump = save
+
+    def dumps(self, protocol: Literal['pickle', 'json'] = 'pickle') -> bytes:
+        with io.BytesIO() as buf:
+            self.dump(buf, protocol)
+            return buf.getvalue()
+
     @staticmethod
     def load(
             file: Union[str, IO],
@@ -2134,6 +2160,17 @@ class JPT:
         else:
             model = data
         return model
+
+    @staticmethod
+    def loads(
+            data: Buffer,
+            protocol: Literal['pickle', 'json'] = 'pickle'
+    ) -> 'JPT':
+        with io.BytesIO(data) as buf:
+            return JPT.load(
+               buf,
+               protocol=protocol
+            )
 
     def depth(self) -> int:
         """

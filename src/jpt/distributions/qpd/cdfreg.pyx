@@ -3,8 +3,6 @@
 # cython: boundscheck=False
 # cython: nonecheck=False
 
-__module__ = 'cdfreg.pyx'
-
 import numpy as np
 cimport numpy as np
 

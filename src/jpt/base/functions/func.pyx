@@ -1908,7 +1908,7 @@ class PLFApproximator:
             raise ValueError(
                 'Minimum value for k is 3, got %s.' % k
             )
-        error_max = ifnone(error_max, .0)
+        error_max = ifnone(error_max, np.inf)
         result = self.plf.copy()
         replacements = []
         # Loop through all pairs of consecutive function segments
@@ -1938,12 +1938,6 @@ class PLFApproximator:
                     error_max < replacement.error
             ):
                 break
-
-            # Remove the left and right segments of the replacement from the original function
-            # del result.intervals[result.intervals.index(replacement.left.i)]
-            # del result.functions[result.functions.index(replacement.left.f)]
-            # del result.intervals[result.intervals.index(replacement.right.i)]
-            # del result.functions[result.functions.index(replacement.right.f)]
 
             # Insert the new segment at the interval union of the former left and right segments
             result = result.overwrite_at(

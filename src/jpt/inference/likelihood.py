@@ -10,7 +10,8 @@ import datetime as dt
 import uuid
 
 import pandas as pd
-from dnutils import ifnone, getlogger
+from dnutils import ifnone
+import logging
 from tqdm import tqdm
 
 from jpt.trees import JPT
@@ -20,7 +21,7 @@ from jpt.variables import ValueAssignment, Variable
 
 _locals = threading.local()
 
-logger = getlogger('/jpt/inference/likelihood')
+logger = logging.getLogger('/jpt/inference/likelihood')
 
 
 def _terminate_worker():
