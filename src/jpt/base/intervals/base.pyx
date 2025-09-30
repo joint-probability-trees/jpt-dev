@@ -164,7 +164,10 @@ cdef class NumberSet:
         return self.isninf() or self.ispinf()
 
     cpdef np.ndarray[DTYPE_t] sample(self, SIZE_t k=1, DTYPE_t[::1] result=None):
-           return np.array(self._sample(k, result))
+        return np.array(
+            self._sample(k, result),
+            dtype=np.float64
+        )
 
     cpdef DTYPE_t[::1] _sample(self, SIZE_t k=1, DTYPE_t[::1] result=None):
         raise NotImplementedError()

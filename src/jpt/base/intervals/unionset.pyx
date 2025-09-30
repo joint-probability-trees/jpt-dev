@@ -21,8 +21,8 @@ from .contset cimport ContinuousSet
 from .intset import IntSet
 from .intset cimport IntSet
 
-from .base import _CHAR_EMPTYSET, _CHAR_CUP, EXC, INC
-from .base cimport Interval
+from .base import _CHAR_EMPTYSET, _CHAR_CUP, EXC, INC, Interval, NumberSet
+from .base cimport Interval, NumberSet
 
 from typing import List, Dict, Any, Iterable, Callable
 import numbers
@@ -220,7 +220,7 @@ cdef class UnionSet(NumberSet):
             raise ValueError('Cannot sample from an empty set.')
         cdef Interval i_
         cdef DTYPE_t[::1] weights = np.array(
-            [abs(i_.upper - i_.lower) for i_ in self.intervals if np.isfinite(i_.size())],
+            [abs(i_.upper - i_.lower) for i_ in self.intervals if np.isfinite(i_.upper - i_.lower)],
             dtype=np.float64
         )
         if sum(weights) == 0:
@@ -233,7 +233,6 @@ cdef class UnionSet(NumberSet):
         for i in range(n):
             resval = np.random.uniform(0, min([np.finfo(np.float64).max, upperbounds[-1]]))
             for j, bound in enumerate(upperbounds):
-                print(resval, bound)
                 if resval <= bound:
                     self.intervals[j].sample(result=result[i:i+1])
                     break
