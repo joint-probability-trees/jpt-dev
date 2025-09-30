@@ -7,7 +7,6 @@ from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, T
 
 import numpy as np
 from dnutils import ifnone, first, ifnot
-from plotly.graph_objs import Figure
 
 from jpt.base.functions import (
     LinearFunction,
@@ -777,9 +776,9 @@ class Numeric(Distribution):
 
     def plot(
             self,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering],
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
             **kwargs
-    ) -> Figure:
+    ) -> Any:
         '''Plots the distribution using the given engine.
         :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
                         `jpt.plotting.engines.rendering.DistributionRendering`.

@@ -11,7 +11,7 @@ from scipy.stats import norm, multivariate_normal
 from jpt.base.functions import PiecewiseFunction
 
 from jpt.base.intervals import ContinuousSet
-from jpt.base.utils import save_plot
+from jpt.plotting.engines.matplotlib_engine import save_plot
 
 
 # ----------------------------------------------------------------------------------------------------------------------

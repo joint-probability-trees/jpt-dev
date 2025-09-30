@@ -411,3 +411,47 @@ class PlotlyRendering(DistributionRendering):
             )
 
         return mainfig
+
+def plot_multivariate(
+            self,
+            dist: Any,
+            title: str = None,
+            fname: str = None,
+            directory: str = '/tmp',
+            pdf: bool = False,
+            view: bool = False,
+            **kwargs
+    ):
+    mainfig = go.Figure()
+
+    if fname is not None:
+
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+        fpath = os.path.join(directory, fname or dist.__class__.__name__)
+
+        if fname.endswith('html'):
+            mainfig.write_html(
+                fpath,
+                include_plotlyjs="cdn"
+            )
+        else:
+            mainfig.write_image(
+                fpath,
+                scale=1
+            )
+
+    if view:
+        mainfig.show(
+            config=dict(
+                displaylogo=False,
+                toImageButtonOptions=dict(
+                    format='svg',  # one of png, svg, jpeg, webp
+                    filename=fname or dist.__class__.__name__,
+                    scale=1
+                )
+            )
+        )
+
+    return mainfig

@@ -4,15 +4,15 @@ import os
 import tempfile
 import threading
 from multiprocessing import Pool
-from typing import Iterable, Dict, Tuple
+from typing import Iterable, Dict, Tuple, Union, Literal
 
 import datetime as dt
 
 from dnutils import ifnone
 from graphviz import Digraph
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 
+from .engines.rendering import MATPLOTLIB, PLOTLY, DistributionRendering
 from ..trees import JPT
 from ..base.constants import green, orange
 from ..trees import DecisionNode
@@ -67,7 +67,7 @@ _locals = threading.local()
 
 
 def render_leaf(args) -> Tuple[Tuple, Dict]:
-    leaf_idx, directory, plotvars, max_symb_values, alphabet, leaffill = args
+    leaf_idx, directory, plotvars, max_symb_values, alphabet, leaffill, engine = args
     jpt = _locals.jpt
     imgs = ''
 
@@ -95,7 +95,7 @@ def render_leaf(args) -> Tuple[Tuple, Dict]:
         }
 
         leaf.distributions[pvar].plot(
-            engine='plotly',
+            engine=engine,
             title=html.escape(pvar.name),
             fname=img_name,
             directory=directory,
@@ -112,7 +112,9 @@ def render_leaf(args) -> Tuple[Tuple, Dict]:
         code_distributions += code_img
 
         # close current figure to allow for other plots
-        plt.close()
+        # if engine == MATPLOTLIB:
+            # from matplotlib import pyplot as plt
+            # plt.close()
 
     if plotvars:
         code_distributions_table = DISTIRBUTIONS_TEMPLATE.format(
@@ -194,7 +196,8 @@ class JPTPlotter:
             nodefill: str = None,
             leaffill: str = None,
             alphabet: bool = False,
-            verbose: bool = False
+            verbose: bool = False,
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None
     ) -> None:
         self.jpt = jpt
         self.title = title
@@ -206,6 +209,7 @@ class JPTPlotter:
         self.leaffill = leaffill
         self.alphabet = alphabet
         self.verbose = verbose
+        self.engine = engine
 
     def render_decision_node(self, node: DecisionNode) -> Tuple[Tuple, Dict]:
         return (
@@ -260,7 +264,8 @@ class JPTPlotter:
                     [v.name if isinstance(v, Variable) else v for v in self.plotvars],
                     self.max_symb_values,
                     self.alphabet,
-                    self.leaffill
+                    self.leaffill,
+                    self.engine
                 ) for i in self.jpt.leaves.keys()]
         ):
             dot.node(*args, **kwargs)

@@ -6,7 +6,6 @@ from typing import Optional, Type, Dict, Any, Union, Set, Iterable, Tuple, Liter
 
 import numpy as np
 from dnutils import edict, ifnone, first, project
-from plotly.graph_objs import Figure
 
 from jpt.base.functions import PiecewiseFunction, Undefined, ConstantFunction
 from jpt.base.intervals import ContinuousSet, IntSet, UnionSet, NumberSet
@@ -782,9 +781,9 @@ class Integer(Distribution):
 
     def plot(
             self,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering],
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
             **kwargs
-    ) -> Figure:
+    ) -> Any:
         '''Plots the distribution using the given engine.
         :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
                         `jpt.plotting.engines.rendering.DistributionRendering`.

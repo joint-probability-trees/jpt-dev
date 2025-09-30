@@ -1,15 +1,63 @@
 import os
 import re
+from pathlib import Path
+
+import matplotlib
+import logging
 from typing import Any, Union
 
 import numpy as np
 from dnutils import ifnone, project, ifnot
+
 from matplotlib import pyplot as plt
+from matplotlib import style
 
 from .rendering import DistributionRendering
-from ...base.utils import save_plot
 from ...base.functions import ConstantFunction
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Fix different style names in matplotlib versions
+matplotlib_version = matplotlib.__version_info__.major * 10 + matplotlib.__version_info__.minor
+
+if matplotlib_version > 37:
+    plotstyle = 'seaborn-v0_8-deep'
+else:
+    plotstyle = 'seaborn-deep'
+
+try:
+    style.use(plotstyle)
+except OSError:
+    logging.warning(
+        f'Style "{plotstyle}" not found. Falling back to "default".'
+    )
+    style.use('default')
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def save_plot(fig, directory, fname, fmt=None):
+    from matplotlib import pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+
+    # extract filename and potential suffix
+    file_path = Path(fname)
+    suffix = file_path.suffix
+    fname = file_path.stem
+
+    # if format is given explicitly, ignore suffix in filename and use given format
+    if fmt is not None:
+        suffix = fmt if fmt.startswith(".") else f".{fmt}"
+
+    # save figure as PDF or PNG
+    if fmt == 'pdf':
+        logging.debug(
+            f"Saving distributions plot to {os.path.join(directory, fname + suffix)}")
+        with PdfPages(os.path.join(directory, fname + suffix)) as pdf:
+            pdf.savefig(fig)
+    else:
+        logging.debug(
+            f"Saving distributions plot to {os.path.join(directory, fname + suffix)}")
+        plt.savefig(os.path.join(directory, fname + suffix))
 
 class MatplotlibRendering(DistributionRendering):
 
@@ -100,7 +148,7 @@ class MatplotlibRendering(DistributionRendering):
 
         fig.tight_layout()
 
-        save_plot(fig, directory, fname or dist.__class__.__name__, fmt='pdf' if pdf else 'svg')
+        save_plot(fig, directory, fname or dist.__class__.__name__, fmt='pdf' if pdf else 'png')
 
         if view:
             plt.show()
@@ -191,7 +239,7 @@ class MatplotlibRendering(DistributionRendering):
             fig,
             directory,
             fname or dist.__class__.__name__,
-            fmt='pdf' if pdf else 'svg'
+            fmt='pdf' if pdf else 'png'
         )
 
         if view:
@@ -282,9 +330,71 @@ class MatplotlibRendering(DistributionRendering):
 
         fig.tight_layout()
 
-        save_plot(fig, directory, fname or dist.__class__.__name__, fmt='pdf' if pdf else 'svg')
+        save_plot(fig, directory, fname or dist.__class__.__name__, fmt='pdf' if pdf else 'png')
 
         if view:
             plt.show()
 
+
         return None
+
+    def plot_multivariate(
+            self,
+            dist: Any,
+            title: str = None,
+            fname: str = None,
+            directory: str = '/tmp',
+            pdf: bool = False,
+            view: bool = False,
+            **kwargs
+    ):
+        from scipy.stats import multivariate_normal
+
+        # Only save figures, do not show
+        if not view:
+            plt.ioff()
+
+        if dist.dim == 1:
+            x = np.linspace(dist.mean - 2 * dist.cov, dist.mean + 2 * dist.cov, 500)
+            y = multivariate_normal.pdf(x, mean=dist.mean, cov=dist.cov)
+
+            fig1 = plt.figure(title or f'Distribution Leaf N{dist.mean, dist.cov}')
+            ax = fig1.add_subplot(111)
+            ax.plot(x, y)
+
+        elif dist.dim == 2:
+            x = np.linspace(dist.mean[0]-2*dist.cov[0][0], dist.mean[0]+2*dist.cov[0][0], 500)
+            y = np.linspace(dist.mean[1]-2*dist.cov[1][1], dist.mean[1]+2*dist.cov[1][1], 500)
+            rv = multivariate_normal(dist.mean, dist.cov)
+            pos = np.dstack((x, y))
+
+            # plot
+            fig2 = plt.figure(title or f'Distribution Leaf N{dist.mean, dist.cov}')
+            ax2 = fig2.add_subplot(111)
+            ax2.contourf(x, y, rv.pdf(pos))
+
+        elif dist.dim == 3:
+            # grid and mvn
+            x = np.linspace(dist.mean[0]-2*dist.cov[0][0], dist.mean[0]+2*dist.cov[0][0], 500)
+            y = np.linspace(dist.mean[1]-2*dist.cov[1][1], dist.mean[1]+2*dist.cov[1][1], 500)
+            rv = multivariate_normal(dist.mean, dist.cov)
+            X, Y = np.meshgrid(x, y)
+            pos = np.empty(X.shape + (2,))
+            pos[:, :, 0] = X
+            pos[:, :, 1] = Y
+
+            # plot
+            fig = plt.figure(title or f'Distribution Leaf N{dist.mean, dist.cov}')
+            ax = fig.gca(projection='3d')
+            ax.plot_surface(X, Y, rv.pdf(pos), cmap='viridis', linewidth=0)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            plt.show()
+
+            save_plot(fig, directory, fname or dist.__class__.__name__, fmt='pdf' if pdf else 'png')
+
+            if view:
+                plt.show()
+
+            return None

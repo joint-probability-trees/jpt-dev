@@ -1,6 +1,5 @@
 from typing import Any, Union
 
-
 # engines
 PLOTLY = 'plotly'
 MATPLOTLIB = 'matplotlib'
@@ -14,7 +13,8 @@ class DistributionRendering:
 
     @staticmethod
     def instantiate_engine(engine):
-
+        if engine is None:
+            return check_default_engine()
         if engine == PLOTLY:
             from .plotly_engine import PlotlyRendering
             return PlotlyRendering()
@@ -59,3 +59,24 @@ class DistributionRendering:
             **kwargs
     ):
         raise NotImplementedError
+
+
+def check_default_engine() -> DistributionRendering:
+    for pkg in ["plotly", "kaleido"]:
+        try:
+            mod = __import__(pkg)
+            print(f"{pkg} installed: {mod.__version__}")
+            from .plotly_engine import PlotlyRendering
+            return PlotlyRendering()
+        except ImportError:
+            print(f"{pkg} not installed")
+
+    try:
+        import matplotlib
+        from .matplotlib_engine import MatplotlibRendering
+        return MatplotlibRendering()
+    except ImportError:
+        print("matplotlib not installed")
+
+    raise TypeError(
+        "No default rendering engine found. Please install either plotly (with kaleido) or matplotlib. Alternatively, pass a custom rendering `DistributionRendering` engine.")

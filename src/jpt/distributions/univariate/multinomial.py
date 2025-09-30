@@ -602,7 +602,7 @@ class Multinomial(Distribution):
 
     def plot(
             self,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering],
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
             **kwargs
     ) -> Any:
         '''Plots the distribution using the given engine.

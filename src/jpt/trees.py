@@ -15,9 +15,7 @@ import pandas as pd
 from deprecated.classic import deprecated
 from dnutils import first, ifnone, fst, ifnot
 import logging
-from matplotlib import style
 
-from .base.constants import plotstyle
 from .base.errors import Unsatisfiability
 from .base.utils import (
     list2set,
@@ -30,6 +28,7 @@ from .base.utils import (
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
 from .inference import MPESolver
+from .plotting.engines.rendering import MATPLOTLIB, PLOTLY, DistributionRendering
 
 from .variables import (
     VariableMap,
@@ -43,17 +42,6 @@ from .variables import (
 )
 
 from .base.intervals import ContinuousSet, Interval, EXC, R, UnionSet, IntSet, Z
-
-
-try:
-    style.use(plotstyle)
-except OSError:
-    import logging
-    logging.warning(
-        f'Style "{plotstyle}" not found. Falling back to "default".'
-    )
-    style.use('default')
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -1893,7 +1881,8 @@ class JPT:
             nodefill: str = None,
             leaffill: str = None,
             alphabet: bool = False,
-            verbose: bool = False
+            verbose: bool = False,
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
     ) -> str:
         """
         Generates an SVG representation of the generated regression tree.
@@ -1909,8 +1898,8 @@ class JPT:
         :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
         probability (descending); default is False
         :param verbose:
-
-        :return:   (str) the path under which the renderd image has been saved.
+        :param engine: the rendering engine for the distribution plots in the leafs; either 'matplotlib' or 'plotly';
+        :return:   (str) the path under which the rendered image has been saved.
         """
         from .plotting.jpt import JPTPlotter
         return JPTPlotter(
@@ -1923,7 +1912,8 @@ class JPT:
             nodefill,
             leaffill,
             alphabet,
-            verbose
+            verbose,
+            engine
         ).plot(view)
 
     def pickle(self, fpath: str) -> None:
