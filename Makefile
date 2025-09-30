@@ -32,7 +32,7 @@ rmvirtualenv: preload
 virtualenv: preload
 	@(virtualenv ${ENV_NAME} --python ${PYTHON_CMD})
 	@(. ${ENV_NAME}/bin/activate && pip install -U pip)
-	@(. ${ENV_NAME}/bin/activate && pip install -U -r requirements.txt) # -r requirements-dev.txt)
+	@(. ${ENV_NAME}/bin/activate && pip install -U -r requirements.txt && pip install -U -r requirements-plot.txt && pip install -U -r requirements-dev.txt) # -r requirements-dev.txt)
 
 sdist: preload virtualenv
 	@(echo "Build ${PKG_NAME} sdist package...")
