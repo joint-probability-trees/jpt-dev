@@ -406,6 +406,7 @@ class MatplotlibRendering(DistributionRendering):
             fname: str = None,
             xlabel: str = '$x$',
             ylabel: str = r'$p(x|\mu,\sigma)$',
+            dim: int = 3,
             directory: str = '/tmp',
             view: bool = False,
             pdf: bool = False,
@@ -438,16 +439,21 @@ class MatplotlibRendering(DistributionRendering):
             ax.set_ylabel(ylabel)
         else:
             cmap = 'BuPu'  # viridis, Blues, PuBu, 0rRd, BuPu
+            mean = dist.mean
+            cov = dist.cov
 
-            x = np.linspace(-2, 2, 30)
-            y = np.linspace(-2, 2, 30)
+            sigma_x = np.sqrt(cov[0, 0])
+            sigma_y = np.sqrt(cov[1, 1])
+
+            x = np.linspace(mean[0] - 3 * sigma_x, mean[0] + 3 * sigma_x, 200)
+            y = np.linspace(mean[1] - 3 * sigma_y, mean[1] + 3 * sigma_y, 200)
             X, Y = np.meshgrid(x, y)
 
             xy = np.column_stack([X.flat, Y.flat])
             Z = dist.pdf(xy)
             Z = Z.reshape(X.shape)
 
-            if dist.dim == 2:
+            if dim == 2:
                 # generate heatmap
                 c = ax.pcolormesh(X, Y, Z, cmap=cmap)
 

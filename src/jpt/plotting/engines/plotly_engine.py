@@ -3,6 +3,8 @@ from typing import Any, Union
 
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
+
 from dnutils import ifnone, project, ifnot
 
 from .rendering import DistributionRendering
@@ -412,46 +414,255 @@ class PlotlyRendering(DistributionRendering):
 
         return mainfig
 
-def plot_multivariate(
-            self,
-            dist: Any,
-            title: str = None,
-            fname: str = None,
-            directory: str = '/tmp',
-            pdf: bool = False,
-            view: bool = False,
-            **kwargs
-    ):
-    mainfig = go.Figure()
+    def plot_multivariate(
+                self,
+                dist: Any,
+                title: str = None,
+                fname: str = None,
+                directory: str = '/tmp',
+                pdf: bool = False,
+                view: bool = False,
+                **kwargs
+        ):
+        mainfig = go.Figure()
 
-    if fname is not None:
+        if fname is not None:
 
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+            if not os.path.exists(directory):
+                os.makedirs(directory)
 
-        fpath = os.path.join(directory, fname or dist.__class__.__name__)
+            fpath = os.path.join(directory, fname or dist.__class__.__name__)
 
-        if fname.endswith('html'):
-            mainfig.write_html(
-                fpath,
-                include_plotlyjs="cdn"
-            )
-        else:
-            mainfig.write_image(
-                fpath,
-                scale=1
-            )
-
-    if view:
-        mainfig.show(
-            config=dict(
-                displaylogo=False,
-                toImageButtonOptions=dict(
-                    format='svg',  # one of png, svg, jpeg, webp
-                    filename=fname or dist.__class__.__name__,
+            if fname.endswith('html'):
+                mainfig.write_html(
+                    fpath,
+                    include_plotlyjs="cdn"
+                )
+            else:
+                mainfig.write_image(
+                    fpath,
                     scale=1
                 )
+
+        if view:
+            mainfig.show(
+                config=dict(
+                    displaylogo=False,
+                    toImageButtonOptions=dict(
+                        format='svg',  # one of png, svg, jpeg, webp
+                        filename=fname or dist.__class__.__name__,
+                        scale=1
+                    )
+                )
             )
+
+        return mainfig
+
+    def plot_gaussian(
+            self,
+            dist: Any,
+            title: Union[str, bool] = None,
+            fname: str = None,
+            xlabel: str = '$x$',
+            ylabel: str = None,
+            dim: int = 3,
+            precision: int = 2,
+            directory: str = '/tmp',
+            view: bool = False,
+            color: str = 'rgb(15,21,110)',
+            fill: str = None,
+            **kwargs
+    ):
+        '''
+        Generates a plot of the piecewise linear function representing
+        the variable's cumulative distribution function
+
+        :param title:       the title of the plot. defaults to the type of this distribution, can be left
+                            empty by passing `False`.
+        :param fname:       the name of the file to be stored. Available file formats: png, svg, jpeg, webp, html
+        :param xlabel:      the label of the x-axis
+        :param directory:   the directory to store the generated plot files
+        :param view:        whether to display generated plots, default False (only stores files)
+        :param color:       the color of the plot traces; accepts str of form:
+                            * rgb(r,g,b) with r,g,b being int or float
+                            * rgba(r,g,b,a) with r,g,b being int or float, a being float
+                            * #f0c (as short form of #ff00cc) or #f0cf (as short form of #ff00ccff)
+                            * #ff00cc
+                            * #ff00ccff
+        :return:            plotly.graph_objs.Figure
+        '''
+        mainfig = go.Figure()
+
+        # extract rgb colors from given hex, rgb or rgba string
+        rgb, rgba = color_to_rgb(color)
+        rgb1, rgba1 = color_to_rgb('rgb(255,165,0)')
+
+        mean = dist.mean
+        cov = dist.cov
+        std = dist.std
+
+        if dist.dim == 1:
+            mean = mean[0]
+            cov = cov[0][0]
+            std = std[0]
+            r = abs(2.5 * cov)
+            X = np.linspace(mean - r, mean + r, int(mean + r - (mean - r)))
+            Z = np.array(dist.pdf(X))
+
+            # plot dashed CDF
+            mainfig.add_trace(
+                go.Scatter(
+                    x=X,
+                    y=Z,
+                    mode='lines',
+                    name='Gaussian curve',
+                    line=dict(
+                        color=rgb,
+                        width=4,
+                    ),
+                    fill=fill
+                )
+            )
+
+            # plot mu
+            mainfig.add_trace(
+                go.Scatter(
+                    x=[mean, mean],
+                    y=[0, dist.pdf(mean)],
+                    mode='lines',
+                    name=f"$\mu={mean:.{precision}f}$",
+                    line=dict(
+                        color=rgb,
+                        width=4,
+                        dash='dash'
+                    ),
+                    fill=fill
+                )
+            )
+
+            mainfig.add_trace(
+                go.Scatter(
+                    x=[-std, -std],
+                    y=[0, dist.pdf(mean)],
+                    mode='lines',
+                    name=f"$\sigma={std:.{precision}f}$",
+                    legendgroup='std',
+                    legendgrouptitle={'text': ""},
+                    line=dict(
+                        color=rgb1,
+                        width=4,
+                        dash='dash'
+                    ),
+                    fill=fill
+                )
+            )
+            mainfig.add_trace(
+                go.Scatter(
+                    x=[std, std],
+                    y=[0, dist.pdf(mean)],
+                    mode='lines',
+                    legendgroup='std',
+                    line=dict(
+                        color=rgb1,
+                        width=4,
+                        dash='dash'
+                    ),
+                    fill=fill,
+                    showlegend=False
+                )
+            )
+
+        else:
+            sigma_x = np.sqrt(cov[0, 0])
+            sigma_y = np.sqrt(cov[1, 1])
+
+            x = np.linspace(mean[0] - 3 * sigma_x, mean[0] + 3 * sigma_x, 200)
+            y = np.linspace(mean[1] - 3 * sigma_y, mean[1] + 3 * sigma_y, 200)
+            X, Y = np.meshgrid(x, y)
+
+            xy = np.column_stack([X.flat, Y.flat])
+            Z = dist.pdf(xy)
+            Z = Z.reshape(X.shape)
+
+            if dim == 2:
+
+                # generate heatmap
+                mainfig.add_trace(
+                    go.Heatmap(
+                        x=x,
+                        y=y,
+                        z=Z,
+                        colorscale=px.colors.sequential.dense,
+                        colorbar=dict(
+                            title=f"P(x,y)",
+                            orientation='v',
+                        ),
+                        showscale=True
+                    )
+                )
+            else:
+                # generate 3d-surface plot
+                mainfig.add_trace(
+                    go.Surface(
+                        x=x,
+                        y=y,
+                        z=Z,
+                        colorscale=px.colors.sequential.dense,
+                        colorbar=dict(
+                            title=f"P({xlabel},{ylabel})",
+                            orientation='v',
+                        ),
+                        contours_z=dict(
+                            show=True,
+                            usecolormap=True,
+                            highlightcolor="limegreen",
+                            project_z=True
+                        ),
+                        showscale=True
+                    )
+                )
+
+        mainfig.update_layout(
+            xaxis=dict(
+                title=xlabel,
+                side='bottom'
+            ),
+            yaxis=dict(
+                title=f'$p(x|{mean},{std})$'
+            ),
+            title=None if title is False else f'{title or f"Distribution of {dist._cl}: "}' + r'$p(x|\mu,\sigma)$',
+            height=1000,
+            width=1200
         )
 
-    return mainfig
+        if fname is not None:
+
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+
+            fpath = os.path.join(directory, fname or dist.__class__.__name__)
+
+            if fname.endswith('html'):
+                mainfig.write_html(
+                    fpath,
+                    include_plotlyjs="cdn"
+                )
+            else:
+                mainfig.write_image(
+                    fpath,
+                    scale=1
+                )
+
+        if view:
+            mainfig.show(
+                config=dict(
+                    displaylogo=False,
+                    toImageButtonOptions=dict(
+                        format='svg',  # one of png, svg, jpeg, webp
+                        filename=fname or dist.__class__.__name__,
+                        scale=1
+                    )
+                )
+            )
+
+        return mainfig
