@@ -444,6 +444,13 @@ class NumericDistributionTest(TestCase):
         self.assertAlmostEqual(DistGauss.values.mean, .5, 1)
         self.assertAlmostEqual(DistGauss.values.scale, .6, 1)
 
+
+    @data("matplotlib", "plotly", None)
+    def test_plot_gaussian(self, engine):
+        DistGauss = self.DistGauss
+        gauss = Gaussian(data=[[DistGauss.values[d]] for d in NumericDistributionTest.GAUSSIAN])
+        gauss.plot(engine, view=True)
+
     def test_copy(self):
         # Arrange
         a, b = 2, 3

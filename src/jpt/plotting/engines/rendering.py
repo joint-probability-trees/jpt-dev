@@ -60,6 +60,28 @@ class DistributionRendering:
     ):
         raise NotImplementedError
 
+    def plot_multivariate(
+            self,
+            dist: Any,
+            title: str = None,
+            fname: str = None,
+            directory: str = '/tmp',
+            pdf: bool = False,
+            view: bool = False,
+            **kwargs
+    ):
+        raise NotImplementedError
+
+    def plot_gaussian(
+            self,
+            dist: Any,
+            title: Union[str, bool] = None,
+            fname: str = None,
+            directory: str = '/tmp',
+            view: bool = False,
+            **kwargs
+    ):
+        raise NotImplementedError
 
 def check_default_engine() -> DistributionRendering:
     for pkg in ["plotly", "kaleido"]:
