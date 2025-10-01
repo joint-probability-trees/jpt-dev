@@ -17,12 +17,9 @@ from dnutils import project
 
 from jpt.base.utils import pairwise
 from jpt.distributions import Gaussian, Numeric, Bool, IntegerType
-from matplotlib import pyplot as plt
 
 from jpt.learning.c45 import C45Algorithm, JPTPartition
 from jpt.learning.preprocessing import preprocess_data
-
-plt.switch_backend('agg')
 
 from numpy.testing import assert_array_equal
 from pandas import DataFrame
@@ -37,8 +34,9 @@ from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, Sy
 from jpt.base.functions import ConstantFunction, LinearFunction
 from jpt.base.intervals import ContinuousSet, IntSet
 from testutils import gaussian_data_1d
+from ddt import ddt, data
 
-
+@ddt
 class JPTTest(TestCase):
 
     def setUp(self) -> None:
@@ -601,16 +599,17 @@ class TestCasePosteriorSymbolic(TestCase):
 
 
 # noinspection PyPep8Naming
+@ddt
 class TestCasePosteriorSymbolicAndNumeric(TestCase):
-    data = None
+    data_ = None
     variables = None
     jpt = None
 
     @classmethod
     def setUpClass(cls):
         f_csv = os.path.join('..', 'examples', 'data', 'restaurant-mixed.csv')
-        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=False, precision=.01, blur=.01)
+        cls.data_ = pd.read_csv(f_csv, sep=',').fillna(value='???')
+        cls.variables = infer_from_dataframe(cls.data_, scale_numeric_types=False, precision=.01, blur=.01)
 
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
@@ -625,12 +624,14 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(data=cls.data.values)
+        cls.jpt.learn(data=cls.data_.values)
 
     # @unittest.skip
-    def test_plot(self):
+    @data('matplotlib', "plotly")
+    def test_plot(self, engine):
         # Act
         path = self.jpt.plot(
+            engine=engine,
             plotvars=['Food', 'WaitEstimate'],
             title='Restaurant-Mixed',
             filename='Restaurant-Mixed',
@@ -681,7 +682,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         self.posterior = self.jpt.posterior(self.q, self.e)
 
         # Mesh the input space for evaluations of the real function, the prediction and its MSE
-        xr = self.data[(self.data['Food'] == 'Burger') & (self.data['Alternatives'] == False)]['WaitEstimate']
+        xr = self.data_[(self.data_['Food'] == 'Burger') & (self.data_['Alternatives'] == False)]['WaitEstimate']
 
         # Plot the data, the pdfs of each dataset and of the datasets combined
         # plt.scatter(self.data['WaitEstimate'], [0] * len(self.data), color='b', marker='*', label='All training data')
@@ -716,17 +717,17 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
     #     plt.grid()
     #     plt.show()
 
-
+@ddt
 class TestCaseExpectation(TestCase):
     jpt = None
-    data = None
+    data_ = None
     variables = None
 
     @classmethod
     def setUpClass(cls):
         f_csv = os.path.join('..', 'examples', 'data', 'restaurant-mixed.csv')
-        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        cls.variables = infer_from_dataframe(cls.data, scale_numeric_types=True, precision=.01, blur=.01)
+        cls.data_ = pd.read_csv(f_csv, sep=',').fillna(value='???')
+        cls.variables = infer_from_dataframe(cls.data_, scale_numeric_types=True, precision=.01, blur=.01)
 
         # 0 Alternatives[ALTERNATIVES_TYPE(SYM)], BOOL
         # 1 Bar[BAR_TYPE(SYM)], BOOl
@@ -741,12 +742,14 @@ class TestCaseExpectation(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(data=cls.data.values)
+        cls.jpt.learn(data=cls.data_.values)
 
     # @unittest.skip
-    def test_plot(self):
+    @data('matplotlib', "plotly")
+    def test_plot(self, engine):
         # Act
         path = self.jpt.plot(
+            engine=engine,
             plotvars=['WaitEstimate'],
             title='Restaurant-Mixed',
             filename='Restaurant-Mixed',
@@ -782,18 +785,18 @@ class TestCaseExpectation(TestCase):
         # Assert
         self.assertRaises(Unsatisfiability, self.jpt.expectation, q, e)
 
-
+@ddt
 class TestCaseInference(TestCase):
     jpt = None
-    data = None
+    data_ = None
     variables = None
 
     @classmethod
     def setUpClass(cls):
         f_csv = '../examples/data/restaurant-mixed.csv'
-        cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
+        cls.data_ = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(
-            cls.data,
+            cls.data_,
             scale_numeric_types=False,
             precision=.01,
             # blur=.01
@@ -811,11 +814,13 @@ class TestCaseInference(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
         cls.jpt = JPT(variables=cls.variables, min_samples_leaf=1)
-        cls.jpt.learn(cls.data.values, close_convex_gaps=False)
+        cls.jpt.learn(cls.data_.values, close_convex_gaps=False)
 
-    def test_plot(self):
+    @data('matplotlib', "plotly")
+    def test_plot(self, engine):
         # Act
         path = self.jpt.plot(
+            engine=engine,
             title='Restaurant-Mixed',
             filename='Restaurant-Mixed',
             # directory=tempfile.gettempdir(),
@@ -1092,6 +1097,7 @@ class PreprocessingTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+@ddt
 class ConditionalJPTTest(TestCase):
     data: pd.DataFrame
     model: JPT
@@ -1159,7 +1165,8 @@ class ConditionalJPTTest(TestCase):
 
         self.assertTrue(conditional_likelihood > likelihood)
 
-    def test_likelihood_numeric_intervals(self):
+    @data('matplotlib', "plotly")
+    def test_likelihood_numeric_intervals(self, engine):
 
         # get original likelihood
         likelihood = np.average(np.log(self.model.likelihood(self.data)))
@@ -1172,7 +1179,11 @@ class ConditionalJPTTest(TestCase):
 
         # crop the dataframe to match evidence
         cropped_df = self.apply_evidence(evidence)
-        self.model.plot(view=True, plotvars=self.model.variables)
+        self.model.plot(
+            engine=engine,
+            view=True,
+            plotvars=self.model.variables
+        )
 
         # calculate conditional likelihood using model
         conditional_likelihood = np.average(np.log(conditional_model.likelihood(cropped_df)))
@@ -1447,9 +1458,11 @@ class KMPELeafTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+@ddt
 class PruningTest(TestCase):
 
-    def test_pruning(self):
+    @data('matplotlib', "plotly")
+    def test_pruning(self, engine):
         # Arrange
         n = 1000
         random.seed(42)
@@ -1466,7 +1479,11 @@ class PruningTest(TestCase):
 
         # Act
         pruned_jpt = jpt.prune(.6)
-        pruned_jpt.plot(plotvars=pruned_jpt.variables, view=True)
+        pruned_jpt.plot(
+            engine=engine,
+            plotvars=pruned_jpt.variables,
+            view=True
+        )
 
         # Assert
         self.assertEqual(

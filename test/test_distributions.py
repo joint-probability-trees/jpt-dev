@@ -28,6 +28,7 @@ from jpt.distributions import SymbolicType, Multinomial, NumericType, Gaussian, 
     Distribution, ScaledNumeric
 
 
+@ddt
 class MultinomialDistributionTest(TestCase):
     '''Test functions of the multinomial distributions'''
 
@@ -299,20 +300,22 @@ class MultinomialDistributionTest(TestCase):
             d1.kl_divergence,
             Numeric()._fit(np.array([[1], [2], [3]], dtype=np.float64), col=0))
 
-    def test_plot(self):
+    @data("matplotlib", "plotly")
+    def test_plot(self, engine):
         DistABC = self.DistABC
         d1 = DistABC().set(params=[.5, .25, .25])
         d1.plot(
-            engine='plotly',
+            engine=engine,
             view=True,
             horizontal=False
         )
 
-    def test_plot_coin(self):
+    @data("matplotlib", "plotly")
+    def test_plot_coin(self, engine):
         fr = SymbolicVariable('BiasedCoin', Bool)
         d1 = fr.distribution().set(5/12.)
         d1.plot(
-            engine='plotly',
+            engine=engine,
             view=True,
             horizontal=False
         )
@@ -736,10 +739,11 @@ class NumericDistributionTest(TestCase):
         jacc = Numeric.jaccard_similarity(d1, d2)
         self.assertEqual(0., jacc)
 
-    def test_plot(self):
+    @data("matplotlib", "plotly")
+    def test_plot(self, engine):
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         d.plot(
-            engine='matplotlib',
+            engine=engine,
             view=True,
             title="Fancy Title",
             xlabel='my value',
@@ -823,16 +827,17 @@ class NumericDistributionTest(TestCase):
             similarity
         )
 
-    def test_add(self):
+    @data("matplotlib", "plotly")
+    def test_add(self, engine):
         # Arrange
         x = uniform_numeric(-1, 1)
         y = uniform_numeric(-1, 1)
         # Act
         z = (x + y)
 
-        x.plot(engine="plotly", view=True)
-        y.plot(engine="plotly", view=True)
-        z.plot(engine="plotly", view=True)
+        x.plot(engine=engine, view=True)
+        y.plot(engine=engine, view=True)
+        z.plot(engine=engine, view=True)
         # Assert
         self.assertAlmostEqual(
             x.expectation() + y.expectation(),
@@ -1181,6 +1186,7 @@ class IntegerLabelMapTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+@ddt
 class IntegerDistributionTest(TestCase):
 
     Die = IntegerType('Dice', 1, 6)
@@ -1576,7 +1582,8 @@ class IntegerDistributionTest(TestCase):
             sumpos.p(3)
         )
 
-    def test_add_bernoulli(self):
+    @data("matplotlib", "plotly")
+    def test_add_bernoulli(self, engine):
         coin = IntegerType('Coin', 0, 1)
         d1 = coin().set([1 / 2, 1 / 2])
 
@@ -1596,24 +1603,15 @@ class IntegerDistributionTest(TestCase):
         )
 
         d1.plot(
-            engine="plotly",
+            engine=engine,
             view=False,
             color="rgb(0,104,180)"
         )
 
         sumpos.plot(
-            engine="plotly",
+            engine=engine,
             view=False,
             color="rgb(0,104,180)"
-        )
-
-    def test_plot(self):
-        dice = IntegerType('Dice', 1, 6)
-        d1 = dice().set([1/6, 2/6, 3/6, 0, 0, 0])
-        d1.plot(
-            title="Test",
-            view=False,
-            horizontal=True
         )
 
     def test_items_finite(self):
@@ -1655,17 +1653,26 @@ class IntegerDistributionTest(TestCase):
         #     )
         # )
 
-
-
-
-    def test_plot(self):
+    @data("matplotlib", "plotly")
+    def test_plot(self, engine):
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([1 / 6] * 6)
         d1.plot(
-            engine="plotly",
+            engine=engine,
             title="Test",
             view=False,
             horizontal=False
+        )
+
+    @data("matplotlib", "plotly")
+    def test_plot2(self, engine):
+        dice = IntegerType('Dice', 1, 6)
+        d1 = dice().set([1/6, 2/6, 3/6, 0, 0, 0])
+        d1.plot(
+            engine=engine,
+            title="Test",
+            view=False,
+            horizontal=True
         )
 
 # ----------------------------------------------------------------------------------------------------------------------

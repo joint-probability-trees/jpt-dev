@@ -1,17 +1,17 @@
 from unittest import TestCase
 
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 from jpt.trees import JPT
 from jpt.variables import infer_from_dataframe
 from jpt.plotting.helpers import pdf_grid_3d
+from ddt import ddt, data
 
-
+@ddt
 class TestJPTPlotting(TestCase):
 
-    def test_pdf_grid(self):
+    @data("matplotlib", "plotly", None)
+    def test_pdf_grid(self, engine):
         # Arrange
         df = pd.DataFrame([
             [1, 1.2],
@@ -23,7 +23,7 @@ class TestJPTPlotting(TestCase):
             infer_from_dataframe(df, scale_numeric_types=False),
             min_samples_leaf=2
         ).learn(df)
-        jpt.plot(view=True, plotvars=jpt.variables)
+        jpt.plot(view=True, plotvars=jpt.variables, engine=engine)
 
         # Act
         X, Y, Z = pdf_grid_3d(jpt, 'x', 'y')

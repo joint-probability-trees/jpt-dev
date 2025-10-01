@@ -73,6 +73,7 @@ def check_default_engine() -> DistributionRendering:
 
     try:
         import matplotlib
+        print(f"matplotlib installed: {matplotlib.__version__}")
         from .matplotlib_engine import MatplotlibRendering
         return MatplotlibRendering()
     except ImportError:
