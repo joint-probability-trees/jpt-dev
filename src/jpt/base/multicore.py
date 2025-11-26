@@ -162,7 +162,7 @@ class DummyPool:
                         c(result)
                 except Exception as e_:
                     if e is not None:
-                        e_(e)
+                        raise
                     else:
                         raise
         self._execting = False
