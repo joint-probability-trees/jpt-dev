@@ -44,7 +44,12 @@ _locals = threading.local()
 
 
 def _initialize_worker_process():
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    except ValueError:
+        logger.debug(
+            f"Not in main thread -> disabling SIGINT"
+        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
