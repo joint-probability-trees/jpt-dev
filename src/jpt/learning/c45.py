@@ -138,11 +138,13 @@ def c45split(
     split_var = jpt.variables[split_var_idx]
 
     jpt.logger.debug(
-        'data range: %d-%d,' % (start, end),
-        'split var:', split_var,
-        ', split_pos:', split_pos,
-        ', gain:', max_gain,
-        ', path:', path
+        'data range: %d-%d, split var: %s, split_pos: %s, gain: %s, path: %s',
+        start,
+        end,
+        split_var,
+        split_pos,
+        max_gain,
+        path
     )
 
     prune = (
@@ -251,9 +253,10 @@ def c45split(
 
     node._path = list(path)
     logger.debug(
-        'Created', str(node),
-        'left=', ifnone(left, None, attrgetter('path')),
-        'right=', ifnone(right, None, attrgetter('path'))
+        'Created %s left=%s right=%s',
+        node,
+        ifnone(left, None, attrgetter('path')),
+        ifnone(right, None, attrgetter('path'))
     )
 
     return node.to_json(), partition, left, right
@@ -395,6 +398,19 @@ class C45Algorithm:
             raise ValueError('No data for learning.')
 
         # --------------------------------------------------------------------------------------------------------------
+        # Clean up any previous thread-local data before initializing new data.
+        # This is critical for sequential training of multiple models to prevent
+        # memory accumulation when worker processes are forked.
+        if hasattr(_locals, 'data'):
+            del _locals.data
+        if hasattr(_locals, 'indices'):
+            del _locals.indices
+        if hasattr(_locals, 'jpt'):
+            del _locals.jpt
+        _locals.__dict__.clear()
+        gc.collect()
+
+        # --------------------------------------------------------------------------------------------------------------
         # Initialize the internal data structures
         indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
         indices[0] = 0
@@ -420,13 +436,13 @@ class C45Algorithm:
                 desc='Learning prior distributions'
             )
 
-        if not multicore:
+        if multicore == 0:
             PoolCls = DummyPool
         else:
             PoolCls = Pool
 
         pool = PoolCls(
-            multicore,
+            multicore,  # None means use all cores (Pool default behavior)
             initializer=_initialize_worker_process
         )
         for i, (dtype, dist) in enumerate(
@@ -545,13 +561,25 @@ class C45Algorithm:
         # --------------------------------------------------------------------------------------------------------------
         # Print the statistics
         logger.info(
-            'Learning took %s' % (dt.datetime.now() - started),
-            repr(self.jpt)
+            f'Learning took {dt.datetime.now() - started}: {self.jpt!r}'
         )
 
         # --------------------------------------------------------------------------------------------------------------
-        # Clean up
+        # Clean up thread-local data explicitly to prevent memory leaks.
+        # NOTE: _locals.__dict__.clear() alone does NOT release memory!
+        # We must explicitly delete the large objects first.
+        if hasattr(_locals, 'data'):
+            del _locals.data
+        if hasattr(_locals, 'indices'):
+            del _locals.indices
+        if hasattr(_locals, 'jpt'):
+            del _locals.jpt
         _locals.__dict__.clear()
+
+        # Also delete local variables holding large data
+        del _data
+        del indices
+
         gc.collect()
 
     def postprocess_leaves(self) -> None:
