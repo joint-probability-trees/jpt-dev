@@ -187,7 +187,7 @@ def preprocess_data(
 
         n_processes = ifnone(multicore, os.cpu_count())
 
-        if not multicore:
+        if multicore == 0:
             PoolCls = DummyPool
         else:
             PoolCls = Pool
