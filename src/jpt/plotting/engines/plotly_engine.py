@@ -332,23 +332,27 @@ class PlotlyRendering(DistributionRendering):
                 '''
 
         # generate data
-        max_values = min(ifnone(max_values, len(dist.labels)), len(dist.labels))
+        max_values = ifnone(max_values, 20)
 
-        # prepare prob-label pairs containing only the first `max_values` highest probability tuples
-        pairs = sorted(
-            [
-                (dist._params[idx], lbl) for idx, lbl in enumerate(dist.labels)
-            ],
-            key=lambda x: x[0],
-            reverse=True
-        )[:max_values]
-
+        # prepare prob-label pairs containing only
+        # the first `max_values` highest probability tuples
         if alphabet:
-            # re-sort remaining values alphabetically
-            pairs = sorted(pairs, key=lambda x: x[1])
+            data = list(
+                dist.items(
+                    exhaustive=True,
+                    max_items=max_values
+                )
+            )
+        else:
+            data = list(
+                dist.sorted(
+                    exhaustive=False,
+                    max_items=max_values
+                )
+            )
 
-        probs = project(pairs, 0)
-        labels = project(pairs, 1)
+        probs = project(data, 1)
+        labels = project(data, 0)
 
         # extract rgb colors from given hex, rgb or rgba string
         rgb, rgba = color_to_rgb(color)
