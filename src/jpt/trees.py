@@ -1741,7 +1741,8 @@ class JPT:
             data_ = preprocess_data(
                 self,
                 data,
-                verbose=verbose
+                verbose=verbose,
+                multicore=multicore
             )
         # elif isinstance(data, pd.DataFrame):
         #     data_ = data.values.astype(np.float64)

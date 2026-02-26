@@ -152,7 +152,7 @@ def parallel_likelihood(
         n_processes = ifnone(multicore, mp.cpu_count())
         chunksize = max(1, int(data.shape[0] / n_processes / 2))
 
-        if not multicore:
+        if multicore == 0:
             PoolCls = DummyPool
         else:
             PoolCls = Pool
