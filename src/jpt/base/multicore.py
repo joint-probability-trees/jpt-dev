@@ -180,13 +180,7 @@ class DummyPool:
         return False
 
 
-try:
-    _pool = mp.Pool()
-    _Pool = type(_pool)
-except AssertionError:
-    _Pool = DummyPool
-else:
-    _pool.close()
+from multiprocessing.pool import Pool as _Pool
 
 
 class Pool(_Pool):
