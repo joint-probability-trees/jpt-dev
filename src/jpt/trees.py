@@ -43,6 +43,7 @@ from .variables import (
 
 from .base.intervals import ContinuousSet, Interval, EXC, R, UnionSet, IntSet, Z
 
+
 # ----------------------------------------------------------------------------------------------------------------------
 
 class Node:
@@ -50,7 +51,7 @@ class Node:
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     """
 
-    def __init__(self, idx: int, parent: None or 'DecisionNode' = None) -> None:
+    def __init__(self, idx: int, parent: None | 'DecisionNode' = None) -> None:
         """
         Create a Node
         :param idx: the identifier of a node
