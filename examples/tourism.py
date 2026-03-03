@@ -53,7 +53,7 @@ def main(visualize=True):
 
     # Create variables
     price = NumericVariable('Price', Numeric)
-    t = NumericVariable('Time', Numeric, haze=.1)
+    t = NumericVariable('Time', Numeric, blur=.1)
     d = SymbolicVariable('Destination', DestinationType)
     p = SymbolicVariable('Persona', PersonaType)
 
@@ -62,7 +62,9 @@ def main(visualize=True):
         variables=[price, t, d, p],
         min_samples_leaf=15
     )
-    jpt.learn(columns=df.values.T[1:])
+    train = df[['Price', 'DoY', 'Destination', 'Persona']]
+    train = train.rename(columns={'DoY': 'Time'})
+    jpt.learn(train)
 
     # Query conditional probabilities per destination
     for clazz in df['Destination'].unique():
@@ -72,21 +74,25 @@ def main(visualize=True):
         )
         print(f'P(Destination={clazz} | Time=300)'
               f' = {prob}')
-        for exp in jpt.expectation(
-                [t, price],
-                evidence={d: clazz},
-                confidence_level=.95
-        ):
-            print(f'  E[{exp}]')
+        exp = jpt.expectation(
+            [t, price],
+            evidence={d: clazz},
+        )
+        if exp is not None:
+            for var, val in exp.items():
+                print(f'  E[{var.name} | '
+                      f'Destination={clazz}] = {val}')
 
     # Query conditional expectations per persona
     for persona in df['Persona'].unique():
-        for exp in jpt.expectation(
-                [t, price],
-                evidence={p: persona},
-                confidence_level=.95
-        ):
-            print(f'  E[{exp} | Persona={persona}]')
+        exp = jpt.expectation(
+            [t, price],
+            evidence={p: persona},
+        )
+        if exp is not None:
+            for var, val in exp.items():
+                print(f'  E[{var.name} | '
+                      f'Persona={persona}] = {val}')
 
     # Most probable explanation for Time=150
     print('\nMPE for Time=150:')

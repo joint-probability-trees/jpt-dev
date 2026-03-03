@@ -150,10 +150,10 @@ def restaurant_auto_sample(visualize=True):
 
     :param visualize: whether to show interactive plots
     """
-    # Load the restaurant dataset
+    # Load the restaurant dataset and drop incomplete rows
     df = pd.read_csv(
         os.path.join(_DATA_DIR, 'restaurant.csv')
-    )
+    ).dropna()
 
     # Declare symbolic variable types
     PatronsType = SymbolicType(
@@ -194,12 +194,7 @@ def restaurant_auto_sample(visualize=True):
         min_samples_leaf=30,
         min_impurity_improvement=0
     )
-    jpt.learn(
-        pd.DataFrame(
-            df.values,
-            columns=list(jpt.varnames)
-        )
-    )
+    jpt.learn(df[list(jpt.varnames)])
 
     # Plot the learned tree
     out_dir = tempfile.mkdtemp(prefix='jpt-restaurant-')
