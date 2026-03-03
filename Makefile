@@ -46,7 +46,7 @@ all: preload clean virtualenv tests dist
 tests: preload virtualenv
 	@(echo "Running all tests...")
 	@(. ${ENV_NAME}/bin/activate &&\
-	cd test &&\
+	cd tests &&\
 	python -m unittest)
 
 clean: preload rmvirtualenv
