@@ -162,7 +162,7 @@ cdef class UnionSet(NumberSet):
         }
 
     @staticmethod
-    def from_json(data: Dict[str, Any]) -> 'UnionSet':
+    def from_json(data: Dict[str, Any]) -> UnionSet:
         intervals = []
         for d in data['intervals']:
             if 'type' in d:

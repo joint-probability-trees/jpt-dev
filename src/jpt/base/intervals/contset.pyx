@@ -8,7 +8,7 @@
 __module__ = 'contset.pyx'
 
 import numbers
-import traceback
+
 from typing import List, Iterable, Dict, Any, Callable
 
 from dnutils import ifnot, ifnone
@@ -188,8 +188,7 @@ cdef class ContinuousSet(Interval):
             interval.lower = <DTYPE_t> float(tokens.group('lval'))
             interval.upper = <DTYPE_t> float(tokens.group('rval'))
 
-        except:
-            traceback.print_exc()
+        except (ValueError, TypeError):
             raise ValueError(
                 'Illegal interval values {}, {} in interval {}'.format(
                 tokens.group('lval'),
