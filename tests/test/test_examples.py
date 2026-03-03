@@ -21,17 +21,13 @@ class ExamplesTestRun(TestCase):
         import regression
         regression.main(visualize=False)
 
-    def test_restaurant_auto_sample(self):
+    def test_restaurant(self):
         import restaurant
-        restaurant.restaurant_auto_sample(visualize=False)
-
-    def test_restaurant_manual_sample(self):
-        import restaurant
-        restaurant.restaurant_manual_sample(visualize=False)
+        restaurant.main(visualize=False)
 
     def test_gaussians(self):
         import gaussians
-        gaussians.main(verbose=False)
+        gaussians.main(visualize=False)
 
     def test_mnist(self):
         import mnist
@@ -40,3 +36,15 @@ class ExamplesTestRun(TestCase):
     def test_muesli(self):
         import muesli
         muesli.main(visualize=False)
+
+    def test_alarm(self):
+        import alarm
+        alarm.main(visualize=False)
+
+    def test_tourism(self):
+        import tourism
+        tourism.main(visualize=False)
+
+    def test_abalone(self):
+        import abalone
+        abalone.main(visualize=False)
