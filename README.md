@@ -52,14 +52,14 @@ pip install -e ".[dev]"
 
 By default, Cython extensions are compiled during installation. For
 development, you can skip pre-compilation and let `pyximport` handle
-just-in-time compilation at runtime instead:
+on-the-fly compilation at runtime instead:
 
 ```console
 JPT_NO_CYTHON=1 pip install -e ".[dev]"
 ```
 
-With JIT compilation, changes to `.pyx` files are picked up automatically
-on the next import without requiring a rebuild.
+With on-the-fly compilation, changes to `.pyx` files are picked up 
+automatically on the next import without requiring a rebuild.
 
 ### Running tests
 
