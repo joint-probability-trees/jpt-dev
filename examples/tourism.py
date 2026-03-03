@@ -1,6 +1,10 @@
 import os
 from datetime import datetime
 
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'data'
+)
+
 import pandas as pd
 from dnutils import out
 from matplotlib import pyplot as plt
@@ -14,7 +18,7 @@ from jpt.variables import NumericVariable, SymbolicVariable
 def tourism():
 
     # generate JPT from tourism data
-    df = pd.read_csv('../examples/data/tourism.csv')
+    df = pd.read_csv(os.path.join(_DATA_DIR, 'tourism.csv'))
     df['Price'] *= 2000
     df['DoY'] *= 710
 
@@ -48,7 +52,7 @@ def tourism():
 
 def plot_tourism():
     # generate plot for tree data
-    df = pd.read_csv('../examples/data/tourism.csv')
+    df = pd.read_csv(os.path.join(_DATA_DIR, 'tourism.csv'))
     df['Price'] *= 2000
     df['DoY'] *= 710
 

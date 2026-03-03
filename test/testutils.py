@@ -13,6 +13,12 @@ from jpt.distributions.qpd import QuantileDistribution
 
 __path__, _ = os.path.split(__file__)
 
+RESOURCES = os.path.join(__path__, 'resources')
+EXAMPLES_DIR = os.path.join(__path__, '..', 'examples')
+EXAMPLES_DATA = os.path.join(
+    __path__, '..', 'examples', 'data'
+)
+
 
 def gaussian_jpt() -> JPT:
     '''

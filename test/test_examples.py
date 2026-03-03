@@ -1,15 +1,15 @@
-import os
 import sys
 from unittest import TestCase
 
 from matplotlib import pyplot as plt
+from testutils import EXAMPLES_DIR
 
 try:
     import regression
     import restaurant
     import gaussians
 except ModuleNotFoundError:
-    sys.path.append(os.path.join('..', 'examples'))
+    sys.path.append(EXAMPLES_DIR)
 
 plt.switch_backend('agg')
 

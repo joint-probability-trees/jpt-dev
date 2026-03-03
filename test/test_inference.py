@@ -15,6 +15,7 @@ from jpt.trees import MPESolver, JPT
 from jpt.variables import VariableMap
 from jpt.variables import SymbolicVariable, NumericVariable, infer_from_dataframe
 from jpt.variables import LabelAssignment
+from testutils import EXAMPLES_DATA, RESOURCES
 
 
 class JPTInferenceSymbolic(unittest.TestCase):
@@ -30,7 +31,7 @@ class JPTInferenceSymbolic(unittest.TestCase):
         cls.M = SymbolicVariable('MaryCalls', Bool)
         cls.J = SymbolicVariable('JohnCalls', Bool)
 
-        with open(os.path.join('..', 'examples', 'data', 'alarm.pkl'), 'rb') as f:
+        with open(os.path.join(EXAMPLES_DATA, 'alarm.pkl'), 'rb') as f:
             cls.data = np.array(pickle.load(f))
 
         cls.jpt = JPT(
@@ -82,7 +83,7 @@ class JPTInferenceSymbolic(unittest.TestCase):
 class JPTInferenceNumeric(unittest.TestCase):
 
     def setUp(self) -> None:
-        with open(os.path.join('resources', 'gaussian_100.dat'), 'rb') as f:
+        with open(os.path.join(RESOURCES, 'gaussian_100.dat'), 'rb') as f:
             self.data = pickle.load(f)
             x = NumericVariable('x')
             self.jpt = JPT(variables=[x])

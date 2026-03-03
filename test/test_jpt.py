@@ -33,14 +33,14 @@ from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, Sy
 
 from jpt.base.functions import ConstantFunction, LinearFunction
 from jpt.base.intervals import ContinuousSet, IntSet
-from testutils import gaussian_data_1d
+from testutils import gaussian_data_1d, EXAMPLES_DATA, RESOURCES
 from ddt import ddt, data
 
 @ddt
 class JPTTest(TestCase):
 
     def setUp(self) -> None:
-        with open(os.path.join('resources', 'gaussian_100.dat'), 'rb') as f:
+        with open(os.path.join(RESOURCES, 'gaussian_100.dat'), 'rb') as f:
             self.data = pickle.load(f)
 
     def test_hyperparameter_serialization(self):
@@ -240,7 +240,7 @@ class JPTTest(TestCase):
 
     def test_unsatisfiability(self):
         df = pd.read_csv(
-            os.path.join('..', 'examples', 'data', 'restaurant.csv'),
+            os.path.join(EXAMPLES_DATA, 'restaurant.csv'),
             na_filter=False
         )
         jpt = JPT(
@@ -264,7 +264,7 @@ class JPTTest(TestCase):
 
     def test_unsatisfiability_with_reasons(self):
         df = pd.read_csv(
-            os.path.join('..', 'examples', 'data', 'restaurant.csv'),
+            os.path.join(EXAMPLES_DATA, 'restaurant.csv'),
             na_filter=False
         )
         jpt = JPT(variables=infer_from_dataframe(df), targets=['WillWait'], min_samples_leaf=1)
@@ -287,7 +287,7 @@ class JPTTest(TestCase):
     def test_exact_mpe_discrete(self):
         # Arrange
         df = pd.read_csv(
-            os.path.join('..', 'examples', 'data', 'restaurant.csv'),
+            os.path.join(EXAMPLES_DATA, 'restaurant.csv'),
             na_filter=False
         )
         tree = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
@@ -302,7 +302,7 @@ class JPTTest(TestCase):
     def test_mpe_serialization(self):
         # Arrange
         df = pd.read_csv(
-            os.path.join('..', 'examples', 'data', 'restaurant.csv'),
+            os.path.join(EXAMPLES_DATA, 'restaurant.csv'),
             na_filter=False
         )
         tree = JPT(variables=infer_from_dataframe(df), min_samples_leaf=0.2)
@@ -330,7 +330,7 @@ class JPTTest(TestCase):
         self.assertEqual(len(mpe), 1)
 
     def test_conditional_jpt(self):
-        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'), protocol='json')
+        jpt = JPT.load(os.path.join(RESOURCES, 'berlin_crimes.jpt'), protocol='json')
         evidence = jpt.bind(Arson=[20, 30])
         cjpt = jpt.conditional_jpt(evidence)
         marginals = cjpt.posterior(evidence=VariableMap())
@@ -338,7 +338,7 @@ class JPTTest(TestCase):
 
     def test_reverse_inference(self):
         pass
-        jpt = JPT.load(os.path.join('resources', 'berlin_crimes.jpt'), protocol='json')
+        jpt = JPT.load(os.path.join(RESOURCES, 'berlin_crimes.jpt'), protocol='json')
         q = {
             "District": ["Spandau"],
             "Graffiti": ContinuousSet(20, 40),
@@ -544,7 +544,7 @@ class TestCasePosteriorSymbolic(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        f_csv = os.path.join('..', 'examples', 'data', 'restaurant.csv')
+        f_csv = os.path.join(EXAMPLES_DATA, 'restaurant.csv')
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data,
                                              scale_numeric_types=True,
@@ -607,7 +607,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        f_csv = os.path.join('..', 'examples', 'data', 'restaurant-mixed.csv')
+        f_csv = os.path.join(EXAMPLES_DATA, 'restaurant-mixed.csv')
         cls.data_ = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data_, scale_numeric_types=False, precision=.01, blur=.01)
 
@@ -725,7 +725,7 @@ class TestCaseExpectation(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        f_csv = os.path.join('..', 'examples', 'data', 'restaurant-mixed.csv')
+        f_csv = os.path.join(EXAMPLES_DATA, 'restaurant-mixed.csv')
         cls.data_ = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data_, scale_numeric_types=True, precision=.01, blur=.01)
 
@@ -793,7 +793,7 @@ class TestCaseInference(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        f_csv = '../examples/data/restaurant-mixed.csv'
+        f_csv = os.path.join(EXAMPLES_DATA, 'restaurant-mixed.csv')
         cls.data_ = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(
             cls.data_,
@@ -870,7 +870,7 @@ class TestJPTFeaturesTargets(TestCase):
 
     @classmethod
     def setUpClass(cls):
-        f_csv = '../examples/data/restaurant-mixed.csv'
+        f_csv = os.path.join(EXAMPLES_DATA, 'restaurant-mixed.csv')
         cls.data = pd.read_csv(f_csv, sep=',').fillna(value='???')
         cls.variables = infer_from_dataframe(cls.data,
                                              scale_numeric_types=True,

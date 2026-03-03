@@ -1,4 +1,5 @@
 import numbers
+import os
 
 import json
 import pickle
@@ -16,7 +17,7 @@ from jpt.distributions.univariate.integer import IntegerMap, IntegerValueToLabel
 from jpt.distributions.univariate.multinomial import MultinomialValueMap, Bool
 from jpt.distributions.univariate.numeric import NumericValueToLabelMap, NumericLabelToValueMap
 from jpt.variables import SymbolicVariable
-from testutils import uniform_numeric
+from testutils import uniform_numeric, RESOURCES
 
 from jpt.distributions.qpd import QuantileDistribution
 
@@ -422,7 +423,7 @@ class NumericDistributionTest(TestCase):
 
     @classmethod
     def setUp(cls) -> None:
-        with open('resources/gaussian_100.dat', 'rb') as f:
+        with open(os.path.join(RESOURCES, 'gaussian_100.dat'), 'rb') as f:
             cls.GAUSSIAN = pickle.load(f)
         cls.DistGauss: Type[Numeric] = NumericType(
             'Normal',

@@ -1,9 +1,10 @@
+import os
 from unittest import TestCase
 
 import numpy as np
 
-
 from jpt.base.cutils.cutils import test_sort
+from testutils import RESOURCES
 
 
 class CUtilsTest(TestCase):
@@ -39,7 +40,7 @@ class CUtilsTest(TestCase):
 
     def test_from_file(self):
         import pickle
-        with open('resources/nparray-sort-test.dat', 'rb') as f:
+        with open(os.path.join(RESOURCES, 'nparray-sort-test.dat'), 'rb') as f:
             arr = pickle.load(f).astype(np.float64)
             orig_data = np.array(arr)
         indices = np.array([_ for _ in range(arr.shape[0])])

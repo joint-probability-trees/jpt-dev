@@ -1,6 +1,10 @@
 import logging
 import os
 import sys
+
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'data'
+)
 from datetime import datetime
 from pathlib import Path
 
@@ -21,7 +25,7 @@ data_train = data_test = []
 
 def preprocess_banana():
     logger.info('Trying to load dataset from local file...')
-    f_csv = '../examples/data/banana.csv'
+    f_csv = os.path.join(_DATA_DIR, 'banana.csv')
     src = 'https://www.kaggle.com/saranchandar/standard-classification-banana-dataset'
 
     if not os.path.exists(f_csv):

@@ -1,5 +1,9 @@
 import os
 import sys
+
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'data'
+)
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -22,7 +26,7 @@ logger = logging.getLogger('/airline')
 
 def preprocess_airline():
     try:
-        local_src = '../examples/data/airlines_train_regression_10000000.csv'
+        local_src = os.path.join(_DATA_DIR, 'airlines_train_regression_10000000.csv')
         logger.info('Trying to load dataset from local file...')
         data = pd.read_csv(local_src, delimiter=',', skip_blank_lines=True, header=0, quotechar="'")
     except FileNotFoundError:

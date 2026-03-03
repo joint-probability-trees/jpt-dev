@@ -17,13 +17,14 @@ from jpt.learning.impurity.impurity import (
     _variances,
     _compute_var_improvements
 )
+from testutils import EXAMPLES_DATA
 
 
 class ImpurityTest(TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.data = pd.read_csv(os.path.join('..', 'examples', 'data', 'restaurant.csv'))
+        cls.data = pd.read_csv(os.path.join(EXAMPLES_DATA, 'restaurant.csv'))
 
         # replace na with "None"
         cls.data = cls.data.fillna("None")

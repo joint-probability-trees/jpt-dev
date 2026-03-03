@@ -5,6 +5,10 @@ from jpt.base.utils import format_path
 import itertools
 import os
 import pickle
+
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'data'
+)
 from datetime import datetime
 
 import numpy as np
@@ -26,7 +30,7 @@ logger = logging.getLogger('/jpt/examples/muesli')
 def plot_muesli(visualize=True):
     # Used to create the plots for the paper
 
-    df = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
+    df = pd.read_csv(os.path.join(_DATA_DIR, 'muesli.csv'))
 
     fig, ax = plt.subplots()
     # ax.set_title(f"Breakfast object positions")
@@ -92,7 +96,7 @@ def plot_muesli(visualize=True):
 
 def test_muesli(visualize=True):
 
-    data = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
+    data = pd.read_csv(os.path.join(_DATA_DIR, 'muesli.csv'))
     d = np.array(sorted(data['X']), dtype=np.float64)
 
     quantiles = QuantileDistribution(epsilon=.01)
@@ -113,7 +117,7 @@ def test_muesli(visualize=True):
 
 def muesli_tree(visualize=True):
     # generate Joint Probability Tree from muesli data (use .csv file because it contains the additional Success column)
-    data = pd.read_csv(os.path.join('..', 'examples', 'data', 'muesli.csv'))
+    data = pd.read_csv(os.path.join(_DATA_DIR, 'muesli.csv'))
     data["Success"] = data["Success"].astype(str)
     ObjectType = SymbolicType('ObjectType', data['Class'].unique())
     SuccessType = SymbolicType("Success", data['Success'].unique())
@@ -177,7 +181,7 @@ def plot_conditional(jpt, qvarx, qvary, evidence=None, title=None):
 
 def picklemuesli():
     # read in original .pkl file and pickle as proper np.array
-    f = os.path.join('../' 'examples', 'data', 'human_muesli.pkl')
+    f = os.path.join(_DATA_DIR, 'human_muesli.pkl')
 
     data = []
     with open(f, 'rb') as fi:

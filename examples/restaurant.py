@@ -1,6 +1,10 @@
 import os
 from datetime import datetime
 
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'data'
+)
+
 import pandas as pd
 
 from jpt.base.sampling import wchoice
@@ -121,14 +125,14 @@ def restaurant_mixed_type_variables(visualize=True):
 
 
 def preprocess_restaurant():
-    f_csv = '../examples/data/restaurant.csv'
+    f_csv = os.path.join(_DATA_DIR, 'restaurant.csv')
     data = pd.read_csv(f_csv, sep=',').fillna(value='???')
     return data
 
 
 def restaurant_auto_sample(visualize=True):
     # generate JPT from data sampled based on distributions from lecture data
-    df = pd.read_csv(os.path.join('../', 'examples', 'data', 'restaurant.csv'))
+    df = pd.read_csv(os.path.join(_DATA_DIR, 'restaurant.csv'))
 
     # declare variable types
     PatronsType = SymbolicType('Patrons', ['Some', 'Full', 'None'])
