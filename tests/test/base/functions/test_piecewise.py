@@ -27,8 +27,10 @@ from jpt.base.functions import (
 
 @ddt
 class PLFTest(TestCase):
+    """PLFTest case"""
 
     def test_plf_constant_from_dict(self):
+        """Parse constant PLF from string dict."""
         d = {
             ']-∞,1.000[': '0.0',
             '[1.000,2.000[': '0.25',
@@ -52,6 +54,7 @@ class PLFTest(TestCase):
         self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
 
     def test_plf_linear_from_dict(self):
+        """Parse linear PLF from string dict."""
         d = {
             ']-∞,0.000[': 'undef.',
             '[0.000,0.500[': '2.000x',
@@ -79,6 +82,7 @@ class PLFTest(TestCase):
         self.assertEqual(cdf, PiecewiseFunction.from_dict(d))
 
     def test_plf_mixed_from_dict(self):
+        """Parse mixed constant/linear PLF from dict."""
         cdf = PiecewiseFunction()
         cdf.intervals.append(
             ContinuousSet.parse(']-inf,0.000[')
@@ -119,6 +123,7 @@ class PLFTest(TestCase):
         )
 
     def test_serialization(self):
+        """JSON round-trip preserves PLF equality."""
         plf = PiecewiseFunction.from_dict({
             ']-∞,0.000[': 0,
             '[0.000,1.00[': str(
@@ -136,6 +141,7 @@ class PLFTest(TestCase):
         )
 
     def test_mul_constant(self):
+        """Scalar multiplication scales all segments."""
         plf = PiecewiseFunction.from_dict({
             ']-∞,0.000[': 0,
             '[0.000,1.00[': str(
@@ -161,6 +167,7 @@ class PLFTest(TestCase):
         self.assertEqual(plf_res, plf * .5)
 
     def test_add_const(self):
+        """Adding a constant function shifts all values."""
         plf1 = PiecewiseFunction.from_dict({
             ']-∞,0[': 0,
             '[0,1[': str(
@@ -183,6 +190,7 @@ class PLFTest(TestCase):
         self.assertEqual(res, plf1 + f)
 
     def test_add_linear(self):
+        """Adding a linear function to all segments."""
         # Arrange
         plf1 = PiecewiseFunction.from_dict({
             ']-∞,0[': 0,
@@ -213,6 +221,7 @@ class PLFTest(TestCase):
         )
 
     def test_add_plf(self):
+        """Adding two PLFs merges intervals and sums functions."""
         plf1 = PiecewiseFunction.from_dict({
             '(-∞,0)': 0,
             '[0,1)': str(
@@ -240,6 +249,7 @@ class PLFTest(TestCase):
         self.assertEqual(res, plf1 + plf2)
 
     def test_mul_const_const(self):
+        """Multiply constant PLF by constant function."""
         # Arrange
         plf = PiecewiseFunction.zero().overwrite_at(
             '[0,1)', ConstantFunction(1)
@@ -255,6 +265,7 @@ class PLFTest(TestCase):
         )
 
     def test_mul_const_linear(self):
+        """Multiply constant PLF by linear function."""
         # Arrange
         plf = PiecewiseFunction.zero().overwrite_at(
             '[-1,1)', ConstantFunction(1)
@@ -270,6 +281,7 @@ class PLFTest(TestCase):
         )
 
     def test_mul_plf_constant(self):
+        """Multiply two constant PLFs with partial overlap."""
         # Arrange
         plf1 = PiecewiseFunction.from_dict({
             '[-2,-1)': 1,
@@ -293,6 +305,7 @@ class PLFTest(TestCase):
         )
 
     def test_mul_plf_mixed(self):
+        """Multiplying mixed PLFs yields quadratic segments."""
         plf1 = PiecewiseFunction.from_dict({
             ']-∞,0[': 0,
             '[0,1[': LinearFunction.from_points(
@@ -319,6 +332,7 @@ class PLFTest(TestCase):
         self.assertEqual(res, plf1 * plf2)
 
     def test_from_points(self):
+        """Construct PLF from (x, y) point sequence."""
         # Arrange
         points = [(0, 0), (1, 1), (2, -2), (3, 3)]
 
@@ -354,11 +368,13 @@ class PLFTest(TestCase):
     )
     @unpack
     def test_is_impulse(self, plf, truth):
+        """Detect impulse (single-point nonzero) PLFs."""
         # Act
         impulse = plf.is_impulse()
         self.assertEqual(truth, impulse)
 
     def test_min_max(self):
+        """Pointwise min and max of two PLFs."""
         # Arrange
         plf1 = PiecewiseFunction.from_dict({
                 '[0,1[': 'x',
@@ -392,6 +408,7 @@ class PLFTest(TestCase):
         )
 
     def test_integral(self):
+        """Integration over a sub-interval."""
         # Arrange
         plf1 = PiecewiseFunction.from_dict({
             '[0,1[': 'x',
@@ -408,6 +425,7 @@ class PLFTest(TestCase):
         self.assertAlmostEqual(.5, area, places=6)
 
     def test_jaccard(self):
+        """Jaccard similarity: symmetric, reflexive, zero for disjoint."""
         # Arrange
         plf1 = PiecewiseFunction.from_dict({
             '[0,1[': 'x',
@@ -449,6 +467,7 @@ class PLFTest(TestCase):
         self.assertEqual(0, sim_disjoint)
 
     def test_overwrite_1(self):
+        """Overwriting intervals on a zero PLF."""
         # Arrange
         result = PiecewiseFunction.from_dict({R: 0})
 
@@ -494,6 +513,7 @@ class PLFTest(TestCase):
         )
 
     def test_overwrite_2(self):
+        """Overwriting a gap between two disjoint intervals."""
         # Arrange
         result = PiecewiseFunction.from_dict({
             ContinuousSet(-2, -1, INC, EXC): 1,
@@ -519,6 +539,7 @@ class PLFTest(TestCase):
         )
 
     def test_xshift(self):
+        """Horizontal shift of PLF by offset."""
         # Arrange
         plf = PiecewiseFunction.from_dict({
              R: 0
@@ -551,6 +572,7 @@ class PLFTest(TestCase):
         )
 
     def test_xmirror_simple(self):
+        """Mirror symmetric constant PLF at x=0."""
         plf = PiecewiseFunction.zero().overwrite_at(
             ContinuousSet(-1, 1 + eps, INC, EXC),
             ConstantFunction(1)
@@ -570,6 +592,7 @@ class PLFTest(TestCase):
         )
 
     def test_xmirror(self):
+        """Mirror linear PLF at x=0."""
         # Arrange
         plf = PiecewiseFunction.from_points(
             [(1, 0), (2, 1), (3, 0)]
@@ -602,7 +625,7 @@ class PLFTest(TestCase):
         self.assertEqual(plf, mirror)
 
     def test_boundaries(self):
-        # Symmatric functions have identical boundaries
+        """Extract domain boundaries from PLF."""
         plf = PiecewiseFunction.zero().overwrite_at(
             ContinuousSet(-1, 1, INC, EXC),
             ConstantFunction(1)
@@ -612,6 +635,7 @@ class PLFTest(TestCase):
         )
 
     def test_drop_undef(self):
+        """Remove undefined segments from PLF."""
         # Arrange
         plf = PiecewiseFunction.from_dict({
             '[-inf,0)': 0,
@@ -686,6 +710,7 @@ class PLFTest(TestCase):
     )
     @unpack
     def test_convolution(self, plf1, plf2, truth):
+        """Convolution of two PLFs."""
         # Act
         result = plf1.convolution(plf2)
         # Assert
@@ -694,6 +719,7 @@ class PLFTest(TestCase):
         )
 
     def test_rectify(self):
+        """Replace linear segments with constant averages."""
         # Arrange
         plf = PiecewiseFunction.from_dict({
             '[0,1)': '3x+2',
@@ -713,6 +739,7 @@ class PLFTest(TestCase):
         )
 
     def test_rectify_error(self):
+        """Rectify rejects unbounded linear functions."""
         # Arrange
         plf1 = PiecewiseFunction.from_dict({
             R: 'x+1'
@@ -797,6 +824,7 @@ class PLFTest(TestCase):
     )
     @unpack
     def test_maximize(self, f, f_max, f_argmax):
+        """Find maximum value and argmax of PLF."""
         # Arrange
         f_argmax = ifstr(f_argmax, ContinuousSet.parse)
         # Act
@@ -806,6 +834,7 @@ class PLFTest(TestCase):
         self.assertEqual(f_max, max_)
 
     def test_approximate(self):
+        """Reduce PLF segment count by approximation."""
         plf = PiecewiseFunction.zero().overwrite({
             '[0,.25[': .1,
             '[.25,.5[': .5,
@@ -826,13 +855,24 @@ class PLFTest(TestCase):
         )
 
     def test_from_function(self):
+        """Approximate a callable as PLF within tolerance."""
+        # Arrange
+        f = lambda x: np.log(-x + 1)
+
         # Act
         plf = PiecewiseFunction.from_function(
-            lambda x: np.log(-x + 1),
+            f,
             ContinuousSet(0, 1, EXC, EXC),
             20,
             error_max=.01
         )
 
-        # Assert
-        print(plf)
+        # Assert: check that the PLF is a reasonable
+        # approximation away from the singularity at x=1
+        for x in np.linspace(0.01, 0.9, 50):
+            self.assertAlmostEqual(
+                plf.eval(x),
+                f(x),
+                delta=.02
+            )
+
