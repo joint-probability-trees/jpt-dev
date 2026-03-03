@@ -1,9 +1,9 @@
 [project]
 name = "pyjpt"
-version = "0.0.1"
 description = "Joint Probability Trees - A formalism for learning and reasoning about joint probability distributions"
 requires-python = ">=3.8"
-dynamic = ["readme"]
+readme = "README.md"
+dynamic = ["version"]
 dependencies = [
     "dnutils>=0.3.12",
     "scipy>=1.10.1",
@@ -23,6 +23,7 @@ dev = [
     "jupyter",
     "auditwheel",
     "scikit-learn",
+    "build",
     "pyjpt[matplotlib]",
     "pyjpt[plotly]",
     "pyjpt[seq]",
@@ -37,5 +38,15 @@ mlflow = ["mlflow>=2.5.0"]
 where = ["src"]
 
 [build-system]
-requires = ["setuptools>=61.0", "Cython>=0.29.35", "numpy>=1.24.3"]
+requires = [
+    "setuptools>=61.0",
+    "setuptools-scm>=8.0",
+    "Cython>=0.29.35",
+    "numpy>=1.24.3"
+]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+version_file = "src/jpt/_version.py"
+fallback_version = "0.0.0"
+tag_regex = "^(?P<version>\\d+\\.\\d+\\.\\d+)$"
