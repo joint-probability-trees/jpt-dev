@@ -1,6 +1,0 @@
--r requirements.txt
-Cython>=0.29.35
-ddt
-jupyter
-auditwheel
-scikit-learn

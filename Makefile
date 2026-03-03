@@ -32,20 +32,20 @@ rmvirtualenv: preload
 virtualenv: preload
 	@(virtualenv ${ENV_NAME} --python ${PYTHON_CMD})
 	@(. ${ENV_NAME}/bin/activate && pip install -U pip)
-	@(. ${ENV_NAME}/bin/activate && pip install -U -r requirements.txt && pip install -U -r requirements-plot.txt && pip install -U -r requirements-dev.txt) # -r requirements-dev.txt)
+	@(. ${ENV_NAME}/bin/activate && pip install -e ".[dev]")
 
 sdist: preload virtualenv
 	@(echo "Build ${PKG_NAME} sdist package...")
-	@(. ${ENV_NAME}/bin/activate && pip install -r requirements-dev.txt && python setup.py sdist)
+	@(. ${ENV_NAME}/bin/activate && pip install -e ".[dev]" && python setup.py sdist)
 
 bdist: preload virtualenv
 	@(echo "Build ${PKG_NAME} bdist package...")
-	@(. ${ENV_NAME}/bin/activate && pip install -r requirements-dev.txt && python setup.py bdist)
+	@(. ${ENV_NAME}/bin/activate && pip install -e ".[dev]" && python setup.py bdist)
 
 wheel: preload virtualenv
 	@(echo "Build ${PKG_NAME} bdist_wheel package...")
 	@(. ${ENV_NAME}/bin/activate && pip install -U wheel pip)
-	@(. ${ENV_NAME}/bin/activate && pip install -r requirements-dev.txt && python setup.py bdist_wheel)
+	@(. ${ENV_NAME}/bin/activate && pip install -e ".[dev]" && python setup.py bdist_wheel)
 
 release: preload clean sdist bdist wheel tests
 	@mkdir -p releases/${RELEASE_NAME}
@@ -69,4 +69,4 @@ clean: preload rmvirtualenv
 
 update_pkg: preload
 	@(. ${ENV_NAME}/bin/activate && pip install -U pip)
-	@(. ${ENV_NAME}/bin/activate && pip install -U `cat requirements.txt`)
+	@(. ${ENV_NAME}/bin/activate && pip install -U -e ".[dev]")

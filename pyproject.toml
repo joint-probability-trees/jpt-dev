@@ -1,0 +1,41 @@
+[project]
+name = "pyjpt"
+version = "0.0.1"
+description = "Joint Probability Trees - A formalism for learning and reasoning about joint probability distributions"
+requires-python = ">=3.8"
+dynamic = ["readme"]
+dependencies = [
+    "dnutils>=0.3.12",
+    "scipy>=1.10.1",
+    "numpy>=1.24.3",
+    "pandas>=2.0.1",
+    "deprecated~=1.2.14",
+    "tqdm~=4.66.0",
+    "anytree",
+    "typing-extensions"
+]
+
+[project.optional-dependencies]
+dev = [
+    "arff>=0.9",
+    "Cython>=0.29.35",
+    "ddt",
+    "jupyter",
+    "auditwheel",
+    "scikit-learn",
+    "pyjpt[matplotlib]",
+    "pyjpt[plotly]",
+    "pyjpt[seq]",
+    "pyjpt[mlflow]"
+]
+matplotlib = ["matplotlib", "graphviz>=0.20.1"]
+plotly = ["plotly", "kaleido>=0.1.0", "graphviz>=0.20.1"]
+seq = ["fglib>=0.2.3", "factorgraph>=0.0.3"]
+mlflow = ["mlflow>=2.5.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=61.0", "Cython>=0.29.35", "numpy>=1.24.3"]
+build-backend = "setuptools.build_meta"
