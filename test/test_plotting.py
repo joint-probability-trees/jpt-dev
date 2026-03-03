@@ -23,7 +23,7 @@ class TestJPTPlotting(TestCase):
             infer_from_dataframe(df, scale_numeric_types=False),
             min_samples_leaf=2
         ).learn(df)
-        jpt.plot(view=True, plotvars=jpt.variables, engine=engine)
+        jpt.plot(view=False, plotvars=jpt.variables, engine=engine)
 
         # Act
         X, Y, Z = pdf_grid_3d(jpt, 'x', 'y')

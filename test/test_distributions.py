@@ -307,7 +307,7 @@ class MultinomialDistributionTest(TestCase):
         d1 = DistABC().set(params=[.5, .25, .25])
         d1.plot(
             engine=engine,
-            view=True,
+            view=False,
             horizontal=False
         )
 
@@ -317,7 +317,7 @@ class MultinomialDistributionTest(TestCase):
         d1 = fr.distribution().set(5/12.)
         d1.plot(
             engine=engine,
-            view=True,
+            view=False,
             horizontal=False
         )
 
@@ -449,17 +449,17 @@ class NumericDistributionTest(TestCase):
     def test_plot_gaussian1d(self, engine):
         DistGauss = self.DistGauss
         gauss = Gaussian(data=[[DistGauss.values[d]] for d in NumericDistributionTest.GAUSSIAN])
-        gauss.plot(engine, view=True)
+        gauss.plot(engine, view=False)
 
     @data("matplotlib", "plotly", None)
     def test_plot_gaussian2d(self, engine):
         g = Gaussian([0, 0], [ [1, 3/5], [3/5, 2]])
-        g.plot(engine, view=True, dim=2)
+        g.plot(engine, view=False, dim=2)
 
     @data("matplotlib", "plotly", None)
     def test_plot_gaussian3d(self, engine):
         g = Gaussian([0, 0], [ [1, 3/5], [3/5, 2]])
-        g.plot(engine, view=True, dim=3)
+        g.plot(engine, view=False, dim=3)
 
     def test_copy(self):
         # Arrange
@@ -761,7 +761,7 @@ class NumericDistributionTest(TestCase):
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         d.plot(
             engine=engine,
-            view=True,
+            view=False,
             title="Fancy Title",
             xlabel='my value',
             # color="#800080",
@@ -852,9 +852,9 @@ class NumericDistributionTest(TestCase):
         # Act
         z = (x + y)
 
-        x.plot(engine=engine, view=True)
-        y.plot(engine=engine, view=True)
-        z.plot(engine=engine, view=True)
+        x.plot(engine=engine, view=False)
+        y.plot(engine=engine, view=False)
+        z.plot(engine=engine, view=False)
         # Assert
         self.assertAlmostEqual(
             x.expectation() + y.expectation(),
@@ -878,9 +878,9 @@ class NumericDistributionTest(TestCase):
         # Act
         z = (x - y)
 
-        # x.plot(view=True,title='x')
-        # y.plot(view=True,title='y')
-        # z.plot(view=True,title='z')
+        # x.plot(view=False,title='x')
+        # y.plot(view=False,title='y')
+        # z.plot(view=False,title='z')
 
         # Assert
         self.assertAlmostEqual(

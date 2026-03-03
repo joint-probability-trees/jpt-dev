@@ -1181,7 +1181,7 @@ class ConditionalJPTTest(TestCase):
         cropped_df = self.apply_evidence(evidence)
         self.model.plot(
             engine=engine,
-            view=True,
+            view=False,
             plotvars=self.model.variables
         )
 
@@ -1475,14 +1475,14 @@ class PruningTest(TestCase):
             variables=[NumericVariable('x'), NumericVariable('y')],
             min_samples_leaf=100
         ).learn(data=data.T)
-        # jpt.plot(plotvars=jpt.variables, view=True)
+        # jpt.plot(plotvars=jpt.variables, view=False)
 
         # Act
         pruned_jpt = jpt.prune(.6)
         pruned_jpt.plot(
             engine=engine,
             plotvars=pruned_jpt.variables,
-            view=True
+            view=False
         )
 
         # Assert
