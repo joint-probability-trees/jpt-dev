@@ -7,7 +7,11 @@ import os
 import pickle
 from collections import defaultdict, deque, ChainMap, OrderedDict
 from operator import attrgetter, itemgetter
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, Callable, IO, Literal
+from typing import (
+    Any, Callable, Dict, IO, Iterable, Iterator,
+    List, Literal, MutableMapping, Optional, Tuple,
+    Union, cast,
+)
 from typing_extensions import Buffer
 
 import numpy as np
@@ -28,7 +32,6 @@ from .base.utils import (
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
 from .inference import MPESolver
-from .plotting.engines.rendering import MATPLOTLIB, PLOTLY, DistributionRendering
 
 from .variables import (
     VariableMap,
@@ -51,7 +54,7 @@ class Node:
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     """
 
-    def __init__(self, idx: int, parent: None | 'DecisionNode' = None) -> None:
+    def __init__(self, idx: int, parent: Optional['DecisionNode'] = None) -> None:
         """
         Create a Node
         :param idx: the identifier of a node
@@ -59,7 +62,7 @@ class Node:
         """
         self.idx = idx
         self.parent: DecisionNode = parent
-        self.samples = 0.
+        self.samples = 0
         self._path = []
 
     @property
@@ -671,7 +674,7 @@ class Leaf(Node):
 
         return result
 
-    def mpe(self, minimal_distances: VariableMap) -> Tuple[VariableMap, float]:
+    def mpe(self, minimal_distances: VariableMap) -> tuple[VariableMap, float]:
         """
         Calculate the most probable explanation of this leaf as a fully factorized distribution.
         :return: the likelihood of the maximum as a float and the configuration as a VariableMap
@@ -714,7 +717,7 @@ class Leaf(Node):
         """
         return sum([distribution.number_of_parameters() for distribution in self.distributions.values()])
 
-    def sample(self, amount) -> np.array:
+    def sample(self, amount) -> np.ndarray:
         """Sample `amount` many samples from the leaf.
 
         :returns A numpy array of size (amount, self.variables) containing the samples.
@@ -732,21 +735,21 @@ class Leaf(Node):
 # noinspection PyProtectedMember
 class JPT:
     """
-    Implementation Joint Probability Trees (JPTs).
+    Implementation of Joint Probability Trees (JPTs).
     """
 
     logger = logging.getLogger('/jpt')
 
     def __init__(
             self,
-            variables: List[Variable],
-            targets: List[str or Variable] = None,
-            features: List[str or Variable] = None,
-            min_samples_leaf: float or int = 1,
-            min_impurity_improvement: float or None = None,
-            max_leaves: int or None = None,
-            max_depth: int or None = None,
-            dependencies: Dict[Variable, List[Variable]] or None = None
+            variables: list[Variable],
+            targets: list[str | Variable] = None,
+            features: list[str | Variable] = None,
+            min_samples_leaf: float | int = 1,
+            min_impurity_improvement: float | None = None,
+            max_leaves: int | None = None,
+            max_depth: int | None = None,
+            dependencies: dict[Variable, list[Variable]] | None = None
     ) -> None:
         """
         Create a JPT.
@@ -783,8 +786,8 @@ class JPT:
             else:
                 self._features = [self.varnames[v] if type(v) is str else v for v in features]
 
-        self.leaves: Dict[int, Leaf] = {}
-        self.innernodes: Dict[int, DecisionNode] = {}
+        self.leaves: dict[int, Leaf] = {}
+        self.innernodes: dict[int, DecisionNode] = {}
         self.priors: VariableMap = VariableMap()
 
         self.min_samples_leaf = min_samples_leaf
@@ -815,63 +818,75 @@ class JPT:
         """ Delete all parameters of this model (not the hyperparameters)"""
         self.innernodes.clear()
         self.leaves.clear()
-        self.priors = VariableMap(variables=self.variables) # .clear()
+        self.priors = VariableMap(variables=self.variables)  # .clear()
         self.minimal_distances: VariableMap = VariableMap(variables=self.variables)
         self.root = None
 
     @property
-    def allnodes(self):
-        return ChainMap(self.innernodes, self.leaves)
+    def allnodes(self) -> MutableMapping[int, Node]:
+        return cast(
+            MutableMapping[int, Node],
+            ChainMap(
+                cast(
+                    MutableMapping[int, Node],
+                    self.innernodes
+                ),
+                cast(
+                    MutableMapping[int, Node],
+                    self.leaves
+                )
+            )
+        )
 
     @property
-    def variables(self) -> Tuple[Variable, ...]:
+    def variables(self) -> tuple[Variable, ...]:
         return tuple(self._variables)
 
     @property
-    def targets(self) -> Tuple[Variable, ...]:
+    def targets(self) -> tuple[Variable, ...]:
         return tuple(self._targets)
 
     @property
-    def features(self) -> Tuple[Variable, ...]:
+    def features(self) -> tuple[Variable, ...]:
         return tuple(self._features)
 
     @property
-    def numeric_variables(self) -> Tuple[Variable, ...]:
+    def numeric_variables(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.variables if isinstance(var, NumericVariable)])
 
     @property
-    def symbolic_variables(self) -> Tuple[Variable, ...]:
+    def symbolic_variables(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.variables if isinstance(var, SymbolicVariable)])
 
     @property
-    def integer_variables(self) -> Tuple[Variable, ...]:
+    def integer_variables(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.variables if isinstance(var, IntegerVariable)])
 
     @property
-    def numeric_targets(self) -> Tuple[Variable, ...]:
+    def numeric_targets(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.targets if isinstance(var, NumericVariable)])
 
     @property
-    def symbolic_targets(self) -> Tuple[Variable, ...]:
+    def symbolic_targets(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.targets if isinstance(var, SymbolicVariable)])
 
     @property
-    def integer_targets(self) -> Tuple[Variable, ...]:
+    def integer_targets(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.targets if isinstance(var, IntegerVariable)])
 
     @property
-    def numeric_features(self) -> Tuple[Variable, ...]:
+    def numeric_features(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.features if isinstance(var, NumericVariable)])
 
     @property
-    def symbolic_features(self) -> Tuple[Variable, ...]:
+    def symbolic_features(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.features if isinstance(var, SymbolicVariable)])
 
     @property
-    def integer_features(self) -> Tuple[Variable, ...]:
+    def integer_features(self) -> tuple[Variable, ...]:
         return tuple([var for var in self.features if isinstance(var, IntegerVariable)])
 
-    def to_json(self) -> Dict[str, Any]:
+    def to_json(self) -> dict[str, Any]:
         """Convert the tree to a json dictionary that can be serialized. """
         return {
             'variables': [v.to_json() for v in self.variables],
@@ -893,8 +908,8 @@ class JPT:
 
     @staticmethod
     def from_json(
-            data: Dict[str, Any],
-            variables: Optional[Iterable[Variable]] = None
+            data: dict[str, Any],
+            variables: Iterable[Variable] | None = None
     ) -> 'JPT':
         """
         Construct a tree from a json dict.
@@ -977,7 +992,7 @@ class JPT:
             self.dependencies == o.dependencies
         ))
 
-    def encode(self, samples: np.ndarray) -> np.array:
+    def encode(self, samples: np.ndarray) -> np.ndarray:
         """
         Get the leaf index that describes the partition of each sample. Only works for fully initialized samples, i. e.
         a matrix of arbitrary many rows but #variables many columns.
@@ -1045,10 +1060,10 @@ class JPT:
 
     def infer(
             self,
-            query: Union[Dict[Union[Variable, str], Any], VariableAssignment],
-            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            query: dict[Variable | str, Any] | VariableAssignment,
+            evidence: dict[Variable | str, Any] | VariableAssignment = None,
             fail_on_unsatisfiability: bool = True
-    ) -> float or None:
+    ) -> float | None:
         r"""For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -1131,11 +1146,11 @@ class JPT:
     # noinspection PyProtectedMember
     def posterior(
             self,
-            variables: List[Variable or str] = None,
-            evidence: Dict[Union[Variable, str], Any] or VariableAssignment = None,
+            variables: list[Variable | str] = None,
+            evidence: dict[Variable | str, Any] | VariableAssignment = None,
             fail_on_unsatisfiability: bool = True,
             report_inconsistencies: bool = False
-    ) -> VariableMap or None:
+    ) -> VariableMap | None:
         """
         Compute the posterior distribution of every variable in ``variables``. The result contains independent
         distributions. Be aware that they might not actually be independent.
@@ -1232,9 +1247,9 @@ class JPT:
 
     def expectation(
             self,
-            variables: Optional[Iterable[Variable]] = None,
-            evidence: Optional[Union[VariableAssignment, Dict[str, Union[numbers.Number, Interval, str]]]] = None,
-            fail_on_unsatisfiability: Optional[bool] = True
+            variables: Iterable[Variable] | None = None,
+            evidence: VariableAssignment | dict[str, numbers.Number | Interval | str] | None = None,
+            fail_on_unsatisfiability: bool = True
     ) -> Optional[VariableMap]:
         """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
@@ -1283,9 +1298,9 @@ class JPT:
 
     def mpe(
             self,
-            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            evidence: Dict[Variable | str, Any] | VariableAssignment = None,
             fail_on_unsatisfiability: bool = True
-    ) -> (List[LabelAssignment], float) or None:
+    ) -> Tuple[list[LabelAssignment], float] | None:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
         :param evidence: The evidence that is applied to the tree
@@ -1332,10 +1347,10 @@ class JPT:
 
     def kmpe(
             self,
-            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            evidence: dict[Variable | str, Any] | VariableAssignment = None,
             fail_on_unsatisfiability: bool = True,
             k: int = 0
-    ) -> Iterator[Tuple[LabelAssignment, float]] or None:
+    ) -> Iterator[Tuple[LabelAssignment, float]] | None:
         """
         Perform a k-MPE inference on this JPT under the given evidence.
 
@@ -1400,7 +1415,7 @@ class JPT:
 
     def _preprocess_query(
             self,
-            query: Union[dict, VariableMap],
+            query: dict | VariableMap,
             remove_none: bool = True,
             skip_unknown_variables: bool = False,
             allow_singular_values: bool = False,
@@ -1518,7 +1533,7 @@ class JPT:
 
         return query_
 
-    def _check_variable_assignment(self, assignment: Optional[VariableAssignment]):
+    def _check_variable_assignment(self, assignment: VariableAssignment | None):
         '''
         Check the variable assignment for compatibility with the
         variables of this JPT.
@@ -1536,7 +1551,7 @@ class JPT:
 
     def apply(
             self,
-            query: Union[VariableAssignment, Dict]
+            query: VariableAssignment | dict[str, int | Interval | float | str ]
     ) -> Iterator[Leaf]:
         """
         Iterator that yields leaves tha are consistent with a ``query``.
@@ -1636,12 +1651,12 @@ class JPT:
 
     def learn(
             self,
-            data: Union[pd.DataFrame, np.ndarray],
+            data: pd.DataFrame | np.ndarray,
             keep_samples: bool = False,
             close_convex_gaps: bool = False,
             verbose: bool = False,
-            prune_or_split: Optional[Callable] = None,
-            multicore: Optional[int] = None
+            prune_or_split: Callable[..., bool] | None = None,
+            multicore: int | None = None
     ) -> 'JPT':
         """
         Fit the jpt to ``data``
@@ -1705,11 +1720,11 @@ class JPT:
 
     def likelihood(
             self,
-            data: Union[pd.DataFrame, np.ndarray],
+            data: pd.DataFrame | np.ndarray,
             dirac_scaling: float = 2.,
             min_distances: Dict = None,
             preprocess: bool = True,
-            multicore: Optional[int] = None,
+            multicore: int | None = None,
             verbose: bool = False,
             single_likelihoods: bool = False,
             variables: Iterable[Variable] = None
@@ -1765,7 +1780,7 @@ class JPT:
     @deprecated
     def parallel_likelihood(
             self,
-            data: Union[np.ndarray, pd.DataFrame],
+            data: np.ndarray | pd.DataFrame,
             dirac_scaling: float = 2.,
             min_distances: Dict = None,
             single_likelihoods: bool = False
@@ -1823,7 +1838,7 @@ class JPT:
             self,
             query: Dict,
             confidence: float = .05
-    ) -> List[Tuple]:
+    ) -> List[tuple]:
         """
         Determines the leaf nodes that match query best and returns them along with their respective confidence.
 
@@ -1875,7 +1890,7 @@ class JPT:
     def plot(
             self,
             title: str = "unnamed",
-            filename: str or None = None,
+            filename: str | None = None,
             directory: str = None,
             plotvars: Iterable[Variable] = None,
             view: bool = True,
@@ -1884,7 +1899,7 @@ class JPT:
             leaffill: str = None,
             alphabet: bool = False,
             verbose: bool = False,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
+            engine=None,
     ) -> str:
         """
         Generates an SVG representation of the generated regression tree.
@@ -1952,9 +1967,9 @@ class JPT:
 
     def conditional_jpt(
             self,
-            evidence: Optional[VariableAssignment] = None,
+            evidence: VariableAssignment | None = None,
             fail_on_unsatisfiability: bool = True
-    ) -> 'JPT' or None:
+    ) -> Optional['JPT']:
         """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
 
@@ -2069,7 +2084,7 @@ class JPT:
 
         return conditional_jpt
 
-    def multiply_by_leaf_prior(self, prior: Dict[int, float]) -> 'JPT':
+    def multiply_by_leaf_prior(self, prior: dict[int, float]) -> 'JPT':
         """
         Multiply every leafs prior by the given priors. This serves as handling the factor message
         from factor nodes. Be vary since this method overwrites the JPT in-place.
@@ -2099,7 +2114,7 @@ class JPT:
 
     def save(
             self,
-            file: Union[str, IO],
+            file: str | IO,
             protocol: Literal['pickle', 'json'] = 'pickle'
     ) -> None:
         """
@@ -2129,7 +2144,7 @@ class JPT:
 
     @staticmethod
     def load(
-            file: Union[str, IO],
+            file: str | IO,
             protocol: Literal['pickle', 'json'] = 'pickle'
     ) -> 'JPT':
         """
@@ -2174,7 +2189,7 @@ class JPT:
         """
         :return: the total number of samples represented by this tree.
         """
-        return sum(l.samples for l in self.leaves.values())
+        return sum(leaf.samples for leaf in self.leaves.values())
 
     def number_of_parameters(self) -> int:
         """
@@ -2220,7 +2235,7 @@ class JPT:
             bindings = kwargs
         return self._preprocess_query(bindings, **options)
 
-    def sample(self, amount) -> np.array:
+    def sample(self, amount: int) -> np.ndarray:
         """Sample `amount` many samples from the tree.
 
         :returns A numpy array of size (amount, self.variables) containing the samples.
@@ -2248,9 +2263,13 @@ class JPT:
 
         return samples
 
-    def moment(self, order: int = 1, center: Optional[VariableAssignment] = None,
-               evidence: Optional[VariableAssignment] = None,
-               fail_on_unsatisfiability: bool = True, ) -> VariableMap or None:
+    def moment(
+            self,
+            order: int = 1,
+            center: VariableAssignment | None = None,
+            evidence: VariableAssignment | None = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> VariableMap | None:
         """ Calculate the order of each numeric/integer random variable given the evidence.
 
         :param order: The order of the moment
@@ -2290,7 +2309,7 @@ class JPT:
             result[variable] = distribution.moment(order, current_c)
         return VariableMap(result.items())
 
-    def get_hyperparameters_dict(self) -> Dict[str, Any]:
+    def get_hyperparameters_dict(self) -> dict[str, Any]:
         """Get all hyperparameters as dict that can be used for MLFlow model tracking."""
         hyperparameters = dict()
         hyperparameters["variables"] = [v.name for v in self.variables]
@@ -2313,7 +2332,7 @@ class JPT:
     def prune(
             self,
             similarity_threshold: float,
-            approximate: Union[float, Dict[Variable or str, float], VariableMap, None] = None
+            approximate: float | dict[Variable | str, float] | VariableMap | None = None
     ) -> 'JPT':
         '''
         Prune this tree by repeatedly merging leaves with very similiar
