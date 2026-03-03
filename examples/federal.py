@@ -29,15 +29,15 @@ import logging
 import os
 import re
 import sys
+import tempfile
 from csv import Dialect
 from _csv import register_dialect, QUOTE_NONNUMERIC
-from datetime import datetime
 from typing import Any, List, Union
 
 import pandas as pd
 import requests
 
-from dnutils import ifnone, out
+from dnutils import ifnone
 from jpt.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
@@ -249,9 +249,11 @@ def _load_data() -> pd.DataFrame:
 
 # ----------------------------------------------------------------------
 
-def main() -> None:
-    """Train a JPT on the Federal Election dataset."""
+def main(visualize=True) -> None:
+    """Train a JPT on the Federal Election dataset.
 
+    :param visualize: whether to show interactive plots
+    """
     # Load data and define variables
     data: pd.DataFrame = _load_data()
 
@@ -280,22 +282,19 @@ def main() -> None:
     tree.learn(columns=data.values.T)
 
     # Plot and save the tree
-    timestamp: str = datetime.now().strftime(
-        "%Y-%m-%d-%H:%M:%S"
-    )
-    out_dir: str = os.path.join(
-        '/tmp',
-        f'{timestamp}-Federal'
+    out_dir: str = tempfile.mkdtemp(
+        prefix='jpt-federal-'
     )
     tree.plot(
         title='Federal Election',
-        directory=out_dir
+        directory=out_dir,
+        view=visualize
     )
-    out(tree)
+    print(tree)
     tree.save(
         os.path.join(out_dir, 'federal.json')
     )
 
 
 if __name__ == '__main__':
-    main()
+    main(visualize=True)
