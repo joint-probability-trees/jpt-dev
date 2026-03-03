@@ -4,8 +4,12 @@ from typing import List, Dict
 
 import numpy as np
 import numpy.lib.stride_tricks
-import fglib
-import factorgraph
+try:
+    import fglib
+    import factorgraph
+except ImportError:
+    fglib = None
+    factorgraph = None
 import logging
 from jpt.trees import JPT
 from jpt.base.errors import Unsatisfiability
@@ -147,13 +151,19 @@ class SequentialJPT:
     #         ) for e in evidence
     #     ]
 
-    def ground(self, evidence: List[VariableAssignment]) -> (factorgraph.Graph, List[JPT]):
+    def ground(self, evidence: List[VariableAssignment]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
         one variable for each timestep, one prior node as factor for each timestep and one factor node for each
         transition.
 
         @param evidence: A list of VariableMaps that describe evidence in the given timesteps.
         """
+        if factorgraph is None:
+            raise ImportError(
+                'The "factorgraph" package is required '
+                'for sequential JPTs. Install via: '
+                'pip install pyjpt[seq]'
+            )
         evidence_ = []
         for e in evidence:
             if isinstance(e, LabelAssignment):
@@ -216,13 +226,19 @@ class SequentialJPT:
 
         return factor_graph, altered_jpts
 
-    def ground_fglib(self, evidence: List[VariableAssignment]) -> (factorgraph.Graph, List[JPT]):
+    def ground_fglib(self, evidence: List[VariableAssignment]):
         """Ground a factor graph where inference can be done. The factor graph is grounded with
         one variable for each timestep, one prior node as factor for each timestep and one factor node for each
         transition.
 
         @param evidence: A list of VariableMaps that describe evidence in the given timesteps.
         """
+        if fglib is None:
+            raise ImportError(
+                'The "fglib" package is required '
+                'for sequential JPTs. Install via: '
+                'pip install pyjpt[seq]'
+            )
 
         # create factorgraph
         factor_graph = fglib.graphs.FactorGraph()

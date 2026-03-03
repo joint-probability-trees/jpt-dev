@@ -9,7 +9,10 @@ from typing import Iterable, Dict, Tuple, Union, Literal
 import datetime as dt
 
 from dnutils import ifnone
-from graphviz import Digraph
+try:
+    from graphviz import Digraph
+except ImportError:
+    Digraph = None
 from tqdm import tqdm
 
 from .engines.rendering import MATPLOTLIB, PLOTLY, DistributionRendering
@@ -241,6 +244,14 @@ class JPTPlotter:
             if not os.path.exists(self.directory):
                 os.makedirs(self.directory)
             directory = self.directory
+
+        if Digraph is None:
+            raise ImportError(
+                'The "graphviz" package is required '
+                'for tree plotting. Install it via: '
+                'pip install pyjpt[matplotlib] or '
+                'pip install pyjpt[plotly]'
+            )
 
         dot = Digraph(
             format='svg',
