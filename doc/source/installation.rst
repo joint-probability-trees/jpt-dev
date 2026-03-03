@@ -6,87 +6,91 @@ Installation
 
 Via PyPI
 ~~~~~~~~
-The ``pyjpt`` package is available on the standard Python package index. Install the package with
+
+The ``pyjpt`` package is available on the standard Python package
+index. Install the core package with
 
 .. code:: bash
 
     $ pip install pyjpt
 
+Optional dependency groups can be installed depending on your use
+case:
+
+.. code:: bash
+
+    $ pip install pyjpt[matplotlib]   # matplotlib and graphviz plotting
+    $ pip install pyjpt[plotly]       # interactive plotly plotting
+    $ pip install pyjpt[seq]          # sequential/temporal models
+    $ pip install pyjpt[mlflow]       # MLflow experiment tracking
+
+Multiple groups can be combined:
+
+.. code:: bash
+
+    $ pip install pyjpt[matplotlib,mlflow]
+
 Via GitHub Repository
 ~~~~~~~~~~~~~~~~~~~~~
-or clone the repository and install with
+
+Alternatively, clone the repository and install from source:
 
 .. code:: bash
 
     $ git clone https://github.com/joint-probability-trees/jpt-dev
-    $ cd jpt
-    $ python setup.py install
+    $ cd jpt-dev
+    $ pip install .
 
-When you are working on Debian-based systems, you will have to install a additional requirements
-
-.. code:: bash
-
-    sudo apt install `(cat requirements-deb.txt)`
+For an editable development install, see the `Testing`_ section
+below.
 
 Build the Documentation
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-To build the documentation clone the repository, switch to the ``doc`` folder and
-install the documentation requirements:
+To build the documentation, clone the repository, switch to the
+``doc`` folder and install the documentation requirements:
 
 .. code:: bash
 
-    cd doc
-    pip install -r requirements.txt
+    $ cd doc
+    $ pip install -r requirements.txt
 
-After everything is successfully installed, the documentation can be built using sphinx, for example
+After everything is successfully installed, the documentation can be
+built using Sphinx:
 
 .. code:: bash
 
-    make html
+    $ make html
 
-After the build process has finished, you can view the documentation in your browser under ``build/html/index.html``.
+After the build process has finished, you can view the documentation
+in your browser under ``build/html/index.html``.
 
 Supported Platforms
 *******************
-Currently the package is only supported and tested for Ubuntu 18+, but *theoretically* it should be working
-for other operating systems too.
+
+The package is tested on Ubuntu 22.04, but should work on other
+Linux distributions and macOS as well.
 
 Testing
 *******
 
-How to run the tests.
+Running the test suite requires the ``dev`` dependency group, which
+includes all optional dependencies and test utilities:
 
-Running the Jupyter Notebooks
-*****************************
+.. code:: bash
 
-In order run the included Jupyter notebooks with your development version of the repository checkout, you can
-include the path to the code location into the ``PYTHONPATH`` that is passed to the Jupyter kernel as described
-in `this forum`_:
+    $ pip install -e ".[dev]"
 
-1. Find the location of your ``kernel.json`` file:
+Run the full test suite using Python's ``unittest`` discovery:
 
-    .. code:: bash
+.. code:: bash
 
-        jupyter kernelspec list
+    $ cd test
+    $ python -m unittest discover
 
-2. Add and ``env`` argument to the kernel specification:
+To run a specific test file:
 
-    .. code:: json
+.. code:: bash
 
-        {
-            "argv": [
-                "python",
-                "-m",
-                "ipykernel_launcher",
-                "-f",
-                "{connection_file}"
-            ],
-            "display_name": "Python 3",
-            "language": "python",
-            "env": {
-               "PYTHONPATH": "/path/to/repo/src"
-            }
-        }
-
-.. _this forum: https://discourse.jupyter.org/t/how-can-i-pass-environment-variabel-pythonpath-to-jupyter-notebook/7351/2
+    $ cd test
+    $ python -m unittest test_jpt

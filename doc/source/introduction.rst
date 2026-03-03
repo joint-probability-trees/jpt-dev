@@ -157,7 +157,57 @@ Probabilistic Learning
 Generative Learning
 ^^^^^^^^^^^^^^^^^^^
 
+In generative mode (the default), a JPT learns the full joint
+distribution :math:`P(\mathcal{X})` over all variables. The tree is
+constructed using a modified C4.5 algorithm that recursively partitions
+the data space by selecting splits that maximize the information gain
+across all variables simultaneously. The impurity of a candidate split
+is measured by a weighted combination of Gini impurity for symbolic
+variables and variance reduction for numeric variables.
+
+At each internal node, the algorithm selects the variable and split
+value that yield the greatest impurity reduction. Splitting continues
+until a stopping criterion is met (minimum leaf size, maximum depth,
+or minimum impurity improvement). Each leaf then represents a local
+region of the data space and stores a fully factorized product
+distribution
+
+.. math::
+
+    P(\mathcal{X} | L = \lambda) = \prod_i P(X_i | L = \lambda)
+
+where the univariate factors are represented as quantile
+distributions for numeric variables and multinomial distributions for
+symbolic variables. The complete joint distribution is recovered as
+the mixture across all leaves as shown above.
+
+Generative learning is activated by default, i.e. when no ``targets``
+argument is passed to the :py:mod:`jpt.trees.JPT` constructor, or
+when ``targets`` equals the full set of variables.
+
 Discriminative Learning
 ^^^^^^^^^^^^^^^^^^^^^^^
 
+In discriminative mode, a JPT learns a conditional distribution
+:math:`P(Y | X)` where :math:`Y \subset \mathcal{X}` is a
+designated set of target variables and
+:math:`X = \mathcal{X} \setminus Y` are the feature variables. The
+tree construction follows the same C4.5 procedure as in generative
+learning, but the impurity computation is restricted to the target
+variables only. Splits are chosen to maximize information gain with
+respect to :math:`Y`, while the features :math:`X` serve solely as
+split candidates.
+
+Each leaf still stores distributions over all variables, so the full
+joint distribution remains available. However, the tree structure is
+optimized for predicting :math:`Y` given :math:`X`, making the model
+well-suited for classification and regression tasks.
+
+Discriminative learning is activated by passing a ``targets`` argument
+to the :py:mod:`jpt.trees.JPT` constructor:
+
+.. code:: python
+
+    jpt = JPT(variables=variables, targets=['Y1', 'Y2'])
+    jpt.learn(data=df)
 
