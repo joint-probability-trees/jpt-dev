@@ -151,6 +151,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertAlmostEqual(d1._p({2}), 2 / 10, 15)
 
     def test_crop(self):
+        """Verify cropping a distribution by label restricts and renormalizes probabilities."""
         # Arrange
         ABC = self.DistABC
         abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
@@ -165,6 +166,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertRaises(Unsatisfiability, abc.crop, ())
 
     def test__crop(self):
+        """Verify cropping a distribution by value index restricts and renormalizes probabilities."""
         # Arrange
         ABC = self.DistABC
         abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
@@ -179,6 +181,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertRaises(Unsatisfiability, abc._crop, ())
 
     def test_mpe_uniform(self):
+        """Verify MPE of a uniform distribution returns all values."""
         # Arrange
         ABC = self.DistABC
         abc = ABC().set(params=[1 / 3, 1 / 3, 1 / 3])
@@ -190,6 +193,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(({'A', 'B', 'C'}, 1 / 3), result_uniform)
 
     def test_expectation(self):
+        """Verify the mode returns the most probable label."""
         # Arrange
         ABC = self.DistABC
         abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
@@ -201,6 +205,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual({'A'}, result)
 
     def test_inference(self):
+        """Verify probability queries for singular, set, and list evidence."""
         # Arrange
         ABC = self.DistABC
         abc = ABC().set(params=[1 / 2, 1 / 4, 1 / 4])
@@ -241,6 +246,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertTrue(DistABC.equiv(d_type))
 
     def test_pickle(self):
+        """Verify pickle round-trip serialization of a multinomial distribution."""
         # Arrange
         DistABC = self.DistABC
         d = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
@@ -256,6 +262,7 @@ class MultinomialDistributionTest(TestCase):
         )
 
     def test_distribution_manipulation(self):
+        """Verify merging and updating multinomial distributions."""
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
         d2 = DistABC().set(params=[0, .5, .5])
@@ -267,6 +274,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(d1.update(d2, 0), d1)
 
     def test_kldiv_equality(self):
+        """Verify KL divergence is zero for identical distributions."""
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
         d2 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
@@ -275,18 +283,21 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(0, DistABC().set(params=[1, 0, 0]).kl_divergence(DistABC().set(params=[1, 0, 0])))
 
     def test_kldiv_inequality(self):
+        """Verify KL divergence is positive for different distributions."""
         DistABC = self.DistABC
         d1 = DistABC().set(params=[.5, .25, .25])
         d2 = DistABC().set(params=[.25, .5, .25])
         self.assertEqual(0.1875, d1.kl_divergence(d2))
 
     def test_kldiv_extreme_inequality(self):
+        """Verify KL divergence equals 1 for completely disjoint distributions."""
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1, 0, 0])
         d2 = DistABC().set(params=[0, .5, .5])
         self.assertEqual(1, d1.kl_divergence(d2))
 
     def test_kldiv_type(self):
+        """Verify KL divergence raises TypeError for incompatible distribution types."""
         DistABC = self.DistABC
         d1 = DistABC().set(params=[.5, .25, .25])
         self.assertRaises(
@@ -296,6 +307,7 @@ class MultinomialDistributionTest(TestCase):
 
     @data("matplotlib", "plotly")
     def test_plot(self, engine):
+        """Verify plotting a multinomial distribution does not raise errors."""
         DistABC = self.DistABC
         d1 = DistABC().set(params=[.5, .25, .25])
         d1.plot(
@@ -306,6 +318,7 @@ class MultinomialDistributionTest(TestCase):
 
     @data("matplotlib", "plotly")
     def test_plot_coin(self, engine):
+        """Verify plotting a biased coin distribution does not raise errors."""
         fr = SymbolicVariable('BiasedCoin', Bool)
         d1 = fr.distribution().set(5/12.)
         d1.plot(
@@ -315,6 +328,7 @@ class MultinomialDistributionTest(TestCase):
         )
 
     def test_value_conversion(self):
+        """Verify bidirectional label-to-value conversions for singles and sets."""
         DistABC = self.DistABC
         self.assertEqual(0, DistABC.label2value('A'))
         self.assertEqual(1, DistABC.label2value('B'))
@@ -326,6 +340,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual({'C', 'B'}, DistABC.value2label({2, 1}))
 
     def test_mpe(self):
+        """Verify MPE returns the most probable state and its likelihood."""
         # Arrange
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
@@ -338,6 +353,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual({"A"}, state)
 
     def test_k_mpe(self):
+        """Verify k-MPE returns the top-k most probable explanations."""
         # Arrange
         DistABC = self.DistABC
         d1 = DistABC().set(params=[1 / 2, 1 / 4, 1 / 4])
@@ -352,17 +368,20 @@ class MultinomialDistributionTest(TestCase):
         )
 
     def test_jaccard_identity(self):
+        """Verify Jaccard similarity of a distribution with itself is 1."""
         d1 = self.DistABC().set([.1, .4, .5])
         jacc = Multinomial.jaccard_similarity(d1, d1)
         self.assertEqual(1., jacc)
 
     def test_jaccard_disjoint(self):
+        """Verify Jaccard similarity of disjoint distributions is 0."""
         d1 = self.DistABC().set([0., 0., 1.])
         d2 = self.DistABC().set([1., 0., 0.])
         jacc = Multinomial.jaccard_similarity(d1, d2)
         self.assertEqual(0., jacc)
 
     def test_jaccard_overlap(self):
+        """Verify Jaccard similarity for overlapping distributions."""
         d1 = self.DistABC().set([.1, .4, .5])
         d2 = self.DistABC().set([.2, .4, .4])
 
@@ -370,6 +389,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertAlmostEqual(9/11, jacc, places=8)
 
     def test_jaccard_symmetry(self):
+        """Verify Jaccard similarity is symmetric."""
         d1 = self.DistABC().set([.1, .4, .5])
         d2 = self.DistABC().set([.2, .4, .4])
         jacc1 = Multinomial.jaccard_similarity(d1, d2)
@@ -377,11 +397,13 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(jacc1, jacc2)
 
     def test_mover_dist_identity(self):
+        """Verify earth mover's distance of a distribution with itself is 0."""
         d1 = self.DistABC().set([.1, .4, .5])
         md = Multinomial.mover_dist(d1, d1)
         self.assertEqual(0., md)
 
     def test_mover_dist_symmetry(self):
+        """Verify earth mover's distance is symmetric."""
         d1 = self.DistABC().set([.1, .4, .5])
         d2 = self.DistABC().set([.2, .4, .4])
         md1 = Multinomial.mover_dist(d1, d2)
@@ -389,6 +411,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertEqual(md1, md2)
 
     def test_mover_dist_triangle_inequality(self):
+        """Verify earth mover's distance satisfies the triangle inequality."""
         a = self.DistABC().set([.1, .4, .5])
         b = self.DistABC().set([.2, .4, .4])
         c = self.DistABC().set([.2, .2, .6])
@@ -398,6 +421,7 @@ class MultinomialDistributionTest(TestCase):
         self.assertLessEqual(ac, ab + bc)
 
     def test_temp_goal(self):
+        """Verify creating a uniform goal distribution from a subset of labels."""
         v1 = self.DistABC().set([.1, .4, .5])
         other = {'A', 'B'}
 

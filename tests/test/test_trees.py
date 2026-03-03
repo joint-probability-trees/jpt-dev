@@ -71,6 +71,7 @@ class JPTInferenceSymbolic(unittest.TestCase):
         )
 
     def test_infer_alarm_given_mary(self):
+        """Verify alarm probability given MaryCalls evidence."""
         q = {'Alarm': True}
         e = {'MaryCalls': True}
         res = JPTInferenceSymbolic.jpt.infer(q, e)
@@ -79,6 +80,7 @@ class JPTInferenceSymbolic(unittest.TestCase):
         )
 
     def test_infer_alarm(self):
+        """Verify alarm marginal probability without evidence."""
         q = {'Alarm': True}
         e = {}
         res = JPTInferenceSymbolic.jpt.infer(q, e)
@@ -89,6 +91,7 @@ class JPTInferenceSymbolic(unittest.TestCase):
     def test_infer_alarm_evidence_disjunction_symbolic(
             self
     ):
+        """Verify inference with disjunctive symbolic evidence."""
         q = {'Alarm': True}
         e = {'MaryCalls': {True, False}}
         res = JPTInferenceSymbolic.jpt.infer(q, e)
@@ -97,6 +100,7 @@ class JPTInferenceSymbolic(unittest.TestCase):
         )
 
     def test_likelihood_discrete(self):
+        """Verify log-likelihood of discrete data is finite."""
         # Act
         probs = JPTInferenceSymbolic.jpt.likelihood(
             self.data,
@@ -134,6 +138,7 @@ class JPTInferenceNumeric(unittest.TestCase):
             )
 
     def test_realset_evidence(self):
+        """Verify inference with union and complement real-set evidence."""
         r1 = self.jpt.infer(
             query={
                 'x': UnionSet(
@@ -180,6 +185,7 @@ class JPTInferenceInteger(unittest.TestCase):
         )
 
     def test_mpe_serialization(self):
+        """Verify MPE results can be serialized and deserialized for integer variables."""
         # Arrange
         data = pd.DataFrame(
             np.array([list(range(-10, 10))]).T,
@@ -248,6 +254,7 @@ class JPTTest(TestCase):
         self.assertEqual(jpt_.infer(q_), jpt.infer(q))
 
     def test_copy(self):
+        """Verify JPT copy preserves equality and variable identity."""
         # Arrange
         var = NumericVariable('X')
         jpt = JPT([var])
@@ -267,6 +274,7 @@ class JPTTest(TestCase):
             )
 
     def test_check_variable_assignment(self):
+        """Verify variable assignment validation accepts valid and rejects invalid assignments."""
         # Arrange
         x = SymbolicVariable('X', domain=Bool)
         x_ = SymbolicVariable('X', domain=Bool)
@@ -355,6 +363,7 @@ class JPTTest(TestCase):
         )
 
     def test_save_and_load(self):
+        """Verify save and load roundtrip for JSON and pickle protocols."""
         # Arrange
         jpt = JPT([NumericVariable('X')])
         fname_json = tempfile.mktemp()
@@ -377,6 +386,7 @@ class JPTTest(TestCase):
         )
 
     def test_loads_and_dumps(self):
+        """Verify string-based serialization roundtrip with loads and dumps."""
         # Arrange
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
@@ -403,6 +413,7 @@ class JPTTest(TestCase):
         return trees
 
     def test_likelihood(self):
+        """Verify all likelihoods are positive for training data."""
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
@@ -412,6 +423,7 @@ class JPTTest(TestCase):
         self.assertTrue(all(probs > 0))
 
     def test_unsatisfiability(self):
+        """Verify unsatisfiable evidence raises or returns None depending on flag."""
         df = pd.read_csv(
             os.path.join(EXAMPLES_DATA, 'restaurant.csv'),
             na_filter=False
@@ -436,6 +448,7 @@ class JPTTest(TestCase):
         )
 
     def test_unsatisfiability_with_reasons(self):
+        """Verify unsatisfiability reports correct inconsistency reasons."""
         df = pd.read_csv(
             os.path.join(EXAMPLES_DATA, 'restaurant.csv'),
             na_filter=False
@@ -458,6 +471,7 @@ class JPTTest(TestCase):
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')
 
     def test_exact_mpe_discrete(self):
+        """Verify MPE yields exactly one maximum for discrete data."""
         # Arrange
         df = pd.read_csv(
             os.path.join(EXAMPLES_DATA, 'restaurant.csv'),
@@ -473,6 +487,7 @@ class JPTTest(TestCase):
         self.assertEqual(len(mpe), 1)
 
     def test_mpe_serialization(self):
+        """Verify MPE results can be serialized to and deserialized from JSON."""
         # Arrange
         df = pd.read_csv(
             os.path.join(EXAMPLES_DATA, 'restaurant.csv'),
@@ -493,6 +508,7 @@ class JPTTest(TestCase):
             self.assertIsInstance(maxi, LabelAssignment)
 
     def test_exact_mpe_continuous(self):
+        """Verify MPE yields exactly one maximum for continuous data."""
         var = NumericVariable('X')
         tree = JPT([var], min_samples_leaf=.1)
         tree.learn(
@@ -503,6 +519,7 @@ class JPTTest(TestCase):
         self.assertEqual(len(mpe), 1)
 
     def test_conditional_jpt(self):
+        """Verify conditional JPT assigns probability 1 to its evidence."""
         jpt = JPT.load(os.path.join(RESOURCES, 'berlin_crimes.jpt'), protocol='json')
         evidence = jpt.bind(Arson=[20, 30])
         cjpt = jpt.conditional_jpt(evidence)
@@ -510,6 +527,7 @@ class JPTTest(TestCase):
         self.assertEqual(marginals["Arson"].p(evidence["Arson"]), 1.)
 
     def test_reverse_inference(self):
+        """Verify reverse inference returns expected leaf scores."""
         pass
         jpt = JPT.load(os.path.join(RESOURCES, 'berlin_crimes.jpt'), protocol='json')
         q = {
@@ -523,18 +541,21 @@ class JPTTest(TestCase):
 
     @unittest.skip
     def test_parameter_count(self):
+        """Verify the total number of model parameters."""
         var = NumericVariable('X')
         jpt = JPT([var], min_samples_leaf=.1)
         jpt.learn(self.data.reshape(-1, 1))
         self.assertEqual(71, jpt.number_of_parameters())
 
     def test_independence(self):
+        """Verify learning with two independent numeric variables."""
         x = NumericVariable('X')
         y = NumericVariable('Y')
         jpt = JPT([x, y], min_samples_leaf=1, min_impurity_improvement=.01)
         jpt.learn(np.array([ContinuousSet(0, 1).sample(10), ContinuousSet(0, 1).sample(10)]).T)
 
     def test_impurity_inversion(self):
+        """Verify inverted impurity produces correct leaf distributions."""
         df = pd.DataFrame.from_records([
             ['a', 'c'],
             ['a', 'd'],
@@ -554,6 +575,7 @@ class JPTTest(TestCase):
                 self.assertEqual(AT().set(params=[2 / 3, 1 / 3]), leaf.distributions['fst'])
 
     def test_bind(self):
+        """Verify bind creates correct LabelAssignment for mixed variable types."""
         # Arrange
         n = NumericVariable('n')
         s = SymbolicVariable('s', domain=Bool)
@@ -593,6 +615,7 @@ class JPTTest(TestCase):
         jpt.bind(map2)
 
     def test_postprocess_leaves_1dim(self):
+        """Verify postprocessing converts constant CDFs to linear functions."""
         # Arrange
         x = NumericVariable('x')
         jpt = JPT([x])
@@ -646,21 +669,25 @@ class TestCasePosteriorNumeric(TestCase):
         # cls.jpt.learn(cls.df)  # TODO use this once symbolic variables are considered in posterior
 
     def test_posterior_numeric_x_given_y_interval(self):
+        """Verify posterior of X given Y interval evidence."""
         self.q = [self.varx]
         self.e = {self.vary: ContinuousSet(1, 1.5)}
         self.posterior = self.jpt.posterior(self.q, self.e)
 
     def test_posterior_numeric_y_given_x_interval(self):
+        """Verify posterior of Y given X interval evidence."""
         self.q = [self.vary]
         self.e = {self.varx: ContinuousSet(1, 2)}
         self.posterior = self.jpt.posterior(self.q, self.e)
 
     def test_posterior_numeric_x_given_y_value(self):
+        """Verify posterior of X given a single Y value."""
         self.q = [self.varx]
         self.e = {self.vary: 0}
         self.posterior = self.jpt.posterior(self.q, self.e)
 
     def test_convexity(self):
+        """Verify leaf postprocessing completes without error."""
         learner = C45Algorithm(self.jpt)
         learner.postprocess_leaves()
 
@@ -739,35 +766,41 @@ class TestCasePosteriorSymbolic(TestCase):
         cls.jpt.learn(data=cls.data.values)
 
     def test_posterior_symbolic_single_candidate_T(self):
+        """Verify posterior mode is True for Thai food with 10-30 wait."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: '10--30', self.variables[8]: 'Thai'}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({True}, self.posterior[self.q[-1]].mode())
 
     def test_posterior_symbolic_single_candidatet_F(self):
+        """Verify posterior mode is False for Italian food with 10-30 wait."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: '10--30', self.variables[8]: 'Italian'}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({False}, self.posterior[self.q[-1]].mode())
 
     def test_posterior_symbolic_evidence_not_in_path_T(self):
+        """Verify posterior is True when evidence variables are not in split path."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({True}, self.posterior[self.q[-1]].mode())
 
     def test_posterior_symbolic_evidence_not_in_path_F(self):
+        """Verify posterior is False when evidence not in path indicates negative outcome."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({False}, self.posterior[self.q[-1]].mode())
 
     def test_posterior_symbolic_unsatisfiable(self):
+        """Verify unsatisfiable symbolic evidence raises Unsatisfiability."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: '10--30', self.variables[1]: True, self.variables[8]: 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
     def test_parameter_count(self):
+        """Verify symbolic JPT has exactly 132 parameters."""
         self.assertEqual(132, self.jpt.number_of_parameters())
 
 
@@ -802,6 +835,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
     # @unittest.skip
     @data('matplotlib', "plotly")
     def test_plot(self, engine):
+        """Verify JPT plot is generated and file exists."""
         # Act
         path = self.jpt.plot(
             engine=engine,
@@ -817,39 +851,46 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         )
 
     def test_posterior_mixed_single_candidate_T(self):
+        """Verify posterior mode for mixed model with Thai food evidence."""
         self.q = ['WillWait']
         self.e = {'WaitEstimate': [0, 0], 'Food': 'Thai'}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({True, False}, self.posterior[self.q[-1]].mode())
 
     def test_posterior_mixed_single_candidatet_F(self):
+        """Verify posterior mode is False for Italian food with 10-30 wait."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[8]: 'Italian'}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({False}, self.posterior[self.q[-1]].mode())
 
     def test_posterior_mixed_evidence_not_in_path_T(self):
+        """Verify mixed posterior is True when evidence not in split path."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: True}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({True}, self.posterior[self.q[-1]].mode())
 
     def test_posterior_mixed_evidence_not_in_path_F(self):
+        """Verify mixed posterior is False when evidence not in split path."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[8]: 'Burger', self.variables[3]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({False}, self.posterior[self.q[-1]].mode())
 
     def test_posterior_mixed_unsatisfiable(self):
+        """Verify unsatisfiable mixed evidence raises Unsatisfiability."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[9]: ContinuousSet(10, 30), self.variables[1]: True, self.variables[8]: 'French'}
         self.assertRaises(Unsatisfiability, self.jpt.posterior, self.q, self.e)
 
     @unittest.skip
     def test_parameter_count(self):
+        """Verify mixed JPT has exactly 330 parameters."""
         self.assertEqual(330, self.jpt.number_of_parameters())
 
     def test_posterior_mixed_numeric_query(self):
+        """Verify posterior computation for a numeric query variable."""
         self.q = [self.variables[9]]
         self.e = {self.variables[8]: 'Burger', self.variables[0]: False}
         self.posterior = self.jpt.posterior(self.q, self.e)
@@ -862,6 +903,7 @@ class TestCasePosteriorSymbolicAndNumeric(TestCase):
         # plt.scatter(xr, [0] * len(xr), color='r', marker='.', label='Filtered training data')
 
     def test_sampling(self):
+        """Verify sampled data has positive likelihood under the model."""
         samples = self.jpt.sample(1000)
         self.assertTrue(all(self.jpt.likelihood(samples) > 0))
 
@@ -920,6 +962,7 @@ class TestCaseExpectation(TestCase):
     # @unittest.skip
     @data('matplotlib', "plotly")
     def test_plot(self, engine):
+        """Verify expectation model plot is generated and file exists."""
         # Act
         path = self.jpt.plot(
             engine=engine,
@@ -934,6 +977,7 @@ class TestCaseExpectation(TestCase):
         )
 
     def test_expectation_mixed_single_candidate_T(self):
+        """Verify expectation returns correct modes for mixed evidence."""
         # Arrange
         q = ['WillWait', 'Friday']
         e = {
@@ -948,6 +992,7 @@ class TestCaseExpectation(TestCase):
         self.assertEqual([{True}, {True}], list(expectation.values()))
 
     def test_expectation_mixed_unsatisfiable(self):
+        """Verify unsatisfiable evidence raises Unsatisfiability in expectation."""
         # Arrange
         q = ['WillWait']
         e = {
@@ -991,6 +1036,7 @@ class TestCaseInference(TestCase):
 
     @data('matplotlib', "plotly")
     def test_plot(self, engine):
+        """Verify inference model plot is generated and file exists."""
         # Act
         path = self.jpt.plot(
             engine=engine,
@@ -1005,6 +1051,7 @@ class TestCaseInference(TestCase):
         )
 
     def test_inference_mixed_single_candidate_T(self):
+        """Verify inference probability for WillWait given Thai food evidence."""
         # Arrange
         q = self.jpt.bind(WillWait=True)
         e = self.jpt.bind(WaitEstimate=[0, 10], Food='Thai')
@@ -1018,12 +1065,14 @@ class TestCaseInference(TestCase):
         )
 
     def test_inference_mixed_new(self):
+        """Verify posterior mode matches evidence for WillWait=True."""
         self.q = [self.variables[-1]]
         self.e = {self.variables[-1]: True}
         posterior = self.jpt.posterior(self.q, self.e)
         self.assertEqual({True}, posterior['WillWait'].mode())
 
     def test_conditional_jpt(self):
+        """Verify conditional JPT infers probability 1 for MPE evidence."""
         mpe, likelihood = self.jpt.mpe()
         cjpt = self.jpt.conditional_jpt(mpe[0])
         self.assertEqual(cjpt.infer(mpe[0]), 1)
@@ -1062,21 +1111,25 @@ class TestJPTFeaturesTargets(TestCase):
         # 10 WillWait[WILLWAIT_TYPE(SYM)]  BOOL
 
     def test_no_features_no_targets(self):
+        """Verify all variables are features and targets when none specified."""
         model = JPT(variables=self.variables, min_samples_leaf=1)
         self.assertEqual(tuple(model.variables), model.features)
         self.assertEqual(tuple(model.variables), model.targets)
 
     def test_no_features_targets(self):
+        """Verify features are inferred as non-target variables when only targets specified."""
         model = JPT(variables=self.variables, targets=["WillWait"], min_samples_leaf=1)
         self.assertEqual((model.varnames["WillWait"],), model.targets)
         self.assertEqual(tuple(v for n, v in model.varnames.items() if v not in model.targets), model.features)
 
     def test_features_no_targets(self):
+        """Verify all variables are targets when only features specified."""
         model = JPT(variables=self.variables, features=["Price"], min_samples_leaf=1)
         self.assertEqual(tuple(model.variables), model.targets)
         self.assertEqual((model.varnames["Price"],), model.features)
 
     def test_features_targets(self):
+        """Verify explicit features and targets are correctly assigned."""
         model = JPT(variables=self.variables, features=["Price", "Food"], targets=["Price", "WillWait"],
                     min_samples_leaf=1)
         self.assertEqual((model.varnames["Price"], model.varnames["WillWait"]), model.targets)
@@ -1094,10 +1147,12 @@ class TestGaussianConditionalJPT(TestCase):
         self.tree.fit(self.data)
 
     def test_mpe(self):
+        """Verify MPE yields exactly one maximum for Gaussian data."""
         mpe, likelihood = self.tree.mpe()
         self.assertEqual(len(mpe), 1)
 
     def test_mpe_serialization(self):
+        """Verify MPE results can be serialized for Gaussian conditional JPT."""
         # Creating json maxima infos
         maxima, likelihood = self.tree.mpe()
         maxima_json = [m.to_json() for m in maxima]
@@ -1108,17 +1163,19 @@ class TestGaussianConditionalJPT(TestCase):
             self.assertIsInstance(maxi, LabelAssignment)
 
     def test_conditioning_chain(self):
+        """Verify chaining two conditional JPT operations succeeds."""
         cjpt = self.tree.conditional_jpt()
         cjpt = cjpt.conditional_jpt()
         self.assertTrue(cjpt is not None)
 
     def test_conditioning(self):
+        """Verify conditional JPT infers probability 1 for MPE evidence."""
         mpe, likelihood = self.tree.mpe()
         cjpt: JPT = self.tree.conditional_jpt(mpe[0])
         self.assertEqual(cjpt.infer(mpe[0]), 1)
 
     def test_moment(self):
-
+        """Verify computed moments match scipy moments for Gaussian data."""
         expectation = self.tree.expectation([v for v in self.tree.variables if v.numeric or v.integer])
 
         for order in range(3):
@@ -1142,12 +1199,14 @@ class TestConstantColumns(unittest.TestCase):
         cls.data = pd.DataFrame(data, columns=["x", "y", "z"]).astype({"x": float, "y": float, "z": str})
 
     def test_learning_single_constant_symbolic(self):
+        """Verify learning succeeds with a single constant symbolic column."""
         model = JPT(variables=infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.1,
                     min_impurity_improvement=0)
         model = model.fit(self.data)
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_single_constant_numeric(self):
+        """Verify learning succeeds with a single constant numeric column."""
         data = self.data.copy()
         data["z"] = data["z"].astype(float)
         model = JPT(variables=infer_from_dataframe(data, scale_numeric_types=False), min_samples_leaf=0.1,
@@ -1156,6 +1215,7 @@ class TestConstantColumns(unittest.TestCase):
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_multiple_constant_symbolic(self):
+        """Verify learning succeeds with multiple constant symbolic columns."""
         data = self.data.copy()
         data["a"] = data["z"].copy()
         model = JPT(variables=infer_from_dataframe(data, scale_numeric_types=False), min_samples_leaf=0.1,
@@ -1164,6 +1224,7 @@ class TestConstantColumns(unittest.TestCase):
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_multiple_constant_numeric(self):
+        """Verify learning succeeds with multiple constant numeric columns."""
         data = self.data.copy()
         data["z"] = data["z"].astype(float)
         data["a"] = data["z"].copy()
@@ -1173,6 +1234,7 @@ class TestConstantColumns(unittest.TestCase):
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_multiple_constant_mixed(self):
+        """Verify learning succeeds with mixed constant columns of various types."""
         data = self.data.copy()
         data["a"] = data["z"].astype(float).copy()
         data["b"] = np.zeros(100, dtype=int)
@@ -1191,6 +1253,7 @@ class PreprocessingTest(TestCase):
 
     # noinspection PyMethodMayBeStatic
     def test_preprocessing_dataframe(self):
+        """Verify preprocessing converts DataFrame to correct numeric array."""
         # Arrange
         DOMAIN_A = SymbolicType(
             name='DOM_A',
@@ -1246,6 +1309,7 @@ class PreprocessingTest(TestCase):
 
     # noinspection PyMethodMayBeStatic
     def test_parallel_processing(self):
+        """Verify preprocessing handles mixed variable types correctly."""
         # Arrange
         df = pd.DataFrame.from_records([
                 [2.5, 1, 'A'],
@@ -1306,6 +1370,7 @@ class ConditionalJPTTest(TestCase):
         return result
 
     def test_identity(self):
+        """Verify unconditional JPT and empty-conditioned JPT have equal likelihood."""
         self.assertEqual(
             np.average(
                 np.log(
@@ -1320,7 +1385,7 @@ class ConditionalJPTTest(TestCase):
         )
 
     def test_likelihood_symbolic(self):
-
+        """Verify conditional likelihood improves over marginal for symbolic evidence."""
         # get original likelihood
         likelihood = np.average(np.log(self.model.likelihood(self.data)))
 
@@ -1340,7 +1405,7 @@ class ConditionalJPTTest(TestCase):
 
     @data('matplotlib', "plotly")
     def test_likelihood_numeric_intervals(self, engine):
-
+        """Verify conditional likelihood improves over marginal for numeric interval evidence."""
         # get original likelihood
         likelihood = np.average(np.log(self.model.likelihood(self.data)))
 
@@ -1364,7 +1429,7 @@ class ConditionalJPTTest(TestCase):
         self.assertTrue(conditional_likelihood > likelihood)
 
     def test_posterior(self):
-
+        """Verify conditional JPT posterior assigns probability 1 to evidence."""
         evidence = {"sepal length (cm)": [5, 6]}
 
         # create conditional jpt using the method
@@ -1376,6 +1441,7 @@ class ConditionalJPTTest(TestCase):
             self.assertAlmostEqual(posteriors[variable].p(value), 1.)
 
     def test_priors(self):
+        """Verify conditional JPT priors assign probability 1 to evidence."""
         # create evidence
         evidence = self.model.bind({"sepal length (cm)": [5, 6]})
 
@@ -1386,6 +1452,7 @@ class ConditionalJPTTest(TestCase):
             self.assertAlmostEqual(conditional_model.priors[variable].p(value), 1.)
 
     def test_copy_leaf(self):
+        """Verify leaf copy preserves distributions and conditional modifies them."""
         evidence = self.model.bind({"sepal length (cm)": 5})
         for leaf in self.model.leaves.values():
             copy = leaf.copy()
@@ -1394,12 +1461,14 @@ class ConditionalJPTTest(TestCase):
             self.assertTrue(leaf.distributions != copy_.distributions)
 
     def test_conditional_leaf(self):
+        """Verify conditional leaf assigns probability 1 to evidence interval."""
         evidence = self.model.bind({"sepal length (cm)": [5, 6]})
         for leaf in self.model.apply(evidence):
             l_ = leaf.conditional_leaf(evidence)
             self.assertAlmostEqual(1, l_.probability(evidence))
 
     def test_apply(self):
+        """Verify apply returns correct leaves for given evidence."""
         # Arrange
         df = pd.DataFrame.from_records(
             [[1.2, 2, 'A'], [2.3, 3, 'B']],
@@ -1460,42 +1529,49 @@ class TestCaseTargetLearning(TestCase):
         cls.data["i0"] = cls.data["i0"].astype("int")
 
     def test_variale_setup(self):
+        """Verify inferred variable types match expected symbolic, integer, and numeric counts."""
         vars = infer_from_dataframe(self.data)
         self.assertEqual(1, len([v for v in vars if v.symbolic]))
         self.assertEqual(1, len([v for v in vars if v.integer]))
         self.assertEqual(10, len([v for v in vars if v.numeric]))
 
     def test_learning_discriminative_single_symbolic(self):
+        """Verify discriminative learning with a single symbolic target."""
         model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
                     targets=["s0"])
         model.fit(self.data)
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_discriminative_single_numeric(self):
+        """Verify discriminative learning with a single numeric target."""
         model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
                     targets=["n0"])
         model.fit(self.data)
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_discriminative_mixed_symbolic_numeric(self):
+        """Verify discriminative learning with symbolic and numeric targets."""
         model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
                     targets=["s0", "n0"])
         model.fit(self.data)
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_discriminative_mixed_symbolic_integer(self):
+        """Verify discriminative learning with symbolic and integer targets."""
         model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
                     targets=["s0", "i0"])
         model.fit(self.data)
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_discriminative_mixed_numeric_integer(self):
+        """Verify discriminative learning with numeric and integer targets."""
         model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
                     targets=["n5", "i0"])
         model.fit(self.data)
         self.assertTrue(len(model.leaves) > 1)
 
     def test_learning_discriminative_mixed_all(self):
+        """Verify discriminative learning with symbolic, integer, and numeric targets."""
         model = JPT(infer_from_dataframe(self.data, scale_numeric_types=False), min_samples_leaf=0.3,
                     targets=["s0", "i0", "n9"])
         model.fit(self.data)
@@ -1509,6 +1585,7 @@ class PruningTest(TestCase):
 
     @data('matplotlib', "plotly")
     def test_pruning(self, engine):
+        """Verify pruning reduces tree to a single leaf with prior 1."""
         # Arrange
         n = 1000
         random.seed(42)
@@ -1562,6 +1639,7 @@ class TestPruneOrSplitHook(TestCase):
         return partition.depth > 4
 
     def test_prune_or_split_hook(self):
+        """Verify custom prune-or-split hook limits tree depth."""
         # Arrange
         df = gaussian_data_1d()
         variables = infer_from_dataframe(df)
@@ -1580,6 +1658,7 @@ class TestPruneOrSplitHook(TestCase):
         )
 
     def test_ignore_prune_or_split_hook(self):
+        """Verify default learning without hook produces full tree depth."""
         # Arrange
         df = gaussian_data_1d()
         variables = infer_from_dataframe(df)

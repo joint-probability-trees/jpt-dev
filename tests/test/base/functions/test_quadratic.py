@@ -21,6 +21,7 @@ class QuadraticFunctionTest(TestCase):
     )
     @unpack
     def test_eval(self, f, x, y):
+        """Verify quadratic function evaluation at a given point."""
         self.assertEqual(y, f.eval(x))
 
     @data(
@@ -35,6 +36,7 @@ class QuadraticFunctionTest(TestCase):
             p3: tuple,
             truth: QuadraticFunction
     ):
+        """Verify fitting a quadratic function from three points."""
         self.assertEqual(
             QuadraticFunction.from_points(p1, p2, p3), truth
         )
@@ -51,12 +53,14 @@ class QuadraticFunctionTest(TestCase):
             p2: tuple,
             p3: tuple
     ):
+        """Verify fitting from collinear or duplicate points raises ValueError."""
         self.assertRaises(
             ValueError,
             QuadraticFunction.from_points, p1, p2, p3
         )
 
     def test_serialization(self):
+        """Verify JSON round-trip serialization of quadratic functions."""
         f = QuadraticFunction(1, 2, 3)
         self.assertEqual(
             f, QuadraticFunction.from_json(f.to_json())
@@ -75,6 +79,7 @@ class QuadraticFunctionTest(TestCase):
             f: QuadraticFunction,
             xmax: float
     ):
+        """Verify computation of the x-coordinate of the vertex."""
         self.assertEqual(xmax, f.argvertex())
 
     @data(
@@ -92,6 +97,7 @@ class QuadraticFunctionTest(TestCase):
             f1: QuadraticFunction,
             f2: Function
     ):
+        """Verify simplification of degenerate quadratics to lower-order functions."""
         self.assertEqual(f1.simplify(), f2)
 
     @data(
@@ -103,6 +109,7 @@ class QuadraticFunctionTest(TestCase):
     )
     @unpack
     def test_mul(self, f, a, r):
+        """Verify scalar and constant multiplication of quadratic functions."""
         self.assertEqual(r, f * a)
 
     @data(
@@ -117,9 +124,11 @@ class QuadraticFunctionTest(TestCase):
     )
     @unpack
     def test_add(self, f, a, r):
+        """Verify addition of quadratic functions with scalars and functions."""
         self.assertEqual(r, f + a)
 
     def test_roots_2_solutions(self):
+        """Verify root finding for a quadratic with two distinct roots."""
         # Arrange
         f = QuadraticFunction(2, -8, 6)
 
@@ -133,6 +142,7 @@ class QuadraticFunctionTest(TestCase):
         )
 
     def test_roots_1_solution(self):
+        """Verify root finding for a quadratic with one repeated root."""
         # Arrange
         f = QuadraticFunction(2, -8, 8)
 
@@ -146,6 +156,7 @@ class QuadraticFunctionTest(TestCase):
         )
 
     def test_roots_no_solution(self):
+        """Verify root finding returns empty list when no real roots exist."""
         # Arrange
         f = QuadraticFunction(2, -8, 11)
 
@@ -164,6 +175,7 @@ class QuadraticFunctionTest(TestCase):
     )
     @unpack
     def test_vertexform(self, params, result):
+        """Verify construction of a quadratic from vertex form parameters."""
         # Act
         vertex = QuadraticFunction.from_vertexform(*params)
 

@@ -17,6 +17,7 @@ from jpt.base.functions import (
 class PLFApproximatorTest(TestCase):
 
     def test_approximation_linear_k(self):
+        """Reduce linear PLF to exactly k segments."""
         for k in range(5, 2, -1):
             # Arrange
             plf: PiecewiseFunction = (
@@ -39,6 +40,7 @@ class PLFApproximatorTest(TestCase):
             self.assertEqual(k, len(approx))
 
     def test_approximation_constant_k(self):
+        """Reduce constant PLF to exactly k segments."""
         for k in range(5, 2, -1):
             # Arrange
             plf: PiecewiseFunction = (
@@ -72,6 +74,7 @@ class PLFApproximatorTest(TestCase):
             )
 
     def test_approximation_constant_error(self):
+        """Merge segments within error bound."""
         # Arrange
         plf: PiecewiseFunction = (
             PiecewiseFunction
@@ -101,6 +104,7 @@ class PLFApproximatorTest(TestCase):
         )
 
     def test_invalid(self):
+        """Reject None as input PLF."""
         self.assertRaises(
             TypeError,
             PLFApproximator,
@@ -128,7 +132,8 @@ class PLFApproximatorTest(TestCase):
         )
 
     def test_jumps_constant_function(self):
-        # Assert
+        """Preserve impulse segments in constant PLF."""
+        # Arrange
         plf = PiecewiseFunction.from_dict({
             '(-∞,0.0)': 0,
             '[0.0,5e-324)': np.inf,
@@ -139,4 +144,8 @@ class PLFApproximatorTest(TestCase):
         # Act
         result = approx.run(error_max=.2)
 
-        print(result)
+        # Assert
+        self.assertEqual(
+            plf,
+            result
+        )

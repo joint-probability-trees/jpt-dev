@@ -12,6 +12,7 @@ class TestJPTPlotting(TestCase):
 
     @data("matplotlib", "plotly", None)
     def test_pdf_grid(self, engine):
+        """Verify 3D PDF grid computation and JPT plotting with each engine."""
         # Arrange
         df = pd.DataFrame([
             [1, 1.2],

@@ -25,6 +25,7 @@ from jpt.base.intervals import ContinuousSet
 class MPESolverTest(TestCase):
 
     def test_mpe_numeric(self):
+        """Verify MPE solver returns solutions in descending likelihood order."""
         # Arrange
         data = np.array(
             [[1], [2], [8], [9]], dtype=np.float64
@@ -92,6 +93,7 @@ class KMPELeafTest(TestCase):
         cls.model.fit(cls.data)
 
     def test_k3_mpe(self):
+        """Verify top-3 MPE solutions match expected assignments."""
         # Arrange
         # Act
         k_mpe = list(
@@ -187,6 +189,7 @@ class KMPELeafTest(TestCase):
         )
 
     def test_k_mpe_brute(self):
+        """Verify k-MPE results match brute-force enumeration."""
         # Arrange
         assert len(self.model.leaves) == 1
         leaf = next(

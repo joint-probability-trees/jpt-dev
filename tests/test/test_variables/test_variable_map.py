@@ -43,6 +43,7 @@ class VariableMapTest(TestCase):
         self.assertEqual('baz', varmap['C'])
 
     def test__set_and_get_with_variables(self):
+        """Verify set and get using pre-registered variables."""
         varmap = VariableMap(variables=VariableMapTest.TEST_DATA)
         varmap['A'] = 'foo'
         varmap['B'] = 'bar'
@@ -58,11 +59,13 @@ class VariableMapTest(TestCase):
         self.assertEqual('baz', varmap['C'])
 
     def test_raises(self):
+        """Verify that setting unknown variable names raises ValueError."""
         A, B, C = VariableMapTest.TEST_DATA
         varmap = VariableMap()
         self.assertRaises(ValueError, varmap.__setitem__, 'C', True)
 
     def test_equality(self):
+        """Verify equality comparison of VariableMap instances."""
         A, B, C = VariableMapTest.TEST_DATA
         varmap = VariableMap()
         varmap[A] = 1
@@ -70,6 +73,7 @@ class VariableMapTest(TestCase):
         self.assertEqual(varmap, varmap)
 
     def test_copy(self):
+        """Verify that a copied VariableMap equals the original."""
         A, B, C = VariableMapTest.TEST_DATA
         varmap = VariableMap()
         varmap[A] = 1
@@ -92,6 +96,7 @@ class VariableMapTest(TestCase):
         self.assertNotEqual(hash(varmap), hash(varmap2))
 
     def test_iadd_isub_operators(self):
+        """Verify in-place addition and subtraction of VariableMaps."""
         A, B, C = VariableMapTest.TEST_DATA
         D = SymbolicVariable('D', domain=None)
         varmap = VariableMap()
@@ -169,6 +174,7 @@ class VariableMapTest(TestCase):
 class LabelValueAssignmentTest(TestCase):
 
     def test_label_assignment(self):
+        """Verify type validation in LabelAssignment."""
         A, B, C = VariableMapTest.TEST_DATA
         a = LabelAssignment()
         self.assertRaises(ValueError, a.__setitem__, 'C', True)
@@ -178,6 +184,7 @@ class LabelValueAssignmentTest(TestCase):
         self.assertEqual(ContinuousSet(0, 1), a['A'])
 
     def test_value_assignment(self):
+        """Verify type validation in ValueAssignment."""
         A, B, C = VariableMapTest.TEST_DATA
         dom = SymbolicType('TestType', labels=['zero', 'one', 'two'])
         D = SymbolicVariable('D', domain=dom)
@@ -189,6 +196,7 @@ class LabelValueAssignmentTest(TestCase):
         self.assertEqual(0, a['D'])
 
     def test_conversion(self):
+        """Verify round-trip conversion between LabelAssignment and ValueAssignment."""
         A, B, C = VariableMapTest.TEST_DATA
         dom = SymbolicType('TestType', labels=['zero', 'one', 'two'])
         D = SymbolicVariable('D', domain=dom)

@@ -14,5 +14,6 @@ class UndefinedFunctionTest(TestCase):
     @data((1,), (-1,), (100,))
     @unpack
     def test_eval(self, x):
+        """Verify Undefined function evaluates to NaN for any input."""
         f = Undefined()
         self.assertTrue(np.isnan(f.eval(x)))

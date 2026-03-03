@@ -12,6 +12,7 @@ class IntegerVariableTest(TestCase):
     dice = IntegerType('Dice', lmin=1, lmax=6)
 
     def test_hash(self):
+        """Verify equal integer variables produce equal hashes."""
         # Arrange
         toss1 = IntegerVariable('Toss', domain=self.dice)
         toss2 = IntegerVariable('Toss', domain=self.dice)
@@ -28,9 +29,11 @@ class IntegerVariableTest(TestCase):
         self.assertNotEqual(hash_2, hash_3)
 
     def test_serialization(self):
+        """Verify JSON round-trip serialization of IntegerVariable."""
         toss = IntegerVariable('Toss', domain=self.dice)
         self.assertEqual(toss, Variable.from_json(toss.to_json()))
 
     def test_pickle(self):
+        """Verify pickle round-trip serialization of IntegerVariable."""
         toss = IntegerVariable('Toss', domain=self.dice)
         self.assertEqual(toss, pickle.loads(pickle.dumps(toss)))

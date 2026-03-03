@@ -33,6 +33,7 @@ class ConstantFunctionTest(TestCase):
     )
     @unpack
     def test_eval(self, f, x, y):
+        """Verify ConstantFunction returns its constant for any input."""
         self.assertEqual(y, f.eval(x))
 
     @data(
@@ -45,6 +46,7 @@ class ConstantFunctionTest(TestCase):
     )
     @unpack
     def test_intersection(self, f1, f2, v):
+        """Verify intersection of constant functions with other functions."""
         self.assertEqual(v, f1.intersection(f2))
 
     @data(
@@ -56,6 +58,7 @@ class ConstantFunctionTest(TestCase):
     )
     @unpack
     def test_add(self, f, arg, res):
+        """Verify addition of constant functions with scalars and functions."""
         self.assertEqual(res, f + arg)
 
     @data(
@@ -69,6 +72,7 @@ class ConstantFunctionTest(TestCase):
     )
     @unpack
     def test_mul(self, f, arg, res):
+        """Verify multiplication of constant functions with scalars and functions."""
         self.assertEqual(res, f * arg)
 
     @data(
@@ -80,6 +84,7 @@ class ConstantFunctionTest(TestCase):
     )
     @unpack
     def test_integrate(self, f, x, i):
+        """Verify definite integration of constant functions over intervals."""
         self.assertEqual(i, f.integrate(x[0], x[1]))
 
     @data(
@@ -91,6 +96,7 @@ class ConstantFunctionTest(TestCase):
     )
     @unpack
     def test_equal(self, f1, f2):
+        """Verify equality of semantically equivalent function pairs."""
         self.assertEqual(
             f1,
             f2
@@ -111,6 +117,7 @@ class ConstantFunctionTest(TestCase):
     )
     @unpack
     def test_unequal(self, f1, f2):
+        """Verify inequality of semantically different function pairs."""
         self.assertNotEqual(
             f1,
             f2

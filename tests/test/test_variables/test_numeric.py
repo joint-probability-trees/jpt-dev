@@ -75,6 +75,7 @@ class VariableTest(TestCase):
 class NumericVariableTest(TestCase):
 
     def test_hash(self):
+        """Verify equal numeric variables produce equal hashes."""
         # Arrange
         x1 = NumericVariable('x')
         x2 = NumericVariable('x')

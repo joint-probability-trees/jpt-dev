@@ -9,6 +9,7 @@ from jpt.base.utils import mapstr, setstr_int, Heap, list2intset
 class UtilsTest(TestCase):
 
     def test_mapstr(self):
+        """Verify mapstr converts lists to strings with optional truncation."""
         l = list(range(10))
         self.assertEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], mapstr(l))
         self.assertEqual(['0', '1', '...', '8', '9'], mapstr(l, limit=4))
@@ -17,6 +18,7 @@ class UtilsTest(TestCase):
         self.assertEqual(['6', '7'], mapstr(['6', '7'], limit=2))
 
     def test_setstr_int(self):
+        """Verify setstr_int formats integer sets with range compression."""
         # Arrange
         set_ = {0, 1, 2, 4, 6, 7, 9, 10, 11}
 
@@ -29,6 +31,7 @@ class UtilsTest(TestCase):
         self.assertEqual('0, ..., 2, 4, 6, 7, 9, ..., 11', str_2)
 
     def test_epsilon(self):
+        """Verify epsilon arithmetic matches numpy nextafter behavior."""
         # Arrange
         x = np.pi
 
@@ -44,6 +47,7 @@ class UtilsTest(TestCase):
 class VersionTest(TestCase):
 
     def test_version(self):
+        """Verify the jpt version string matches the expected format."""
         import jpt
         self.assertRegex(jpt.__version__, r'\d\.\d\.\d')
 
@@ -51,6 +55,7 @@ class VersionTest(TestCase):
 class HeapTest(TestCase):
 
     def test_iterator(self):
+        """Verify Heap iteration yields elements in ascending order."""
         # Arrange
         h = Heap(data=[5, 4, 8])
 
@@ -61,6 +66,7 @@ class HeapTest(TestCase):
         self.assertEqual([4, 5, 8], result)
 
     def test_reverse(self):
+        """Verify reversed Heap iteration yields elements in descending order."""
         # Arrange
         h = Heap(data=[5, 4, 8])
 
@@ -74,6 +80,7 @@ class HeapTest(TestCase):
 class ListConversionTest(TestCase):
 
     def test_list2intset(self):
+        """Verify list2intset converts a two-element list to an integer range set."""
         # Act
         s = list2intset([2, 4])
 

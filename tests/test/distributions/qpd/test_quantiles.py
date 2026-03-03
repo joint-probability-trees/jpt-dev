@@ -23,6 +23,7 @@ from jpt.base.functions import (
 class TestCaseMerge(unittest.TestCase):
 
     def test_dist_merge(self):
+        """Verify merging two quantile distributions with equal weights."""
         # Arrange
         data1 = np.array(
             [[1.], [1.1], [1.1], [1.2],
@@ -121,6 +122,7 @@ class TestCaseMerge(unittest.TestCase):
         )
 
     def test_dist_merge_jump_functions(self):
+        """Verify merging three single-point jump distributions."""
         # Arrange
         data1 = np.array([[1.]], dtype=np.float64)
         data2 = np.array([[2.]], dtype=np.float64)
@@ -224,6 +226,7 @@ class TestCaseMerge(unittest.TestCase):
         )
 
     def test_likelihood_of_fit(self):
+        """Verify all likelihoods are positive for a uniform distribution fit."""
 
         # sample from uniform distribution from [0,1]
         # (likelihood for every sample should be around 1)
@@ -262,6 +265,7 @@ class TestCaseMerge(unittest.TestCase):
 class TestCasePPFTransform(unittest.TestCase):
 
     def test_ppf_transform_jumps_only(self):
+        """Verify PPF transform for a CDF consisting only of jumps."""
         cdf = PiecewiseFunction()
         cdf.intervals.append(
             ContinuousSet.fromstring(']-inf,1[')
@@ -306,6 +310,7 @@ class TestCasePPFTransform(unittest.TestCase):
         )
 
     def test_ppf_transform(self):
+        """Verify PPF transform for a CDF with mixed linear and constant segments."""
         cdf = PiecewiseFunction()
         cdf.intervals.append(
             ContinuousSet.parse(']-inf,0.000[')
@@ -381,6 +386,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         cls.qdist = QuantileDistribution.from_cdf(cdf)
 
     def test_serialization(self):
+        """Verify JSON round-trip serialization of a quantile distribution."""
         self.assertEqual(
             self.qdist,
             QuantileDistribution.from_json(
@@ -389,6 +395,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_singleslice_inc(self):
+        """Verify cropping a quantile distribution to a single inclusive interval."""
         d = {
             ']-inf,.3[': 0.,
             '[.3,.7[': LinearFunction.from_points(
@@ -405,6 +412,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_singleslice_exc(self):
+        """Verify cropping a quantile distribution to a single exclusive-upper interval."""
         d = {
             ']-inf,.3[': 0.,
             ContinuousSet(
@@ -431,6 +439,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_twoslice(self):
+        """Verify cropping a quantile distribution spanning two CDF slices."""
         d = {
             ']-inf,.3[': 0.,
             '[.3,.7[': LinearFunction.from_points(
@@ -451,6 +460,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_intermediate(self):
+        """Verify cropping to an intermediate interval crossing multiple segments."""
         d = {
             ']-inf,.2[': 0.,
             '[.2,.3[': LinearFunction(1.25, -0.25),
@@ -473,6 +483,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_full(self):
+        """Verify cropping to an interval larger than the support preserves the CDF."""
         self.interval = ContinuousSet(-1.5, 1.5)
         self.actual = self.qdist.crop(self.interval)
         self.expected = self.qdist.cdf
@@ -482,6 +493,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_ident(self):
+        """Verify cropping to the exact support interval preserves the CDF."""
         self.interval = ContinuousSet(0, 1)
         self.actual = self.qdist.crop(self.interval)
         self.expected = self.qdist.cdf
@@ -491,6 +503,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_onepoint(self):
+        """Verify cropping to a single point produces a jump CDF."""
         d = {
             ']-inf,.3[': 0.,
             '[.3,inf[': 1.
@@ -504,6 +517,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_outside_r(self):
+        """Verify cropping to an interval right of the support raises Unsatisfiability."""
         self.interval = ContinuousSet(1.5, 1.6)
         self.assertRaises(
             Unsatisfiability,
@@ -512,6 +526,7 @@ class TestCaseQuantileCrop(unittest.TestCase):
         )
 
     def test_crop_quantiledist_outside_l(self):
+        """Verify cropping to an interval left of the support raises Unsatisfiability."""
         self.interval = ContinuousSet(-3, -2)
         self.assertRaises(
             Unsatisfiability,
@@ -590,6 +605,7 @@ class QuantileTest(TestCase):
             self.assertGreaterEqual(f.m, 0)
 
     def test_pdf_to_cdf_jump(self):
+        """Verify PDF-to-CDF conversion for a Dirac delta distribution."""
         # Arrange
         pdf = PiecewiseFunction.from_dict({
             '(-∞,0.0)': 0,
@@ -613,9 +629,11 @@ class QuantileTest(TestCase):
         )
 
     def test_cdf_to_pdf_simple(self):
+        """Verify CDF-to-PDF conversion for a simple distribution."""
         pass
 
     def test_cdf_to_pdf_jump(self):
+        """Verify CDF-to-PDF conversion produces a Dirac delta for a jump CDF."""
         # Arrange
         qdist = QuantileDistribution.from_cdf(
             PiecewiseFunction.zero()

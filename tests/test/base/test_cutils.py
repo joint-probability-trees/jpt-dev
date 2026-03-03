@@ -20,18 +20,21 @@ class CUtilsTest(TestCase):
         return np.random.uniform(-100, 100, n), np.array([i for i in range(n)])
 
     def test_sort(self):
+        """Verify full sorting of a large random array via Cython sort."""
         data, indices = CUtilsTest.gen_data(3079828)
         orig_data = np.array(data)
         test_sort(data, indices)
         self.check_sorted(orig_data, indices, data.shape[0])
 
     def test_partial(self):
+        """Verify partial sorting correctly orders the first 50 elements."""
         data, indices = CUtilsTest.gen_data(3079828)
         orig_data = np.array(data)
         test_sort(data, indices, 50)
         self.check_sorted(orig_data, indices, 50)
 
     def test_duplicates(self):
+        """Verify sorting handles arrays with many duplicate values."""
         data = np.array([5.] * 200 + [3., 3., 3., 3., 1.])
         indices = np.array([_ for _ in range(data.shape[0])])
         orig_data = np.array(data)
@@ -39,6 +42,7 @@ class CUtilsTest(TestCase):
         self.check_sorted(orig_data, indices, orig_data.shape[0])
 
     def test_from_file(self):
+        """Verify sorting of a pickled numpy array loaded from file."""
         import pickle
         with open(os.path.join(RESOURCES, 'nparray-sort-test.dat'), 'rb') as f:
             arr = pickle.load(f).astype(np.float64)

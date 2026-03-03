@@ -62,6 +62,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test_hash(self):
+        """Verify distinct numeric types produce different hash values."""
         self.assertNotEqual(hash(Numeric), hash(self.DistGauss))
 
     def test_creation(self):
@@ -78,21 +79,25 @@ class NumericDistributionTest(TestCase):
 
     @data("matplotlib", "plotly", None)
     def test_plot_gaussian1d(self, engine):
+        """Verify 1D Gaussian plot rendering without errors."""
         DistGauss = self.DistGauss
         gauss = Gaussian(data=[[DistGauss.values[d]] for d in NumericDistributionTest.GAUSSIAN])
         gauss.plot(engine, view=False)
 
     @data("matplotlib", "plotly", None)
     def test_plot_gaussian2d(self, engine):
+        """Verify 2D Gaussian plot rendering without errors."""
         g = Gaussian([0, 0], [ [1, 3/5], [3/5, 2]])
         g.plot(engine, view=False, dim=2)
 
     @data("matplotlib", "plotly", None)
     def test_plot_gaussian3d(self, engine):
+        """Verify 3D Gaussian plot rendering without errors."""
         g = Gaussian([0, 0], [ [1, 3/5], [3/5, 2]])
         g.plot(engine, view=False, dim=3)
 
     def test_copy(self):
+        """Verify deep copy produces equal but distinct distribution objects."""
         # Arrange
         a, b = 2, 3
         uniform = uniform_numeric(a, b)
@@ -105,6 +110,7 @@ class NumericDistributionTest(TestCase):
         self.assertNotEqual(id(uniform_), id(uniform))
 
     def test_domain_serialization(self):
+        """Verify round-trip serialization of numeric domain type."""
         DistGauss = self.DistGauss
         self.assertTrue(
             DistGauss.equiv(
@@ -115,6 +121,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test_fit(self):
+        """Verify fitting a numeric distribution produces the expected CDF."""
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         self.assertEqual(d.cdf, PiecewiseFunction.from_dict({
             ']-∞,0.0[': 0,
@@ -123,6 +130,7 @@ class NumericDistributionTest(TestCase):
         }))
 
     def test_distribution_serialization(self):
+        """Verify JSON round-trip serialization of a fitted numeric distribution."""
         # Arrange
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
 
@@ -135,6 +143,7 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(d, d_inst)
 
     def test_crop(self):
+        """Verify cropping a distribution renormalizes the CDF correctly."""
         # Arrange
         Gauss: Type[Numeric] = self.DistGauss
         data = np.array([Gauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
@@ -157,12 +166,14 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(ground_truth.round(10), cdf.round(10))
 
     def test_kldiv_equality(self):
+        """Verify KL divergence of a distribution with itself is zero."""
         DistGauss = self.DistGauss
         data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
         dist1 = DistGauss()._fit(data1, col=0)
         self.assertEqual(0, dist1.kl_divergence(dist1))
 
     def test_kldiv_inequality(self):
+        """Verify KL divergence between overlapping distributions is positive."""
         DistGauss = self.DistGauss
         data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
         data2 = np.array([DistGauss.values[l] for l in np.linspace(.5, 1.5, 20)]).reshape(-1, 1)
@@ -171,6 +182,7 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(np.nextafter(0.25, 1), dist1.kl_divergence(dist2))
 
     def test_kldiv_inequality_extreme(self):
+        """Verify KL divergence between disjoint distributions is maximal."""
         DistGauss = self.DistGauss
         data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
         data2 = np.array([DistGauss.values[l] for l in np.linspace(5, 10, 20)]).reshape(-1, 1)
@@ -179,12 +191,14 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(1, dist1.kl_divergence(dist2))
 
     def test_kldiv_type(self):
+        """Verify KL divergence raises TypeError for invalid argument types."""
         DistGauss = self.DistGauss
         data1 = np.array([DistGauss.values[l] for l in np.linspace(0, 1, 20)]).reshape(-1, 1)
         d1 = DistGauss()._fit(data1, col=0)
         self.assertRaises(TypeError, d1.kl_divergence, ...)
 
     def test_value2label(self):
+        """Verify value-to-label conversion for scalars and intervals."""
         # Arrange
         Gauss = self.DistGauss
 
@@ -220,6 +234,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test_label2value(self):
+        """Verify label-to-value conversion for scalars, intervals, and UnionSets."""
         # Arrange
         Gauss = self.DistGauss
 
@@ -251,12 +266,14 @@ class NumericDistributionTest(TestCase):
         )
 
     def test_mpe(self):
+        """Verify MPE likelihood matches the maximum PDF value."""
         np.random.seed(69)
         d = Numeric()._fit(np.random.normal(size=(100, 1)), col=0)
         likelihood, state = d.mpe()
         self.assertEqual(max(f.value for f in d.pdf.functions), likelihood)
 
     def test_k_mpe(self):
+        """Verify top-k MPE returns intervals ranked by likelihood."""
         # Arrange
         d = Numeric(precision=0)._fit(
             np.array([[1.], [2.5], [3.]]),
@@ -331,6 +348,7 @@ class NumericDistributionTest(TestCase):
         self.assertTrue(all([pdf.eval(v) > 0 for v in samples]))
 
     def test_moments(self):
+        """Verify distribution moments approximate empirical moments up to order 3."""
         np.random.seed(69)
         data = np.random.normal(0, 1, 100000).reshape(-1, 1)
         distribution = Numeric()
@@ -347,6 +365,7 @@ class NumericDistributionTest(TestCase):
             self.assertAlmostEqual(empirical_moment, dist_moment, delta=np.power(0.9, -order))
 
     def test_jaccard_identity(self):
+        """Verify Jaccard similarity of a distribution with itself is 1."""
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
                 PiecewiseFunction
@@ -362,6 +381,7 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(1., jacc)
 
     def test_jaccard_disjoint(self):
+        """Verify Jaccard similarity of disjoint distributions is 0."""
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
                 PiecewiseFunction
@@ -389,6 +409,7 @@ class NumericDistributionTest(TestCase):
 
     @data("matplotlib", "plotly")
     def test_plot(self, engine):
+        """Verify numeric distribution plot rendering with custom styling."""
         d = Numeric()._fit(np.linspace(0, 1, 20).reshape(-1, 1), col=0)
         d.plot(
             engine=engine,
@@ -402,6 +423,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test_jaccard_overlap(self):
+        """Verify Jaccard similarity of partially overlapping distributions."""
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
                 PiecewiseFunction
@@ -427,6 +449,7 @@ class NumericDistributionTest(TestCase):
         self.assertAlmostEqual(1 / 3, jacc, places=8)
 
     def test_jaccard_symmetry(self):
+        """Verify Jaccard similarity is symmetric."""
         d1 = Numeric().set(
             params=QuantileDistribution.from_pdf(
                 PiecewiseFunction
@@ -453,6 +476,7 @@ class NumericDistributionTest(TestCase):
         self.assertEqual(jacc1, jacc2)
 
     def test_jaccard_singularity(self):
+        """Verify Jaccard similarity handles singular (Dirac-like) distributions."""
         # Arrange
         d1 = Numeric().set(
             QuantileDistribution.from_pdf(
@@ -477,6 +501,7 @@ class NumericDistributionTest(TestCase):
 
     @data("matplotlib", "plotly")
     def test_add(self, engine):
+        """Verify addition of two uniform distributions produces correct expectation and PDF."""
         # Arrange
         x = uniform_numeric(-1, 1)
         y = uniform_numeric(-1, 1)
@@ -502,6 +527,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test_sub(self):
+        """Verify subtraction of two uniform distributions preserves expectation."""
         # Arrange
         x = uniform_numeric(-2, 2)
         y = uniform_numeric(-1, 1)
@@ -522,6 +548,7 @@ class NumericDistributionTest(TestCase):
 
 
     def test__expectation_uniform(self):
+        """Verify internal expectation of a uniform distribution."""
         # Arrange
         uniform = uniform_numeric(1, 2)
 
@@ -539,6 +566,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test__expectation_2uniform(self):
+        """Verify expectation of a merged two-piece uniform distribution."""
         # Arrange
         dist = Numeric().set(
             QuantileDistribution.merge([
@@ -561,6 +589,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test__moment_uniform(self):
+        """Verify raw and central moments of a uniform distribution up to order 2."""
         # Arrange
         a, b = 2, 3
         uniform = uniform_numeric(a, b)
@@ -590,6 +619,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test_mpe(self):
+        """Verify MPE returns the highest-density interval from a merged distribution."""
         # Arrange
         dist = Numeric().set(
             QuantileDistribution.merge([
@@ -609,6 +639,7 @@ class NumericDistributionTest(TestCase):
         )
 
     def test_entropy(self):
+        """Verify entropy of a standard uniform distribution is zero."""
         # Arrange
         numeric = uniform_numeric(0, 1)
 
@@ -635,6 +666,7 @@ class DataScalerTest(TestCase):
         DataScalerTest.DATA = Gaussian(5, 10).sample(10000)
 
     def test_singular_values_transformation(self):
+        """Verify round-trip transformation of individual values preserves precision."""
         # Arrange
         value2label = NumericValueToLabelMap()
         value2label.fit(DataScalerTest.DATA)
@@ -653,6 +685,7 @@ class DataScalerTest(TestCase):
             )
 
     def test_bulk_values_transformation(self):
+        """Verify round-trip bulk transformation of value arrays preserves precision."""
         # Arrange
         value2label = NumericValueToLabelMap()
         value2label.fit(DataScalerTest.DATA)
@@ -676,11 +709,13 @@ class DataScalerTest(TestCase):
 class TypeGeneratorTest(TestCase):
 
     def test_numeric_type(self):
+        """Verify NumericType rejects invalid values and creates valid subtypes."""
         self.assertRaises(ValueError, NumericType, 'BlaType', [None, 1, 2])
         self.assertRaises(ValueError, NumericType, 'BlaType', [1, 2, float('inf')])
         self.assertTrue(issubclass(NumericType('bla', [1, 2, 3, 4]), ScaledNumeric))
 
     def test_integer_type(self):
+        """Verify IntegerType enforces valid bounds and supports unbounded ranges."""
         # Act
         t_1 = IntegerType('Months', 1, 12)
         t_2 = IntegerType('Unbounded')
@@ -697,6 +732,7 @@ class TypeGeneratorTest(TestCase):
         self.assertRaises(ValueError, IntegerType, 'Bla', 3, 2)
 
     def test_symbolic_type(self):
+        """Verify SymbolicType stores name and labels correctly."""
         t = SymbolicType('Object', labels=['Bowl', 'Spoon', 'Cereal'])
         self.assertEqual('Object', t.__qualname__)
         self.assertEqual(['Bowl', 'Spoon', 'Cereal'], list(t.labels))

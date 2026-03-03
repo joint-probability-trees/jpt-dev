@@ -51,6 +51,7 @@ class ImpurityTest(TestCase):
         cls.variables = [cls.al, cls.ba, cls.fr, cls.hu, cls.pa, cls.pr, cls.ra, cls.re, cls.fo, cls.we, cls.wa]
 
     def test_symbolic(self):
+        """Verify best split selection on symbolic restaurant data."""
         jpt = JPT(
             variables=self.variables,
             targets=[self.wa]
@@ -73,6 +74,7 @@ class ImpurityTest(TestCase):
         self.assertEqual({6, 10}, set(impurity.indices[10:]))
 
     def test_col_is_constant(self):
+        """Verify constant column detection including NaN handling."""
         jpt = JPT(variables=[NumericVariable('x1', domain=Numeric), NumericVariable('x2', domain=Numeric)])
         impurity = Impurity.from_tree(jpt)
         impurity.min_samples_leaf = max(1, jpt.min_samples_leaf)
@@ -87,6 +89,7 @@ class ImpurityTest(TestCase):
         self.assertTrue(impurity._col_is_constant(1, 2, 2))
 
     def test_has_numeric_vars(self):
+        """Verify detection of numeric variables in impurity object."""
         jpt = JPT(variables=[NumericVariable('x1', domain=Numeric), NumericVariable('x2', domain=Numeric)])
         impurity = Impurity.from_tree(jpt)
         self.assertTrue(impurity.has_numeric_vars_())
@@ -107,6 +110,7 @@ class SumAtTest(TestCase):
     ], dtype=np.float64)
 
     def test_full_spec(self):
+        """Verify column sums over all rows and columns."""
         # Arrange
         cols = np.array([0, 1, 2], dtype=np.int64)
         rows = np.array([0, 1, 2], dtype=np.int64)
@@ -128,6 +132,7 @@ class SumAtTest(TestCase):
         )
 
     def test_partial_rows(self):
+        """Verify column sums over a subset of rows."""
         # Arrange
         rows = np.array([0, 2], dtype=np.int64)
         cols = np.array([0, 1, 2], dtype=np.int64)
@@ -149,6 +154,7 @@ class SumAtTest(TestCase):
         )
 
     def test_partial_cols(self):
+        """Verify sums over a subset of columns."""
         # Arrange
         rows = np.array([0, 1, 2], dtype=np.int64)
         cols = np.array([0, 2], dtype=np.int64)
@@ -170,6 +176,7 @@ class SumAtTest(TestCase):
         )
 
     def test_partial(self):
+        """Verify sums over subsets of both rows and columns."""
         # Arrange
         rows = np.array([0, 2], dtype=np.int64)
         cols = np.array([0, 2], dtype=np.int64)
@@ -201,6 +208,7 @@ class SqSumAt(TestCase):
     ], dtype=np.float64)
 
     def test_full_spec(self):
+        """Verify squared column sums over all rows and columns."""
         # Arrange
         cols = np.array([0, 1, 2], dtype=np.int64)
         rows = np.array([0, 1, 2], dtype=np.int64)
@@ -222,6 +230,7 @@ class SqSumAt(TestCase):
         )
 
     def test_partial_rows(self):
+        """Verify squared column sums over a subset of rows."""
         # Arrange
         rows = np.array([0, 2], dtype=np.int64)
         cols = np.array([0, 1, 2], dtype=np.int64)
@@ -243,6 +252,7 @@ class SqSumAt(TestCase):
         )
 
     def test_partial_cols(self):
+        """Verify squared sums over a subset of columns."""
         # Arrange
         rows = np.array([0, 1, 2], dtype=np.int64)
         cols = np.array([0, 2], dtype=np.int64)
@@ -264,6 +274,7 @@ class SqSumAt(TestCase):
         )
 
     def test_partial(self):
+        """Verify squared sums over subsets of both rows and columns."""
         # Arrange
         rows = np.array([0, 2], dtype=np.int64)
         cols = np.array([0, 2], dtype=np.int64)
@@ -295,6 +306,7 @@ class VariancesTest(TestCase):
     ], dtype=np.float64)
 
     def test_variances(self):
+        """Verify computed variances match numpy reference values."""
         # Arrange
         rows = np.array([0, 1, 2], dtype=np.int64)
         cols = np.array([0, 1, 2], dtype=np.int64)
@@ -321,6 +333,7 @@ class VariancesTest(TestCase):
         )
 
     def test_scalar(self):
+        """Verify variance of a single scalar value is zero."""
         data = np.array([
             [1]
         ], dtype=np.float64)
@@ -399,6 +412,7 @@ class VarianceImprovementTest(TestCase):
         return variances_left, variances_right
 
     def test_compute_best_split(self):
+        """Verify best split computation on mixed variable data."""
         # Arrange
         df = pd.DataFrame(
             data=self.data,
@@ -428,6 +442,7 @@ class VarianceImprovementTest(TestCase):
         print('maxgain:', max_gain)
 
     def test_var_improvement(self):
+        """Verify variance improvement computation for all split positions."""
         # Arrange
         data = np.ascontiguousarray(self.data[:, -2:], dtype=np.float64)
 

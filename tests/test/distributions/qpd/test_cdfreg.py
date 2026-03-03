@@ -12,6 +12,7 @@ from jpt.base.functions import PiecewiseFunction
 class QuantileDistributionFitTest(TestCase):
 
     def test_quantile_dist_linear(self):
+        """Verify CDF fitting for linearly distributed data."""
         # Arrange
         data = np.array([[1.], [2.]], dtype=np.float64)
         q = QuantileDistribution()
@@ -35,6 +36,7 @@ class QuantileDistributionFitTest(TestCase):
         )
 
     def test_quantile_dist_jump(self):
+        """Verify CDF fitting for a single data point producing a jump function."""
         # Arrange
         data = np.array([[2.]], dtype=np.float64)
         q = QuantileDistribution()
@@ -53,6 +55,7 @@ class QuantileDistributionFitTest(TestCase):
 
     # TODO: finish test implementation
     def test_quantile_dist_jump_first(self):
+        """Verify CDF fitting when the first data points are duplicates."""
         # Arrange
         data = np.array([
             [1.],
@@ -68,6 +71,7 @@ class QuantileDistributionFitTest(TestCase):
 
     # TODO: finish test implementation
     def test_quantile_dist_jump_last(self):
+        """Verify CDF fitting when the last data points are duplicates."""
         # Arrange
         data = np.array([
             [1.],

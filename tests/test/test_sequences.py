@@ -26,6 +26,7 @@ class SequenceTest(unittest.TestCase):
         self.variables = [jpt.variables.NumericVariable("X", precision=0.1)]
 
     def test_learning(self):
+        """Verify sequential JPT learning and independent marginals computation."""
         template_tree = jpt.trees.JPT(self.variables, min_samples_leaf=2500)
         sequence_tree = jpt.sequential_trees.SequentialJPT(template_tree)
         sequence_tree.fit([self.data, self.data])

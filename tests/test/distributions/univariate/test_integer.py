@@ -34,6 +34,7 @@ from jpt.distributions import Distribution
 class IntegerValueMapTest(TestCase):
 
     def test_getitem(self):
+        """Verify value-to-label mapping for bounded and unbounded integer maps."""
         # Arrange
         z = IntegerValueToLabelMap()
         halfopen_pos = IntegerValueToLabelMap(lmin=-2)
@@ -85,6 +86,7 @@ class IntegerValueMapTest(TestCase):
         )
 
     def test_iter_all_ints(self):
+        """Verify iteration order over unbounded integer map."""
         # Arrange
         int_map = IntegerValueToLabelMap()
         int_iter = iter(int_map)
@@ -99,6 +101,7 @@ class IntegerValueMapTest(TestCase):
         )
 
     def test_iter_neg_inf(self):
+        """Verify iteration order for integer map unbounded toward negative infinity."""
         # Arrange
         int_map = IntegerValueToLabelMap(lmax=3)
         int_iter = iter(int_map)
@@ -113,6 +116,7 @@ class IntegerValueMapTest(TestCase):
         )
 
     def test_iter_pos_inf(self):
+        """Verify iteration order for integer map unbounded toward positive infinity."""
         # Arrange
         int_map = IntegerValueToLabelMap(lmin=-1)
         int_iter = iter(int_map)
@@ -127,6 +131,7 @@ class IntegerValueMapTest(TestCase):
         )
 
     def test_iter_finite(self):
+        """Verify exhaustive iteration over a finite integer map."""
         # Arrange
         int_map = IntegerValueToLabelMap(lmin=-1, lmax=3)
         int_iter = iter(int_map)
@@ -141,6 +146,7 @@ class IntegerValueMapTest(TestCase):
         )
 
     def test_len_finite(self):
+        """Verify length of a finite integer map."""
         # Arrange
         int_map = IntegerMap(-1, 1)
 
@@ -157,6 +163,7 @@ class IntegerValueMapTest(TestCase):
 class IntegerLabelMapTest(TestCase):
 
     def test_getitem(self):
+        """Verify label-to-value mapping for bounded and unbounded integer maps."""
         # Arrange
         z = IntegerLabelToValueMap()
         halfopen_pos = IntegerLabelToValueMap(lmin=-2)
@@ -208,6 +215,7 @@ class IntegerLabelMapTest(TestCase):
         )
 
     def test_intset(self):
+        """Verify conversion of label-to-value maps to IntSet representations."""
         # Arrange
         z = IntegerLabelToValueMap()
         halfopen_pos = IntegerLabelToValueMap(lmin=-2)
@@ -247,6 +255,7 @@ class IntegerDistributionTest(TestCase):
     Die = IntegerType('Dice', 1, 6)
 
     def test_value2label(self):
+        """Verify value-to-label conversion for scalars, sets, and IntSets."""
         # Arrange
         Die = self.Die
         intset = IntSet(0, 2)
@@ -280,6 +289,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_label2value(self):
+        """Verify label-to-value conversion for scalars, sets, and IntSets."""
         # Arrange
         Die = self.Die
         intset = IntSet(1, 3)
@@ -309,6 +319,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_set_finite(self):
+        """Verify setting probabilities on a finite integer distribution."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice_set_array = dice()
@@ -334,6 +345,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_set_infinite(self):
+        """Verify setting probabilities on an unbounded integer distribution."""
         # Arrange
         unbounded = IntegerType('Dice')
         dist = unbounded()
@@ -358,6 +370,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_fit(self):
+        """Verify fitting an integer distribution from data columns."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice: Integer = dice()
@@ -381,6 +394,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_sampling(self):
+        """Verify samples fall within valid label range and have correct types."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -402,6 +416,7 @@ class IntegerDistributionTest(TestCase):
         self.assertIsInstance(sample, numbers.Integral)
 
     def test_expectation(self):
+        """Verify expectation of a uniform dice distribution in label and value space."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -416,6 +431,7 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(2.5, _e)
 
     def test_inference(self):
+        """Verify probability queries with scalars, sets, IntSets, and UnionSets."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -447,6 +463,7 @@ class IntegerDistributionTest(TestCase):
         self.assertRaises(ValueError, fair_dice.p, 7)
 
     def test_crop(self):
+        """Verify cropping renormalizes probabilities and rejects empty crops."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -472,6 +489,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_mpe(self):
+        """Verify most probable explanation for uniform and biased dice."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -498,6 +516,7 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(2 / 6, _p_biased)
 
     def test_k_mpe(self):
+        """Verify top-k most probable explanations for uniform and biased dice."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -521,6 +540,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_merge(self):
+        """Verify weighted merging of two integer distributions."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -541,6 +561,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_serialization(self):
+        """Verify JSON round-trip serialization of integer type and distribution."""
         # Arrange
         dice = IntegerType('Dice', 1, 6)
         fair_dice = dice()
@@ -567,6 +588,7 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(fair_dice_inst, fair_dice)
 
     def test_moment(self):
+        """Verify empirical and distribution moments match up to order 3."""
         data = np.random.randint(0, 10, size=(1000, 1))
 
         distribution = IntegerType("test", 0, 10)()
@@ -583,12 +605,14 @@ class IntegerDistributionTest(TestCase):
             self.assertAlmostEqual(empirical_moment, dist_moment, delta=0.01)
 
     def test_jaccard_identity(self):
+        """Verify Jaccard similarity of a distribution with itself is 1."""
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([1 / 6] * 6)
         jacc = Integer.jaccard_similarity(d1, d1)
         self.assertEqual(1., jacc)
 
     def test_jaccard_disjoint(self):
+        """Verify Jaccard similarity of disjoint distributions is 0."""
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([0., 0., 0., 0., 0., 1.])
         d2 = dice().set([1., 0., 0., 0., 0., 0.])
@@ -596,6 +620,7 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(0., jacc)
 
     def test_jaccard_overlap(self):
+        """Verify Jaccard similarity of partially overlapping distributions."""
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([2/6, 0/6, 1/6, 1/6, 1/6, 1/6])
         d2 = dice().set([0/6, 2/6, 1/6, 1/6, 1/6, 1/6])
@@ -603,6 +628,7 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(.5, jacc)
 
     def test_jaccard_symmetry(self):
+        """Verify Jaccard similarity is symmetric."""
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([2/6, 0/6, 1/6, 1/6, 1/6, 1/6])
         d2 = dice().set([0/6, 2/6, 1/6, 1/6, 1/6, 1/6])
@@ -611,6 +637,7 @@ class IntegerDistributionTest(TestCase):
         self.assertEqual(jacc1, jacc2)
 
     def test_add(self):
+        """Verify addition of two integer distributions produces correct support and probabilities."""
         # Arrange
         pos = IntegerType('Pos', 0, 6)
         posx = pos()
@@ -639,6 +666,7 @@ class IntegerDistributionTest(TestCase):
 
     @data("matplotlib", "plotly")
     def test_add_bernoulli(self, engine):
+        """Verify addition of Bernoulli distributions matches binomial coefficients."""
         coin = IntegerType('Coin', 0, 1)
         d1 = coin().set([1 / 2, 1 / 2])
 
@@ -670,6 +698,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_items_finite(self):
+        """Verify exhaustive and non-exhaustive item iteration for finite distributions."""
         # Arrange
         dist = IntegerType('TEST_FINITE',0, 2)()
         dist.set([.5, .5, 0])
@@ -689,6 +718,7 @@ class IntegerDistributionTest(TestCase):
         )
 
     def test_items_infinite(self):
+        """Verify non-exhaustive item iteration for unbounded distributions."""
         # Arrange
         dist = IntegerType('TEST_INFINITE')()
         dist.set({0: .5, 1: .5, 2: 0})
@@ -710,6 +740,7 @@ class IntegerDistributionTest(TestCase):
 
     @data("matplotlib", "plotly")
     def test_plot(self, engine):
+        """Verify vertical bar plot rendering of a uniform dice distribution."""
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([1 / 6] * 6)
         d1.plot(
@@ -721,6 +752,7 @@ class IntegerDistributionTest(TestCase):
 
     @data("matplotlib", "plotly")
     def test_plot2(self, engine):
+        """Verify horizontal bar plot rendering of a biased dice distribution."""
         dice = IntegerType('Dice', 1, 6)
         d1 = dice().set([1/6, 2/6, 3/6, 0, 0, 0])
         d1.plot(

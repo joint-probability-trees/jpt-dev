@@ -24,6 +24,7 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_parsing(self, s, result):
+        """Verify parsing of string representations into function objects."""
         self.assertEqual(LinearFunction.parse(s), result)
 
     @data(
@@ -33,6 +34,7 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_fit(self, p1, p2, truth):
+        """Verify fitting a linear function from two points."""
         self.assertEqual(
             LinearFunction.from_points(p1, p2), truth
         )
@@ -43,9 +45,11 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_eval(self, f, x, y):
+        """Verify linear function evaluation at a given point."""
         self.assertEqual(y, f.eval(x))
 
     def test_multieval(self):
+        """Verify batch evaluation of a linear function on a numpy array."""
         # Arrange
         x = np.array([1, 2, 3], dtype=np.float64)
         result_buffer = np.array(x)
@@ -69,6 +73,7 @@ class LinearFunctionTest(TestCase):
     @data(((0, 0), (0, 0)), ((1, 1), (1, 1)))
     @unpack
     def test_fit_integrity_check(self, p1, p2):
+        """Verify fitting from identical points raises ValueError."""
         self.assertRaises(
             ValueError,
             LinearFunction.from_points, p1, p2
@@ -86,6 +91,7 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_equality(self, f1, f2):
+        """Verify equality of semantically equivalent linear functions."""
         self.assertEqual(f1, f2)
         self.assertEqual(f2, f1)
         self.assertEqual(f1, f1)
@@ -102,6 +108,7 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_inequality(self, f1, f2):
+        """Verify inequality of semantically different linear functions."""
         self.assertNotEqual(
             f1,
             f2
@@ -111,6 +118,7 @@ class LinearFunctionTest(TestCase):
 
 
     def test_serialization(self):
+        """Verify JSON round-trip serialization of linear functions."""
         f1 = LinearFunction(1, 1)
         f2 = ConstantFunction(1)
         f3 = LinearFunction(0, 1)
@@ -134,6 +142,7 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_intersection(self, f1, f2, v):
+        """Verify intersection points of two linear functions."""
         self.assertEqual(v, f1.intersection(f2))
 
     @data(
@@ -147,6 +156,7 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_addition(self, f1, f2, v):
+        """Verify addition of linear functions with other functions and scalars."""
         # Act
         sum_ = f1 + f2
 
@@ -167,6 +177,7 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_multiplication(self, f1, f2, v):
+        """Verify multiplication of linear functions producing quadratic results."""
         self.assertEqual(v, f1 * f2)
 
     @data(
@@ -180,6 +191,7 @@ class LinearFunctionTest(TestCase):
     )
     @unpack
     def test_integration(self, f, x, i):
+        """Verify definite integration of linear functions over intervals."""
         # Act
         result = f.integrate(x[0], x[1])
         if np.isnan(i):
@@ -188,6 +200,7 @@ class LinearFunctionTest(TestCase):
             self.assertEqual(i, result)
 
     def test_xshift(self):
+        """Verify horizontal shifting of a linear function."""
         # Arrange
         f = LinearFunction(2, -1)
 

@@ -13,6 +13,7 @@ class LikelihoodTest(TestCase):
 
     # noinspection PyMethodMayBeStatic
     def test_likelihood(self):
+        """Verify joint likelihoods equal one for training data."""
         # Arrange
         df = pd.DataFrame([
                 [1.2, 2, 'A'],
@@ -43,6 +44,7 @@ class LikelihoodTest(TestCase):
         )
 
     def test_single_likelihoods(self):
+        """Verify single likelihoods product equals joint likelihood."""
         # Arrange
         df = pd.DataFrame([
                 [1.2, 2, 'A'],
@@ -80,6 +82,7 @@ class LikelihoodTest(TestCase):
         )
 
     def test_single_likelihoods(self):
+        """Verify single likelihoods product equals joint likelihood without explicit variables."""
         # Arrange
         df = pd.DataFrame([
                 [1.2, 2, 'A'],
