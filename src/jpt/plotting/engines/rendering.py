@@ -86,20 +86,17 @@ class DistributionRendering:
 def check_default_engine() -> DistributionRendering:
     for pkg in ["plotly", "kaleido"]:
         try:
-            mod = __import__(pkg)
-            print(f"{pkg} installed: {mod.__version__}")
+            __import__(pkg)
             from .plotly_engine import PlotlyRendering
             return PlotlyRendering()
         except ImportError:
-            print(f"{pkg} not installed")
+            pass
 
     try:
-        import matplotlib
-        print(f"matplotlib installed: {matplotlib.__version__}")
         from .matplotlib_engine import MatplotlibRendering
         return MatplotlibRendering()
     except ImportError:
-        print("matplotlib not installed")
+        pass
 
     raise TypeError(
         "No default rendering engine found. Please install either plotly (with kaleido) or matplotlib. Alternatively, pass a custom rendering `DistributionRendering` engine.")
