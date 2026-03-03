@@ -134,9 +134,8 @@ def restaurant_manual_sample(visualize=True):
         f'P({", ".join(f"{k.name}={v}" for k, v in q.items())}'
         f' | '
         f'{", ".join(f"{k.name}={v}" for k, v in e.items())})'
-        f' = {res.result}'
+        f' = {res}'
     )
-    print(res.explain())
 
 
 # -------------------------------------------------------
@@ -219,7 +218,7 @@ def restaurant_auto_sample(visualize=True):
         f'P({", ".join(f"{k.name}={v}" for k, v in q.items())}'
         f' | '
         f'{", ".join(f"{k.name}={v}" for k, v in e.items())})'
-        f' = {res.result}'
+        f' = {res}'
     )
 
 

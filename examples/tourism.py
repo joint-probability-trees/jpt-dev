@@ -66,12 +66,12 @@ def main(visualize=True):
 
     # Query conditional probabilities per destination
     for clazz in df['Destination'].unique():
-        res = jpt.infer(
+        prob = jpt.infer(
             query={d: clazz},
             evidence={t: 300}
         )
         print(f'P(Destination={clazz} | Time=300)'
-              f' = {res.result}')
+              f' = {prob}')
         for exp in jpt.expectation(
                 [t, price],
                 evidence={d: clazz},

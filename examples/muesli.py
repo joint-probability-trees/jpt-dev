@@ -74,7 +74,7 @@ def plot_conditional(
                 ),
             },
             evidence=evidence
-        ).result
+        )
         for xi, yi in zip(X.ravel(), Y.ravel())
     ]).reshape(X.shape)
 

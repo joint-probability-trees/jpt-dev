@@ -8,7 +8,7 @@ learned. The resulting model is queried for conditional
 probabilities and human-readable explanations.
 
 Demonstrates:
-    - Conditional distributions with ``Conditional``
+    - Conditional distributions for data sampling
     - Bool variables for binary events
     - Inference with evidence via ``infer()``
     - Human-readable explanations via ``explain()``
@@ -18,10 +18,36 @@ import tempfile
 
 import numpy as np
 
-from jpt.base.utils import Conditional
 from jpt.distributions import Bool
 from jpt.trees import JPT
 from jpt.variables import SymbolicVariable
+
+
+# -------------------------------------------------------
+
+
+class Conditional:
+    """A simple conditional distribution table for
+    sampling from a Bayesian network.
+
+    Maps tuples of parent values to distribution
+    instances that can be sampled.
+    """
+
+    def __init__(self, typ, conditionals):
+        self.type = typ
+        self.conditionals = conditionals
+        self.p = {}
+
+    def __setitem__(self, evidence, dist):
+        if not isinstance(evidence, tuple):
+            evidence = (evidence,)
+        self.p[evidence] = dist
+
+    def sample_one(self, evidence):
+        if not isinstance(evidence, (tuple, list)):
+            evidence = (evidence,)
+        return self.p[tuple(evidence)].sample_one()
 
 
 # -------------------------------------------------------
@@ -86,18 +112,14 @@ def main(visualize=True):
         variables=[E, B, A, M, J],
         min_impurity_improvement=0
     )
-    tree.learn(data)
+    tree.learn(np.array(data))
 
     # Query: P(Alarm=True | MaryCalls=True)
     q = {A: True}
     e = {M: True}
-    res = tree.infer(q, e)
+    prob = tree.infer(q, e)
     print(f'\nP(Alarm=True | MaryCalls=True)'
-          f' = {res.result:.4f}')
-
-    # Human-readable explanation
-    explanation = res.explain()
-    print(f'\nExplanation:\n{explanation}')
+          f' = {prob:.4f}')
 
     # Posterior distribution of Alarm given Mary calls
     posterior = tree.posterior(
