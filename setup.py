@@ -1,107 +1,39 @@
-import sys
 import os
+
 from setuptools import setup
 
-import numpy
-from Cython.Build import cythonize
 
+# ------------------------------------------------------
+# Skip Cython compilation for development installs
+# (pyximport will handle JIT compilation at runtime).
+# Usage: JPT_NO_CYTHON=1 pip install -e ".[dev]"
 
-sys.path.insert(0, 'src')
+if not os.environ.get('JPT_NO_CYTHON'):
+    import numpy
+    from Cython.Build import cythonize
 
+    basedir = 'src'
 
-__description__ = '''Joint Probability Trees (short JPTs) are a formalism for learning of and reasoning about joint probability
-distributions, which is tractable for practical applications. JPTs support both symbolic and subsymbolic variables in a single
-hybrid model, and they do not rely on prior knowledge about variable dependencies or families of distributions.
-JPT representations build on tree structures that partition the problem space into relevant subregions that are elicited
-from the training data instead of postulating a rigid dependency model prior to learning. Learning and reasoning scale
-linearly in JPTs, and the tree structure allows white-box reasoning about any posterior probability :math:`P(Q\mid E)`,
-such that interpretable explanations can be provided for any inference result. This documentation introduces the
-code base of the ``pyjpt`` library, which is implemented in Python/Cython, and showcases the practical
-applicability of JPTs in high-dimensional heterogeneous probability spaces, making it
-a promising alternative to classic probabilistic
+    pyxfiles = [
+        "jpt/base/cutils/cutils.pyx",
+        "jpt/base/functions/func.pyx",
+        "jpt/base/intervals/base.pyx",
+        "jpt/base/intervals/intset.pyx",
+        "jpt/base/intervals/contset.pyx",
+        "jpt/base/intervals/unionset.pyx",
+        "jpt/distributions/qpd/quantiles.pyx",
+        "jpt/distributions/qpd/cdfreg.pyx",
+        "jpt/learning/impurity/impurity.pyx",
+    ]
 
-## Documentation
-The documentation is hosted on readthedocs.org [here](https://joint-probability-trees.readthedocs.io/en/latest/).'''
+    os.environ['CPATH'] = numpy.get_include()
 
+    ext_modules = cythonize(
+        [os.path.join(basedir, f) for f in pyxfiles],
+        language='c++',
+        include_path=[numpy.get_include()]
+    )
+else:
+    ext_modules = []
 
-def read_version(fname):
-    try:
-        return open(os.path.join(os.path.dirname(__file__), fname)).read().strip()
-    except FileNotFoundError:
-        return '0.0.0'
-
-
-__version__ = read_version(os.path.join('src', 'jpt', '.version'))
-
-
-def requirements():
-    with open('requirements.txt', 'r') as f:
-        return [_.strip() for _ in f.readlines() if _.strip()]
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Set up the C++ extensions for compilation
-
-
-basedir = 'src'
-
-pyxfiles = [
-    "jpt/base/cutils/cutils.pyx",
-    "jpt/base/functions/func.pyx",
-    "jpt/base/intervals/base.pyx",
-    "jpt/base/intervals/intset.pyx",
-    "jpt/base/intervals/contset.pyx",
-    "jpt/base/intervals/unionset.pyx",
-    "jpt/distributions/qpd/quantiles.pyx",
-    "jpt/distributions/qpd/cdfreg.pyx",
-    "jpt/learning/impurity/impurity.pyx",
-]
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-# We set the CPATH variable because the "include_dir" argument doesn't seem to work properly
-
-
-_numpy_include_dir = numpy.get_include()
-os.environ['CPATH'] = _numpy_include_dir
-print('Setting CPATH environment variable to', _numpy_include_dir)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Compile the C++ extensions
-
-compiled = cythonize(
-    [os.path.join(basedir, f) for f in pyxfiles],
-    language='c++',
-    include_path=[numpy.get_include()]
-)
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-setup(
-    name='pyjpt',
-    packages=[
-        'jpt',
-        'jpt.learning',
-        'jpt.learning.impurity',
-        'jpt.inference',
-        'jpt.plotting',
-        'jpt.plotting.engines',
-        'jpt.base',
-        'jpt.base.intervals',
-        'jpt.base.cutils',
-        'jpt.base.functions',
-        'jpt.distributions',
-        'jpt.distributions.qpd',
-        'jpt.distributions.univariate',
-    ],
-    package_dir={'': 'src'},
-    ext_modules=compiled,
-    zip_safe=False,
-    version=__version__,
-    install_requires=requirements(),
-    long_description=__description__,
-    package_data={'jpt': ['.version']},
-    include_package_data=True,
-    extras_require={'mlflow': ['mlflow >= 2.5.0']}
-)
+setup(ext_modules=ext_modules)

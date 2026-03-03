@@ -2,21 +2,17 @@ PKG_NAME=pyjpt
 
 DEFAULT_PYTHON_VERSION=3.11
 
-PKG_VERSION=`test -f src/jpt/.version && cat src/jpt/.version || echo 0.0.0`
+PKG_VERSION=`git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo 0.0.0`
 
 ENV_PYTHON_VERSION=`test -n "${PYTHON_VERSION}" && echo ${PYTHON_VERSION} || echo ${DEFAULT_PYTHON_VERSION}`
 
 PY_VERSION_STR=$(shell echo ${ENV_PYTHON_VERSION} | tr -d '.')
 
-ARCH_STR=linux_`uname -p`
-
 PYTHON_CMD=python${ENV_PYTHON_VERSION}
 
-ENV_NAME=.venv/${PKG_NAME}-${PKG_VERSION}-cp${PY_VERSION_STR}
+ENV_NAME=.venv/${PKG_NAME}-cp${PY_VERSION_STR}
 
 BASEDIR=`pwd`
-
-RELEASE_NAME=${PKG_NAME}-${PKG_VERSION}
 
 preload:
 	@(echo Package Name: "${PKG_NAME}")
@@ -24,7 +20,6 @@ preload:
 	@(echo Python Version: "${ENV_PYTHON_VERSION}")
 	@(echo Python Version String: "${PY_VERSION_STR}")
 	@(echo Virtual Env Name: "${ENV_NAME}")
-	@(echo Architecture: "${ARCH_STR}")
 
 rmvirtualenv: preload
 	@(rm -rf .venv)
@@ -32,34 +27,25 @@ rmvirtualenv: preload
 virtualenv: preload
 	@(virtualenv ${ENV_NAME} --python ${PYTHON_CMD})
 	@(. ${ENV_NAME}/bin/activate && pip install -U pip)
-	@(. ${ENV_NAME}/bin/activate && pip install -e ".[dev]")
+	@(. ${ENV_NAME}/bin/activate && JPT_NO_CYTHON=1 pip install -e ".[dev]")
 
 sdist: preload virtualenv
 	@(echo "Build ${PKG_NAME} sdist package...")
-	@(. ${ENV_NAME}/bin/activate && pip install -e ".[dev]" && python setup.py sdist)
-
-bdist: preload virtualenv
-	@(echo "Build ${PKG_NAME} bdist package...")
-	@(. ${ENV_NAME}/bin/activate && pip install -e ".[dev]" && python setup.py bdist)
+	@(. ${ENV_NAME}/bin/activate && python -m build --sdist)
 
 wheel: preload virtualenv
-	@(echo "Build ${PKG_NAME} bdist_wheel package...")
-	@(. ${ENV_NAME}/bin/activate && pip install -U wheel pip)
-	@(. ${ENV_NAME}/bin/activate && pip install -e ".[dev]" && python setup.py bdist_wheel)
+	@(echo "Build ${PKG_NAME} wheel package...")
+	@(. ${ENV_NAME}/bin/activate && python -m build --wheel)
 
-release: preload clean sdist bdist wheel tests
-	@mkdir -p releases/${RELEASE_NAME}
-	@cp -r dist/* releases/${RELEASE_NAME}/
-	@git tag ${PKG_VERSION}
-	@git add releases/${RELEASE_NAME}/
-	@git commit releases/${RELEASE_NAME}/ -m 'Added: release ${RELEASE_NAME}.'
+dist: preload virtualenv
+	@(echo "Build ${PKG_NAME} sdist and wheel packages...")
+	@(. ${ENV_NAME}/bin/activate && python -m build)
 
-all: preload clean virtualenv tests sdist bdist wheel
+all: preload clean virtualenv tests dist
 
-tests: preload virtualenv wheel
+tests: preload virtualenv
 	@(echo "Running all tests...")
 	@(. ${ENV_NAME}/bin/activate &&\
-	pip install dist/${PKG_NAME}-${PKG_VERSION}-cp${PY_VERSION_STR}-cp${PY_VERSION_STR}-${ARCH_STR}.whl &&\
 	cd test &&\
 	python -m unittest)
 
@@ -69,4 +55,4 @@ clean: preload rmvirtualenv
 
 update_pkg: preload
 	@(. ${ENV_NAME}/bin/activate && pip install -U pip)
-	@(. ${ENV_NAME}/bin/activate && pip install -U -e ".[dev]")
+	@(. ${ENV_NAME}/bin/activate && JPT_NO_CYTHON=1 pip install -U -e ".[dev]")
