@@ -4,7 +4,6 @@ from collections.abc import Hashable
 from typing import Set, Iterable, Type, Any, Dict, Union
 
 import numpy as np
-from plotly.graph_objs import Figure
 
 from jpt.base.utils import setstr
 
@@ -217,14 +216,14 @@ class Distribution:
             directory: str = '/tmp',
             view: bool = False,
             **kwargs
-    ) -> Figure:
+    ) -> Any:
         '''Generates a plot of the distribution.
 
         :param title:       the name of the variable this distribution represents
         :param fname:       the name of the file to be stored. Available file formats: png, svg, jpeg, webp, html
         :param directory:   the directory to store the generated plot files
         :param view:        whether to display generated plots, default False (only stores files)
-        :return:            plotly.graph_objs.Figure
+        :return:            the figure object of the plotting engine
         '''
         raise NotImplementedError()
 

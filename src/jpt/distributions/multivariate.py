@@ -9,8 +9,7 @@ import numpy as np
 
 from .univariate import Gaussian
 
-from typing import Union, Any, Literal
-from ..plotting.engines.rendering import DistributionRendering, PLOTLY, MATPLOTLIB
+from typing import Any
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -108,18 +107,25 @@ class MultiVariateGaussian(Gaussian):
 
     def plot(
             self,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
+            engine=None,
             **kwargs
     ) -> Any:
         '''Plots the distribution using the given engine.
-        :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
-                        `jpt.plotting.engines.rendering.DistributionRendering`.
-        :param kwargs:  The keyword arguments to pass to the engine as defined in the `.plot_multinomial()` function of
-                        `jpt.plotting.engines.rendering.DistributionRendering` or its respective subclass defined by
-                        `engine`.
-        :return:
+
+        :param engine:  Can be either one of
+            ``["plotly", "matplotlib"]``, or an instance of a
+            rendering engine subclassing
+            ``DistributionRendering``.
+        :param kwargs:  The keyword arguments to pass to the
+            engine as defined in the
+            ``.plot_multivariate()`` function of
+            ``DistributionRendering`` or its respective
+            subclass defined by ``engine``.
+        :return:        the figure object of the plotting engine
         '''
-        return DistributionRendering.instantiate_engine(engine).plot_multivariate(
-            self,
-            **kwargs
+        from jpt.plotting.engines.rendering import (
+            DistributionRendering
         )
+        return DistributionRendering.instantiate_engine(
+            engine
+        ).plot_multivariate(self, **kwargs)

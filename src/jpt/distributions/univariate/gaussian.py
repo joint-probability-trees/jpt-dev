@@ -1,19 +1,15 @@
 import copy
 import math
 import numbers
-from typing import Any, Union, Literal
+from typing import Any
 
 import numpy as np
 from dnutils import ifnone, first
 from dnutils.stats import Gaussian as Gaussian_, _matshape
-from matplotlib import pyplot as plt
 from scipy.stats import norm, multivariate_normal
 
 from jpt.base.functions import PiecewiseFunction
-
 from jpt.base.intervals import ContinuousSet
-from jpt.plotting.engines.matplotlib_engine import save_plot
-from jpt.plotting.engines.rendering import DistributionRendering, MATPLOTLIB, PLOTLY
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -303,18 +299,24 @@ class Gaussian(Gaussian_):
 
     def plot(
             self,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
+            engine=None,
             **kwargs
     ) -> Any:
         '''Plots the distribution using the given engine.
-        :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
-                        `jpt.plotting.engines.rendering.DistributionRendering`.
-        :param kwargs:  The keyword arguments to pass to the engine as defined in the `.plot_numeric()` function of
-                        `jpt.plotting.engines.rendering.DistributionRendering` or its respective subclass defined by
-                        `engine`.
-        :return:
+
+        :param engine:  Can be either one of
+            ``["plotly", "matplotlib"]``, or an instance of a
+            rendering engine subclassing
+            ``DistributionRendering``.
+        :param kwargs:  The keyword arguments to pass to the
+            engine as defined in the ``.plot_gaussian()``
+            function of ``DistributionRendering`` or its
+            respective subclass defined by ``engine``.
+        :return:        the figure object of the plotting engine
         '''
-        return DistributionRendering.instantiate_engine(engine).plot_gaussian(
-            self,
-            **kwargs
+        from jpt.plotting.engines.rendering import (
+            DistributionRendering
         )
+        return DistributionRendering.instantiate_engine(
+            engine
+        ).plot_gaussian(self, **kwargs)

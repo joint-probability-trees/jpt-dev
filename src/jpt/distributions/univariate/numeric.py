@@ -3,7 +3,7 @@ import copy
 import numbers
 from collections import deque
 from operator import itemgetter
-from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, Tuple, Literal
+from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, Tuple
 
 import numpy as np
 from dnutils import ifnone, first, ifnot
@@ -18,7 +18,6 @@ from . import Distribution
 from .distribution import ValueMap, Identity
 from ..qpd import QuantileDistribution
 from ...base.utils import pairwise, normalized, none2nan
-from ...plotting.engines.rendering import DistributionRendering, MATPLOTLIB, PLOTLY
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -776,21 +775,27 @@ class Numeric(Distribution):
 
     def plot(
             self,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
+            engine=None,
             **kwargs
     ) -> Any:
         '''Plots the distribution using the given engine.
-        :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
-                        `jpt.plotting.engines.rendering.DistributionRendering`.
-        :param kwargs:  The keyword arguments to pass to the engine as defined in the `.plot_numeric()` function of
-                        `jpt.plotting.engines.rendering.DistributionRendering` or its respective subclass defined by
-                        `engine`.
-        :return:
+
+        :param engine:  Can be either one of
+            ``["plotly", "matplotlib"]``, or an instance of a
+            rendering engine subclassing
+            ``DistributionRendering``.
+        :param kwargs:  The keyword arguments to pass to the
+            engine as defined in the ``.plot_numeric()``
+            function of ``DistributionRendering`` or its
+            respective subclass defined by ``engine``.
+        :return:        the figure object of the plotting engine
         '''
-        return DistributionRendering.instantiate_engine(engine).plot_numeric(
-            self,
-            **kwargs
+        from jpt.plotting.engines.rendering import (
+            DistributionRendering
         )
+        return DistributionRendering.instantiate_engine(
+            engine
+        ).plot_numeric(self, **kwargs)
 
 
 # ----------------------------------------------------------------------------------------------------------------------

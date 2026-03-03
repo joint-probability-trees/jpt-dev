@@ -4,7 +4,7 @@ from collections import Counter
 from itertools import tee
 from operator import itemgetter
 from types import MethodType
-from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Collection, Literal
+from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Collection
 
 import numpy as np
 from deprecated import deprecated
@@ -16,7 +16,6 @@ from ..utils import HashableOrderedDict
 from ...base.errors import Unsatisfiability
 from ...base.sampling import wsample, wchoice
 from ...base.utils import mapstr, classproperty, Symbol, Collections
-from ...plotting.engines.rendering import DistributionRendering, PLOTLY, MATPLOTLIB
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -602,21 +601,27 @@ class Multinomial(Distribution):
 
     def plot(
             self,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
+            engine=None,
             **kwargs
     ) -> Any:
         '''Plots the distribution using the given engine.
-        :param engine:  Can be either one of ["plotly", "matplotlib"], or an Instance of a rendering engine subclassing
-                        `jpt.plotting.engines.rendering.DistributionRendering`.
-        :param kwargs:  The keyword arguments to pass to the engine as defined in the `.plot_multinomial()` function of
-                        `jpt.plotting.engines.rendering.DistributionRendering` or its respective subclass defined by
-                        `engine`.
-        :return:
+
+        :param engine:  Can be either one of
+            ``["plotly", "matplotlib"]``, or an instance of a
+            rendering engine subclassing
+            ``DistributionRendering``.
+        :param kwargs:  The keyword arguments to pass to the
+            engine as defined in the ``.plot_multinomial()``
+            function of ``DistributionRendering`` or its
+            respective subclass defined by ``engine``.
+        :return:        the figure object of the plotting engine
         '''
-        return DistributionRendering.instantiate_engine(engine).plot_multinomial(
-            self,
-            **kwargs
+        from jpt.plotting.engines.rendering import (
+            DistributionRendering
         )
+        return DistributionRendering.instantiate_engine(
+            engine
+        ).plot_multinomial(self, **kwargs)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
