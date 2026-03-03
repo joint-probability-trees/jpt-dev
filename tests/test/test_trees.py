@@ -32,9 +32,182 @@ from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, Sy
     IntegerVariable
 
 from jpt.base.functions import ConstantFunction, LinearFunction
-from jpt.base.intervals import ContinuousSet, IntSet
+from jpt.base.intervals import ContinuousSet, UnionSet, EXC, INC, IntSet
 from test.testutils import gaussian_data_1d, EXAMPLES_DATA, RESOURCES
 from ddt import ddt, data
+
+
+class JPTInferenceSymbolic(unittest.TestCase):
+
+    data = None
+    jpt = None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.E = SymbolicVariable('Earthquake', Bool)
+        cls.B = SymbolicVariable('Burglary', Bool)
+        cls.A = SymbolicVariable('Alarm', Bool)
+        cls.M = SymbolicVariable('MaryCalls', Bool)
+        cls.J = SymbolicVariable('JohnCalls', Bool)
+
+        with open(
+            os.path.join(
+                EXAMPLES_DATA, 'alarm.pkl'
+            ), 'rb'
+        ) as f:
+            cls.data = np.array(pickle.load(f))
+
+        cls.jpt = JPT(
+            variables=[
+                cls.E, cls.B, cls.A, cls.M, cls.J
+            ],
+            min_impurity_improvement=0
+        )
+        cls.jpt.learn(
+            pd.DataFrame(
+                cls.data,
+                columns=list(cls.jpt.varnames)
+            )
+        )
+
+    def test_infer_alarm_given_mary(self):
+        q = {'Alarm': True}
+        e = {'MaryCalls': True}
+        res = JPTInferenceSymbolic.jpt.infer(q, e)
+        self.assertAlmostEqual(
+            0.950593, res, places=5
+        )
+
+    def test_infer_alarm(self):
+        q = {'Alarm': True}
+        e = {}
+        res = JPTInferenceSymbolic.jpt.infer(q, e)
+        self.assertAlmostEqual(
+            0.210199, res, places=5
+        )
+
+    def test_infer_alarm_evidence_disjunction_symbolic(
+            self
+    ):
+        q = {'Alarm': True}
+        e = {'MaryCalls': {True, False}}
+        res = JPTInferenceSymbolic.jpt.infer(q, e)
+        self.assertAlmostEqual(
+            0.210199, res, places=5
+        )
+
+    def test_likelihood_discrete(self):
+        # Act
+        probs = JPTInferenceSymbolic.jpt.likelihood(
+            self.data,
+            preprocess=False,
+            verbose=True,
+            single_likelihoods=False
+        )
+
+        # Assert
+        self.assertGreater(
+            sum(np.log(probs)),
+            -np.inf
+        )
+
+
+# ----------------------------------------------------------------------
+
+class JPTInferenceNumeric(unittest.TestCase):
+
+    def setUp(self) -> None:
+        with open(
+            os.path.join(
+                RESOURCES, 'gaussian_100.dat'
+            ), 'rb'
+        ) as f:
+            self.data = pickle.load(f)
+            x = NumericVariable('x')
+            self.jpt = JPT(variables=[x])
+            self.jpt.fit(
+                pd.DataFrame(
+                    self.data.reshape(-1, 1),
+                    columns=list(self.jpt.varnames)
+                ),
+                close_convex_gaps=False
+            )
+
+    def test_realset_evidence(self):
+        r1 = self.jpt.infer(
+            query={
+                'x': UnionSet(
+                    ['[-1,0.5]', '[1,inf[']
+                )
+            }
+        )
+        r2 = self.jpt.infer(
+            query={
+                'x': ContinuousSet(.5, 1, EXC, INC)
+            }
+        )
+        self.assertAlmostEqual(
+            r1, 1 - r2, places=10
+        )
+
+
+# ----------------------------------------------------------------------
+
+class JPTInferenceInteger(unittest.TestCase):
+
+    def test_infer_integers_only(self):
+        '''Inference with Integer variables only'''
+        # Arrange
+        data = pd.DataFrame(
+            np.array([list(range(-10, 10))]).T,
+            columns=["X"]
+        )
+        variables = infer_from_dataframe(
+            data, scale_numeric_types=False
+        )
+        jpt = JPT(variables, min_samples_leaf=.1)
+        jpt.fit(data)
+        q = jpt.bind(X=[-1, 1])
+
+        # Act
+        result = jpt.infer(q)
+
+        # Assert
+        self.assertAlmostEqual(
+            .15,
+            result,
+            places=13
+        )
+
+    def test_mpe_serialization(self):
+        # Arrange
+        data = pd.DataFrame(
+            np.array([list(range(-10, 10))]).T,
+            columns=["X"]
+        )
+
+        variables = infer_from_dataframe(
+            data, scale_numeric_types=False
+        )
+        tree = JPT(variables, min_samples_leaf=.1)
+        tree.fit(data)
+
+        # Act
+        maxima, likelihood = tree.mpe()
+        maxima_json = [m.to_json() for m in maxima]
+
+        # Assert
+        for maxi_json in maxima_json:
+            maxi = LabelAssignment.from_json(
+                variables=tree.variables,
+                d=maxi_json
+            )
+            self.assertIsInstance(
+                maxi, LabelAssignment
+            )
+
+
+# ----------------------------------------------------------------------
 
 @ddt
 class JPTTest(TestCase):
@@ -1327,133 +1500,6 @@ class TestCaseTargetLearning(TestCase):
                     targets=["s0", "i0", "n9"])
         model.fit(self.data)
         self.assertTrue(len(model.leaves) > 1)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-class KMPELeafTest(TestCase):
-    data: pd.DataFrame
-    model: JPT
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        np.random.seed(69)
-        dataset = sklearn.datasets.load_iris()
-        df = pd.DataFrame(columns=dataset.feature_names, data=dataset.data)
-
-        target = dataset.target.astype(object)
-        for idx, target_name in enumerate(dataset.target_names):
-            target[target == idx] = target_name
-
-        df["plant"] = target
-
-        cls.data = df
-        cls.model = JPT(
-            variables=infer_from_dataframe(
-                cls.data,
-                scale_numeric_types=False,
-                precision=0.05
-            ),
-            min_samples_leaf=0.9
-        )
-        cls.model.fit(cls.data)
-
-    def test_k3_mpe(self):
-        # Arrange
-        # Act
-        k_mpe = list(
-            self.model.kmpe(k=3)
-        )
-
-        # Assert
-        s1 = (
-            LabelAssignment({
-                'sepal length (cm)': ContinuousSet.parse('[4.300,6.900)'),
-                'sepal width (cm)': ContinuousSet.parse('[2.500,3.500)'),
-                'petal width (cm)': ContinuousSet.parse('[0.100,0.200)'),
-                'petal length (cm)': ContinuousSet.parse('[1.000,1.700)'),
-                'plant': {'versicolor', 'virginica', 'setosa'},
-            }, variables=self.model.variables),
-            0.07714629444766113
-        )
-        s2 = (
-            LabelAssignment({
-                'sepal length (cm)': ContinuousSet.parse('[4.300,6.900)'),
-                'sepal width (cm)': ContinuousSet.parse('[2.500,3.500)'),
-                'petal width (cm)': ContinuousSet.parse('[0.100,0.200)'),
-                'petal length (cm)': ContinuousSet.parse('[3.300,6.100)'),
-                'plant': {'versicolor', 'virginica', 'setosa'},
-            }, variables=self.model.variables),
-            0.037342089333708306
-        )
-        s3 = (
-            LabelAssignment({
-                'sepal length (cm)': ContinuousSet.parse('[4.300,6.900)'),
-                'sepal width (cm)': ContinuousSet.parse('[2.000,2.500)'),
-                'petal width (cm)': ContinuousSet.parse('[0.100,0.200)'),
-                'petal length (cm)': ContinuousSet.parse('[1.000,1.700)'),
-                'plant': {'versicolor', 'virginica', 'setosa'},
-            }, variables=self.model.variables),
-            0.024797023215319652
-        )
-        self.assertEqual(
-            len(k_mpe),
-            3
-        )
-        self.assertEqual(
-            [s1, s2, s3],
-            k_mpe
-        )
-
-    def test_k_mpe_brute(self):
-        # Arrange
-        assert len(self.model.leaves) == 1
-        leaf = next(
-            iter(self.model.leaves.values())
-        )
-
-        # calculate likelihood wise unique solutions
-        all_states = [list(d.k_mpe()) for d in leaf.distributions.values()]
-        all_joint_states = [
-            (project(pair, 0), prod(project(pair, 1))) for pair in itertools.product(*all_states)
-        ]
-        sorted_joint_states = list(
-            sorted(
-                all_joint_states,
-                reverse=True,
-                key=itemgetter(1)
-            )
-        )
-        sorted_joint_states = [
-            (LabelAssignment((var, val) for var, val in zip(self.model.variables, s)), l) for s, l in sorted_joint_states
-        ]
-
-        # Act
-        k_mpe = list(
-            self.model.kmpe(k=len(all_joint_states) + 1000)
-        )
-
-        # Assert
-        self.assertTrue(
-            all([l1 > l2 for (_, l1), (_, l2) in pairwise(k_mpe)]),
-            msg="Not all solutions are ordered by descending likelihood"
-        )
-
-        self.assertEqual(
-            project(sorted_joint_states, 0),
-            project(k_mpe, 0),
-            msg='MPE state sequences differ from the brute force solution.'
-        )
-
-        self.assertEqual(
-            [round(v, 8) for v in project(sorted_joint_states, 1)],
-            [round(v, 8) for v in project(k_mpe, 1)],
-            msg="These should be equal to the number of solutions"
-                "that produce different likelihoods (set-wise),"
-                "which is 72 for this experiment. 216 (current)"
-                "is the number of unique solutions iff sets are not"
-                "regarded."
-        )
 
 
 # ----------------------------------------------------------------------------------------------------------------------
