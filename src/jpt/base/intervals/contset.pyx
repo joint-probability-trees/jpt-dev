@@ -299,20 +299,15 @@ cdef class ContinuousSet(Interval):
 
         cdef DTYPE_t upper = self.upper if self.right == _INC else np.nextafter(self.upper, self.upper - 1)
         cdef DTYPE_t lower = self.lower if self.left == _INC else np.nextafter(self.lower, self.lower + 1)
+        cdef DTYPE_t lo = max(np.finfo(np.float64).min, lower)
+        cdef DTYPE_t hi = min(np.finfo(np.float64).max, upper)
+        cdef SIZE_t i
 
         if result is None:
-            result = np.random.uniform(
-                max(np.finfo(np.float64).min, lower),
-                min(np.finfo(np.float64).max, upper),
-                k
-            )
-
+            result = np.random.uniform(lo, hi, k)
         else:
-            result[...] = np.random.uniform(
-                max(np.finfo(np.float64).min, lower),
-                min(np.finfo(np.float64).max, upper),
-                k
-            )
+            for i in range(k):
+                result[i] = np.random.uniform(lo, hi)
         return result
 
     def any_point(self) -> numbers.Real:
