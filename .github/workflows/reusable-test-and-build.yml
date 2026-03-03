@@ -5,7 +5,7 @@ on:
     branches:
       - main
 
-  # --------------------------------------------------------------------------------------------------------------------
+  # ------------------------------------------------------------------------------------------------------------------
 
   workflow_call:
     inputs:
@@ -16,22 +16,22 @@ on:
       python-versions:
         required: true
         type: string
-        default: "cp10-cp10"
+        default: "cp310-cp310"
 
-# ----------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
 
 defaults:
   run:
     shell: bash
     working-directory: .
 
-# ----------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
 
 concurrency:
   group: 'jpt-building-and-deployment'
   cancel-in-progress: true
 
-# ----------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
 
 jobs:
   test-and-build:
@@ -40,69 +40,55 @@ jobs:
 
     steps:
 
-      - name: Checkout 🛎
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Setup python 🐍
-        uses: actions/setup-python@v4
+      - name: Setup python
+        uses: actions/setup-python@v6
         with:
-            python-version: 3.8
+            python-version: "3.11"
             cache: pip
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Setup Graphviz 📊
+      - name: Setup Graphviz
         uses: ts-graphviz/setup-graphviz@v1
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Install user dependencies 🍼
-        uses: py-actions/py-dependency-install@v4
-        with:
-          path: "requirements.txt"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Install developer dependencies 📐
-        uses: py-actions/py-dependency-install@v4
-        with:
-          path: "requirements-dev.txt"
-
-      # ----------------------------------------------------------------------------------------------------------------
-
-      - name: "Create .version file if necessary [Version # passed is '${{ inputs.version }}'] 🔢"
-        if: ${{ inputs.version != '' }}
-        run: |
-          echo "${{ inputs.version }}" > src/jpt/.version
-
-      # ----------------------------------------------------------------------------------------------------------------
-
-      - name: Run Tests 🎓
+      - name: Run Tests
         run: |
           cd test
-          PYTHONPATH=../src python -m unittest discover
+          python -m unittest discover
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Build binary wheels 🔨
+      - name: Build binary wheels
         uses: RalfG/python-wheels-manylinux-build@v0.7.1
         with:
-          python-versions: ${{ inputs.python-versions || 'cp10-cp10' }}
-          build-requirements: 'cython numpy'
+          python-versions: ${{ inputs.python-versions || 'cp310-cp310' }}
+          build-requirements: 'cython numpy setuptools-scm'
           pip-wheel-args: '-w ./dist-raw --no-deps'
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Install Sphinx dependencies 📚
+      - name: Install Sphinx dependencies
         uses: py-actions/py-dependency-install@v4
         with:
           path: "doc/requirements.txt"
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Build Sphinx documentation 📝
+      - name: Build Sphinx documentation
         working-directory: ./doc
         run: |
           sudo apt install pandoc
@@ -110,9 +96,9 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Make wheel available  🔧
+      - name: Make wheel available
         id: wheel_url
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pyjpt-wheel
           path: dist-raw/*manylinux*.whl
