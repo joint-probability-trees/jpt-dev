@@ -17,7 +17,7 @@ from jpt.learning.impurity.impurity import (
     _variances,
     _compute_var_improvements
 )
-from testutils import EXAMPLES_DATA
+from test.testutils import EXAMPLES_DATA
 
 
 class ImpurityTest(TestCase):

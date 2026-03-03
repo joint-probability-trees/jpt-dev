@@ -2,7 +2,7 @@ import sys
 from unittest import TestCase
 
 from matplotlib import pyplot as plt
-from testutils import EXAMPLES_DIR
+from test.testutils import EXAMPLES_DIR
 
 try:
     import regression

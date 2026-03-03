@@ -33,7 +33,7 @@ from jpt.variables import NumericVariable, VariableMap, infer_from_dataframe, Sy
 
 from jpt.base.functions import ConstantFunction, LinearFunction
 from jpt.base.intervals import ContinuousSet, IntSet
-from testutils import gaussian_data_1d, EXAMPLES_DATA, RESOURCES
+from test.testutils import gaussian_data_1d, EXAMPLES_DATA, RESOURCES
 from ddt import ddt, data
 
 @ddt

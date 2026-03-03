@@ -4,7 +4,7 @@ from unittest import TestCase
 import numpy as np
 
 from jpt.base.cutils.cutils import test_sort
-from testutils import RESOURCES
+from test.testutils import RESOURCES
 
 
 class CUtilsTest(TestCase):

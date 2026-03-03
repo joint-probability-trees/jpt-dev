@@ -17,7 +17,7 @@ from jpt.distributions.univariate.integer import IntegerMap, IntegerValueToLabel
 from jpt.distributions.univariate.multinomial import MultinomialValueMap, Bool
 from jpt.distributions.univariate.numeric import NumericValueToLabelMap, NumericLabelToValueMap
 from jpt.variables import SymbolicVariable
-from testutils import uniform_numeric, RESOURCES
+from test.testutils import uniform_numeric, RESOURCES
 
 from jpt.distributions.qpd import QuantileDistribution
 

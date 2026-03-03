@@ -15,7 +15,7 @@ from jpt.trees import MPESolver, JPT
 from jpt.variables import VariableMap
 from jpt.variables import SymbolicVariable, NumericVariable, infer_from_dataframe
 from jpt.variables import LabelAssignment
-from testutils import EXAMPLES_DATA, RESOURCES
+from test.testutils import EXAMPLES_DATA, RESOURCES
 
 
 class JPTInferenceSymbolic(unittest.TestCase):
