@@ -1478,7 +1478,7 @@ class PruningTest(TestCase):
         # jpt.plot(plotvars=jpt.variables, view=False)
 
         # Act
-        pruned_jpt = jpt.prune(.6)
+        pruned_jpt = jpt.prune(.5)
         pruned_jpt.plot(
             engine=engine,
             plotvars=pruned_jpt.variables,
