@@ -1,18 +1,12 @@
 import heapq
-import logging
 import numbers
-import os
 import sys
-from _csv import register_dialect, QUOTE_NONNUMERIC
-from csv import Dialect
 
 import math
 from itertools import tee
 from typing import Callable, Iterable, Any, Tuple, Set, List, Union, Dict
 
 import numpy as np
-import arff
-import csv
 
 from functools import reduce
 
@@ -341,54 +335,6 @@ def normalized(
             return np.array(result, dtype=dist.dtype)
         return result
 
-
-class CSVDialect(Dialect):
-    """Describe the usual properties of Excel-generated CSV files."""
-    delimiter = ';'
-    quotechar = '"'
-    doublequote = True
-    skipinitialspace = False
-    lineterminator = '\r\n'
-    quoting = QUOTE_NONNUMERIC
-
-# excel:
-#     delimiter = ','
-#     quotechar = '"'
-#     doublequote = True
-#     skipinitialspace = False
-#     lineterminator = '\r\n'
-#     quoting = QUOTE_MINIMAL
-
-
-register_dialect("csvdialect", CSVDialect)
-
-
-def convert(k, v):
-    v = ifnone(v, '')
-    if k == 'transaction_dt':
-        return str(v)
-    try:
-        v = int(v)
-    except ValueError:
-        try:
-            v = float(v)
-        except ValueError:
-            v = str(v)
-    return v
-
-
-def arfftocsv(arffpath, csvpath):
-    print(f'Loading arff file: {arffpath}\n')
-    data = arff.load(open(arffpath, 'r'), encode_nominal=True)
-
-    print(f'Writing to csv file: {csvpath}\n')
-    with open(csvpath, 'w', newline='') as csvfile:
-        fieldnames = [d[0] for d in data.get('attributes')]
-        writer = csv.DictWriter(csvfile, dialect='csvdialect', fieldnames=fieldnames)
-        writer.writeheader()
-
-        for dp in data.get('data'):
-            writer.writerow({k: convert(k, v) for k, v in zip(fieldnames, dp)})
 
 # ----------------------------------------------------------------------------------------------------------------------
 
