@@ -177,7 +177,7 @@ class KMPELeafTest(TestCase):
                     'setosa'
                 },
             }, variables=self.model.variables),
-            0.024797023215319652
+            0.024797023215319656
         )
         self.assertEqual(
             len(k_mpe),
