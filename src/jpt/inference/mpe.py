@@ -259,5 +259,5 @@ class MPESolver:
                     return
             ub = solutions[0].cost if solutions else np.inf
 
-            while pruned:  # Continue the search at the states that have been pruned
+            while pruned and pruned[0].cost <= ub:  # Only requeue nodes that fit the new bound
                 fringe.append(pruned.pop())

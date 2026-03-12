@@ -1383,21 +1383,28 @@ class JPT:
                     if not np.isnan(likelihood_max) and not np.isinf(likelihood_max):
                         likelihoods.append(likelihood_max)
         likelihood_max = ifnot(likelihoods, 1, max)
-        mpe_solvers = [
-            MPESolver(
-                distributions=leaf.distributions,
-                likelihood_divisor=likelihood_max if likelihoods else None
-            ).solve() for leaf in conditional_jpt.leaves.values()
-        ]
 
+        def _solver_scaled(leaf):
+            """Yield (assignment, joint_likelihood) with leaf.prior folded in."""
+            prior = leaf.prior
+            for assignment, likelihood in MPESolver(
+                distributions=leaf.distributions,
+                likelihood_divisor=likelihood_max if likelihoods else None,
+            ).solve():
+                yield assignment, likelihood * prior
+
+        # Each entry is (solution, joint_likelihood, solver).
+        # key negated → max-heap: pop() always extracts the globally best candidate.
         mpe_candidates = Heap(
-            data=[(*next(solver), solver) for solver in mpe_solvers],
-            key=itemgetter(1)
+            data=[(*next(solver), solver)
+                  for leaf in conditional_jpt.leaves.values()
+                  for solver in (_solver_scaled(leaf),)],
+            key=lambda x: -x[1],
         )
 
         count = 0
         while mpe_candidates and (not k or count < k):
-            solution, likelihood, solver = mpe_candidates.popright()
+            solution, likelihood, solver = mpe_candidates.pop()
 
             values = ValueAssignment(
                 [
