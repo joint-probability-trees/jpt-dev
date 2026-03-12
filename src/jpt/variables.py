@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import collections.abc
+import copy
 import hashlib
 import math
 import numbers
@@ -66,10 +67,7 @@ class Variable:
         '''
         self._name = name
         self._domain = domain
-        if (
-            not issubclass(type(self), Variable)
-            or type(self) is Variable
-        ):
+        if type(self) is Variable:
             raise TypeError(
                 'Instantiation of abstract class '
                 f'{type(self).__name__} is not allowed!'
@@ -102,13 +100,9 @@ class Variable:
                 self.settings[attr] = value
 
     def __getattr__(self, name):
-        try:
-            return super().__getattribute__(name)
-        except AttributeError:
-            if name in type(self).SETTINGS:
-                return self.settings[name]
-            else:
-                raise
+        if name in type(self).SETTINGS:
+            return self.settings[name]
+        raise AttributeError(name)
 
     @property
     def name(self) -> str:
@@ -141,7 +135,7 @@ class Variable:
 
     def __eq__(self, other):
         return (
-            type(self) == type(other)
+            type(self) is type(other)
             and self.name == other.name
             and self.domain.equiv(other.domain)
             and self.settings == other.settings
@@ -701,7 +695,7 @@ def infer_from_dataframe(
     '''
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
-        if dtype in (str, object, bool):
+        if dtype in (str, object, bool, np.bool_):
             if (
                 excluded_columns is not None
                 and col in excluded_columns
@@ -740,7 +734,7 @@ def infer_from_dataframe(
                 values = df[col]
                 if remove_nan:
                     values = values[
-                        ~values.isin([np.nan, np.inf])
+                        ~values.isin([np.nan, np.inf, -np.inf])
                     ]
                 uid = (
                     '_' + str(uuid.uuid4())
@@ -785,9 +779,9 @@ def infer_from_dataframe(
             var = IntegerVariable(str(col), dom)
         else:
             raise TypeError(
-                'Unknown column type:',
-                col,
-                '[%s]' % dtype,
+                'Unknown column type: %s [%s]' % (
+                    col, dtype
+                )
             )
         variables.append(var)
     return variables
@@ -1020,6 +1014,8 @@ class VariableMap:
                 (set, list, tuple, NumberSet),
             ):
                 vmap[vname] = value.copy()
+            else:
+                vmap[vname] = copy.copy(value)
         return vmap
 
     @classmethod
@@ -1216,16 +1212,8 @@ class ValueAssignment(VariableAssignment):
                 'numbers.Number or NumberSet, got '
                 '%s.' % type(value).__name__
             )
-        elif (
-            isinstance(variable, SymbolicVariable)
-            and type(value) not in (
-                numbers.Integral, set
-            )
-        ):
-            if type(value) is not set:
-                value_ = {value}
-            else:
-                value_ = value
+        elif isinstance(variable, SymbolicVariable):
+            value_ = value if type(value) is set else {value}
             for v in value_:
                 if v not in set(variable.domain.values):
                     raise TypeError(

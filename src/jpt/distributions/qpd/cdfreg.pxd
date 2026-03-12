@@ -3,14 +3,15 @@
 from jpt.base.cutils.cutils cimport DTYPE_t, SIZE_t
 
 from libcpp.queue cimport priority_queue
-from libcpp.deque cimport  deque
+from libcpp.deque cimport deque
+from libcpp.vector cimport vector
 
 
-cdef DTYPE_t DELTA_MIN_THR
+cdef DTYPE_t JUMP_THR_FACTOR
 
 
 cdef class CDFRegressor:
-    '''Experimental quantile regression.'''
+    '''Piecewise-linear CDF regressor with explicit jump detection.'''
 
     cdef readonly DTYPE_t eps
     cdef SIZE_t max_splits
@@ -19,7 +20,7 @@ cdef class CDFRegressor:
     cdef priority_queue[SIZE_t] _points
     cdef deque[SIZE_t] points
     cdef deque[(SIZE_t, SIZE_t, DTYPE_t, SIZE_t)] _queue
-    cdef DTYPE_t delta_min
+    cdef vector[SIZE_t] _jump_indices
 
     cpdef void fit(self, DTYPE_t[:, ::1] data)
 
