@@ -11,7 +11,7 @@ import pandas as pd
 from dnutils import mapstr, ifnone
 from tqdm import tqdm
 
-from ..base.multicore import Pool, DummyPool
+from ..base.utils.multicore import Pool, DummyPool
 from ..trees import JPT
 
 _locals = threading.local()

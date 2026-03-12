@@ -7,7 +7,7 @@ try:
     from .contset import __module__
     from .unionset import __module__
 except ModuleNotFoundError:
-    from jpt.base import pyximporter
+    from jpt.base.utils import pyximporter
     pyximporter.install()
 finally:
     from .base import (

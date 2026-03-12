@@ -14,7 +14,7 @@ from . import Distribution
 from .distribution import ValueMap
 from ..utils import HashableOrderedDict
 from ...base.errors import Unsatisfiability
-from ...base.sampling import wsample, wchoice
+from ...base.utils.sampling import wsample, wchoice
 from ...base.utils import mapstr, classproperty, Symbol, Collections
 
 

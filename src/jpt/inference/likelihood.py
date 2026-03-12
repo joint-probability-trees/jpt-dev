@@ -15,7 +15,7 @@ import logging
 from tqdm import tqdm
 
 from jpt.trees import JPT
-from jpt.base.multicore import Pool, DummyPool
+from jpt.base.utils.multicore import Pool, DummyPool
 from jpt.variables import ValueAssignment, Variable
 
 

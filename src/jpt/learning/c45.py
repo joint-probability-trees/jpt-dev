@@ -19,7 +19,7 @@ from .impurity import Impurity
 from .preprocessing import preprocess_data
 from ..base.functions import PiecewiseFunction
 from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
-from ..base.multicore import DummyPool
+from ..base.utils.multicore import DummyPool
 from ..base.utils import _write_error
 from ..distributions import Distribution
 from ..distributions.qpd import QuantileDistribution

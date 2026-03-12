@@ -5,7 +5,7 @@ import threading
 import unittest
 from unittest import TestCase
 
-from jpt.base.multicore import InheritLocalDataThread
+from jpt.base.utils.multicore import InheritLocalDataThread
 
 
 # ------------------------------------------------------------------------------

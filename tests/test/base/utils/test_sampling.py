@@ -7,7 +7,7 @@ from unittest import TestCase
 
 import numpy as np
 
-from jpt.base.sampling import RouletteWheelSampler
+from jpt.base.utils.sampling import RouletteWheelSampler
 
 
 # ------------------------------------------------------------------------------

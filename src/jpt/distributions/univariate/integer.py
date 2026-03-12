@@ -13,7 +13,7 @@ from jpt.base.utils import normalized, classproperty, Collections
 from . import Distribution
 from .distribution import ValueMap
 from ...base.errors import Unsatisfiability
-from ...base.sampling import wsample, wchoice
+from ...base.utils.sampling import wsample, wchoice
 
 
 # ----------------------------------------------------------------------------------------------------------------------
