@@ -332,6 +332,10 @@ cdef class Impurity:
     # double array containing the maximum variances of each numeric variable
     cdef DTYPE_t[::1] max_variances
 
+    # double array of per-feature minimum impurity improvement thresholds,
+    # aligned with self.features (numeric features first, then symbolic)
+    cdef DTYPE_t[::1] min_improvements
+
     # integer array containing number of samples in left and right split
     cdef SIZE_t[::1] num_samples
 
@@ -378,14 +382,15 @@ cdef class Impurity:
         symbolic_features = Impurity.get_indices_of_symbolic_features_from_tree(tree)
         symbols = Impurity.get_size_of_symbolic_variables_domain_from_tree(tree)
         max_variances = Impurity.get_max_variances_from_tree(tree)
+        min_improvements = Impurity.get_min_impurity_improvements_from_tree(tree)
         dependency_indices = Impurity.get_dependency_indices_from_tree(tree)
         return cls(min_samples_leaf, numeric_vars, symbolic_vars, invert_impurity,
                    n_sym_vars_total, n_num_vars_total, numeric_features, symbolic_features,
-                   symbols, max_variances, dependency_indices)
+                   symbols, max_variances, min_improvements, dependency_indices)
 
     def __init__(self, min_samples_leaf, numeric_vars, symbolic_vars, invert_impurity,
                    n_sym_vars_total, n_num_vars_total, numeric_features, symbolic_features,
-                   symbols, max_variances, dependency_indices):
+                   symbols, max_variances, min_improvements, dependency_indices):
         """
         Construct the impurity
         """
@@ -523,6 +528,10 @@ cdef class Impurity:
             self.variances_right = np.ndarray(self.n_num_vars, dtype=np.float64)
             self.variance_improvements = np.ndarray(self.n_num_vars, dtype=np.float64)
 
+        # per-feature minimum impurity improvement thresholds,
+        # aligned with self.features (numeric features first, then symbolic)
+        self.min_improvements = min_improvements
+
         # calculate percentage of numeric targets
         self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
 
@@ -620,9 +629,33 @@ cdef class Impurity:
     @classmethod
     def get_max_variances_from_tree(cls, tree):
         return np.array(
-                [v._max_std ** 2 for v in tree.variables if v.numeric],
-                dtype=np.float64
-            )
+            [
+                v._max_std ** 2 if v.numeric else 0.
+                for v in tree.variables
+                if (v.numeric or v.integer) and v in tree.targets
+            ],
+            dtype=np.float64
+        )
+
+    @classmethod
+    def get_min_impurity_improvements_from_tree(cls, tree):
+        """
+        Return per-feature minimum impurity improvement thresholds as a
+        float64 array aligned with ``self.features`` (numeric features
+        first, then symbolic features).
+        """
+        return np.array(
+            [
+                v.min_impurity_improvement
+                for v in tree.variables
+                if (v.numeric or v.integer) and v in tree.features
+            ] + [
+                v.min_impurity_improvement
+                for v in tree.variables
+                if v.symbolic and v in tree.features
+            ],
+            dtype=np.float64
+        )
 
     @classmethod
     def get_dependency_indices_from_tree(cls, tree):
@@ -647,9 +680,15 @@ cdef class Impurity:
         :return: True if there is a higher variance, False if all are lower.
         """
         cdef int i
+        cdef int any_limit = 0
         for i in range(self.n_num_vars):
-            if variances[i] > self.max_variances[i]:
-                return True
+            if self.max_variances[i] > 0:
+                any_limit = 1
+                if variances[i] > self.max_variances[i]:
+                    return True
+        # If no max_std constraints are set at all, never short-circuit splitting
+        if not any_limit:
+            return True
         return False
 
     cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices):
@@ -831,9 +870,10 @@ cdef class Impurity:
                       n_samples,
                       result=self.variances_total)
 
-            # sanity check to see if the variances "make sense"
-            # if not self.check_max_variances(self.variances_total):
-            #     return 0
+            # if all numeric targets are within their max_std limits,
+            # no split is needed for their benefit
+            if not self.check_max_variances(self.variances_total):
+                return ninf
 
         # if symbolic targets exist
         if self.has_symbolic_vars():
@@ -869,6 +909,9 @@ cdef class Impurity:
         # reset best impurity improvement
         self.max_impurity_improvement = ninf
 
+        # index tracking position within self.features (for min_improvements lookup)
+        cdef SIZE_t feat_idx = 0
+
         # for every feature
         for variable in self.features:
 
@@ -892,8 +935,12 @@ cdef class Impurity:
                 &split_pos
             )
 
-            # if the best impurity improvement of this variable is better than the current best
-            if impurity_improvement > self.max_impurity_improvement:
+            # if the best impurity improvement of this variable is better than
+            # the current best AND meets this variable's per-feature threshold
+            if (
+                impurity_improvement > self.max_impurity_improvement
+                and impurity_improvement >= self.min_improvements[feat_idx]
+            ):
 
                 # update current best impurity
                 self.max_impurity_improvement = impurity_improvement
@@ -906,6 +953,8 @@ cdef class Impurity:
 
                 # write back the sorted indices of the best split variable
                 self.indices[self.start:self.end] = self.index_buffer[:n_samples]
+
+            feat_idx += 1
 
         # if max impurity improvement has been updated at least once and the best variable is symbolic
         if not isinf(self.max_impurity_improvement) and self.best_var in self.symbolic_features:
