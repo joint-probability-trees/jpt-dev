@@ -81,6 +81,25 @@ python -m build --wheel    # wheel only
 The documentation is hosted on
 [Read the Docs](https://joint-probability-trees.readthedocs.io/en/latest/).
 
+### Building the documentation locally
+
+Install the documentation dependencies:
+
+```console
+pip install -r doc/requirements.txt
+```
+
+Then build the HTML documentation from the `doc/` directory:
+
+```console
+cd doc
+make html
+```
+
+The output is written to `doc/build/html/`. Open `doc/build/html/index.html`
+in a browser to view it. The `html` target automatically cleans previous
+build artifacts before rebuilding.
+
 ## Citation
 
 If you use JPTs in your research, please cite:

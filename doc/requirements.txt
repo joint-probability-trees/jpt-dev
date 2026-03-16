@@ -1,8 +1,1 @@
--e ..[dev]
-sphinx == 6.2.1
-sphinxcontrib-bibtex
-sphinx-paramlinks
-sphinx-numfig
-sphinx-autoapi
-sphinx-rtd-theme
-nbsphinx
+-e ..[doc]

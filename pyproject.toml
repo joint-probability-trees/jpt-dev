@@ -16,6 +16,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+doc = [
+    "sphinx==6.2.1",
+    "sphinxcontrib-bibtex",
+    "sphinx-paramlinks",
+    "sphinx-numfig",
+    "sphinx-autoapi",
+    "astroid<4",
+    "sphinx-rtd-theme",
+    "nbsphinx",
+    "ipython"
+]
 dev = [
     "arff>=0.9",
     "Cython>=0.29.35",
@@ -27,7 +38,8 @@ dev = [
     "pyjpt[matplotlib]",
     "pyjpt[plotly]",
     "pyjpt[seq]",
-    "pyjpt[mlflow]"
+    "pyjpt[mlflow]",
+    "pyjpt[doc]"
 ]
 matplotlib = ["matplotlib", "graphviz>=0.20.1"]
 plotly = ["plotly", "kaleido>=0.1.0,<1.0", "graphviz>=0.20.1"]
