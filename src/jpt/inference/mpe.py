@@ -7,7 +7,7 @@ import numpy as np
 from dnutils import first, ifnone, project
 
 from jpt.base.utils import Heap
-from jpt.distributions import Numeric
+from jpt.distributions import Numeric, Integer
 from jpt.variables import VariableMap, Variable, ValueAssignment
 
 
@@ -143,7 +143,7 @@ class MPESolver:
                 list(
                     sorted([
                         (
-                            frozenset(val) if not isinstance(dist, Numeric) else val,
+                            frozenset(val) if not isinstance(dist, (Numeric, Integer)) else val,
                             -np.log(
                                 (dist.pdf / likelihood_divisor).eval(val.any_point())
                                 if isinstance(dist, Numeric)
@@ -169,7 +169,10 @@ class MPESolver:
                 self.variable_order(),
                 list(
                     np.cumsum(
-                        [min(self.constraints[var].values()) for var in reversed(list(self.variable_order()))]
+                        [
+                            min(self.constraints[var].values())
+                            for var in reversed(list(self.variable_order()))
+                        ]
                     )[:-1][::-1]
                 ) + [0]
             )
@@ -191,7 +194,7 @@ class MPESolver:
         """
         :param state: The state to start from
         :return: An iterator over free variables for a state sorted by number of different possible states
-        (lowest amount of values first).
+            (lowest amount of values first).
         """
         if state is not None:
             for var in self.variable_order():  # min([(var, len(dom)) for var, dom in state.domains.items()], key=itemgetter(1))[0]
@@ -256,5 +259,5 @@ class MPESolver:
                     return
             ub = solutions[0].cost if solutions else np.inf
 
-            while pruned:  # Continue the search at the states that have been pruned
+            while pruned and pruned[0].cost <= ub:  # Only requeue nodes that fit the new bound
                 fringe.append(pruned.pop())

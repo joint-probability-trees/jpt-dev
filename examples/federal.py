@@ -1,140 +1,300 @@
-import fileinput
-import io
+"""Federal Election Commission dataset example.
+
+Downloads the FEC contributions dataset from OpenML,
+converts it from ARFF to CSV, and learns a Joint
+Probability Tree over a subset of the features.
+
+Dataset fields:
+    cmte_id          9-char alpha-numeric committee code
+                     assigned by the FEC
+    amndt_ind        Amendment indicator (N=new,
+                     A=amendment, T=termination)
+    rpt_tp           Report type code
+    transaction_tp   Transaction type code
+    entity_tp        Entity type (CAN, CCM, COM, IND,
+                     ORG, PAC, PTY)
+    city             Contributor city
+    state            Contributor state
+    zip_code         Contributor ZIP code
+    transaction_dt   Transaction date (YYYY-MM-DD)
+    transaction_amt  Transaction amount
+
+Requires the ``arff`` dev dependency for ARFF-to-CSV
+conversion::
+
+    pip install pyjpt[dev]
+"""
+import csv
+import logging
 import os
 import re
 import sys
-from datetime import datetime
+import tempfile
+from csv import Dialect
+from _csv import register_dialect, QUOTE_NONNUMERIC
+from typing import Any, List, Union
 
 import pandas as pd
-import arff
 import requests
 
-import dnutils
-from dnutils import out
-from jpt.base.utils import arfftocsv
-from jpt.distributions import Numeric, SymbolicType, Bool
+from dnutils import ifnone
+from jpt.distributions import Numeric, SymbolicType
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 
-logger = dnutils.getlogger('/federal', level=dnutils.DEBUG)
+logger: logging.Logger = logging.getLogger(__name__)
+
+# Resolve data paths relative to the script location
+# so the example works regardless of the working
+# directory.
+_SCRIPT_DIR: str = os.path.dirname(
+    os.path.abspath(__file__)
+)
+_DATA_DIR: str = os.path.join(_SCRIPT_DIR, 'data')
+_ARFF_PATH: str = os.path.join(_DATA_DIR, 'dataset')
+_CSV_PATH: str = os.path.join(_DATA_DIR, 'federal.csv')
+
+_DATASET_URL: str = (
+    'https://www.openml.org/data/'
+    'download/21553061/dataset'
+)
+
+# Features used for training the JPT
+_FEATURES: List[str] = [
+    'cmte_id',
+    'amndt_ind',
+    'rpt_tp',
+    'transaction_tp',
+    'entity_tp',
+    'city',
+    'state',
+    'zip_code',
+    'transaction_dt',
+    'transaction_amt',
+]
 
 
-def main():
-    logger.info('Trying to load dataset from local file...')
-    f_arff = '../examples/data/dataset'
-    f_csv = '../examples/data/federal.csv'
-    if not os.path.exists(f_csv):
-        src = 'https://www.openml.org/data/download/21553061/dataset'
-        logger.warning(f'The file containing this dataset is not in the repository, as it is very large.\nI will try downloading file {src} now and convert it to csv...')
-        dfile = requests.get(src)
-        open(f_arff, 'wb').write(dfile.content)
-        # this is an ugly workaround, because the downloaded file contains an erroneous type declaration for the memo_text field. Forgive me..
-        regex = re.compile(r"@ATTRIBUTE memo_text {.*}$", re.IGNORECASE)
-        with open(f_arff, 'r+') as f:
-            data = f.read()
-            f.seek(0)
-            f.write(regex.sub("@ATTRIBUTE memo_text STRING\n", data))
-            f.truncate()
-        arfftocsv(f_arff, f_csv)
-        logger.info(f'Success!')
+# ----------------------------------------------------------------------
+
+class CSVDialect(Dialect):
+    """Semicolon-delimited CSV dialect for the FEC
+    data."""
+
+    delimiter: str = ';'
+    quotechar: str = '"'
+    doublequote: bool = True
+    skipinitialspace: bool = False
+    lineterminator: str = '\r\n'
+    quoting: int = QUOTE_NONNUMERIC
+
+
+register_dialect("csvdialect", CSVDialect)
+
+
+# ----------------------------------------------------------------------
+
+def _convert_value(
+        key: str,
+        value: Any
+) -> Union[int, float, str]:
+    """Convert a single ARFF cell to an appropriate
+    Python type.
+
+    Date fields are kept as strings; numeric values are
+    cast to int or float if possible, everything else
+    becomes a string.
+
+    :param key:   the column/attribute name
+    :param value: the raw cell value
+    :returns:     the converted value
+    """
+    value = ifnone(value, '')
+    if key == 'transaction_dt':
+        return str(value)
     try:
-        data = pd.read_csv('../examples/data/federal.csv', sep=';').fillna(value='???')
-        logger.info(f'Success! Loaded dataset containing {data.shape[0]} instances of {data.shape[1]} features each')
+        return int(value)
+    except ValueError:
+        try:
+            return float(value)
+        except ValueError:
+            return str(value)
+
+
+def arfftocsv(
+        arffpath: str,
+        csvpath: str
+) -> None:
+    """Convert an ARFF file to semicolon-delimited CSV.
+
+    :param arffpath: path to the ARFF input file
+    :param csvpath:  path to the CSV output file
+    :raises ImportError: if the ``arff`` package is not
+                         installed
+    """
+    try:
+        import arff
+    except ImportError:
+        raise ImportError(
+            'The "arff" package is required to convert'
+            ' ARFF files. Install it via: '
+            'pip install pyjpt[dev]'
+        )
+
+    logger.info('Loading arff file: %s', arffpath)
+    with open(arffpath, 'r') as f:
+        data: dict = arff.load(
+            f, encode_nominal=True
+        )
+
+    logger.info('Writing to csv file: %s', csvpath)
+    fieldnames: List[str] = [
+        attr[0] for attr in data.get('attributes')
+    ]
+    with open(csvpath, 'w', newline='') as csvfile:
+        writer: csv.DictWriter = csv.DictWriter(
+            csvfile,
+            dialect='csvdialect',
+            fieldnames=fieldnames
+        )
+        writer.writeheader()
+        for row in data.get('data'):
+            writer.writerow(
+                {
+                    k: _convert_value(k, v)
+                    for k, v in zip(fieldnames, row)
+                }
+            )
+
+
+# ----------------------------------------------------------------------
+
+def _download_and_convert() -> None:
+    """Download the FEC dataset and convert it to CSV.
+
+    The raw ARFF file from OpenML contains an erroneous
+    type declaration for the ``memo_text`` field which is
+    patched before conversion.
+
+    :raises ImportError: if the ``arff`` package is not
+                         installed
+    :raises requests.HTTPError: if the download fails
+    """
+    logger.warning(
+        'The dataset is not in the repository '
+        '(too large). Downloading from %s ...',
+        _DATASET_URL
+    )
+
+    # Download the ARFF file
+    response: requests.Response = requests.get(
+        _DATASET_URL
+    )
+    response.raise_for_status()
+    with open(_ARFF_PATH, 'wb') as f:
+        f.write(response.content)
+
+    # Fix erroneous type declaration for memo_text
+    regex: re.Pattern = re.compile(
+        r"@ATTRIBUTE memo_text {.*}$",
+        re.IGNORECASE
+    )
+    with open(_ARFF_PATH, 'r+') as f:
+        content: str = f.read()
+        f.seek(0)
+        f.write(
+            regex.sub(
+                "@ATTRIBUTE memo_text STRING\n",
+                content
+            )
+        )
+        f.truncate()
+
+    # Convert ARFF to CSV
+    arfftocsv(_ARFF_PATH, _CSV_PATH)
+    logger.info('Download and conversion successful.')
+
+
+def _load_data() -> pd.DataFrame:
+    """Load the FEC dataset as a pandas DataFrame.
+
+    Downloads and converts the dataset if the CSV file
+    does not exist yet.
+
+    :returns: the loaded DataFrame
+    """
+    if not os.path.exists(_CSV_PATH):
+        _download_and_convert()
+
+    logger.info('Loading dataset from %s ...', _CSV_PATH)
+    try:
+        data: pd.DataFrame = pd.read_csv(
+            _CSV_PATH,
+            sep=';'
+        ).fillna(value='???')
     except pd.errors.ParserError:
-        logger.error('Could not download and/or parse file. Please download it manually and try again.')
+        logger.error(
+            'Could not parse %s. Please download it '
+            'manually and try again.',
+            _CSV_PATH
+        )
         sys.exit(-1)
 
-    # INFO:
-    # cmte_id A 9-character alpha-numeric code assigned to a committee by the Federal Election Commission
-    # amndt_ind Amendment indicator: Indicates if the report being filed is new (N), an amendment
-    # (A) to a previous report or a termination (T) report
-    # rpt_tp Indicates the type of report filed, listed here: https://www.fec.gov/campaign-finance-data/
-    # report-type-code-descriptions/
-    # transaction_pgi This code indicates the election for which the contribution was made. EYYYY
-    # (election Primary, General, Other plus election year)
-    # transaction_tp Transaction types, listed here: https://www.fec.gov/campaign-finance-data/
-    # transaction-type-code-descriptions/
-    # entity_tp Entity Type:
-    # CAN = Candidate
-    # CCM = Candidate Committee
-    # COM = Committee
-    # IND = Individual (a person)
-    # ORG = Organization (not a committee and not a person)
-    # PAC = Political Action Committee
-    # PTY = Party Organization
-    # name Contributor/lender/transfer Name
-    # city City
-    # state State
-    # zip_code ZIP Code
-    # transaction_dt Transaction date (YYYY-MM-DD)
-    # transaction_amt Transaction Amount
-    # other_id For contributions from individuals this column is null. For contributions from candidates
-    # or other committees this column will contain that contributor’s FEC ID
-    # cand_id A 9-character alpha-numeric code assigned to a candidate by the FEC, which remains the
-    # same across election cycles if running for the same office
-    # tran_id Only for Electronic Filings. A unique identifier associated with each itemization or transaction appearing in an FEC electronic file. A transaction ID is unique for a specific committee
-    # for a specific report
+    logger.info(
+        'Loaded dataset: %d instances, %d features',
+        data.shape[0],
+        data.shape[1]
+    )
+    return data
 
-    logger.info('creating types and variables...')
-    cmte_id_type = SymbolicType('cmte_id_type', data['cmte_id'].unique())
-    amndt_ind_type = SymbolicType('amndt_ind_type', data['amndt_ind'].unique())
-    rpt_tp_type = SymbolicType('rpt_tp_type', data['rpt_tp'].unique())
-    transaction_pgi_type = SymbolicType('transaction_pgi_type', data['transaction_pgi'].unique())
-    transaction_tp_type = SymbolicType('transaction_tp_type', data['transaction_tp'].unique())
-    entity_tp_type = SymbolicType('entity_tp_type', data['entity_tp'].unique())
-    name_type = SymbolicType('name_type', data['name'].unique())
-    city_type = SymbolicType('city_type', data['city'].unique())
-    state_type = SymbolicType('state_type', data['state'].unique())
-    zip_code_type = SymbolicType('zip_code_type', data['zip_code'].unique())
-    employer_type = SymbolicType('employer_type', data['employer'].unique())
-    occupation_type = SymbolicType('occupation_type', data['occupation'].unique())
-    transaction_dt_type = SymbolicType('transaction_dt_type', data['transaction_dt'].unique())
-    other_id_type = SymbolicType('other_id_type', data['other_id'].unique())
-    tran_id_type = SymbolicType('tran_id_type', data['tran_id'].unique())
-    memo_cd_type = SymbolicType('memo_cd_type', data['memo_cd'].unique())
-    memo_text_type = SymbolicType('memo_text_type', data['memo_text'].unique())
 
-    cmte_id = SymbolicVariable('cmte_id', cmte_id_type)  # 7112 unique values
-    amndt_ind = SymbolicVariable('amndt_ind', amndt_ind_type)  # 3 unique values
-    rpt_tp = SymbolicVariable('rpt_tp', rpt_tp_type)  # 26 unique values
-    transaction_pgi = SymbolicVariable('transaction_pgi', transaction_pgi_type)  # missing 28%; 8 unique values
-    image_num = NumericVariable('image_num', Numeric)  # 1879157 unique values
-    transaction_tp = SymbolicVariable('transaction_tp', transaction_tp_type)  # 11 unique values
-    entity_tp = SymbolicVariable('entity_tp', entity_tp_type)  # 1438 missing; 7 unique values
-    name = SymbolicVariable('name', name_type)  # 141 missing; 1534998 unique values
-    city = SymbolicVariable('city', city_type)  # 2176 missing; 27709 unique values
-    state = SymbolicVariable('state', state_type)  # 8657 missing; 67 unique values
-    zip_code = SymbolicVariable('zip_code', zip_code_type)  # 86334 unique values
-    employer = SymbolicVariable('employer', employer_type)  # missing 10%; 657449 unique values
-    occupation = SymbolicVariable('occupation', occupation_type)  # missing 5%; 145304 unique values
-    transaction_dt = SymbolicVariable('transaction_dt', transaction_dt_type)  # 354 missing; 967 unique values
-    transaction_amt = NumericVariable('transaction_amt', Numeric)  # 5221 unique values
-    other_id = SymbolicVariable('other_id', other_id_type)  # missing 98%; 2543 unique values
-    tran_id = SymbolicVariable('tran_id', tran_id_type)  # 327 missing; 2999272 unique values
-    file_num = NumericVariable('file_num', Numeric)  # 1 missing; 43597 unique values
-    memo_cd = SymbolicVariable('memo_cd', memo_cd_type)  # missing 97%; 2 unique values
-    memo_text = SymbolicVariable('memo_text', memo_text_type)  # missing 87%; 16607 unique values
-    sub_id = NumericVariable('sub_id', Numeric)  # 51675 unique values
+# ----------------------------------------------------------------------
 
-    # variables = [cmte_id, amndt_ind, rpt_tp, transaction_pgi, image_num, transaction_tp, entity_tp, name, city, state,
-    #              zip_code, employer, occupation, transaction_dt, transaction_amt, other_id, tran_id, file_num, memo_cd,
-    #              memo_text, sub_id]  # all
-    variables = [cmte_id, amndt_ind, rpt_tp, transaction_tp, entity_tp, city, state,
-                 zip_code, transaction_dt, transaction_amt]  # reduced
-    data = data[['cmte_id', 'amndt_ind', 'rpt_tp', 'transaction_tp', 'entity_tp', 'city', 'state',
-                 'zip_code', 'transaction_dt', 'transaction_amt']]
-    data = data.sample(frac=0.5)
-    tree = JPT(variables=variables, min_samples_leaf=data.shape[0]*.01)
+def main(visualize=True) -> None:
+    """Train a JPT on the Federal Election dataset.
+
+    :param visualize: whether to show interactive plots
+    """
+    # Load data and define variables
+    data: pd.DataFrame = _load_data()
+
+    symbolic_features: List[str] = [
+        f for f in _FEATURES if f != 'transaction_amt'
+    ]
+    variables: list = [
+        SymbolicVariable(
+            f,
+            SymbolicType(
+                f'{f}_type',
+                data[f].unique()
+            )
+        )
+        for f in symbolic_features
+    ] + [
+        NumericVariable('transaction_amt', Numeric)
+    ]
+
+    # Subsample and learn tree
+    data = data[_FEATURES].sample(frac=0.5)
+    tree: JPT = JPT(
+        variables=variables,
+        min_samples_leaf=int(data.shape[0] * .01)
+    )
     tree.learn(columns=data.values.T)
-    tree.plot(title='Federal Election', directory=os.path.join('/tmp', f'{datetime.now().strftime("%Y-%m-%d-%H:%M:%S")}-Federal'))
-    out(tree)
-    tree.save(os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Federal.json'))
 
-
-def convert():
-    arfftocsv('../examples/data/dataset', '../examples/data/federal.csv')
+    # Plot and save the tree
+    out_dir: str = tempfile.mkdtemp(
+        prefix='jpt-federal-'
+    )
+    tree.plot(
+        title='Federal Election',
+        directory=out_dir,
+        view=visualize
+    )
+    print(tree)
+    tree.save(
+        os.path.join(out_dir, 'federal.json')
+    )
 
 
 if __name__ == '__main__':
-    main()
-    # convert()
+    main(visualize=True)

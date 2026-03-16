@@ -1,96 +1,250 @@
+"""Nonlinear regression with confidence bands.
+
+Learns the function y = x * sin(x) with additive noise
+using a Joint Probability Tree, then predicts with
+confidence intervals. The example shows how JPTs can
+capture nonlinear relationships and provide uncertainty
+estimates through quantile-based posterior distributions.
+
+Demonstrates:
+    - NumericVariable with blur
+    - Discriminative learning with targets
+    - ``posterior()`` for conditional distributions
+    - ``ppf`` for confidence band extraction
+    - Plotly visualization of predictions
+"""
+import logging
+import tempfile
+import os
+
 import numpy as np
 import pandas as pd
-
-from matplotlib import pyplot as plt
+import plotly.graph_objects as go
 
 from jpt.trees import JPT
-from jpt.variables import NumericVariable, VariableMap
-import logging
+from jpt.variables import NumericVariable
 
-logging.getLogger("/jpt").setLevel(0)
 
-# ----------------------------------------------------------------------------------------------------------------------
-# The function to predict
+# -------------------------------------------------------
 
 
 def f(x):
+    """The target function: x * sin(x)."""
     return x * np.sin(x)
 
-# ----------------------------------------------------------------------------------------------------------------------
+
+# -------------------------------------------------------
 
 
-def generate_data(func, x_lower, x_upper, n):
-    '''
-    Generate a ``DataFrame`` of ``n`` data samples with additive noise from the function ``func``.
-    '''
-    X = np.atleast_2d(np.random.uniform(-20, 0.0, size=int(n / 2))).T
-    X = np.vstack((np.atleast_2d(np.random.uniform(0, 10.0, size=int(n / 2))).T, X))
+def generate_data(func, n):
+    """Generate noisy samples from ``func``.
+
+    Samples are drawn non-uniformly: half from [-20, 0)
+    and half from [0, 10).
+
+    :param func: the function to sample from
+    :param n:    number of samples to generate
+    :returns:    a DataFrame with columns 'x' and 'y'
+    """
+    X = np.atleast_2d(
+        np.random.uniform(-20, 0.0, size=int(n / 2))
+    ).T
+    X = np.vstack((
+        np.atleast_2d(
+            np.random.uniform(0, 10.0, size=int(n / 2))
+        ).T,
+        X
+    ))
     X = X.astype(np.float32)
     X = np.array(list(sorted(X)))
 
-    # Observations
+    # Generate observations with additive noise
     y = func(X).ravel()
-
-    # Add some noise
     dy = 1.5 + .5 * np.random.random(y.shape)
     y += np.random.normal(0, dy)
     y = y.astype(np.float32)
 
-    return pd.DataFrame(data={'x': X.ravel(), 'y': y})
+    return pd.DataFrame(
+        data={'x': X.ravel(), 'y': y}
+    )
+
+
+# -------------------------------------------------------
 
 
 def main(visualize=True):
-    plt.close()
-    df = generate_data(f, -20, 10, 1000)
+    """Learn x*sin(x) and plot predictions with
+    confidence bands.
 
-    # Mesh the input space for evaluations of the real function,
-    # the prediction and its MSE
-    xx = np.atleast_2d(np.linspace(-20, 15, 500)).astype(np.float32).T
+    :param visualize: whether to show interactive plots
+    """
+    # Generate training data
+    df = generate_data(f, 1000)
 
-    # Construct the predictive model
+    # Evaluation grid
+    xx = np.atleast_2d(
+        np.linspace(-20, 15, 500)
+    ).astype(np.float32).T
+
+    # Define variables and learn the JPT
     varx = NumericVariable('x', blur=.05)
     vary = NumericVariable('y')
 
-    # For discrimintive learning, uncomment the following line:
-    jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=0.01)
-    # For generative learning, uncomment the following line:
-    # jpt = JPT(variables=[varx, vary], targets=[vary], min_samples_leaf=.01)
+    jpt = JPT(
+        variables=[varx, vary],
+        targets=[vary],
+        min_samples_leaf=0.01
+    )
+    jpt.learn(df, verbose=True)
 
-    jpt.learn(df)
-
-    # jpt.plot(view=visualize)
-
-    # Apply the JPT model
+    # Compute posterior predictions with confidence bands
     confidence = .95
-    conf_level = 0.95
-    my_predictions = [jpt.posterior([vary], evidence={varx: x_}, fail_on_unsatisfiability=False) for x_ in xx.ravel()]
-    y_pred_ = [(p[vary].expectation() if p is not None else None) for p in my_predictions]
-    y_lower_ = [(p[vary].ppf.eval((1 - conf_level) / 2) if p is not None else None) for p in my_predictions]
-    y_upper_ = [(p[vary].ppf.eval(1 - (1 - conf_level) / 2) if p is not None else None) for p in my_predictions]
+    my_predictions = [
+        jpt.posterior(
+            [vary],
+            evidence={varx: x_},
+            fail_on_unsatisfiability=False
+        )
+        for x_ in xx.ravel()
+    ]
+    y_pred_ = [
+        (p[vary].expectation() if p is not None
+         else None)
+        for p in my_predictions
+    ]
+    y_lower_ = [
+        (p[vary].ppf.eval((1 - confidence) / 2)
+         if p is not None else None)
+        for p in my_predictions
+    ]
+    y_upper_ = [
+        (p[vary].ppf.eval(1 - (1 - confidence) / 2)
+         if p is not None else None)
+        for p in my_predictions
+    ]
 
-    # posterior = jpt.posterior([varx], {vary: 0})
+    # Build the plotly figure
+    fname = "Regression-Example"
+    out_dir = tempfile.mkdtemp(prefix='jpt-regression-')
+    mainfig = go.Figure()
 
-    # Plot the function, the prediction and the 90% confidence interval based on the MSE
-    plt.plot(xx, f(xx), color='black', linestyle=':', linewidth='2', label=r'$f(x) = x\,\sin(x)$')
-    plt.plot(df['x'].values, df['y'].values, '.', color='gray', markersize=5, label='Training data')
-    plt.plot(xx, y_pred_, 'm-', label='JPT Prediction', linewidth=2)
-    plt.plot(xx, y_lower_, 'y--', label='%.1f%% Confidence bands' % (confidence * 100))
-    plt.plot(xx, y_upper_, 'y--')
-    # plt.plot(xx, np.asarray(posterior.distributions[varx].pdf.multi_eval(xx.ravel().astype(np.float64))),
-    #          label='Posterior')
-    plt.plot(xx, np.array([jpt.pdf(VariableMap([(varx, x_), (vary, 0)])) for x_ in xx.ravel().astype(np.float64)]),
-             label='Posterior')
+    # True function
+    mainfig.add_trace(
+        go.Scatter(
+            x=xx.reshape(-1),
+            y=f(xx).reshape(-1),
+            line=dict(
+                color='black',
+                width=2,
+                dash='dot'
+            ),
+            mode='lines',
+            name=r'$f(x) = x\,\sin(x)$'
+        )
+    )
 
-    plt.xlabel('$x$')
-    plt.ylabel('$f(x)$')
-    plt.ylim(-10, 20)
-    plt.xlim(-25, 15)
-    plt.legend(loc='upper left')
-    plt.title(r'2D Regression Example ($\vartheta=%.2f\%%$)' % (confidence * 100))
-    plt.grid()
+    # Training data scatter
+    mainfig.add_trace(
+        go.Scatter(
+            x=df['x'].values,
+            y=df['y'].values,
+            marker=dict(
+                symbol='circle',
+                color='gray',
+                size=5,
+            ),
+            mode='markers',
+            name="Training data",
+        )
+    )
+
+    # JPT prediction
+    mainfig.add_trace(
+        go.Scatter(
+            x=xx.reshape(-1),
+            y=y_pred_,
+            line=dict(
+                color='#C800C8',
+                width=2,
+                dash='solid'
+            ),
+            mode='lines',
+            name=r'JPT Prediction'
+        )
+    )
+
+    # Lower confidence band
+    mainfig.add_trace(
+        go.Scatter(
+            x=xx.reshape(-1),
+            y=y_lower_,
+            line=dict(
+                color='#D5A33F',
+                width=2,
+                dash='dash'
+            ),
+            mode='lines',
+            name='%.1f%% Confidence bands'
+                 % (confidence * 100)
+        )
+    )
+
+    # Upper confidence band
+    mainfig.add_trace(
+        go.Scatter(
+            x=xx.reshape(-1),
+            y=y_upper_,
+            line=dict(
+                color='#D5A33F',
+                width=2,
+                dash='dash'
+            ),
+            mode='lines',
+            showlegend=False
+        )
+    )
+
+    mainfig.update_layout(
+        width=1200,
+        height=1000,
+        xaxis=dict(
+            title='x',
+            side='bottom',
+            range=[-20, 15]
+        ),
+        yaxis=dict(
+            title='f(x)',
+            range=[-20, 20]
+        ),
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=.8
+        ),
+    )
+
+    fpath = os.path.join(out_dir, fname)
+    mainfig.write_html(
+        fpath,
+        include_plotlyjs="cdn"
+    )
+
     if visualize:
-        plt.show()
+        mainfig.show(
+            config=dict(
+                displaylogo=False,
+                toImageButtonOptions=dict(
+                    format='svg',
+                    filename=fname,
+                    scale=1
+                )
+            )
+        )
+
+    return mainfig
 
 
 if __name__ == '__main__':
-    main()
+    logging.basicConfig(level=logging.INFO)
+    main(visualize=True)

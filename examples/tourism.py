@@ -1,95 +1,111 @@
+"""Real-world mixed-type data: flight price prediction.
+
+Loads a tourism dataset with flight prices, destinations,
+travel dates, and traveler types. A JPT is learned over
+both symbolic and numeric features, then queried for
+conditional expectations and most probable explanations.
+
+Demonstrates:
+    - Mixed symbolic/numeric variable models
+    - ``expectation()`` for conditional means
+    - ``mpe()`` for most probable explanation
+    - ``infer()`` with symbolic evidence
+"""
 import os
-from datetime import datetime
+import tempfile
 
 import pandas as pd
-from dnutils import out
-from matplotlib import pyplot as plt
 
-from jpt.base.utils import format_path
 from jpt.distributions import SymbolicType, Numeric
 from jpt.trees import JPT
 from jpt.variables import NumericVariable, SymbolicVariable
 
 
-def tourism():
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'data'
+)
 
-    # generate JPT from tourism data
-    df = pd.read_csv('../examples/data/tourism.csv')
+
+# -------------------------------------------------------
+
+
+def main(visualize=True):
+    """Learn a JPT from tourism data and run inference
+    queries.
+
+    :param visualize: whether to show interactive plots
+    """
+    # Load and scale the tourism dataset
+    df = pd.read_csv(
+        os.path.join(_DATA_DIR, 'tourism.csv')
+    )
+    # Scale normalized values to real-world units
     df['Price'] *= 2000
     df['DoY'] *= 710
 
-    DestinationType = SymbolicType('DestinationType', df['Destination'].unique())
-    PersonaType = SymbolicType('PersonaType', df['Persona'].unique())
+    # Define variable types from the data
+    DestinationType = SymbolicType(
+        'DestinationType', df['Destination'].unique()
+    )
+    PersonaType = SymbolicType(
+        'PersonaType', df['Persona'].unique()
+    )
 
+    # Create variables
     price = NumericVariable('Price', Numeric)
-    t = NumericVariable('Time', Numeric, haze=.1)
+    t = NumericVariable('Time', Numeric, blur=.1)
     d = SymbolicVariable('Destination', DestinationType)
     p = SymbolicVariable('Persona', PersonaType)
 
-    jpt = JPT(variables=[price, t, d, p], min_samples_leaf=15)
-    # out(df.values.T)
-    jpt.learn(columns=df.values.T[1:])
+    # Learn the JPT
+    jpt = JPT(
+        variables=[price, t, d, p],
+        min_samples_leaf=15
+    )
+    train = df[['Price', 'DoY', 'Destination', 'Persona']]
+    train = train.rename(columns={'DoY': 'Time'})
+    jpt.learn(train)
 
+    # Query conditional probabilities per destination
     for clazz in df['Destination'].unique():
-        out(jpt.infer(query={d: clazz}, evidence={t: 300}))
-        for exp in jpt.expectation([t, price], evidence={d: clazz}, confidence_level=.95):
-            out(exp)
+        prob = jpt.infer(
+            query={d: clazz},
+            evidence={t: 300}
+        )
+        print(f'P(Destination={clazz} | Time=300)'
+              f' = {prob}')
+        exp = jpt.expectation(
+            [t, price],
+            evidence={d: clazz},
+        )
+        if exp is not None:
+            for var, val in exp.items():
+                print(f'  E[{var.name} | '
+                      f'Destination={clazz}] = {val}')
+
+    # Query conditional expectations per persona
     for persona in df['Persona'].unique():
-        for exp in jpt.expectation([t, price], evidence={p: persona}, confidence_level=.95):
-            out(exp)
+        exp = jpt.expectation(
+            [t, price],
+            evidence={p: persona},
+        )
+        if exp is not None:
+            for var, val in exp.items():
+                print(f'  E[{var.name} | '
+                      f'Persona={persona}] = {val}')
 
-    # Test the MPE inference
-    out(jpt.mpe({t: 150}))
+    # Most probable explanation for Time=150
+    print('\nMPE for Time=150:')
+    print(jpt.mpe({t: 150}))
 
-    jpt.plot(plotvars=[price, t, d, p],
-             directory=os.path.join('/tmp', f'{datetime.now().strftime("%d.%m.%Y-%H:%M:%S")}-Tourism'))  # plotvars=[price, t]
-    # plot_tourism()
-
-
-def plot_tourism():
-    # generate plot for tree data
-    df = pd.read_csv('../examples/data/tourism.csv')
-    df['Price'] *= 2000
-    df['DoY'] *= 710
-
-    fig, ax = plt.subplots()
-    ax.set_title('Flights from FRA')
-    ax.set_xlabel('value')
-    ax.set_ylabel('%')
-
-    # ax.plot(data_, np.cumsum([1] * len(data_)) / len(data_), color='green', label='CumSum($\mathcal{D}$)', linewidth=2)
-    # ax.plot(data_, cdf.multi_eval(data_), color='orange', linewidth=2, label='Piecewise fn from original data')
-    markers = {'AYT': '1', 'BKK': 'x', 'FOR': '+'}
-    colors = {'FAMILY': 'red', 'COUPLE': 'green', 'GROUP': 'blue', 'SINGLE+CHILD': 'orange'}
-
-    for dest, persona in [(d, p) for d in df['Destination'].unique() for p in df['Persona'].unique()]:
-        samples = df[(df['Destination'] == dest) & (df['Persona'] == persona)]
-        ax.scatter(samples['Price'] , samples['DoY'],
-                   color=colors[persona],
-                   marker=markers[dest],
-                   label=r'%s $\rightarrow$ %s' % (persona, dest),
-                   s=150,
-                   )
-    ax.set_xlabel('Price')
-    ax.set_ylabel('Day of Year')
-    ax.grid()
-    ax.legend()
-    # ax.plot(bounds, cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', linewidth=2, markersize=12, label='Piecewise fn from bounds')
-    # ax.plot(sampled, cdf.multi_eval(sampled), color='red', linestyle='dotted', linewidth=2, label='Piecewise fn from original data')
-
-    plt.show()
-
-    # ax2 = ax.twiny()
-    # ax2.set_xlim(left=0., right=1.0)
-    # ax2.plot(bounds, cdf.multi_eval(bounds), color='cornflowerblue', linestyle='dashed', linewidth=2, markersize=12, label='Piecewise fn from bounds')
-    # ax.legend()
+    # Plot the learned tree
+    out_dir = tempfile.mkdtemp(prefix='jpt-tourism-')
+    jpt.plot(
+        plotvars=[price, t, d, p],
+        directory=out_dir,
+        view=visualize
+    )
 
 
-def main(*args):
-    # plot_tourism()
-    tourism()
-
-
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    main('PyCharm')
+    main(visualize=True)

@@ -3,24 +3,13 @@
 
 from dnutils import first
 
-from scipy.stats import multivariate_normal, mvn, norm
+from scipy.stats import multivariate_normal, mvn
 
 import numpy as np
 
-import matplotlib.pyplot as plt
-
 from .univariate import Gaussian
 
-try:
-    from ..base.intervals import __module__
-    from ..base.quantiles import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from ..base.intervals import R, ContinuousSet
-    from ..base.quantiles import QuantileDistribution, LinearFunction
-
+from typing import Any
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -116,48 +105,27 @@ class MultiVariateGaussian(Gaussian):
         sigma_ = sigma11 - sigma12.dot(sigma22inv).dot(sigma21)
         return MultiVariateGaussian(mean=mu_, cov=sigma_)
 
-    def plot(self):
+    def plot(
+            self,
+            engine=None,
+            **kwargs
+    ) -> Any:
+        '''Plots the distribution using the given engine.
+
+        :param engine:  Can be either one of
+            ``["plotly", "matplotlib"]``, or an instance of a
+            rendering engine subclassing
+            ``DistributionRendering``.
+        :param kwargs:  The keyword arguments to pass to the
+            engine as defined in the
+            ``.plot_multivariate()`` function of
+            ``DistributionRendering`` or its respective
+            subclass defined by ``engine``.
+        :return:        the figure object of the plotting engine
         '''
-        .. highlight:: python
-        .. code-block:: python
-
-            import sys
-            self.dim==1
-        '''
-        if self.dim == 1:
-            x = np.linspace(self.mean - 2 * self.cov, self.mean + 2 * self.cov, 500)
-            y = multivariate_normal.pdf(x, mean=self.mean, cov=self.cov)
-
-            fig1 = plt.figure(f'Distribution Leaf N{self.mean, self.cov}')
-            ax = fig1.add_subplot(111)
-            ax.plot(x, y)
-
-        elif self.dim == 2:
-            x = np.linspace(self.mean[0]-2*self.cov[0][0], self.mean[0]+2*self.cov[0][0], 500)
-            y = np.linspace(self.mean[1]-2*self.cov[1][1], self.mean[1]+2*self.cov[1][1], 500)
-            rv = multivariate_normal(self.mean, self.cov)
-            pos = np.dstack((x, y))
-
-            # plot
-            fig2 = plt.figure(f'Distribution Leaf N{self.mean, self.cov}')
-            ax2 = fig2.add_subplot(111)
-            ax2.contourf(x, y, rv.pdf(pos))
-
-        elif self.dim == 3:
-            # grid and mvn
-            x = np.linspace(self.mean[0]-2*self.cov[0][0], self.mean[0]+2*self.cov[0][0], 500)
-            y = np.linspace(self.mean[1]-2*self.cov[1][1], self.mean[1]+2*self.cov[1][1], 500)
-            rv = multivariate_normal(self.mean, self.cov)
-            X, Y = np.meshgrid(x, y)
-            pos = np.empty(X.shape + (2,))
-            pos[:, :, 0] = X
-            pos[:, :, 1] = Y
-
-            # plot
-            fig = plt.figure(f'Distribution Leaf N{self.mean, self.cov}')
-            ax = fig.gca(projection='3d')
-            ax.plot_surface(X, Y, rv.pdf(pos), cmap='viridis', linewidth=0)
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            plt.show()
+        from jpt.plotting.engines.rendering import (
+            DistributionRendering
+        )
+        return DistributionRendering.instantiate_engine(
+            engine
+        ).plot_multivariate(self, **kwargs)

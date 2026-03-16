@@ -1,0 +1,33 @@
+# cython: language_level=3
+
+from jpt.base.cutils.cutils cimport DTYPE_t, SIZE_t
+
+from libcpp.queue cimport priority_queue
+from libcpp.deque cimport deque
+from libcpp.vector cimport vector
+
+
+cdef DTYPE_t JUMP_THR_FACTOR
+
+
+cdef class CDFRegressor:
+    '''Piecewise-linear CDF regressor with explicit jump detection.'''
+
+    cdef readonly DTYPE_t eps
+    cdef SIZE_t max_splits
+    cdef DTYPE_t[:, ::1] data
+    cdef SIZE_t[::1] indices
+    cdef priority_queue[SIZE_t] _points
+    cdef deque[SIZE_t] points
+    cdef deque[(SIZE_t, SIZE_t, DTYPE_t, SIZE_t)] _queue
+    cdef vector[SIZE_t] _jump_indices
+
+    cpdef void fit(self, DTYPE_t[:, ::1] data)
+
+    cdef inline void _forward(CDFRegressor self,
+                              SIZE_t start,
+                              SIZE_t end,
+                              DTYPE_t mse,
+                              SIZE_t depth)# nogil
+
+    cdef void _backward(self) nogil

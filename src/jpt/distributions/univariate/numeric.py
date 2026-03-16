@@ -1,31 +1,109 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import copy
 import numbers
-import os
 from collections import deque
 from operator import itemgetter
 from typing import Union, Iterable, Optional, Dict, Any, Type, Callable, List, Tuple
 
 import numpy as np
-from dnutils import ifnone, ifnot, first
-from matplotlib import pyplot as plt
+from dnutils import ifnone, first, ifnot
 
-from ..utils import Identity, DataScaler, DataScalerProxy
-from ...base.utils import save_plot, pairwise, normalized, none2nan
+from jpt.base.functions import (
+    LinearFunction,
+    ConstantFunction,
+    PiecewiseFunction,
+)
+from jpt.base.intervals import ContinuousSet, UnionSet, NumberSet
 from . import Distribution
+from .distribution import ValueMap, Identity
+from ..qpd import QuantileDistribution
+from ...base.utils import pairwise, normalized, none2nan
 
-try:
-    from ...base.intervals import __module__
-    from ..quantile.quantiles import __module__
-    from ...base.functions import __module__
-except ModuleNotFoundError:
-    import pyximport
 
-    pyximport.install()
-finally:
-    from ...base.intervals import R, ContinuousSet, RealSet, NumberSet
-    from ...base.functions import LinearFunction, ConstantFunction, PiecewiseFunction, Undefined
-    from ..quantile.quantiles import QuantileDistribution
+# ----------------------------------------------------------------------------------------------------------------------
+
+class NumericMap(ValueMap):
+
+    def __init__(self, mean: float = None, scale: float = None):
+        self.mean = mean
+        self.scale = scale
+
+    def fit(self, data: np.ndarray) -> 'NumericMap':
+        self.mean = np.mean(data)
+        scale = np.std(data)
+        self.scale = ifnot(
+            1 if np.isnan(scale) else scale,
+            1
+        )
+        return self
+
+    def to_json(self) -> Dict[str, Any]:
+        return {
+            'mean_': [self.mean],
+            'scale_': [self.scale]
+        }
+
+    @classmethod
+    def from_json(cls, data: Dict[str, Any]) -> 'NumericMap':
+        return cls(
+            mean=data['mean_'][0],
+            scale=data['scale_'][0]
+        )
+
+    def __hash__(self):
+        return hash((
+            type(self),
+            self.mean,
+            self.scale
+        ))
+
+    def __eq__(self, other):
+        return (
+            type(other) == type(self)
+            and self.mean == other.mean
+            and self.scale == other.scale
+        )
+
+
+class NumericValueToLabelMap(NumericMap):
+    '''
+    Values -> Labels
+    '''
+
+    def __getitem__(self, x) -> float:
+        if x in (-np.inf, np.inf):
+            return x
+        return self.transform(x, make_copy=True)
+
+    def transform(self, x, make_copy=True) -> Union[np.ndarray, float]:
+        if type(x) is np.ndarray:
+            target = np.array(x) if make_copy else x
+            target *= self.scale
+            target += self.mean
+            return target
+        return x * self.scale + self.mean
+
+
+class NumericLabelToValueMap(NumericMap):
+    '''
+    Labels -> Values
+    '''
+
+    def __getitem__(self, x) -> float:
+        if x in (-np.inf, np.inf):
+            return x
+        return self.transform(x, make_copy=True)
+
+    def transform(self, x, make_copy=True) -> Union[np.ndarray, float]:
+        if type(x) is np.ndarray:
+            target = np.array(x) if make_copy else x
+            target -= self.mean
+            target /= self.scale
+            return target
+        return (x - self.mean) / self.scale
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 
 class Numeric(Distribution):
@@ -88,8 +166,10 @@ class Numeric(Distribution):
                 value.left,
                 value.right
             )
-        elif isinstance(value, RealSet):
-            return RealSet([cls.value2label(i) for i in value.intervals])
+        elif isinstance(value, UnionSet):
+            return UnionSet(
+                [cls.value2label(i) for i in value.intervals]
+            )
         elif isinstance(value, numbers.Real):
             return cls.labels[value]
         else:
@@ -110,8 +190,8 @@ class Numeric(Distribution):
                 label.left,
                 label.right
             )
-        elif isinstance(label, RealSet):
-            return RealSet(
+        elif isinstance(label, UnionSet):
+            return UnionSet(
                 [cls.label2value(i) for i in label.intervals]
             )
         elif isinstance(label, numbers.Real):
@@ -141,6 +221,17 @@ class Numeric(Distribution):
     @property
     def ppf(self):
         return self._quantile.ppf
+
+    def approximate_fast(self, eps: float):
+        return type(self)(**self.settings).set(
+            QuantileDistribution(
+                eps
+            ).fit(
+                np.ascontiguousarray(self.cdf.boundaries().reshape(-1, 1)),
+                None,
+                0
+            )
+        )
 
     def _sample(self, n):
         return self._quantile.sample(n)
@@ -185,9 +276,12 @@ class Numeric(Distribution):
 
     def is_dirac_impulse(self) -> bool:
         """Checks if this distribution is a dirac impulse."""
-        return len(self._quantile.cdf.intervals) == 2
+        return any(
+            np.isinf(f.value) for f in self._quantile.pdf.functions if isinstance(f, ConstantFunction)
+        )
+        # return len(self._quantile.cdf.intervals) == 2
 
-    def mpe(self) -> (RealSet, float):
+    def mpe(self) -> (UnionSet, float):
         state, likelihood = self._mpe()
         return self.value2label(state), likelihood
 
@@ -195,7 +289,7 @@ class Numeric(Distribution):
         """
         Calculate the most probable configuration of this quantile distribution.
 
-        :return: The mpe itself as RealSet and the likelihood of the mpe as float
+        :return: The mpe itself as UnionSet and the likelihood of the mpe as float
         """
         return first(self._k_mpe(k=1))
 
@@ -216,7 +310,7 @@ class Numeric(Distribution):
         for likelihood in sorted_likelihood:
             result.append(
                 (
-                    RealSet([
+                    UnionSet([
                         interval
                         for interval, function in zip(self.pdf.intervals, self.pdf.functions)
                         if function.value == likelihood
@@ -268,11 +362,11 @@ class Numeric(Distribution):
         if not isinstance(value, (NumberSet, numbers.Number)):
             raise TypeError(
                 'Argument must be numbers.Number or '
-                'jpt.base.intervals.NumberSet (got %s).' % type(labels)
+                'jpt.base.intervals.NumberSet (got %s).' % type(value)
             )
         if isinstance(value, numbers.Number):
             value = ContinuousSet(value, value)
-        elif isinstance(value, RealSet):
+        elif isinstance(value, UnionSet):
             return sum(self._p(i) for i in value.intervals)
         probspace = self.pdf.gt(0)
         if probspace.isdisjoint(value):
@@ -282,10 +376,12 @@ class Numeric(Distribution):
                 (self.cdf.eval(value.lower) if value.lower != -np.inf else 0.)
         )
         if not probmass:
-            return probspace in value
+            return value.issuperseteq(probspace)
         return probmass
 
-    def p(self, labels: Union[numbers.Number, NumberSet]) -> numbers.Real:
+    def p(self, labels: Union[numbers.Number, NumberSet, List[float]]) -> numbers.Real:
+        if isinstance(labels, list):
+            labels = ContinuousSet.from_list(labels)
         return self._p(self.label2value(labels))
 
     def kl_divergence(self, other: 'Numeric') -> numbers.Real:
@@ -372,7 +468,7 @@ class Numeric(Distribution):
         """
 
         # for real sets the result is a merge of the single ContinuousSet crops
-        if isinstance(restriction, RealSet):
+        if isinstance(restriction, UnionSet):
             distributions = []
 
             for idx, continuous_set in enumerate(restriction.intervals):
@@ -582,6 +678,18 @@ class Numeric(Distribution):
         )
         return result
 
+    def __sub__(self, other: 'Numeric') -> 'Numeric':
+        result = type(other)(**other.settings)
+
+        # multiply with -1, i.e. mirror at y-axis
+        # iv_rev = [i.xmirror() for i in reversed(other.pdf.intervals)]
+        result._quantile = QuantileDistribution.from_pdf(
+            other.pdf.xmirror()
+        )
+
+        # then add other
+        return self + result
+
     def approximate(
             self,
             error_max: float = None,
@@ -598,12 +706,38 @@ class Numeric(Distribution):
         )
 
     @staticmethod
+    def wasserstein_distance(
+            d1: 'Numeric',
+            d2: 'Numeric',
+    ) -> float:
+        points = list(
+            sorted(
+                set(d1.cdf.boundaries()) | set(d2.cdf.boundaries())
+            )
+        )
+        minpt = min(points)
+        maxpt = max(points)
+
+        diff_ = PiecewiseFunction.abs(d1.cdf - d2.cdf)
+        ar = diff_.integrate(ContinuousSet(minpt, maxpt))
+
+        return ar
+
+    def distance(
+            self,
+            other: 'Numeric'
+    ) -> float:
+        return Numeric.wasserstein_distance(self, other)
+
+    @staticmethod
     def jaccard_similarity(
             d1: 'Numeric',
             d2: 'Numeric',
     ) -> float:
         if d1 == d2:
             return 1
+        elif d1.is_dirac_impulse() or d2.is_dirac_impulse():
+            return 0
         points = list(
             sorted(
                 set(d1.pdf.boundaries()) | set(d2.pdf.boundaries())
@@ -622,95 +756,46 @@ class Numeric(Distribution):
             union += max(v1, v2) * (p2 - p1)
         return intersection / union
 
+    def similarity(
+            self,
+            other: 'Numeric'
+    ) -> float:
+        return Numeric.jaccard_similarity(self, other)
+
+    def entropy(self) -> float:
+        entropy = 0
+        i: ContinuousSet
+        f: ConstantFunction
+        for i, f in self.pdf.iter():
+            if not f.value or not i.width:
+                continue
+            value = f.value * np.log(f.value)
+            entropy -= value * i.width
+        return entropy
+
     def plot(
             self,
-            title: str = None,
-            fname: str = None,
-            xlabel: str = 'value',
-            directory: str = '/tmp',
-            pdf: bool = False,
-            view=False,
+            engine=None,
             **kwargs
-    ):
+    ) -> Any:
+        '''Plots the distribution using the given engine.
+
+        :param engine:  Can be either one of
+            ``["plotly", "matplotlib"]``, or an instance of a
+            rendering engine subclassing
+            ``DistributionRendering``.
+        :param kwargs:  The keyword arguments to pass to the
+            engine as defined in the ``.plot_numeric()``
+            function of ``DistributionRendering`` or its
+            respective subclass defined by ``engine``.
+        :return:        the figure object of the plotting engine
         '''
-        Generates a plot of the piecewise linear function representing
-        the variable's cumulative distribution function
-
-        :param title:       the name of the variable this distribution represents
-        :param fname:       the name of the file to be stored
-        :param xlabel:      the label of the x-axis
-        :param directory:   the directory to store the generated plot files
-        :param pdf:         whether to store files as PDF. If false, a png is generated by default
-        :param view:        whether to display generated plots, default False (only stores files)
-
-        :return:            None
-        '''
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-
-        if not view:
-            plt.ioff()
-
-        fig, ax = plt.subplots()
-        ax.set_title(f'{title or f"CDF of {self._cl}"}')
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel('%')
-        ax.set_ylim(-.1, 1.1)
-
-        if len(self.cdf.intervals) == 2:
-            std = abs(self.cdf.intervals[0].upper) * .1
-        else:
-            std = ifnot(
-                np.std([i.upper - i.lower for i in self.cdf.intervals[1:-1]]),
-                self.cdf.intervals[1].upper - self.cdf.intervals[1].lower
-            ) * 2
-
-        # add horizontal line before first interval of distribution
-        X = np.array([self.cdf.intervals[0].upper - std])
-
-        for i, f in zip(self.cdf.intervals[:-1], self.cdf.functions[:-1]):
-            if isinstance(f, ConstantFunction):
-                X = np.append(X, [np.nextafter(i.upper, i.upper - 1), i.upper])
-            else:
-                X = np.append(X, i.upper)
-
-        # add horizontal line after last interval of distribution
-        X = np.append(X, self.cdf.intervals[-1].lower + std)
-        X_ = np.array([self.labels[x] for x in X])
-        Y = np.array(self.cdf.multi_eval(X))
-        ax.plot(
-            X_,
-            Y,
-            color='cornflowerblue',
-            linestyle='dashed',
-            label='Piecewise linear CDF from bounds',
-            linewidth=2,
-            markersize=12
+        from jpt.plotting.engines.rendering import (
+            DistributionRendering
         )
-
-        bounds = np.array([i.upper for i in self.cdf.intervals[:-1]])
-        bounds_ = np.array([self.labels[b] for b in bounds])
-        ax.scatter(
-            bounds_,
-            np.asarray(self.cdf.multi_eval(bounds)),
-            color='orange',
-            marker='o',
-            label='Piecewise Function limits'
-        )
-
-        ax.legend(loc='upper left', prop={'size': 8})  # do we need a legend with only one plotted line?
-        fig.tight_layout()
-
-        save_plot(
-            fig,
-            directory,
-            fname or self.__class__.__name__,
-            fmt='pdf' if pdf else 'svg'
-        )
-
-        if view:
-            plt.show()
-            plt.close()
+        return DistributionRendering.instantiate_engine(
+            engine
+        ).plot_numeric(self, **kwargs)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -720,8 +805,6 @@ class ScaledNumeric(Numeric):
     Scaled numeric distribution represented by mean and variance.
     '''
 
-    scaler = None
-
     def __init__(self, **settings):
         super().__init__(**settings)
 
@@ -730,17 +813,19 @@ class ScaledNumeric(Numeric):
         return {
             'type': 'scaled-numeric',
             'class': cls.__name__,
-            'scaler': cls.scaler.to_json()
+            'scaler': cls.values.to_json()
         }
 
     to_json = type_to_json
 
     @staticmethod
     def type_from_json(data):
-        clazz = NumericType(data['class'], None)
-        clazz.scaler = DataScaler.from_json(data['scaler'])
-        clazz.values = DataScalerProxy(clazz.scaler)
-        clazz.labels = DataScalerProxy(clazz.scaler, True)
+        clazz = NumericType(
+            data['class'],
+            None
+        )
+        clazz.values = NumericLabelToValueMap.from_json(data['scaler'])
+        clazz.labels = NumericValueToLabelMap.from_json(data['scaler'])
         return clazz
 
     @classmethod
@@ -755,13 +840,12 @@ class ScaledNumeric(Numeric):
 # ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection PyPep8Naming
-def NumericType(name: str, values: Iterable[float]) -> Type[Numeric]:
+def NumericType(name: str, values: Iterable[float] = None) -> Type[Numeric]:
     t = type(name, (ScaledNumeric,), {})
     if values is not None:
         values = np.array(list(none2nan(values)))
         if (~np.isfinite(values)).any():
             raise ValueError('Values contain nan or inf.')
-        t.scaler = DataScaler(values)
-        t.values = DataScalerProxy(t.scaler, inverse=False)
-        t.labels = DataScalerProxy(t.scaler, inverse=True)
+        t.values = NumericLabelToValueMap().fit(values)
+        t.labels = NumericValueToLabelMap().fit(values)
     return t

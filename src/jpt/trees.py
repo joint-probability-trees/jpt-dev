@@ -1,32 +1,38 @@
-"""© Copyright 2021, Mareike Picklum, Daniel Nyga."""
+"""© Copyright 2021-23, Mareike Picklum, Daniel Nyga."""
 import bz2
-import datetime
-import html
+import io
 import json
-import math
 import numbers
 import os
 import pickle
-import tempfile
 from collections import defaultdict, deque, ChainMap, OrderedDict
-from itertools import zip_longest
 from operator import attrgetter, itemgetter
-from typing import Dict, List, Tuple, Any, Union, Iterable, Iterator, Optional, IO, Literal
+from typing import (
+    Any, Callable, Dict, IO, Iterable, Iterator,
+    List, Literal, MutableMapping, Optional, Tuple,
+    Union, cast,
+)
+from typing_extensions import Buffer
 
 import numpy as np
 import pandas as pd
-from dnutils import first, ifnone, mapstr, err, fst, out, ifnot, getlogger, logs
-from graphviz import Digraph
-from matplotlib import style, pyplot as plt
+from deprecated.classic import deprecated
+from dnutils import first, ifnone, fst, ifnot
+import logging
 
-from .base.constants import plotstyle, orange, green
 from .base.errors import Unsatisfiability
-from .base.utils import list2interval, format_path, normalized, Heap, list2intset, list2set
-from .base.utils import prod, setstr_int
+from .base.utils import (
+    list2set,
+    format_path,
+    normalized,
+    Heap,
+    prod,
+)
+
 from .distributions import Integer
 from .distributions import Multinomial, Numeric
-from .distributions.quantile.quantiles import QuantileDistribution
 from .inference import MPESolver
+
 from .variables import (
     VariableMap,
     SymbolicVariable,
@@ -38,45 +44,17 @@ from .variables import (
     ValueAssignment
 )
 
-try:
-    from .base.intervals import __module__
-    from .learning.impurity import __module__
-    from .base.functions import __module__
-except ModuleNotFoundError:
-    import pyximport
-    pyximport.install()
-finally:
-    from .base.intervals import ContinuousSet as Interval, EXC, INC, R, ContinuousSet, RealSet
-    from .learning.impurity import Impurity
-    from .base.functions import PiecewiseFunction, Undefined
-
-
-try:
-    style.use(plotstyle)
-except OSError:
-    import logging
-    logging.warning(
-        f'Style "{plotstyle}" not found. Falling back to "default".'
-    )
-    style.use('default')
+from .base.intervals import ContinuousSet, Interval, EXC, R, UnionSet, IntSet, Z
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Global constants
-
-DISCRIMINATIVE = 'discriminative'
-GENERATIVE = 'generative'
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
 
 class Node:
     """
     Wrapper for the nodes of the :class:`jpt.learning.trees.Tree`.
     """
 
-    def __init__(self, idx: int, parent: None or 'DecisionNode' = None) -> None:
+    def __init__(self, idx: int, parent: Optional['DecisionNode'] = None) -> None:
         """
         Create a Node
         :param idx: the identifier of a node
@@ -84,7 +62,7 @@ class Node:
         """
         self.idx = idx
         self.parent: DecisionNode = parent
-        self.samples = 0.
+        self.samples = 0
         self._path = []
 
     @property
@@ -96,7 +74,10 @@ class Node:
         for var, vals in self._path:
             res[var] = (res.get(
                 var,
-                set(range(var.domain.n_values)) if (var.symbolic or var.integer) else R
+                set(range(var.domain.n_values))
+                if var.symbolic else (
+                    Z if var.integer else R
+                )
             ).intersection(vals))
         return res
 
@@ -119,35 +100,28 @@ class Node:
                 # get the restriction of the path
                 restriction = self.path[variable]
 
-                # if it is a numeric
-                if variable.numeric:
+                # and a range is given
+                if isinstance(value, (Interval, set)):
+                    # if the ranges don't intersect return false
+                    return not restriction.isdisjoint(value)
 
-                    # and a range is given
-                    if isinstance(value, ContinuousSet):
-                        # if the ranges don't intersect return false
-                        if value.isdisjoint(restriction):
-                            return False
-
+                else:
                     # if it is a singular value
-                    else:
-                        # check if the path allows this value
-                        if not restriction.lower < value <= restriction.upper:
-                            return False
-
-                # if the variable is symbolic or integer
-                elif variable.symbolic or variable.integer:
-
-                    # if it is a set of possible values
-                    if not isinstance(value, set):
-                        value = set([value])
-                    # check if the sets intersect
-                    if value.isdisjoint(restriction):
-                        return False
+                    # check if the path allows this value
+                    return value in restriction
 
         return True
 
-    def format_path(self):
-        return format_path(self.path)
+    def format_path(
+            self,
+            fmt: str = None,
+            precision: int = None
+    ) -> str:
+        return format_path(
+            self.path,
+            fmt=fmt,
+            precision=precision
+        )
 
     def number_of_parameters(self) -> int:
         raise NotImplementedError()
@@ -175,9 +149,9 @@ class Node:
         result = np.ones(len(samples))
         for variable, restriction in self.path.items():
             index = variable_index_map[variable]
-            if variable.numeric:
+            if variable.numeric or variable.integer:
                 result *= (samples[:, index] > restriction.lower) & (samples[:, index] <= restriction.upper)
-            if variable.symbolic or variable.integer:
+            if variable.symbolic:
                 result *= np.isin(samples[:, index], list(restriction))
 
         return result
@@ -190,7 +164,7 @@ class DecisionNode(Node):
     Represents an inner (decision) node of the the :class:`jpt.learning.trees.Tree`.
     """
 
-    def __init__(self, idx: int, variable: Variable, parent: 'DecisionNode' or None = None):
+    def __init__(self, idx: Optional[int], variable: Variable, parent: 'DecisionNode' or None = None):
         """
         Create a DecisionNode
 
@@ -226,15 +200,15 @@ class DecisionNode(Node):
             'idx': self.idx,
             'parent': ifnone(self.parent, None, attrgetter('idx')),
             'splits': [
-                s.to_json() if isinstance(s, ContinuousSet) else list(s)
+                s.to_json() if isinstance(s, Interval) else list(s)
                 for s in self.splits
             ],
             'variable': self.variable.name,
             '_path': [
-                (var.name, split.to_json() if var.numeric else list(split))
+                (var.name, split.to_json() if (var.numeric or var.integer) else list(split))
                 for var, split in self._path
             ],
-            'children': [node.idx for node in self.children],
+            'children': [ifnone(node, None, attrgetter('idx')) for node in self.children],
             'samples': self.samples,
             'child_idx': self.parent.children.index(self) if self.parent is not None else None
         }
@@ -251,10 +225,19 @@ class DecisionNode(Node):
             idx=data['idx'],
             variable=tree.varnames[data['variable']]
         )
-        node.splits = [
-            Interval.from_json(s) if node.variable.numeric else set(s)
-            for s in data['splits']
-        ]
+        # the following cases are to support backward compatibility with old integer representations
+        if node.variable.numeric or (node.variable.integer and type(first(data['splits'])) is dict):
+            node.splits = [
+                Interval.from_json(s) for s in data['splits']
+            ]
+        elif node.variable.integer and type(first(data['splits'])) is list:
+            node.splits = [
+                IntSet.from_set(set(s)) for s in data['splits']
+            ]
+        elif node.variable.symbolic:
+            node.splits = [
+                set(s) for s in data['splits']
+            ]
         node.children = [None] * len(node.splits)
         node.parent = ifnone(data['parent'], None, tree.innernodes.get)
         node.samples = data['samples']
@@ -297,14 +280,23 @@ class DecisionNode(Node):
                 fmt='logic'
             )
         elif self.variable.symbolic:
-            negate = len(self.splits[1]) > 1
+            negate = len(self.splits) > 1 and len(self.splits[1]) > 1
             if negate:
                 label = self.variable.domain.labels[fst(self.splits[0])]
                 return '%s%s' % ('\u00AC' if idx_split > 0 else '', label)
             else:
                 return str(self.variable.domain.labels[fst(self.splits[idx_split])])
         elif self.variable.integer:
-            return setstr_int(self.variable.domain.value2label(self.splits[idx_split]))
+            return str(
+                IntSet(
+                    self.variable.domain.value2label(
+                        self.splits[idx_split].lower
+                    ) if not np.isneginf(self.splits[idx_split].lower) else -np.inf,
+                    self.variable.domain.value2label(
+                        self.splits[idx_split].upper
+                    ) if not np.isposinf(self.splits[idx_split].upper) else np.inf
+                )
+            )
 
     @property
     def str_node(self) -> str:
@@ -314,14 +306,18 @@ class DecisionNode(Node):
         """
         :return: All children of this node
         """
-        return self.children + [item for sublist in
-                                [child.recursive_children() for child in self.children] for item in sublist]
+        return self.children + [
+            item for sublist in
+            [child.recursive_children() for child in self.children]
+            for item in sublist
+        ]
 
     def __str__(self) -> str:
-        return (f'<DecisionNode #{self.idx} '
-                f'{self.variable.name} = [%s]' % '; '.join(self.str_edge(i) for i in range(len(self.splits))) +
-                f'; parent-#: {self.parent.idx if self.parent is not None else None}'
-                f'; #children: {len(self.children)}>')
+        return (
+            f'<DecisionNode #{self.idx} '
+            f'{self.variable.name} = [%s]' % '; '.join(self.str_edge(i) for i in range(len(self.splits))) +
+            f'; parent-#: {self.parent.idx if self.parent is not None else None}>'
+        )
 
     def __repr__(self) -> str:
         return f'Node<{self.idx}> object at {hex(id(self))}'
@@ -437,12 +433,14 @@ class Leaf(Node):
         return leaf
 
     def __eq__(self, o) -> bool:
-        return (type(o) == type(self) and
-                self.idx == o.idx and
-                self._path == o._path and
-                self.samples == o.samples and
-                self.distributions == o.distributions and
-                self.prior == o.prior)
+        return (
+            type(o) == type(self) and
+            self.idx == o.idx and
+            self._path == o._path and
+            self.samples == o.samples and
+            self.distributions == o.distributions and
+            self.prior == o.prior
+        )
 
     def consistent_with(self, evidence: VariableMap) -> bool:
         """
@@ -462,12 +460,15 @@ class Leaf(Node):
         """
         return super(Leaf, self).consistent_with(evidence)
 
-    def probability(self,
-                    query: VariableAssignment,
-                    dirac_scaling: float = 2.,
-                    min_distances: VariableMap = None) -> float:
+    def probability(
+            self,
+            query: VariableAssignment,
+            dirac_scaling: float = 2.,
+            min_distances: VariableMap = None
+    ) -> float:
         """
-        Calculate the probability of a (partial) query. Exploits the independence assumption
+        Calculate the probability of a (partial) query. Exploits the independence assumption.
+
         :param query: A preprocessed VariableMap that maps to singular values (numeric or symbolic)
             or ranges (continuous set, set)
         :type query: VariableMap
@@ -493,19 +494,20 @@ class Leaf(Node):
 
             # if the variable is symbolic
             elif variable.symbolic or variable.integer:
-
-                # force the evidence to be a set
-                if not isinstance(value, set):
-                    value = set([value])
-
                 # return false if the evidence is impossible in this leaf
                 result *= self.distributions[variable]._p(value)
 
         return result
 
-    def _numeric_probability(self, variable: NumericVariable, value, dirac_scaling: float = 2.,
-                             min_distances: VariableMap = None):
-        """ Calculate the probability of an arbitrary value for a numeric variable.
+    def _numeric_probability(
+            self,
+            variable: NumericVariable,
+            value,
+            dirac_scaling: float = 2.,
+            min_distances: VariableMap = None
+    ):
+        """Calculate the probability of an arbitrary value for a numeric variable.
+
         :param variable: A numeric variable
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
@@ -513,8 +515,16 @@ class Leaf(Node):
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
         """
-        if isinstance(value, RealSet):
-            return sum(self._numeric_probability(variable, cs, dirac_scaling, min_distances) for cs in value.intervals)
+        if isinstance(value, UnionSet):
+            return sum(
+                self._numeric_probability(
+                    variable,
+                    i,
+                    dirac_scaling,
+                    min_distances
+                )
+                for i in value.intervals
+            )
 
         # handle ContinuousSet
         elif isinstance(value, ContinuousSet):
@@ -523,7 +533,12 @@ class Leaf(Node):
                 return 0
 
             elif value.size() == 1:
-                return self._numeric_probability(variable, value.lower, dirac_scaling, min_distances)
+                return self._numeric_probability(
+                    variable,
+                    value.lower,
+                    dirac_scaling,
+                    min_distances
+                )
 
             else:
                 return self.distributions[variable]._p(value)
@@ -535,10 +550,10 @@ class Leaf(Node):
             likelihood = self.distributions[variable].pdf(value)
 
             # if it is infinity and no handling is provided replace it with 1.
-            if likelihood == float("inf") and not min_distances:
+            if likelihood == np.inf and not min_distances:
                 result *= 1
             # if it is infinite and a handling is provided, replace with dirac_sclaing/min_distance
-            elif likelihood == float("inf") and min_distances:
+            elif likelihood == np.inf and min_distances:
                 result *= dirac_scaling / min_distances[variable]
             else:
                 result *= likelihood
@@ -548,57 +563,85 @@ class Leaf(Node):
         else:
             raise ValueError("Unknown Datatype for Conditional JPT, type is %s" % type(value))
 
-    def parallel_likelihood(
-                    self,
-               queries: np.ndarray,
+    def likelihood(
+            self,
+            queries: pd.DataFrame,
             dirac_scaling: float = 2.,
-            min_distances: VariableMap = None
+            min_distances: VariableMap = None,
+            single_likelihoods: bool = False,
+            variables: Iterable[Union[Variable, str]] = None
     ) -> np.ndarray:
         """
-        Calculate the probability of a (partial) query. Exploits the independence assumption
-        :param queries: A VariableMap that maps to singular values (numeric or symbolic)
-            or ranges (continuous set, set)
-        :type queries: VariableMap
+        Calculate the probability of a (partial) query. Exploits the independence assumption.
+
+        :param single_likelihoods:
+        :param queries: An array-like object that represents variable assignments in value space.
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
-            if a durac impulse is used to model the variable.
+            if a dirac impulse is used to model the variable.
         :type dirac_scaling: float
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
         :type min_distances: A VariableMap from numeric variables to floats or None
+        :param single_likelihoods: whether likelihoods of each variable shall be reported
+        :param variables: the variables indices to consider in the likelihood calculation
         """
-
         # create result vector
-        result = np.ones(len(queries))
+        if variables is None:
+            variables = queries.columns
+
+        variables = [self.distributions.varnames[v] if isinstance(v, str) else v for v in variables]
+
+        if single_likelihoods:
+            shape = (len(queries), len(variables))
+        else:
+            shape = (len(queries), 1)
+
+        result = np.ones(
+            shape=shape,
+            dtype=np.float64
+        )
 
         # for each idx, variable and distribution
-        for idx, (variable, distribution) in enumerate(self.distributions.items()):
+        for idx, variable in enumerate(variables):
+            distribution = self.distributions[variable]
+            query = queries[variable.name]
 
             # if the variable is symbolic
-            if isinstance(variable, SymbolicVariable) or isinstance(variable, IntegerVariable):
-
+            if isinstance(variable, SymbolicVariable):
                 # multiply by probability
-                probs = distribution._params[queries[:, idx].astype(int)]
+                probs = distribution.probabilities[query.values.astype(int)]
+
+            elif isinstance(variable, IntegerVariable):
+                probs = np.array(
+                    [distribution._p(int(q)) for q in query.values]
+                )
 
             # if the variable is numeric
             elif isinstance(variable, NumericVariable):
-
                 # get the likelihoods
-                probs = np.asarray(distribution.pdf.multi_eval(queries[:, idx].copy(order='C').astype(float)))
+
+                probs = np.asarray(
+                    distribution.pdf.multi_eval(
+                        query.values.copy(order='C').astype(float)
+                    )
+                )
 
                 if min_distances:
                     # replace them with dirac scaling if they are infinite
-                    probs[(probs == float("inf")).nonzero()] = dirac_scaling / min_distances[variable]
+                    probs[np.isinf(probs).nonzero()] = dirac_scaling / min_distances[variable]
 
                 # if no distances are provided replace infinite values with 1.
                 else:
-                    probs[(probs == float("inf")).nonzero()] = 1.
-
+                    probs[np.isinf(probs)] = dirac_scaling
             else:
                 raise ValueError("Variable of type %s is not known!" % type(variable))
 
             # multiply results
-            result *= probs
+            if single_likelihoods:
+                result[:, idx] = probs.reshape(-1, 1)
+            else:
+                result[:, 0] *= probs
 
         return result
 
@@ -610,7 +653,8 @@ class Leaf(Node):
         result.s_indices = self.s_indices
         result.distributions = VariableMap(
             {
-               variable:  type(distribution).from_json(distribution.to_json()) for variable, distribution in self.distributions.items()
+               variable:  type(distribution).from_json(distribution.to_json())
+               for variable, distribution in self.distributions.items()
             }
         )
         return result
@@ -618,6 +662,7 @@ class Leaf(Node):
     def conditional_leaf(self, evidence: VariableAssignment) -> 'Leaf':
         """
         Create a leaf that is cropped to the values described in evidence.
+
         :param evidence: A VariableAssignment describing evidence.
         :return: The cropped leaf, that hos no parent, path, etc. set.
         """
@@ -633,9 +678,10 @@ class Leaf(Node):
 
         return result
 
-    def mpe(self, minimal_distances: VariableMap) -> (VariableMap, float):
+    def mpe(self, minimal_distances: VariableMap) -> tuple[VariableMap, float]:
         """
         Calculate the most probable explanation of this leaf as a fully factorized distribution.
+
         :return: the likelihood of the maximum as a float and the configuration as a VariableMap
         """
 
@@ -650,7 +696,7 @@ class Leaf(Node):
             explanation, likelihood = distribution.mpe()
 
             # apply upper cap for infinities
-            likelihood = minimal_distances[variable] if likelihood == float("inf") else likelihood
+            likelihood = minimal_distances.get(variable, 1) if np.isinf(likelihood) else likelihood
 
             # update likelihood
             result_likelihood *= likelihood
@@ -676,10 +722,10 @@ class Leaf(Node):
         """
         return sum([distribution.number_of_parameters() for distribution in self.distributions.values()])
 
-    def sample(self, amount) -> np.array:
+    def sample(self, amount) -> np.ndarray:
         """Sample `amount` many samples from the leaf.
 
-        :returns A numpy array of size (amount, self.variables) containing the samples.
+        :return: A numpy array of size (amount, self.variables) containing the samples.
         """
         result = np.empty((amount, len(self.distributions)), dtype=object)
 
@@ -694,20 +740,22 @@ class Leaf(Node):
 # noinspection PyProtectedMember
 class JPT:
     """
-    Implementation Joint Probability Trees (JPTs).
+    Implementation of Joint Probability Trees (JPTs).
     """
 
-    logger = getlogger('/jpt', level=logs.INFO)
+    logger = logging.getLogger('/jpt')
 
-    def __init__(self,
-                 variables: List[Variable],
-                 targets: List[str or Variable] = None,
-                 features: List[str or Variable] = None,
-                 min_samples_leaf: float or int = 1,
-                 min_impurity_improvement: float or None = None,
-                 max_leaves: int or None = None,
-                 max_depth: int or None = None,
-                 dependencies: Dict[Variable, List[Variable]] or None = None) -> None:
+    def __init__(
+            self,
+            variables: list[Variable],
+            targets: list[str | Variable] = None,
+            features: list[str | Variable] = None,
+            min_samples_leaf: float | int = 1,
+            min_impurity_improvement: float | None = None,
+            max_leaves: int | None = None,
+            max_depth: int | None = None,
+            dependencies: dict[Variable, list[Variable]] | None = None
+    ) -> None:
         """
         Create a JPT.
         :param variables: The variables that will be represented this model
@@ -743,11 +791,11 @@ class JPT:
             else:
                 self._features = [self.varnames[v] if type(v) is str else v for v in features]
 
-        self.leaves: Dict[int, Leaf] = {}
-        self.innernodes: Dict[int, DecisionNode] = {}
+        self.leaves: dict[int, Leaf] = {}
+        self.innernodes: dict[int, DecisionNode] = {}
         self.priors: VariableMap = VariableMap()
 
-        self._min_samples_leaf = min_samples_leaf
+        self.min_samples_leaf = min_samples_leaf
         self._keep_samples = False
         self.min_impurity_improvement = ifnone(min_impurity_improvement, 0)
 
@@ -755,12 +803,8 @@ class JPT:
         self.minimal_distances: VariableMap = VariableMap(variables=self.variables)
         self._numsamples = 0
         self.root = None
-        self.c45queue = deque()
         self.max_leaves = max_leaves
-        self.max_depth = max_depth or float('inf')
-        self._node_counter = 0
-        self.indices = None
-        self.impurity = None
+        self.max_depth = max_depth or np.inf
 
         # initialize the dependencies as fully dependent on each other.
         # the interface isn't modified therefore the jpt should work as before if not
@@ -779,63 +823,75 @@ class JPT:
         """ Delete all parameters of this model (not the hyperparameters)"""
         self.innernodes.clear()
         self.leaves.clear()
-        self.priors = VariableMap(variables=self.variables) # .clear()
+        self.priors = VariableMap(variables=self.variables)  # .clear()
+        self.minimal_distances: VariableMap = VariableMap(variables=self.variables)
         self.root = None
-        self.c45queue.clear()
 
     @property
-    def allnodes(self):
-        return ChainMap(self.innernodes, self.leaves)
+    def allnodes(self) -> MutableMapping[int, Node]:
+        return cast(
+            MutableMapping[int, Node],
+            ChainMap(
+                cast(
+                    MutableMapping[int, Node],
+                    self.innernodes
+                ),
+                cast(
+                    MutableMapping[int, Node],
+                    self.leaves
+                )
+            )
+        )
 
     @property
-    def variables(self) -> Tuple[Variable]:
+    def variables(self) -> tuple[Variable, ...]:
         return tuple(self._variables)
 
     @property
-    def targets(self) -> List[Variable]:
-        return self._targets
+    def targets(self) -> tuple[Variable, ...]:
+        return tuple(self._targets)
 
     @property
-    def features(self) -> List[Variable]:
-        return self._features
+    def features(self) -> tuple[Variable, ...]:
+        return tuple(self._features)
 
     @property
-    def numeric_variables(self) -> List[Variable]:
-        return [var for var in self.variables if isinstance(var, NumericVariable)]
+    def numeric_variables(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.variables if isinstance(var, NumericVariable)])
 
     @property
-    def symbolic_variables(self) -> List[Variable]:
-        return [var for var in self.variables if isinstance(var, SymbolicVariable)]
+    def symbolic_variables(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.variables if isinstance(var, SymbolicVariable)])
 
     @property
-    def integer_variables(self) -> List[Variable]:
-        return [var for var in self.variables if isinstance(var, IntegerVariable)]
+    def integer_variables(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.variables if isinstance(var, IntegerVariable)])
 
     @property
-    def numeric_targets(self) -> List[Variable]:
-        return [var for var in self.targets if isinstance(var, NumericVariable)]
+    def numeric_targets(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.targets if isinstance(var, NumericVariable)])
 
     @property
-    def symbolic_targets(self) -> List[Variable]:
-        return [var for var in self.targets if isinstance(var, SymbolicVariable)]
+    def symbolic_targets(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.targets if isinstance(var, SymbolicVariable)])
 
     @property
-    def integer_targets(self) -> List[Variable]:
-        return [var for var in self.targets if isinstance(var, IntegerVariable)]
+    def integer_targets(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.targets if isinstance(var, IntegerVariable)])
 
     @property
-    def numeric_features(self) -> List[Variable]:
-        return [var for var in self.features if isinstance(var, NumericVariable)]
+    def numeric_features(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.features if isinstance(var, NumericVariable)])
 
     @property
-    def symbolic_features(self) -> List[Variable]:
-        return [var for var in self.features if isinstance(var, SymbolicVariable)]
+    def symbolic_features(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.features if isinstance(var, SymbolicVariable)])
 
     @property
-    def integer_features(self) -> List[Variable]:
-        return [var for var in self.features if isinstance(var, IntegerVariable)]
+    def integer_features(self) -> tuple[Variable, ...]:
+        return tuple([var for var in self.features if isinstance(var, IntegerVariable)])
 
-    def to_json(self) -> Dict[str, Any]:
+    def to_json(self) -> dict[str, Any]:
         """Convert the tree to a json dictionary that can be serialized. """
         return {
             'variables': [v.to_json() for v in self.variables],
@@ -857,8 +913,8 @@ class JPT:
 
     @staticmethod
     def from_json(
-            data: Dict[str, Any],
-            variables: Optional[Iterable[Variable]] = None
+            data: dict[str, Any],
+            variables: Iterable[Variable] | None = None
     ) -> 'JPT':
         """
         Construct a tree from a json dict.
@@ -927,19 +983,6 @@ class JPT:
         self.__dict__ = JPT.from_json(json_data).__dict__
 
     def __eq__(self, o) -> bool:
-        eq = (
-            isinstance(o, JPT),
-            self.innernodes == o.innernodes,
-            self.leaves == o.leaves,
-            self.priors == o.priors,
-            self.min_samples_leaf == o.min_samples_leaf,
-            self.min_impurity_improvement == o.min_impurity_improvement,
-            self.targets == o.targets,
-            self.variables == o.variables,
-            self.max_depth == o.max_depth,
-            self.max_leaves == o.max_leaves,
-            self.dependencies == o.dependencies
-        )
         return all((
             isinstance(o, JPT),
             self.innernodes == o.innernodes,
@@ -954,18 +997,22 @@ class JPT:
             self.dependencies == o.dependencies
         ))
 
-    def encode(self, samples: np.ndarray) -> np.array:
+    def encode(self, samples: np.ndarray) -> np.ndarray:
         """
         Get the leaf index that describes the partition of each sample. Only works for fully initialized samples, i. e.
         a matrix of arbitrary many rows but #variables many columns.
         :param samples: the samples to evaluate
         :return: A 1D numpy array of integers containing the leaf index of every sample.
         """
+        from .learning.preprocessing import preprocess_data
         result = np.zeros(len(samples))
         variable_index_map = VariableMap([(variable, idx) for (idx, variable) in enumerate(self.variables)])
-        samples = self._preprocess_data(samples)
+        samples = preprocess_data(
+            self,
+            pd.DataFrame(samples, columns=[v.name for v in self.variables])
+        )
         for idx, leaf in self.leaves.items():
-            contains = leaf.contains(samples, variable_index_map)
+            contains = leaf.contains(samples.values, variable_index_map)
             result[contains == 1] = idx
         return result
 
@@ -977,7 +1024,7 @@ class JPT:
         """
         if isinstance(values, LabelAssignment):
             values = values.value_assignment()
-        if any([isinstance(val, ContinuousSet) and val.size() > 1 for val in values.values()]):
+        if any([isinstance(val, Interval) and val.size() > 1 for val in values.values()]):
             raise ValueError('PDF not defined on intervals of size >1')
         if any([isinstance(val, set) and len(val) > 1 for val in values.values()]):
             raise ValueError('PDF not defined on sets of size >1')
@@ -986,10 +1033,14 @@ class JPT:
 
         values_scalars = ValueAssignment(variables=values._variables.values())
         values_sets = ValueAssignment(variables=values._variables.values())
+
         for var, val in values.items():
-            if isinstance(var, NumericVariable):
-                if not isinstance(val, ContinuousSet):
-                    values_sets[var] = ContinuousSet(val, val)
+            if isinstance(var, (NumericVariable, IntegerVariable)):
+                if not isinstance(val, Interval):
+                    values_sets[var] = {
+                        NumericVariable: ContinuousSet,
+                        IntegerVariable: IntSet
+                    }[type(var)](val, val)
                     values_scalars[var] = val
                 else:
                     values_sets[var] = val
@@ -1004,16 +1055,20 @@ class JPT:
 
         pdf = 0
         for leaf in self.apply(values_sets):
-            pdf += leaf.prior * (prod(leaf.distributions[var].pdf(value)
-                                      for var, value in values_scalars.items()) if values_scalars else 1)
+            pdf += leaf.prior * (
+                prod(
+                    leaf.distributions[var].pdf(value)
+                    for var, value in values_scalars.items()
+                ) if values_scalars else 1
+            )
         return pdf
 
     def infer(
             self,
-            query: Union[Dict[Union[Variable, str], Any], VariableAssignment],
-            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            query: dict[Variable | str, Any] | VariableAssignment,
+            evidence: dict[Variable | str, Any] | VariableAssignment = None,
             fail_on_unsatisfiability: bool = True
-    ) -> float or None:
+    ) -> float | None:
         r"""For each candidate leaf ``l`` calculate the number of samples in which `query` is true:
 
         .. math::
@@ -1096,11 +1151,11 @@ class JPT:
     # noinspection PyProtectedMember
     def posterior(
             self,
-            variables: List[Variable or str] = None,
-            evidence: Dict[Union[Variable, str], Any] or VariableAssignment = None,
+            variables: list[Variable | str] = None,
+            evidence: dict[Variable | str, Any] | VariableAssignment = None,
             fail_on_unsatisfiability: bool = True,
             report_inconsistencies: bool = False
-    ) -> VariableMap or None:
+    ) -> VariableMap | None:
         """
         Compute the posterior distribution of every variable in ``variables``. The result contains independent
         distributions. Be aware that they might not actually be independent.
@@ -1146,16 +1201,16 @@ class JPT:
                     evidence_set = evidence_set.intersection(leaf.path[var])
 
                 if isinstance(evidence_set, ContinuousSet) and evidence_set.size() == 1:
-                    l_var = leaf.distributions[var].pdf(evidence_set.lower)
+                    l_var = leaf.distributions[var].pdf(evidence_set.min)
                     l_var = 1 if np.isinf(l_var) else l_var
                 else:
                     l_var = leaf.distributions[var]._p(evidence_set)
-
+                if abs(l_var) < 1e-8:
+                    l_var = .0
                 if not l_var:
                     conflicting_assignment[var] = var.domain.value2label(evidence_set)
                     if not report_inconsistencies:
                         break
-
                 likelihood *= ifnot(l_var, 1)
 
             if conflicting_assignment:
@@ -1185,7 +1240,6 @@ class JPT:
                 )
             return None
 
-
         for var, dists in distributions.items():
             if var.numeric:
                 result[var] = Numeric.merge(dists, weights=weights)
@@ -1198,10 +1252,10 @@ class JPT:
 
     def expectation(
             self,
-            variables: Iterable[Variable] = None,
-            evidence: VariableAssignment = None,
+            variables: Iterable[Variable] | None = None,
+            evidence: VariableAssignment | dict[str, numbers.Number | Interval | str] | None = None,
             fail_on_unsatisfiability: bool = True
-    ) -> VariableMap or None:
+    ) -> Optional[VariableMap]:
         """
         Compute the expected value of all ``variables``. If no ``variables`` are passed,
         it defaults to all variables not passed as ``evidence``.
@@ -1236,7 +1290,9 @@ class JPT:
 
         if posteriors is None:
             if fail_on_unsatisfiability:
-                raise Unsatisfiability('Query is unsatisfiable: P(%s) is 0.' % format_path(evidence))
+                raise Unsatisfiability(
+                    'Query is unsatisfiable: P(%s) is 0.' % format_path(evidence)
+                )
             else:
                 return None
 
@@ -1247,11 +1303,12 @@ class JPT:
 
     def mpe(
             self,
-            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            evidence: Dict[Variable | str, Any] | VariableAssignment = None,
             fail_on_unsatisfiability: bool = True
-    ) -> (List[LabelAssignment], float) or None:
+    ) -> Tuple[list[LabelAssignment], float] | None:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
+
         :param evidence: The evidence that is applied to the tree
         :param fail_on_unsatisfiability: Rather or not an ``Unsatisfiability`` error is raised if the
                                          likelihood of the evidence is 0.
@@ -1296,10 +1353,10 @@ class JPT:
 
     def kmpe(
             self,
-            evidence: Union[Dict[Union[Variable, str], Any], VariableAssignment] = None,
+            evidence: dict[Variable | str, Any] | VariableAssignment = None,
             fail_on_unsatisfiability: bool = True,
             k: int = 0
-    ) -> Iterator[Tuple[LabelAssignment, float]] or None:
+    ) -> Iterator[Tuple[LabelAssignment, float]] | None:
         """
         Perform a k-MPE inference on this JPT under the given evidence.
 
@@ -1316,7 +1373,10 @@ class JPT:
             evidence_ = evidence
 
         # apply the evidence given
-        conditional_jpt = self.conditional_jpt(evidence_, fail_on_unsatisfiability)
+        conditional_jpt = self.conditional_jpt(
+            evidence_,
+            fail_on_unsatisfiability
+        )
         if conditional_jpt is None:
             return None
 
@@ -1329,21 +1389,29 @@ class JPT:
                     if not np.isnan(likelihood_max) and not np.isinf(likelihood_max):
                         likelihoods.append(likelihood_max)
         likelihood_max = ifnot(likelihoods, 1, max)
-        mpe_solvers = [
-            MPESolver(
-                distributions=leaf.distributions,
-                likelihood_divisor=likelihood_max if likelihoods else None
-            ).solve() for leaf in conditional_jpt.leaves.values()
-        ]
 
+        def _solver_scaled(leaf):
+            """Yield (assignment, joint_likelihood) with leaf.prior folded in."""
+            prior = leaf.prior
+            for assignment, likelihood in MPESolver(
+                distributions=leaf.distributions,
+                likelihood_divisor=likelihood_max if likelihoods else None,
+            ).solve():
+                yield assignment, likelihood * prior
+
+        # Each entry is (solution, joint_likelihood, solver).
+        # key negated → max-heap: pop() always extracts the globally best candidate.
         mpe_candidates = Heap(
-            data=[(*next(solver), solver) for solver in mpe_solvers],
-            key=itemgetter(1)
+            data=[(*next(solver), solver)
+                  for leaf in conditional_jpt.leaves.values()
+                  for solver in (_solver_scaled(leaf),)],
+            key=lambda x: -x[1],
         )
 
         count = 0
         while mpe_candidates and (not k or count < k):
             solution, likelihood, solver = mpe_candidates.pop()
+
             values = ValueAssignment(
                 [
                     (variable, value if variable.numeric else set(value))
@@ -1360,7 +1428,7 @@ class JPT:
 
     def _preprocess_query(
             self,
-            query: Union[dict, VariableMap],
+            query: dict | VariableMap,
             remove_none: bool = True,
             skip_unknown_variables: bool = False,
             allow_singular_values: bool = False,
@@ -1368,6 +1436,7 @@ class JPT:
     ) -> LabelAssignment:
         """
         Transform a query entered by a user into an internal representation that can be further processed.
+
         :param query: the raw query
         :param remove_none: Rather to remove None entries or not
         :param skip_unknown_variables:  skip preprocessing for variable that does not exist in tree (may happen in
@@ -1402,7 +1471,7 @@ class JPT:
 
             if var.numeric:
                 if type(arg) is list:
-                    arg = list2interval(arg)
+                    arg = ContinuousSet.from_list(arg)
                 if isinstance(arg, numbers.Number):
                     val = arg
                     if allow_singular_values:
@@ -1438,17 +1507,32 @@ class JPT:
                         query_[var] = ContinuousSet(val, val)
                 elif isinstance(arg, ContinuousSet):
                     query_[var] = arg
-                elif isinstance(arg, RealSet):
-                    query_[var] = RealSet([
+                elif isinstance(arg, UnionSet):
+                    query_[var] = UnionSet([
                         ContinuousSet(i.lower, i.upper, i.left, i.right) for i in arg.intervals
                     ])
                 else:
                     raise TypeError('Unknown type of variable value: %s' % type(arg).__name__)
-            if var.symbolic or var.integer:
+
+            elif var.integer:
+                if type(arg) is list:
+                    arg = IntSet.from_list(arg)
+                if isinstance(arg, numbers.Number):
+                    val = arg
+                    if allow_singular_values:
+                        query_[var] = val
+                    else:
+                        query_[var] = IntSet(val, val)
+                elif isinstance(arg, IntSet):
+                    query_[var] = arg
+                elif isinstance(arg, UnionSet):
+                    query_[var] = UnionSet([
+                        IntSet(i.lower, i.upper) for i in arg.intervals
+                    ])
+
+            elif var.symbolic:
                 # Transform into internal values (symbolic values to their indices):
-                if type(arg) is list and var.integer:
-                    arg = list2intset(arg)
-                if type(arg) is list and var.symbolic:
+                if type(arg) is list:
                     arg = list2set(arg)
                 if type(arg) is tuple:
                     raise TypeError(
@@ -1463,7 +1547,7 @@ class JPT:
 
         return query_
 
-    def _check_variable_assignment(self, assignment: Optional[VariableAssignment]):
+    def _check_variable_assignment(self, assignment: VariableAssignment | None):
         '''
         Check the variable assignment for compatibility with the
         variables of this JPT.
@@ -1481,7 +1565,7 @@ class JPT:
 
     def apply(
             self,
-            query: Union[VariableAssignment, Dict]
+            query: VariableAssignment | dict[str, int | Interval | float | str ]
     ) -> Iterator[Leaf]:
         """
         Iterator that yields leaves tha are consistent with a ``query``.
@@ -1528,122 +1612,11 @@ class JPT:
                 if node.variable not in query or not query[node.variable].isdisjoint(split):
                     fringe.appendleft(child)
 
-    def c45(
-            self,
-            data: np.ndarray,
-            start: int,
-            end: int,
-            parent: DecisionNode,
-            child_idx: int,
-            depth: int
-    ) -> None:
-        """
-        Creates a node in the decision tree according to the C4.5 algorithm on the data identified by
-        ``indices``. The created node is put as a child with index ``child_idx`` to the children of
-        node ``parent``, if any.
-
-        :param data:        the indices for the training samples used to calculate the gain.
-        :param start:       the starting index in the data.
-        :param end:         the stopping index in the data.
-        :param parent:      the parent node of the current iteration, initially ``None``.
-        :param child_idx:   the index of the child in the current iteration.
-        :param depth:       the depth of the tree in the current recursion level.
-        """
-        # --------------------------------------------------------------------------------------------------------------
-        min_impurity_improvement = ifnone(self.min_impurity_improvement, 0)
-        n_samples = end - start
-        split_pos = -1
-        split_var = None
-        impurity = self.impurity
-
-        max_gain = impurity.compute_best_split(start, end)
-
-        self.logger.debug(
-            'Data range: %d-%d,' % (start, end),
-            'split var:', split_var,
-            ', split_pos:', split_pos,
-            ', gain:', max_gain
-        )
-
-        if max_gain >= min_impurity_improvement and depth < self.max_depth:  # Create a decision node ------------------
-            split_pos = impurity.best_split_pos
-            split_var_idx = impurity.best_var
-            split_var = self.variables[split_var_idx]
-
-            node = DecisionNode(
-                idx=len(self.allnodes),
-                variable=split_var,
-                parent=parent
-            )
-            node.samples = n_samples
-            self.innernodes[node.idx] = node
-
-            if split_var.symbolic:  # Symbolic domain ------------------------------------------------------------------
-                split_value = int(
-                    data[self.indices[start + split_pos], split_var_idx]
-                )
-                splits = [
-                    {split_value},
-                    set(split_var.domain.values.values()) - {split_value}
-                ]
-
-            elif split_var.numeric:  # Numeric domain ------------------------------------------------------------------
-                split_value = (
-                    data[self.indices[start + split_pos], split_var_idx] +
-                    data[self.indices[start + split_pos + 1], split_var_idx]
-                ) / 2
-                splits = [
-                    Interval(-np.inf, split_value, EXC, EXC),
-                    Interval(split_value, np.inf, INC, EXC)
-                ]
-
-            elif split_var.integer:  # Integer domain ------------------------------------------------------------------
-                split_value = int(data[self.indices[start + split_pos + 1], split_var_idx])
-                domain = list(split_var.domain.values.values())
-                idx_split = domain.index(split_value)
-                splits = [set(domain[:idx_split]), set(domain[idx_split:])]
-
-            else:  # ---------------------------------------------------------------------------------------------------
-                raise TypeError('Unknown variable type: %s.' % type(split_var).__name__)
-
-            # recurse left and right
-            self.c45queue.append((data, start, start + split_pos + 1, node, 0, depth + 1))
-            self.c45queue.append((data, start + split_pos + 1, end, node, 1, depth + 1))
-
-            node.splits = splits
-
-        else:  # Create a leaf node ------------------------------------------------------------------------------------
-            leaf = node = Leaf(idx=len(self.allnodes), parent=parent)
-
-            if parent is not None:
-                parent.set_child(child_idx, leaf)
-
-            for i, v in enumerate(self.variables):
-                leaf.distributions[v] = v.distribution()._fit(
-                    data=data,
-                    rows=self.indices[start:end],
-                    col=i
-                )
-            leaf.prior = n_samples / data.shape[0]
-            leaf.samples = n_samples
-            if self._keep_samples:
-                leaf.s_indices = self.indices[start:end]
-
-            self.leaves[leaf.idx] = leaf
-
-        JPT.logger.debug('Created', str(node))
-
-        if parent is not None:
-            parent.set_child(child_idx, node)
-
-        if self.root is None:
-            self.root = node
-
     def __str__(self) -> str:
         return (
-            f'{self.__class__.__name__}\n'
-            f'{self.pfmt()}\n'
-            f'JPT stats: #innernodes = {len(self.innernodes)}, '
+            f'{self.__class__.__name__}'
+            # f'{self.pfmt()}\n'
+            f'#innernodes = {len(self.innernodes)}, '
             f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)'
         )
 
@@ -1654,13 +1627,30 @@ class JPT:
             f'#leaves = {len(self.leaves)} ({len(self.allnodes)} total)>'
         )
 
+    def to_string(self) -> str:
+        return self.fancy_tree()
+
+    def fancy_tree(self) -> str:
+        import anytree
+        nodes = {}
+        root = None
+        q = [self.root]
+        while q:
+            n = q.pop(0)
+            if isinstance(n, DecisionNode):
+                q.extend(n.children)
+            nodes[n.idx] = anytree.Node(str(n), parent=nodes[n.parent.idx] if n is not self.root else None)
+            if n is self.root:
+                root = nodes[n.idx]
+        return "\n".join(f"{pre}{node.name}" for pre, _, node in anytree.RenderTree(root, style=anytree.ContRoundStyle))
+
     def pfmt(self) -> str:
         """
         :return: a pretty-format string representation of this JPT.
         """
         return self._pfmt(self.root, 0)
 
-    def _pfmt(self, node, indent) -> str:
+    def _pfmt(self, node: Node, indent: int) -> str:
         """
         :param node: The starting node
         :param indent: the indentation of each new level
@@ -1673,201 +1663,59 @@ class JPT:
             if isinstance(node, DecisionNode) else ''
         )
 
-    def _preprocess_data(self, data=None, rows=None, columns=None) -> np.ndarray:
-        """
-        Transform the input data into an internal representation.
-        :param data: The data to transform
-        :param rows: The indices of the rows that will be transformed
-        :param columns: The indices of the columns that will be transformed
-        :return: the preprocessed data
-        """
-        if sum(d is not None for d in (data, rows, columns)) > 1:
-            raise ValueError('Only either of the three is allowed.')
-        elif sum(d is not None for d in (data, rows, columns)) < 1:
-            raise ValueError('No data passed.')
-
-        JPT.logger.info('Preprocessing data...')
-
-        if isinstance(data, np.ndarray) and data.shape[0] or isinstance(data, list):
-            rows = data
-
-        if isinstance(rows, list) and rows:  # Transpose the rows
-            columns = [[row[i] for row in rows] for i in range(len(self.variables))]
-        elif isinstance(rows, np.ndarray) and rows.shape[0]:
-            columns = rows.T
-
-        if isinstance(columns, list) and columns:
-            shape = len(columns[0]), len(columns)
-        elif isinstance(columns, np.ndarray) and columns.shape:
-            shape = columns.T.shape
-        elif isinstance(data, pd.DataFrame):
-            shape = data.shape
-            data = data.copy()
-        else:
-            raise ValueError('No data given.')
-
-        data_ = np.ndarray(shape=shape, dtype=np.float64, order='C')
-        if isinstance(data, pd.DataFrame):
-            if set(self.varnames).symmetric_difference(set(data.columns)):
-                raise ValueError(
-                    'Unknown variable names: %s'
-                    % ', '.join(mapstr(set(self.varnames).symmetric_difference(set(data.columns))))
-                )
-            # Check if the order of columns in the data frame is the same
-            # as the order of the variables.
-            if not all(c == v for c, v in zip_longest(data.columns, self.varnames)):
-                raise ValueError(
-                    'Columns in DataFrame must coincide with variable order: %s' % ', '.join(mapstr(self.varnames))
-                )
-            transformations = {v: self.varnames[v].domain.values.transformer() for v in data.columns}
-            try:
-                for col in data.columns:
-                    data.loc[:, col] = data[col].map(
-                        transformations[col],
-                        na_action='ignore'
-                    )
-                data_[:] = data.values
-            except ValueError as e:
-                raise ValueError(
-                    f'{e} of {self.varnames[col].domain.__qualname__} of variable {col}'
-                )
-        else:
-            for i, (var, col) in enumerate(zip(self.variables, columns)):
-                data_[:, i] = [var.domain.values[v] for v in col]
-        return data_
-
     def learn(
             self,
-            data: Optional[pd.DataFrame] = None,
-            rows: Optional[Union[np.ndarray, List]] = None,
-            columns: Optional[Union[np.ndarray, List]] = None,
+            data: pd.DataFrame | np.ndarray,
             keep_samples: bool = False,
-            close_convex_gaps: bool = True
+            close_convex_gaps: bool = False,
+            verbose: bool = False,
+            prune_or_split: Callable[..., bool] | None = None,
+            multicore: int | None = None
     ) -> 'JPT':
         """
-        Fit the jpt to ``data``
+        Fit the jpt to ``data``.
+
         :param data:    The training examples (assumed in row-shape)
         :type data:     [[str or float or bool]]; (according to `self.variables`)
-        :param rows:    The training examples (assumed in row-shape)
-        :type rows:     [[str or float or bool]]; (according to `self.variables`)
-        :param columns: The training examples (assumed in column-shape)
-        :type columns:  [[str or float or bool]]; (according to `self.variables`)
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
                         purposes only. Default is false.
         :param close_convex_gaps:
+        :param prune_or_split:
+        :param multicore: The number of cores to use for learning. If ``None``, all cores available will be used.
+        :param verbose:
+
         :return: the fitted model
         """
-        # --------------------------------------------------------------------------------------------------------------
-        # Check and prepare the data
-        _data = self._preprocess_data(data=data, rows=rows, columns=columns)
-
-        for idx, variable in enumerate(self.variables):
-            if variable.numeric:
-                samples = np.unique(_data[:, idx])
-                distances = np.diff(samples)
-                self.minimal_distances[variable] = min(distances) if len(distances) > 0 else 2.
-
-        if not _data.shape[0]:
-            raise ValueError('No data for learning.')
-
-        self.indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
-        self.indices[0] = 0
-        np.cumsum(self.indices, out=self.indices)
-
-        JPT.logger.info('Data transformation... %d x %d' % _data.shape)
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Initialize the internal data structures
-        self._reset()
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Determine the prior distributions
-        started = datetime.datetime.now()
-        JPT.logger.info('Learning prior distributions...')
-
-        for i, (vname, var) in enumerate(self.varnames.items()):
-            self.priors[var] = var.distribution()._fit(
-                data=_data,
-                col=i
+        from .learning.c45 import C45Algorithm
+        c45 = C45Algorithm(self)
+        if isinstance(data, np.ndarray):
+            data = pd.DataFrame(
+                data,
+                columns=list(self.varnames)
             )
-        JPT.logger.info(
-            '%d prior distributions learnt in %s.' % (
-                len(self.priors),
-                datetime.datetime.now() - started
-            )
+        c45.learn(
+            data=data,
+            keep_samples=keep_samples,
+            close_convex_gaps=close_convex_gaps,
+            verbose=verbose,
+            prune_or_split=prune_or_split,
+            multicore=multicore
         )
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Start the training
-        if type(self._min_samples_leaf) is int:
-            min_samples_leaf = self._min_samples_leaf
-
-        elif type(self._min_samples_leaf) is float and 0 < self._min_samples_leaf < 1:
-            min_samples_leaf = max(1, int(self._min_samples_leaf * len(_data)))
-
-        else:
-            min_samples_leaf = self._min_samples_leaf
-
-        self._keep_samples = keep_samples
-
-        # Initialize the impurity calculation
-        self.impurity = Impurity.from_tree(self)
-        self.impurity.setup(_data, self.indices)
-        self.impurity.min_samples_leaf = min_samples_leaf
-
-        started = datetime.datetime.now()
-        JPT.logger.info('Started learning of %s x %s at %s '
-                        'requiring at least %s samples per leaf' % (_data.shape[0],
-                                                                    _data.shape[1],
-                                                                    started,
-                                                                    min_samples_leaf))
-        learning = GENERATIVE if self.targets == self.variables else DISCRIMINATIVE
-        JPT.logger.info('Learning is %s. ' % learning)
-        if learning == DISCRIMINATIVE:
-            JPT.logger.info('Target variables (%d): %s\n'
-                            'Feature variables (%d): %s' % (len(self.targets),
-                                                            ', '.join(mapstr(self.targets)),
-                                                            len(self.variables) - len(self.targets),
-                                                            ', '.join(
-                                                                mapstr(set(self.variables) - set(self.targets)))))
-        # build up tree
-        self.c45queue.append((
-                _data,
-                0,
-                _data.shape[0],
-                None,
-                None,
-                0
-        ))
-        while self.c45queue:
-            self.c45(*self.c45queue.popleft())
-
-        if close_convex_gaps:
-            self.postprocess_leaves()
-
-        # ----------------------------------------------------------------------------------------------------------
-        # Print the statistics
-        JPT.logger.info('Learning took %s' % (datetime.datetime.now() - started))
-        JPT.logger.debug(self)
         return self
 
     fit = learn
-
-    @property
-    def min_samples_leaf(self):
-        return self._min_samples_leaf
 
     @staticmethod
     def sample(sample, ft):
         # NOTE: This sampling is NOT uniform for intervals that are infinity in any direction! TODO: FIX to sample from CATEGORICAL
         if ft not in sample:
-            return Interval(-np.inf, np.inf, EXC, EXC).sample()
+            return ContinuousSet(-np.inf, np.inf, EXC, EXC).sample()
         else:
             iv = sample[ft]
 
-        if isinstance(iv, Interval):
+        if isinstance(iv, ContinuousSet):
             if iv.lower == -np.inf and iv.upper == np.inf:
-                return Interval(-np.inf, np.inf, EXC, EXC).sample()
+                return ContinuousSet(-np.inf, np.inf, EXC, EXC).sample()
             if iv.lower == -np.inf:
                 if any([i.right == EXC for i in iv.intervals]):
                     # workaround to be able to sample from open interval
@@ -1887,45 +1735,117 @@ class JPT:
 
     def likelihood(
             self,
-            queries: Union[np.ndarray, pd.DataFrame],
+            data: pd.DataFrame | np.ndarray,
             dirac_scaling: float = 2.,
-            min_distances: Dict = None
+            min_distances: Dict = None,
+            preprocess: bool = True,
+            multicore: int | None = None,
+            verbose: bool = False,
+            single_likelihoods: bool = False,
+            variables: Iterable[Variable] = None
     ) -> np.ndarray:
         """
         Get the probabilities of a list of worlds. The worlds must be fully assigned with
-        single numbers (no intervals).
+        scalar values (no intervals or sets).
 
-        :param queries: An array containing the worlds. The shape is (x, len(variables)).
+        :param variables:       Which variables in consider for their likelihood computat
+        :param data:            An array containing the worlds. The shape is (x, len(variables)).
+        :param dirac_scaling:   the minimal distance between the samples within a dimension are multiplied by this factor
+                                if a durac impulse is used to model the variable.
+        :param min_distances:   A dict mapping the variables to the minimal distances between the observations.
+                                This can be useful to use the same likelihood parameters for different test
+                                sets for example in cross validation processes.
+        :param verbose:         print status information to the console
+        :param multicore:       how many cores should be used (defaults to all)
+        :param preprocess:      whether to apply the preprocessing to the data passed.
+        :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
+
+        :return: A np.ndarray with shape (x, ) containing the probabilities.
+        """
+        if isinstance(data, np.ndarray):
+            data = pd.DataFrame(
+                data,
+                columns=list(self.varnames)
+            )
+        if preprocess:
+            from .learning.preprocessing import preprocess_data
+            data_ = preprocess_data(
+                self,
+                data,
+                verbose=verbose,
+                multicore=multicore
+            )
+        # elif isinstance(data, pd.DataFrame):
+        #     data_ = data.values.astype(np.float64)
+        else:
+            data_ = data
+
+        from .inference.likelihood import parallel_likelihood
+        return parallel_likelihood(
+            self,
+            data_,
+            dirac_scaling=dirac_scaling,
+            min_distances=min_distances,
+            multicore=multicore,
+            verbose=verbose,
+            single_likelihoods=single_likelihoods,
+            variables=variables
+        )
+
+    @deprecated
+    def parallel_likelihood(
+            self,
+            data: np.ndarray | pd.DataFrame,
+            dirac_scaling: float = 2.,
+            min_distances: Dict = None,
+            single_likelihoods: bool = False
+    ) -> np.ndarray:
+        """
+        Get the probabilities of a list of worlds. The worlds must be fully assigned with
+        scalar values (no intervals or sets).
+
+        :param data: An array containing the worlds. The shape is (x, len(variables)).
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
         :param min_distances: A dict mapping the variables to the minimal distances between the observations.
             This can be useful to use the same likelihood parameters for different test sets for example in cross
             validation processes.
+        :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
         :returns: An np.array with shape (x, ) containing the probabilities.
         """
+        from .learning.preprocessing import preprocess_data
 
         # set min distances if not overwritten
         if min_distances is None:
             min_distances = self.minimal_distances
 
         # preprocess the queries
-        queries = self._preprocess_data(queries)
+        data = preprocess_data(self, data)
 
         # initialize probabilities
-        probabilities = np.zeros(len(queries))
+        probabilities = np.zeros(len(data))
+        probs_per_var = np.zeros(data.shape)
 
         # for all leaves
         for leaf in self.leaves.values():
 
             # calculate likelihood
-            leaf_probabilities = leaf.parallel_likelihood(
-                queries,
+            leaf_probabilities = leaf.likelihood(
+                data,
                 dirac_scaling,
-                min_distances
+                min_distances,
+                single_likelihoods=single_likelihoods
             )
+
+            if single_likelihoods:
+                leaf_probabilities, leaf_probs_per_var = leaf_probabilities
+                probs_per_var += [l * leaf.prior for l in leaf_probs_per_var]
 
             # multiply likelihood by leaf prior
             probabilities += (leaf.prior * leaf_probabilities)
+
+        if single_likelihoods:
+            return probabilities, probs_per_var
 
         return probabilities
 
@@ -1933,7 +1853,7 @@ class JPT:
             self,
             query: Dict,
             confidence: float = .05
-    ) -> List[Tuple]:
+    ) -> List[tuple]:
         """
         Determines the leaf nodes that match query best and returns them along with their respective confidence.
 
@@ -1955,8 +1875,10 @@ class JPT:
             if var in query_: continue
             if var.numeric:
                 query_[var] = R
+            elif var.integer:
+                query_[var] = Z
             else:
-                query_[var] = set(var.domain.labels.values())
+                query_[var] = set(var.domain.labels)
 
         # stores the probabilities, that the query variables take on the value(s)/a value in the interval given in
         # the query
@@ -1980,16 +1902,19 @@ class JPT:
 
         return candidates
 
-    def plot(self,
-             title: str = "unnamed",
-             filename: str or None = None,
-             directory: str = None,
-             plotvars: Iterable[Variable] = None,
-             view: bool = True,
-             max_symb_values: int = 10,
-             nodefill=None,
-             leaffill=None,
-             alphabet=False
+    def plot(
+            self,
+            title: str = "unnamed",
+            filename: str | None = None,
+            directory: str = None,
+            plotvars: Iterable[Variable] = None,
+            view: bool = True,
+            max_symb_values: int = 10,
+            nodefill: str = None,
+            leaffill: str = None,
+            alphabet: bool = False,
+            verbose: bool = False,
+            engine=None,
     ) -> str:
         """
         Generates an SVG representation of the generated regression tree.
@@ -2003,131 +1928,25 @@ class JPT:
         :param nodefill: the color of the inner nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
         :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
         :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
-        probability (descending); default is False
-
-        :return:   (str) the path under which the renderd image has been saved.
+            probability (descending); default is False
+        :param verbose:
+        :param engine: the rendering engine for the distribution plots in the leafs; either 'matplotlib' or 'plotly';
+        :return:   (str) the path under which the rendered image has been saved.
         """
-        if directory is None:
-            directory = tempfile.mkdtemp(
-                prefix=f'jpt_{title}-{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")}',
-                dir=tempfile.gettempdir()
-            )
-        else:
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-
-        if plotvars is None:
-            plotvars = []
-
-        plotvars = [self.varnames[v] if type(v) is str else v for v in plotvars]
-
-        dot = Digraph(
-            format='svg',
-            name=title,
-            directory=directory,
-            filename=f'{filename or title}'
-        )
-
-        # create nodes
-        sep = ",<BR/>"
-        for idx, n in self.leaves.items():
-            imgs = ''
-
-            # plot and save distributions for later use in tree plot
-            rc = math.ceil(math.sqrt(len(plotvars)))
-            img = ''
-            for i, pvar in enumerate(plotvars):
-                img_name = html.escape(f'{pvar.name}-{n.idx}')
-
-                params = {} if pvar.numeric else {
-                    'horizontal': True,
-                    'max_values': max_symb_values,
-                    'alphabet': alphabet
-                }
-
-                n.distributions[pvar].plot(
-                    title=html.escape(pvar.name),
-                    fname=img_name,
-                    directory=directory,
-                    view=False,
-                    **params
-                )
-                img += (f'''{"<TR>" if i % rc == 0 else ""}
-                        <TD><IMG SCALE="TRUE" SRC="{img_name}.png"/></TD>
-                        {"</TR>" if i % rc == rc - 1 or i == len(plotvars) - 1 else ""}
-                ''')
-
-                # close current figure to allow for other plots
-                plt.close()
-
-            if plotvars:
-                imgs = f'''
-                            <TR>
-                                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2">
-                                    <TABLE>
-                                        {img}
-                                    </TABLE>
-                                </TD>
-                            </TR>
-                            '''
-
-            land = '<BR/>\u2227 '
-            element = ' \u2208 '
-
-            # content for node labels
-            leaf_label = 'Leaf #%s (p = %.4f)' % (n.idx, n.prior)
-            nodelabel = f'''
-            <TR>
-                <TD ALIGN="CENTER" VALIGN="MIDDLE" COLSPAN="2"><B>{leaf_label}</B><BR/>{html.escape(n.str_node)}</TD>
-            </TR>'''
-
-            nodelabel = f'''{nodelabel}{imgs}
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>#samples:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{n.samples} ({n.prior * 100:.3f}%)</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE"><B>Expectation:</B></TD>
-                                <TD BORDER="1" ALIGN="CENTER" VALIGN="MIDDLE">{',<BR/>'.join([f'{"<B>" + html.escape(v.name) + "</B>" if self.targets is not None and v in self.targets else html.escape(v.name)}=' + (f'{html.escape(str(dist.expectation()))!s}' if v.symbolic else f'{dist.expectation():.2f}') for v, dist in n.value.items()])}</TD>
-                            </TR>
-                            <TR>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE"><B>path:</B></TD>
-                                <TD BORDER="1" ROWSPAN="{len(n.path)}" ALIGN="CENTER" VALIGN="MIDDLE">{f"{land}".join([html.escape(var.str(val, fmt='set')) for var, val in n.path.items()])}</TD>
-                            </TR>
-                            '''
-
-            # stitch together
-            lbl = f'''<<TABLE ALIGN="CENTER" VALIGN="MIDDLE" BORDER="0" CELLBORDER="0" CELLSPACING="0">
-                            {nodelabel}
-                      </TABLE>>'''
-
-            dot.node(str(idx),
-                     label=lbl,
-                     shape='box',
-                     style='rounded,filled',
-                     fillcolor=leaffill or green)
-        for idx, node in self.innernodes.items():
-            dot.node(str(idx),
-                     label=node.str_node,
-                     shape='ellipse',
-                     style='rounded,filled',
-                     fillcolor=nodefill or orange)
-
-        # create edges
-        for idx, n in self.innernodes.items():
-            for i, c in enumerate(n.children):
-                if c is None:
-                    continue
-                dot.edge(str(n.idx), str(c.idx), label=html.escape(n.str_edge(i)))
-
-        # show graph
-        filepath = '%s.svg' % os.path.join(directory, ifnone(filename, title))
-        JPT.logger.info(f'Saving rendered image to {filepath}.')
-
-        # improve aspect ratio of graph having many leaves or disconnected nodes
-        dot = dot.unflatten(stagger=3)
-        dot.render(view=view, cleanup=False)
-        return filepath
+        from .plotting.jpt import JPTPlotter
+        return JPTPlotter(
+            self,
+            title,
+            filename,
+            directory,
+            plotvars,
+            max_symb_values,
+            nodefill,
+            leaffill,
+            alphabet,
+            verbose,
+            engine
+        ).plot(view)
 
     def pickle(self, fpath: str) -> None:
         """
@@ -2137,26 +1956,6 @@ class JPT:
         """
         with open(os.path.abspath(fpath), 'wb') as f:
             pickle.dump(self, f)
-
-    # @staticmethod
-    # def load(fpath) -> 'JPT':
-    #     """
-    #     Loads the pickled regression tree from the file at the given location ``fpath``.
-    #
-    #     :param fpath: the location of the pickled file
-    #     :type fpath: str
-    #     """
-    #     with open(os.path.abspath(fpath), 'rb') as f:
-    #         try:
-    #             JPT.logger.info(f'Loading JPT {os.path.abspath(fpath)}')
-    #             return pickle.load(f)
-    #         except ModuleNotFoundError:
-    #             JPT.logger.error(
-    #                 f'Could not load file {os.path.abspath(fpath)}'
-    #             )
-    #             raise Exception(
-    #                 f'Could not load file {os.path.abspath(fpath)}. Probably deprecated.'
-    #             )
 
     @staticmethod
     def calcnorm(sigma: float, mu: float, intervals):
@@ -2183,14 +1982,14 @@ class JPT:
 
     def conditional_jpt(
             self,
-            evidence: Optional[VariableAssignment] = None,
+            evidence: VariableAssignment | None = None,
             fail_on_unsatisfiability: bool = True
-    ) -> 'JPT' or None:
+    ) -> Optional['JPT']:
         """
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
 
         :param evidence: A VariableAssignment mapping the observed variables to there observed values
-         :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
+        :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
         """
         if evidence is None:
             evidence = {}
@@ -2290,9 +2089,8 @@ class JPT:
             # normalize probability
             leaf.prior /= probability_mass
 
+            # adjust leaf distributions
             for variable, value in evidence_.items():
-                # adjust leaf distributions
-                # if variable.symbolic or variable.integer:
                 leaf.distributions[variable] = leaf.distributions[variable]._crop(value)
 
         # recalculate the priors for the conditional jpt
@@ -2301,7 +2099,7 @@ class JPT:
 
         return conditional_jpt
 
-    def multiply_by_leaf_prior(self, prior: Dict[int, float]) -> 'JPT':
+    def multiply_by_leaf_prior(self, prior: dict[int, float]) -> 'JPT':
         """
         Multiply every leafs prior by the given priors. This serves as handling the factor message
         from factor nodes. Be vary since this method overwrites the JPT in-place.
@@ -2331,7 +2129,7 @@ class JPT:
 
     def save(
             self,
-            file: Union[str, IO],
+            file: str | IO,
             protocol: Literal['pickle', 'json'] = 'pickle'
     ) -> None:
         """
@@ -2352,9 +2150,16 @@ class JPT:
         else:
             writer.dump(data, file)
 
+    dump = save
+
+    def dumps(self, protocol: Literal['pickle', 'json'] = 'pickle') -> bytes:
+        with io.BytesIO() as buf:
+            self.dump(buf, protocol)
+            return buf.getvalue()
+
     @staticmethod
     def load(
-            file: Union[str, IO],
+            file: str | IO,
             protocol: Literal['pickle', 'json'] = 'pickle'
     ) -> 'JPT':
         """
@@ -2378,6 +2183,17 @@ class JPT:
             model = data
         return model
 
+    @staticmethod
+    def loads(
+            data: Buffer,
+            protocol: Literal['pickle', 'json'] = 'pickle'
+    ) -> 'JPT':
+        with io.BytesIO(data) as buf:
+            return JPT.load(
+               buf,
+               protocol=protocol
+            )
+
     def depth(self) -> int:
         """
         :return: the maximal depth of a leaf in the tree.
@@ -2388,64 +2204,7 @@ class JPT:
         """
         :return: the total number of samples represented by this tree.
         """
-        return sum(l.samples for l in self.leaves.values())
-
-    def postprocess_leaves(self) -> None:
-        """
-        Postprocess leaves such that the convex hull that is
-        postulated from this tree has likelihood > 0 for every
-        point inside the hull.
-        """
-
-        # get total number of samples and use 1/total as default value
-        total_samples = self.total_samples()
-
-        # for every leaf
-        for idx, leaf in self.leaves.items():
-            # for numeric every distribution
-            for variable, distribution in leaf.distributions.items():
-                if variable.numeric and variable in leaf.path.keys():  # and not distribution.is_dirac_impulse():
-
-                    left = None
-                    right = None
-
-                    # if the leaf is not the "lowest" in this dimension
-                    if -np.inf < leaf.path[variable].lower < distribution.cdf.intervals[0].upper:
-                        # create uniform distribution as bridge between the leaves
-                        left = ContinuousSet(
-                            leaf.path[variable].lower,
-                            distribution.cdf.intervals[0].upper,
-                        )
-
-                    # if the leaf is not the "highest" in this dimension
-                    if np.inf > leaf.path[variable].upper > distribution.cdf.intervals[-2].upper:
-                        # create uniform distribution as bridge between the leaves
-                        right = ContinuousSet(
-                            distribution.cdf.intervals[-2].upper,
-                            leaf.path[variable].upper,
-                        )
-                    if distribution.is_dirac_impulse():
-                        # noinspection PyTypeChecker
-                        interval = ContinuousSet(
-                            left.lower if left is not None else distribution.cdf.intervals[0].upper,
-                            right.upper if right is not None else distribution.cdf.intervals[1].lower,
-                            INC,
-                            EXC
-                        )
-                        # noinspection PyTypeChecker
-                        distribution.set(
-                            QuantileDistribution.from_pdf(
-                                PiecewiseFunction.zero().overwrite({
-                                    interval: 1 / interval.width
-                                })
-                            )
-                        )
-                    else:
-                        distribution.insert_convex_fragments(
-                            left,
-                            right,
-                            total_samples
-                        )
+        return sum(leaf.samples for leaf in self.leaves.values())
 
     def number_of_parameters(self) -> int:
         """
@@ -2491,10 +2250,10 @@ class JPT:
             bindings = kwargs
         return self._preprocess_query(bindings, **options)
 
-    def sample(self, amount) -> np.array:
+    def sample(self, amount: int) -> np.ndarray:
         """Sample `amount` many samples from the tree.
 
-        :returns A numpy array of size (amount, self.variables) containing the samples.
+        :return: A numpy array of size (amount, self.variables) containing the samples.
         """
         # create probability distribution for the leaves
         leaf_probabilities = np.array([leaf.prior for leaf in self.leaves.values()])
@@ -2519,9 +2278,13 @@ class JPT:
 
         return samples
 
-    def moment(self, order: int = 1, center: Optional[VariableAssignment] = None,
-               evidence: Optional[VariableAssignment] = None,
-               fail_on_unsatisfiability: bool = True, ) -> VariableMap or None:
+    def moment(
+            self,
+            order: int = 1,
+            center: VariableAssignment | None = None,
+            evidence: VariableAssignment | None = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> VariableMap | None:
         """ Calculate the order of each numeric/integer random variable given the evidence.
 
         :param order: The order of the moment
@@ -2561,7 +2324,7 @@ class JPT:
             result[variable] = distribution.moment(order, current_c)
         return VariableMap(result.items())
 
-    def get_hyperparameters_dict(self) -> Dict[str, Any]:
+    def get_hyperparameters_dict(self) -> dict[str, Any]:
         """Get all hyperparameters as dict that can be used for MLFlow model tracking."""
         hyperparameters = dict()
         hyperparameters["variables"] = [v.name for v in self.variables]
@@ -2584,7 +2347,7 @@ class JPT:
     def prune(
             self,
             similarity_threshold: float,
-            approximate: Union[float, Dict[Variable or str, float], VariableMap, None] = None
+            approximate: float | dict[Variable | str, float] | VariableMap | None = None
     ) -> 'JPT':
         '''
         Prune this tree by repeatedly merging leaves with very similiar

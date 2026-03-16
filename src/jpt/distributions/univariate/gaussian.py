@@ -1,14 +1,15 @@
 import copy
 import math
 import numbers
+from typing import Any
 
 import numpy as np
 from dnutils import ifnone, first
 from dnutils.stats import Gaussian as Gaussian_, _matshape
-from matplotlib import pyplot as plt
 from scipy.stats import norm, multivariate_normal
 
-from jpt.base.utils import save_plot
+from jpt.base.functions import PiecewiseFunction
+from jpt.base.intervals import ContinuousSet
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -35,6 +36,7 @@ class Gaussian(Gaussian_):
         :param weights:  **[optional]** weights for the data points. The weight do not need to be normalized.
         :type weights:  [float]
         """
+        self._cl = self.__class__.__qualname__
         self._sum_w = 0  # ifnot(weights, 0, sum)
         self._sum_w_sq = 0  # 1 / self._sum_w ** 2 * sum([w ** 2 for w in weights]) if weights else 0
         super().__init__(mean=mean, cov=cov, keepsamples=False)
@@ -113,6 +115,25 @@ class Gaussian(Gaussian_):
         self._cov = result._cov
         return self
 
+    @staticmethod
+    def wasserstein_distance(
+            d1: 'Gaussian',
+            d2: 'Gaussian',
+    ) -> float:
+        points = list(
+            sorted(
+                set(d1.pdf.boundaries()) | set(d2.pdf.boundaries())
+            )
+        )
+        minpt = min(points)
+        maxpt = max(points)
+
+        diff_ = PiecewiseFunction.abs(d1.cdf - d2.cdf)
+        ar = diff_.integrate(ContinuousSet(minpt, maxpt))
+
+        return ar
+
+
     @Gaussian_.dim.getter
     def dim(self):
         if self._mean is None:
@@ -120,6 +141,11 @@ class Gaussian(Gaussian_):
         return self._mean.shape[0]
 
     def sample(self, n):
+        """Return ``n`` samples from this Gaussian distribution.
+
+        :param n: number of samples
+        :return: array of shape ``(n,)`` for 1-D or ``(n, d)`` for d-dimensional Gaussians
+        """
         return multivariate_normal(self._mean, self._cov, n).rvs(n)
 
     @property
@@ -278,72 +304,24 @@ class Gaussian(Gaussian_):
 
     def plot(
             self,
-            dim: int = 2,
-            title: str = None,
-            fname: str = None,
-            directory: str = '/tmp',
-            pdf: bool = False,
-            view: bool = False,
-            save: bool = False
-    ) -> None:
-        """
+            engine=None,
+            **kwargs
+    ) -> Any:
+        '''Plots the distribution using the given engine.
 
-        :param dim: if the distribution has a higher dimension than 1, the parameter `dim` allows to decide whether the
-        plot is a 2-dimensional heatmap or a 3-dimensional surface plot
-        :param title: the title of the plot
-        :param fname: the name of the file if the plot is saved
-        :param directory: the location of the file if the plot is stored
-        :param pdf: whether to save the file as a pdf, if False, the file is stored as png. Default is False
-        :param view: whether to show the generated plot
-        :param save: whether to save the plot to a file
-        :return:
-        """
-        fig, ax = plt.subplots(num=1, clear=True)
-
-        if self.dim == 1:
-            m = self.mean[0]
-            v = self.cov[0][0]
-            r = abs(2.5 * v)
-            X = np.linspace(m - r, m + r, int(m + r - (m - r)))
-            Z = np.array(self.pdf(X))
-
-            ax.plot(X, Z)
-            ax.set_xlabel('$x$')
-            ax.set_ylabel(r'$p(x|\mu,\sigma)$')
-        else:
-            cmap = 'BuPu'  # viridis, Blues, PuBu, 0rRd, BuPu
-
-            x = np.linspace(-2, 2, 30)
-            y = np.linspace(-2, 2, 30)
-            X, Y = np.meshgrid(x, y)
-
-            xy = np.column_stack([X.flat, Y.flat])
-            Z = self.pdf(xy)
-            Z = Z.reshape(X.shape)
-
-            if dim == 2:
-                # generate heatmap
-                c = ax.pcolormesh(X, Y, Z, cmap=cmap)
-
-                # setting the limits of the plot to the limits of the data
-                # ax.axis([xmin, xmax, ymin, ymax])
-                fig.colorbar(c, ax=ax)
-
-                ax.set_xlabel('$x$')
-                ax.set_ylabel(r'$p(x|\mu,\sigma)$')
-            else:
-                # generate 3d-surface plot
-                ax = plt.axes(projection='3d')
-                ax.plot_surface(X, Y, Z, cmap=cmap, edgecolor='none')
-
-                ax.set_xlabel('$x$')
-                ax.set_ylabel('$y$')
-                ax.set_zlabel(r'$p(x|\mu,\sigma)$')
-
-        plt.title(title or 'Gaussian Distribution:\n$\mu=$' + str(self._mean) + ',\n$\sigma=$' + str(self._cov))
-
-        if save:
-            save_plot(fig, directory, fname or self.__class__.__name__, fmt='pdf' if pdf else 'svg')
-
-        if view:
-            plt.show()
+        :param engine:  Can be either one of
+            ``["plotly", "matplotlib"]``, or an instance of a
+            rendering engine subclassing
+            ``DistributionRendering``.
+        :param kwargs:  The keyword arguments to pass to the
+            engine as defined in the ``.plot_gaussian()``
+            function of ``DistributionRendering`` or its
+            respective subclass defined by ``engine``.
+        :return:        the figure object of the plotting engine
+        '''
+        from jpt.plotting.engines.rendering import (
+            DistributionRendering
+        )
+        return DistributionRendering.instantiate_engine(
+            engine
+        ).plot_gaussian(self, **kwargs)

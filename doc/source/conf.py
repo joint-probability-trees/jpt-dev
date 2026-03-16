@@ -36,11 +36,17 @@ extensions = [
     'nbsphinx'
 ]
 
+# Never re-execute notebooks on the build server; use the committed outputs.
+nbsphinx_execute = 'never'
+
 # auto api setup
-autoapi_dirs = ['../../src/jpt']
-# autoapi_file_patterns = ["*.py", "*.pyx"]
+autoapi_dirs = ['../../src']
 autoapi_python_class_content = "both"
-# autoapi_options = ["show-inheritance-diagram"]
+
+# Cython extension modules (.so) cannot be resolved statically by autoapi;
+# suppress the resulting unresolved-import warnings.
+suppress_warnings = ["autoapi.python_import_resolution"]
+autoapi_keep_files = True
 
 # bibtex setup
 bibtex_bibfiles = ['./refs.bib']
@@ -61,8 +67,10 @@ exclude_patterns = []
 # a list of builtin themes.
 #
 html_theme = 'sphinx_rtd_theme'
+html_logo = '_static/img/jpt-logo-transp-white.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+html_css_files = ['custom.css']

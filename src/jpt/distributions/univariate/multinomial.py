@@ -1,23 +1,61 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
 import numbers
-import re
 from collections import Counter
 from itertools import tee
 from operator import itemgetter
-from types import FunctionType
+from types import MethodType
 from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Collection
 
 import numpy as np
 from deprecated import deprecated
-from dnutils import ifnone, project, first
-from matplotlib import pyplot as plt
+from dnutils import ifnone, first
 
 from . import Distribution
-from ..utils import OrderedDictProxy
+from .distribution import ValueMap
+from ..utils import HashableOrderedDict
 from ...base.errors import Unsatisfiability
-from ...base.sampling import wsample, wchoice
-from ...base.utils import mapstr, classproperty, save_plot, Symbol, Collections
+from ...base.utils.sampling import wsample, wchoice
+from ...base.utils import mapstr, classproperty, Symbol, Collections
 
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class MultinomialValueMap(ValueMap):
+
+    def __init__(self, pairs: Iterable[Tuple[Symbol, Symbol]]):
+        self.mapping = HashableOrderedDict(pairs)
+
+    def __eq__(self, other):
+        return (
+            type(other) is MultinomialValueMap and
+            self.mapping == other.mapping
+        )
+
+    def __contains__(self, item):
+        return item in set(self.mapping.values())
+
+    def __getitem__(self, symbol: Symbol) -> Symbol:
+        try:
+            return self.mapping[symbol]
+        except KeyError:
+            raise ValueError(
+                f'Value {symbol} out of domain (must be in {set(self.mapping)})'
+            )
+
+    def __iter__(self):
+        return iter(self.mapping.values())
+
+    def __len__(self):
+        return len(self.mapping)
+
+    def __hash__(self):
+        return hash((
+            MultinomialValueMap,
+            self.mapping
+        ))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection DuplicatedCode
 class Multinomial(Distribution):
@@ -25,16 +63,18 @@ class Multinomial(Distribution):
     Abstract supertype of all symbolic domains and distributions.
     '''
 
-    values: OrderedDictProxy = None
-    labels: OrderedDictProxy = None
+    values: MultinomialValueMap = None
+    labels: MultinomialValueMap = None
 
     def __init__(self, **settings):
         super().__init__(**settings)
         if not issubclass(type(self), Multinomial) or type(self) is Multinomial:
-            raise Exception(f'Instantiation of abstract class {type(self)} is not allowed!')
+            raise Exception(
+                f'Instantiation of abstract class {type(self)} is not allowed!'
+            )
 
         self._params: Optional[np.ndarray] = None
-        self.to_json: FunctionType = self.inst_to_json
+        self.to_json: MethodType = self.inst_to_json
 
     @classmethod
     def hash(cls):
@@ -58,11 +98,11 @@ class Multinomial(Distribution):
         else:
             value_ = value
         if not all(
-            [v in cls.labels for v in value_]
+            [v in cls.values for v in value_]
         ):
             raise ValueError(
                 '%s not among the values of domain %s.' % (
-                    first([v for v in value_ if v not in cls.labels]),
+                    repr(first([v for v in value_ if v not in cls.values])),
                     cls.__qualname__
                 )
             )
@@ -81,12 +121,13 @@ class Multinomial(Distribution):
             label_ = {label}
         else:
             label_ = label
+
         if not all(
-            [l in cls.values for l in label_]
+            [l in cls.labels for l in label_]
         ):
             raise ValueError(
                 '%s not among the labels of domain %s.' % (
-                    first([l for l in label_ if l not in cls.labels]),
+                    repr(first([l for l in label_ if l not in cls.labels])),
                     cls.__qualname__
                 )
             )
@@ -114,8 +155,8 @@ class Multinomial(Distribution):
             cls.__name__,
             ', '.join(
                 mapstr(
-                    cls.values.values() if labels_or_values == 'values'
-                    else cls.labels.values(),
+                    cls.values if labels_or_values == 'values'
+                    else cls.labels,
                     limit=max_values
                 )
             )
@@ -140,16 +181,58 @@ class Multinomial(Distribution):
 
     @staticmethod
     def jaccard_similarity(
-            d1: 'Multinomial',
-            d2: 'Multinomial'
+            *d: 'Multinomial'
     ) -> float:
-        intersect = sum(
-            [min(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)]
-        )
-        union = sum(
-            [max(p1, p2) for p1, p2 in zip(d1.probabilities, d2.probabilities)]
-        )
+        r'''Calculate the similarity of two or more Multinomial distributions.
+
+        .. math::
+
+            \text{sim}(D_1, \ldots, D_n) =
+            \frac{\sum_{x \in \text{dom}(D)} \min(p_i(x))}
+                 {\sum_{x \in \text{dom}(D)} \max(p_i(x))}
+
+        Adapted from the Jaccard coefficient:
+
+        .. math::
+
+            \text{sim}(S_1, \ldots, S_n) =
+            \frac{|\bigcap_{i}^{n} S_i|}{|\bigcup_{i}^{n} S_i|}
+        '''
+        # if the domains of the given distributions are not identical, they are considered maximally dissimilar
+        if any([len(set(i)) != 1 for i in zip(*map(lambda x: x.values, d))]): return 0.
+
+        intersect = sum([min(a) for a in zip(*map(lambda x: x.probabilities, d))])
+        union = sum([max(a) for a in zip(*map(lambda x: x.probabilities, d))])
+
         return intersect / union
+
+    def mover_dist(
+            self,
+            other: 'Multinomial'
+    ) -> float:
+        # if the domains of the given distributions are not identical, they are considered maximally distant
+        if any([len(set(i)) != 1 for i in zip(self.values, other.values)]): return np.PINF
+
+        # otherwise determine the "effort" that is required to transform one distribution into
+        # the other, defined as the sum of the absolute values of the differences in relative frequency of each
+        # label, e.g.:
+        # d1 = [.1, .4, .5]
+        # d2 = [.2, .4, .4]
+        # mover_dist(d1, d2) = |.1 - .2 | + | .4 - .4 | + | .5 - .4 | = .2
+        return sum([abs(a-b) for a, b in zip(self.probabilities, other.probabilities)])
+
+    def similarity(
+            self,
+            other: 'Multinomial'
+    ) -> float:
+        return self.mover_dist(other)
+        # return Multinomial.jaccard_similarity(self, other)
+
+    def distance(
+            self,
+            other: 'Multinomial',
+    ) -> float:
+        return 1-Multinomial.jaccard_similarity(self, other)
 
     def __getitem__(self, value):
         return self.p([value])
@@ -170,7 +253,7 @@ class Multinomial(Distribution):
         return '<%s p=[%s]>' % (
             self.__class__.__qualname__,
             ";".join(
-               [f"{v}={p:.3f}" for v, p in zip(self.values, self.probabilities)]
+               [f"{v}={p:.3f}" for v, p in self.items()]
             )
         )
 
@@ -179,29 +262,29 @@ class Multinomial(Distribution):
 
     def sorted(self) -> Iterable[Tuple[float, Symbol]]:
         '''
-        Generate a sequence of (prob, label) pairs representing this distribution,
+        Generate a sequence of (label, prob) pairs representing this distribution,
         ordered by descending probability.
         :return:
         '''
-        yield from sorted([
-            (p, l) for p, l in zip(self._params, self.labels.values())],
-            key=itemgetter(0),
+        yield from sorted(
+            zip(self.labels, self.probabilities),
+            key=itemgetter(1),
             reverse=True
         )
 
     def _items(self) -> Iterable[Tuple[float, int]]:
         '''Generate a sequence of (probability, value) pairs representing this distribution.'''
-        yield from ((p, v) for p, v in zip(
-            self.probabilities,
-            self.values.values()
-        ))
+        yield from zip(
+            self.values,
+            self.probabilities
+        )
 
     def items(self) -> Iterable[Tuple[float, Symbol]]:
         '''Generate a sequence of (probability, label) pairs representing this distribution.'''
-        yield from ((p, l) for p, l in zip(
+        yield from zip(
+            self.labels,
             self.probabilities,
-            self.labels.values()
-        ))
+        )
 
     def copy(self):
         return type(self)(**self.settings).set(params=self._params)
@@ -281,7 +364,7 @@ class Multinomial(Distribution):
     def _sample(self, n: int) -> Iterable[int]:
         '''Returns ``n`` sample `values` according to their respective probability'''
         return wsample(
-            list(self.values.values()),
+            list(self.values),
             self.probabilities,
             n
         )
@@ -289,8 +372,8 @@ class Multinomial(Distribution):
     def _sample_one(self) -> Symbol:
         '''Returns one sample `value` according to its probability'''
         return wchoice(
-            list(self.values.values()),
-            self._params
+            list(self.values),
+            self.probabilities
         )
 
     @deprecated('Expectation is undefined in symbolic domains. Use Multinomial._mode() instead.')
@@ -331,7 +414,7 @@ class Multinomial(Distribution):
         for likelihood in sorted_likelihood:
             result.append(
                 (
-                    {value for value, p in zip(self.values.values(), self.probabilities) if p == likelihood},
+                    {value for value, p in self._items() if p == likelihood},
                     likelihood
                 )
             )
@@ -346,8 +429,11 @@ class Multinomial(Distribution):
             ) for state, likelihood in self._k_mpe(k=k)
         ]
 
-    mode = mpe
-    _mode = _mpe
+    def mode(self) -> Set:
+        return self.mpe()[0]
+
+    def _mode(self) -> Set:
+        return self._mpe()[0]
 
     def kl_divergence(self, other: 'Multinomial') -> float:
         '''
@@ -373,7 +459,7 @@ class Multinomial(Distribution):
             return self.create_dirac_impulse(restriction)
 
         result = self.copy()
-        for idx, value in enumerate(result.values.values()):
+        for idx, value in enumerate(result.values):
             if value not in restriction:
                 result.probabilities[idx] = 0
 
@@ -410,7 +496,7 @@ class Multinomial(Distribution):
         n_samples = ifnone(rows, len(data), len)
         col = ifnone(col, 0)
         for row in ifnone(rows, range(len(data))):
-            self._params[int(data[row, col])] += 1 / n_samples
+            self.probabilities[int(data[row, col])] += 1 / n_samples
         return self
 
     def set(
@@ -485,7 +571,7 @@ class Multinomial(Distribution):
         return {
             'type': 'symbolic',
             'class': cls.__qualname__,
-            'labels': list(cls.labels.values())
+            'labels': list(cls.labels)
         }
 
     def inst_to_json(self):
@@ -522,92 +608,27 @@ class Multinomial(Distribution):
 
     def plot(
             self,
-            title: str = None,
-            fname: str = None,
-            directory: str = '/tmp',
-            pdf: bool = False,
-            view: bool = False,
-            horizontal: bool = False,
-            max_values: bool = None,
-            alphabet: bool = False
-    ) -> None:
-        '''Generates a ``horizontal`` (if set) otherwise `vertical` bar plot representing the variable's distribution.
+            engine=None,
+            **kwargs
+    ) -> Any:
+        '''Plots the distribution using the given engine.
 
-        :param title:       the name of the variable this distribution represents
-        :param fname:       the name of the file to be stored
-        :param directory:   the directory to store the generated plot files
-        :param pdf:         whether to store files as PDF. If false, a png is generated by default
-        :param view:        whether to display generated plots, default False (only stores files)
-        :param horizontal:  whether to plot the bars horizontally, default is False, i.e. vertical bars
-        :param max_values:  maximum number of values to plot
-        :param alphabet:    whether the bars are sorted in alphabetical order of the variable names. If False, the bars
-                            are sorted by probability (descending); default is False
-        :return:            None
+        :param engine:  Can be either one of
+            ``["plotly", "matplotlib"]``, or an instance of a
+            rendering engine subclassing
+            ``DistributionRendering``.
+        :param kwargs:  The keyword arguments to pass to the
+            engine as defined in the ``.plot_multinomial()``
+            function of ``DistributionRendering`` or its
+            respective subclass defined by ``engine``.
+        :return:        the figure object of the plotting engine
         '''
-        # Only save figures, do not show
-        if not view:
-            plt.ioff()
-
-        max_values = min(ifnone(max_values, len(self.labels)), len(self.labels))
-
-        # prepare prob-label pairs containing only the first `max_values` highest probability tuples
-        pairs = sorted(
-            [
-                (self._params[idx], lbl) for idx, lbl in enumerate(self.labels.values())
-            ],
-            key=lambda x: x[0],
-            reverse=True
-        )[:max_values]
-
-        if alphabet:
-            # re-sort remaining values alphabetically
-            pairs = sorted(pairs, key=lambda x: x[1])
-
-        probs = project(pairs, 0)
-        labels = project(pairs, 1)
-
-        vals = [re.escape(str(x)) for x in labels]
-
-        x = np.arange(max_values)  # the label locations
-        # width = .35  # the width of the bars
-        err = [.015] * max_values
-
-        fig, ax = plt.subplots(num=1, clear=True)
-        ax.set_title(f'{title or f"Distribution of {self._cl}"}')
-        if horizontal:
-            ax.barh(x, probs, xerr=err, color='cornflowerblue', label='P', align='center')
-            ax.set_xlabel('%')
-            ax.set_yticks(x)
-            ax.set_yticklabels(vals)
-            ax.invert_yaxis()
-            ax.set_xlim(left=0., right=1.)
-
-            for p in ax.patches:
-                h = p.get_width() - .09 if p.get_width() >= .9 else p.get_width() + .03
-                plt.text(h, p.get_y() + p.get_height() / 2,
-                         f'{p.get_width():.2f}',
-                         fontsize=10, color='black', verticalalignment='center')
-        else:
-            ax.bar(x, probs, yerr=err, color='cornflowerblue', label='P')
-            ax.set_ylabel('%')
-            ax.set_xticks(x)
-            ax.set_xticklabels(vals)
-            ax.set_ylim(bottom=0., top=1.)
-
-            # print precise value labels on bars
-            for p in ax.patches:
-                h = p.get_height() - .09 if p.get_height() >= .9 else p.get_height() + .03
-                plt.text(p.get_x() + p.get_width() / 2, h,
-                         f'{p.get_height():.2f}',
-                         rotation=90, fontsize=10, color='black', horizontalalignment='center')
-
-        fig.tight_layout()
-
-        save_plot(fig, directory, fname or self.__class__.__name__, fmt='pdf' if pdf else 'svg')
-
-        if view:
-            plt.show()
-
+        from jpt.plotting.engines.rendering import (
+            DistributionRendering
+        )
+        return DistributionRendering.instantiate_engine(
+            engine
+        ).plot_multinomial(self, **kwargs)
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -616,8 +637,8 @@ class Bool(Multinomial):
     Wrapper class for Boolean domains and distributions.
     '''
 
-    values = OrderedDictProxy([(False, 0), (True, 1)])
-    labels = OrderedDictProxy([(0, False), (1, True)])
+    values = MultinomialValueMap([(False, 0), (True, 1)])
+    labels = MultinomialValueMap([(0, False), (1, True)])
 
     def __init__(self, **settings):
         super().__init__(**settings)
@@ -628,11 +649,6 @@ class Bool(Multinomial):
         super().set(params)
         return self
 
-    # def __str__(self):
-    #     if self.p is None:
-    #         return f'{self._cl}<p=n/a>'
-    #     return f'{self._cl}<p=[{",".join([f"{v}={p:.3f}" for v, p in zip(self.labels, self._params)])}]>'
-
     def __setitem__(self, v, p):
         if not isinstance(p, Iterable):
             p = np.array([p, 1 - p])
@@ -641,14 +657,19 @@ class Bool(Multinomial):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-# noinspection PyPep8Naming
+# noinspection PyPep8Naming,PyTypeChecker
 def SymbolicType(name: str, labels: Iterable[Any]) -> Type[Multinomial]:
+    labels = list(labels)
     if len(labels) < 1:
         raise ValueError('At least one value is needed for a symbolic type.')
     if len(set(labels)) != len(labels):
         duplicates = [item for item, count in Counter(labels).items() if count > 1]
         raise ValueError('List of labels  contains duplicates: %s' % duplicates)
     t = type(name, (Multinomial,), {})
-    t.values = OrderedDictProxy([(lbl, int(val)) for val, lbl in zip(range(len(labels)), labels)])
-    t.labels = OrderedDictProxy([(int(val), lbl) for val, lbl in zip(range(len(labels)), labels)])
+    t.values = MultinomialValueMap(
+        [(lbl, int(val)) for val, lbl in zip(range(len(labels)), labels)]
+    )
+    t.labels = MultinomialValueMap(
+        [(int(val), lbl) for val, lbl in zip(range(len(labels)), labels)]
+    )
     return t

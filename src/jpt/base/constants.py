@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib
 
 sepcomma = ',\n'
 sepsemi = ';\n'
@@ -32,17 +31,6 @@ dred = '#FF4A49ff'
 
 plotcolormap = 'cividis'  # or viridis
 
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Fix different style names in matplotlib versions
-matplotlib_version = matplotlib.__version_info__.major * 10 + matplotlib.__version_info__.minor
-
-if matplotlib_version > 37:
-    plotstyle = 'seaborn-v0_8-deep'
-else:
-    plotstyle = 'seaborn-deep'
-
-
 # ----------------------------------------------------------------------------------------------------------------------
 
 avalailable_colormaps = [
@@ -72,6 +60,7 @@ avalailable_colormaps = [
 
 class SYMBOL:
     LAND = '\u2227'
+    LOR = '\u2228'
     IN = '\u2208'
     LT = '<'
     GT = '>'
@@ -81,9 +70,6 @@ class SYMBOL:
     ARROW_BAR_LEFT = '\u21E4'
     ARROW_BAR_RIGHT = '\u21E5'
 
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Numeric constants
 
 class Epsilon:
     '''

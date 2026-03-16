@@ -1,54 +1,93 @@
+"""Binary classification: banana-shaped clusters.
+
+Loads the banana dataset from Kaggle and learns a JPT
+for binary classification of banana-shaped clusters.
+The example demonstrates handling of large datasets with
+automatic variable type inference.
+
+Demonstrates:
+    - ``infer_from_dataframe()`` with scale_numeric_types
+    - ``save()`` for model serialization
+    - Large dataset handling
+"""
+import logging
 import os
-import sys
-from datetime import datetime
-from pathlib import Path
+import tempfile
 
 import pandas as pd
 
-import dnutils
 from jpt.trees import JPT
 from jpt.variables import infer_from_dataframe
 
-logger = dnutils.getlogger('/banana', level=dnutils.DEBUG)
-start = datetime.now()
-d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-banana')
-Path(d).mkdir(parents=True, exist_ok=True)
-prefix = f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-banana-FOLD-'
-data = variables = kf = None
-data_train = data_test = []
+
+logger = logging.getLogger(__name__)
 
 
-def preprocess_banana():
-    logger.info('Trying to load dataset from local file...')
-    f_csv = '../examples/data/banana.csv'
-    src = 'https://www.kaggle.com/saranchandar/standard-classification-banana-dataset'
+_DATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'data'
+)
+
+
+# -------------------------------------------------------
+
+
+def main(visualize=True):
+    """Learn a JPT from the banana dataset.
+
+    :param visualize: whether to show interactive plots
+    """
+    # Load the banana dataset
+    f_csv = os.path.join(_DATA_DIR, 'banana.csv')
+    src = (
+        'https://www.kaggle.com/saranchandar/'
+        'standard-classification-banana-dataset'
+    )
 
     if not os.path.exists(f_csv):
-        logger.error(f'The file containing this dataset is not in the repository, as it is very large.\nPlease download it from {src} (login required).')
-        sys.exit(-1)
+        logger.warning(
+            'The banana dataset is not in the '
+            'repository (too large). Please download '
+            'it from %s (login required).', src
+        )
+        return
 
     try:
-        data = pd.read_csv(f_csv, sep=',').fillna(value='???')
-        logger.info(f'Success! Loaded dataset containing {data.shape[0]} instances of {data.shape[1]} features each')
+        data = pd.read_csv(
+            f_csv, sep=','
+        ).fillna(value='???')
+        logger.info(
+            'Loaded dataset: %d instances, %d features',
+            data.shape[0], data.shape[1]
+        )
     except pd.errors.ParserError:
-        logger.error('Could not parse file. Please check csv and try again.')
-        sys.exit(-1)
+        logger.error(
+            'Could not parse file. Please check the '
+            'CSV and try again.'
+        )
+        return
 
-    return data
+    # Infer variables and learn the JPT
+    variables = infer_from_dataframe(
+        data, scale_numeric_types=True
+    )
+    out_dir = tempfile.mkdtemp(prefix='jpt-banana-')
 
-
-def main(*args):
-    data = preprocess_banana()
-    variables = infer_from_dataframe(data, scale_numeric_types=True)
-    d = os.path.join('/tmp', f'{start.strftime("%Y-%m-%d")}-banana')
-    Path(d).mkdir(parents=True, exist_ok=True)
-
-    tree = JPT(variables=variables, min_samples_leaf=data.shape[0]*.01)
+    tree = JPT(
+        variables=variables,
+        min_samples_leaf=data.shape[0] * .01
+    )
     tree.learn(columns=data.values.T)
-    tree.save(os.path.join(d, f'{start.strftime("%d.%m.%Y-%H:%M:%S")}-banana.json'))
-    tree.plot(title='airline', directory=d, view=False)
+    tree.save(
+        os.path.join(out_dir, 'banana.json')
+    )
+    tree.plot(
+        title='Banana',
+        directory=out_dir,
+        view=visualize
+    )
     logger.info(tree)
 
 
 if __name__ == '__main__':
-    main()
+    logging.basicConfig(level=logging.INFO)
+    main(visualize=True)

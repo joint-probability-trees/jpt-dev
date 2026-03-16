@@ -1,46 +1,39 @@
-import sys
 import os
-from distutils.extension import Extension
+
 from setuptools import setup
 
-import numpy
-from Cython.Build import cythonize
 
+# ------------------------------------------------------
+# Skip Cython compilation for development installs
+# (pyximport will handle JIT compilation at runtime).
+# Usage: JPT_NO_CYTHON=1 pip install -e ".[dev]"
 
-# ----------------------------------------------------------------------------------------------------------------------
-# Set up the C++ extensions for compilation
+if not os.environ.get('JPT_NO_CYTHON'):
+    import numpy
+    from Cython.Build import cythonize
 
+    basedir = 'src'
 
-basedir = 'src'
+    pyxfiles = [
+        "jpt/base/cutils/cutils.pyx",
+        "jpt/base/functions/func.pyx",
+        "jpt/base/intervals/base.pyx",
+        "jpt/base/intervals/intset.pyx",
+        "jpt/base/intervals/contset.pyx",
+        "jpt/base/intervals/unionset.pyx",
+        "jpt/distributions/qpd/quantiles.pyx",
+        "jpt/distributions/qpd/cdfreg.pyx",
+        "jpt/learning/impurity/impurity.pyx",
+    ]
 
-pyxfiles = [
-    "jpt/base/cutils.pyx",
-    "jpt/base/functions.pyx",
-    "jpt/base/intervals.pyx",
-    "jpt/distributions/quantile/quantiles.pyx",
-    "jpt/distributions/quantile/cdfreg.pyx",
-    "jpt/learning/impurity.pyx",
-]
+    os.environ['CPATH'] = numpy.get_include()
 
-# ----------------------------------------------------------------------------------------------------------------------
-# We set the CPATH variable because the "include_dir" argument doesn't seem to work properly
+    ext_modules = cythonize(
+        [os.path.join(basedir, f) for f in pyxfiles],
+        language='c++',
+        include_path=[numpy.get_include()]
+    )
+else:
+    ext_modules = []
 
-_numpy_include_dir = numpy.get_include()
-os.environ['CPATH'] = _numpy_include_dir
-print('Setting CPATH environment variable to', _numpy_include_dir)
-
-# ----------------------------------------------------------------------------------------------------------------------
-# Compile the C++ extensions
-
-compiled = cythonize(
-    [os.path.join(basedir, f) for f in pyxfiles],
-    language='c++',
-    include_path=[numpy.get_include()]
-)
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-setup(
-    ext_modules=compiled,
-    include_dirs=[numpy.get_include()]
-)
+setup(ext_modules=ext_modules)
