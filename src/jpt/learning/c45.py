@@ -360,7 +360,8 @@ class C45Algorithm:
             multicore: Optional[int] = None
     ) -> None:
         """
-        Fit the jpt to ``data``
+        Fit the jpt to ``data``.
+
         :param data:    The training examples (assumed in row-shape)
         :type data:     [[str or float or bool]]; (according to `self.variables`)
         :param rows:    The training examples (assumed in row-shape)

@@ -194,7 +194,7 @@ class MPESolver:
         """
         :param state: The state to start from
         :return: An iterator over free variables for a state sorted by number of different possible states
-        (lowest amount of values first).
+            (lowest amount of values first).
         """
         if state is not None:
             for var in self.variable_order():  # min([(var, len(dom)) for var, dom in state.domains.items()], key=itemgetter(1))[0]

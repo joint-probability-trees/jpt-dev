@@ -82,8 +82,6 @@ def preprocess_data(
     :param verbose:
     :param multicore:
     :param data: The data to transform
-    # :param rows: The indices of the rows that will be transformed
-    # :param columns: The indices of the columns that will be transformed
     :return: the preprocessed data
     """
     # if sum(d is not None for d in (data, rows, columns)) > 1:

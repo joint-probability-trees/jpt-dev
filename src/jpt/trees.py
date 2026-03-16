@@ -467,7 +467,8 @@ class Leaf(Node):
             min_distances: VariableMap = None
     ) -> float:
         """
-        Calculate the probability of a (partial) query. Exploits the independence assumption
+        Calculate the probability of a (partial) query. Exploits the independence assumption.
+
         :param query: A preprocessed VariableMap that maps to singular values (numeric or symbolic)
             or ranges (continuous set, set)
         :type query: VariableMap
@@ -505,7 +506,8 @@ class Leaf(Node):
             dirac_scaling: float = 2.,
             min_distances: VariableMap = None
     ):
-        """ Calculate the probability of an arbitrary value for a numeric variable.
+        """Calculate the probability of an arbitrary value for a numeric variable.
+
         :param variable: A numeric variable
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
             if a durac impulse is used to model the variable.
@@ -570,7 +572,8 @@ class Leaf(Node):
             variables: Iterable[Union[Variable, str]] = None
     ) -> np.ndarray:
         """
-        Calculate the probability of a (partial) query. Exploits the independence assumption
+        Calculate the probability of a (partial) query. Exploits the independence assumption.
+
         :param single_likelihoods:
         :param queries: An array-like object that represents variable assignments in value space.
         :param dirac_scaling: the minimal distance between the samples within a dimension are multiplied by this factor
@@ -659,6 +662,7 @@ class Leaf(Node):
     def conditional_leaf(self, evidence: VariableAssignment) -> 'Leaf':
         """
         Create a leaf that is cropped to the values described in evidence.
+
         :param evidence: A VariableAssignment describing evidence.
         :return: The cropped leaf, that hos no parent, path, etc. set.
         """
@@ -677,6 +681,7 @@ class Leaf(Node):
     def mpe(self, minimal_distances: VariableMap) -> tuple[VariableMap, float]:
         """
         Calculate the most probable explanation of this leaf as a fully factorized distribution.
+
         :return: the likelihood of the maximum as a float and the configuration as a VariableMap
         """
 
@@ -720,7 +725,7 @@ class Leaf(Node):
     def sample(self, amount) -> np.ndarray:
         """Sample `amount` many samples from the leaf.
 
-        :returns A numpy array of size (amount, self.variables) containing the samples.
+        :return: A numpy array of size (amount, self.variables) containing the samples.
         """
         result = np.empty((amount, len(self.distributions)), dtype=object)
 
@@ -1303,6 +1308,7 @@ class JPT:
     ) -> Tuple[list[LabelAssignment], float] | None:
         """
         Calculate the most probable explanation of all variables if the tree given the evidence.
+
         :param evidence: The evidence that is applied to the tree
         :param fail_on_unsatisfiability: Rather or not an ``Unsatisfiability`` error is raised if the
                                          likelihood of the evidence is 0.
@@ -1430,6 +1436,7 @@ class JPT:
     ) -> LabelAssignment:
         """
         Transform a query entered by a user into an internal representation that can be further processed.
+
         :param query: the raw query
         :param remove_none: Rather to remove None entries or not
         :param skip_unknown_variables:  skip preprocessing for variable that does not exist in tree (may happen in
@@ -1666,7 +1673,8 @@ class JPT:
             multicore: int | None = None
     ) -> 'JPT':
         """
-        Fit the jpt to ``data``
+        Fit the jpt to ``data``.
+
         :param data:    The training examples (assumed in row-shape)
         :type data:     [[str or float or bool]]; (according to `self.variables`)
         :param keep_samples: If true, stores the indices of the original data samples in the leaf nodes. For debugging
@@ -1752,7 +1760,7 @@ class JPT:
         :param preprocess:      whether to apply the preprocessing to the data passed.
         :param single_likelihoods: will not only return the overall likelihoods but also the likelihoods per variable
 
-        :returns: A np.ndarray with shape (x, ) containing the probabilities.
+        :return: A np.ndarray with shape (x, ) containing the probabilities.
         """
         if isinstance(data, np.ndarray):
             data = pd.DataFrame(
@@ -1920,7 +1928,7 @@ class JPT:
         :param nodefill: the color of the inner nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
         :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
         :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
-        probability (descending); default is False
+            probability (descending); default is False
         :param verbose:
         :param engine: the rendering engine for the distribution plots in the leafs; either 'matplotlib' or 'plotly';
         :return:   (str) the path under which the rendered image has been saved.
@@ -1981,7 +1989,7 @@ class JPT:
         Apply evidence on a JPT and get a new JPT that represent P(x|evidence).
 
         :param evidence: A VariableAssignment mapping the observed variables to there observed values
-         :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
+        :param fail_on_unsatisfiability: whether an error is raised in case of unsatisfiable evidence or not
         """
         if evidence is None:
             evidence = {}
@@ -2245,7 +2253,7 @@ class JPT:
     def sample(self, amount: int) -> np.ndarray:
         """Sample `amount` many samples from the tree.
 
-        :returns A numpy array of size (amount, self.variables) containing the samples.
+        :return: A numpy array of size (amount, self.variables) containing the samples.
         """
         # create probability distribution for the leaves
         leaf_probabilities = np.array([leaf.prior for leaf in self.leaves.values()])

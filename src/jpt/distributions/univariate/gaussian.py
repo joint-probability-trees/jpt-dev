@@ -141,6 +141,11 @@ class Gaussian(Gaussian_):
         return self._mean.shape[0]
 
     def sample(self, n):
+        """Return ``n`` samples from this Gaussian distribution.
+
+        :param n: number of samples
+        :return: array of shape ``(n,)`` for 1-D or ``(n, d)`` for d-dimensional Gaussians
+        """
         return multivariate_normal(self._mean, self._cov, n).rvs(n)
 
     @property

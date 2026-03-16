@@ -183,14 +183,21 @@ class Multinomial(Distribution):
     def jaccard_similarity(
             *d: 'Multinomial'
     ) -> float:
-        '''Calculate the similarity of two or more Multinomial distributions,
+        r'''Calculate the similarity of two or more Multinomial distributions.
 
-            \text{sim}(D_1, ..., D_n) = \frac{\sum_{x \in dom(D)} min(p_i(x))}{\sum_{x \in dom(D)} max(p_i(x))}
+        .. math::
 
-        adapted from the Jaccard coefficient:
+            \text{sim}(D_1, \ldots, D_n) =
+            \frac{\sum_{x \in \text{dom}(D)} \min(p_i(x))}
+                 {\sum_{x \in \text{dom}(D)} \max(p_i(x))}
 
-            \text{sim}(S_1, ..., S_n) = \frac{\mid \bigcap_{i}^{n} S_i \mid}{\mid \bigcup_{i}^{n} S_i \mid}
-         '''
+        Adapted from the Jaccard coefficient:
+
+        .. math::
+
+            \text{sim}(S_1, \ldots, S_n) =
+            \frac{|\bigcap_{i}^{n} S_i|}{|\bigcup_{i}^{n} S_i|}
+        '''
         # if the domains of the given distributions are not identical, they are considered maximally dissimilar
         if any([len(set(i)) != 1 for i in zip(*map(lambda x: x.values, d))]): return 0.
 

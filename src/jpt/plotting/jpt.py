@@ -177,14 +177,16 @@ def render_leaf(args) -> Tuple[Tuple, Dict]:
 
 class JPTPlotter:
     '''
-        :param title: title of the plot
-        :param filename: the name of the JPT (will also be used as filename; extension will be added automatically)
-        :param directory: the location to save the SVG file to
-        :param plotvars: the variables to be plotted in the graph
-        :param max_symb_values: limit the maximum number of symbolic values that are plotted to this number
-        :param nodefill: the color of the inner nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
-        :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
-        :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
+    Renders a JPT as a Graphviz SVG with per-leaf distribution mini-plots.
+
+    :param title: title of the plot
+    :param filename: the name of the JPT (will also be used as filename; extension will be added automatically)
+    :param directory: the location to save the SVG file to
+    :param plotvars: the variables to be plotted in the graph
+    :param max_symb_values: limit the maximum number of symbolic values that are plotted to this number
+    :param nodefill: the color of the inner nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
+    :param leaffill: the color of the leaf nodes in the plot; accepted formats: RGB, RGBA, HSV, HSVA or color name
+    :param alphabet: whether to plot symbolic variables in alphabetic order, if False, they are sorted by
         probability (descending); default is False
     '''
 
@@ -200,7 +202,7 @@ class JPTPlotter:
             leaffill: str = None,
             alphabet: bool = False,
             verbose: bool = False,
-            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None
+            engine: Union[Literal[MATPLOTLIB, PLOTLY], DistributionRendering] = None,
     ) -> None:
         self.jpt = jpt
         self.title = title
@@ -231,9 +233,9 @@ class JPTPlotter:
     ) -> str:
         """
         Generates an SVG representation of the generated regression tree.
-        :param view: whether the generated SVG file will be opened automatically
 
-        :return:   (str) the path under which the renderd image has been saved.
+        :param view: whether the generated SVG file will be opened automatically
+        :return: the path under which the rendered image has been saved.
         """
         if self.directory is None:
             directory = tempfile.mkdtemp(
