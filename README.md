@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="doc/source/_static/img/jpt-logo-horizontal.svg" width="400" alt="pyjpt — Joint Probability Trees"/>
+</p>
+
 # Joint Probability Trees
 
 Joint Probability Trees (JPTs) are a formalism for learning and reasoning
