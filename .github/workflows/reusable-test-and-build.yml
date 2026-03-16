@@ -41,14 +41,14 @@ jobs:
     steps:
 
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       # ----------------------------------------------------------------------------------------------------------------
 
       - name: Setup python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
             python-version: "3.11"
             cache: pip
@@ -81,18 +81,14 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
-      - name: Install Sphinx dependencies
-        uses: py-actions/py-dependency-install@v4
-        with:
-          path: "doc/requirements.txt"
+      - name: Install pandoc
+        run: sudo apt-get install -y pandoc
 
       # ----------------------------------------------------------------------------------------------------------------
 
       - name: Build Sphinx documentation
         working-directory: ./doc
-        run: |
-          sudo apt install pandoc
-          make html
+        run: make html
 
       # ----------------------------------------------------------------------------------------------------------------
 
