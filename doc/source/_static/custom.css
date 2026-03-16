@@ -1,0 +1,10 @@
+.center {
+    text-align: center;
+    display: block;
+}
+
+/* Give the logo on the front page a bit of breathing room */
+img.align-center {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+}
