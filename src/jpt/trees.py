@@ -1414,7 +1414,7 @@ class JPT:
 
             values = ValueAssignment(
                 [
-                    (variable, value if variable.numeric else set(value))
+                    (variable, value if (variable.numeric or variable.integer) else set(value))
                     for variable, value in solution.items()
                 ]
             )
