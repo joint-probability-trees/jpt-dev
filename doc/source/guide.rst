@@ -8,6 +8,7 @@ Each tutorial is a runnable Jupyter notebook.
 
     notebooks/tutorial_query_api
     notebooks/tutorial_variables
+    notebooks/tutorial_intervals
     notebooks/tutorial_learning
     notebooks/tutorial_reasoning
     notebooks/tutorial_visualization
