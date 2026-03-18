@@ -455,7 +455,7 @@ class C45Algorithm:
             self.jpt.priors[self.jpt.variables[i]] = Distribution.from_json(dtype).from_json(dist)
             if verbose:
                 self._progressbar.update(1)
-        pool.close()
+        pool.terminate()
         pool.join()
 
         if verbose:
@@ -548,8 +548,21 @@ class C45Algorithm:
         while 1:
             if self.finish.wait(timeout=10):
                 break
+            # Check if any pool workers died (e.g. OOM-killed).
+            # If so, finish will never be set because the dead
+            # worker's callback never ran to decrement queue_length.
+            if hasattr(self.c45queue, '_pool'):
+                dead = [w for w in self.c45queue._pool if w.exitcode is not None and w.exitcode != 0]
+                if dead:
+                    self.c45queue.terminate()
+                    self.c45queue.join()
+                    raise RuntimeError(
+                        f"Pool worker(s) died during tree learning "
+                        f"(exit codes: {[w.exitcode for w in dead]}). "
+                        f"Likely out of memory."
+                    )
 
-        self.c45queue.close()
+        self.c45queue.terminate()
         self.c45queue.join()
 
         if verbose:
