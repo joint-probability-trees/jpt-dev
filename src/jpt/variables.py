@@ -596,6 +596,7 @@ class SymbolicVariable(Variable):
     def from_json(
             data: dict[str, Any]
     ) -> 'SymbolicVariable':
+        settings = data.get('settings', {})
         return SymbolicVariable(
             name=data['name'],
             domain=cast(
@@ -603,6 +604,9 @@ class SymbolicVariable(Variable):
                 Distribution.from_json(
                     data['domain']
                 )
+            ),
+            invert_impurity=settings.get(
+                INVERT_IMPURITY
             ),
         )
 
