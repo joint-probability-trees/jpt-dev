@@ -623,7 +623,8 @@ cdef class Impurity:
     def get_size_of_symbolic_variables_domain_from_tree(cls, tree):
         return np.array([
             v.domain.n_values
-            for v in tree.variables if v.symbolic
+            for v in tree.variables
+            if v.symbolic and v in tree.targets
         ], dtype=np.int64)
 
     @classmethod

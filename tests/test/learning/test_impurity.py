@@ -20,6 +20,79 @@ from jpt.learning.impurity.impurity import (
 from test.testutils import EXAMPLES_DATA
 
 
+class ImpuritySymbolsMisalignmentTest(TestCase):
+    """Expose bug: ``get_size_of_symbolic_variables_domain_
+    from_tree`` returns domain sizes for *all* symbolic
+    variables, but the Gini loop indexes into this array
+    using the symbolic-*target* counter.  When a symbolic
+    feature with a different domain size precedes the
+    symbolic target in the variable list, the Gini
+    computation uses the wrong domain size."""
+
+    def test_symbols_aligned_with_symbolic_targets(self):
+        """Verify that the domain-size array returned by
+        ``get_size_of_symbolic_variables_domain_from_tree``
+        contains only the domain sizes of symbolic *target*
+        variables, not all symbolic variables."""
+        # Arrange
+        #   - A is a symbolic *feature* (3 values)
+        #   - B is a symbolic *target* (2 values)
+        # A comes first in the variable list, so if the
+        # method collects ALL symbolic vars, the array is
+        # [3, 2] (length 2) while the Gini loop expects
+        # an array of length 1 containing just [2].
+        FeatureType = SymbolicType(
+            'FeatureType',
+            labels=['x', 'y', 'z'],
+        )
+        TargetType = SymbolicType(
+            'TargetType',
+            labels=['p', 'q'],
+        )
+        A = SymbolicVariable('feature', FeatureType)
+        B = SymbolicVariable('target', TargetType)
+
+        jpt = JPT(
+            variables=[A, B],
+            targets=[B],
+        )
+
+        # Act
+        symbols = (
+            Impurity
+            .get_size_of_symbolic_variables_domain_from_tree(
+                jpt
+            )
+        )
+        n_sym_targets = len([
+            v for v in jpt.variables
+            if v.symbolic and v in jpt.targets
+        ])
+
+        # Assert — there is exactly one symbolic target (B)
+        # with domain size 2.  The array must have exactly
+        # n_sym_targets entries, each corresponding to a
+        # symbolic target's domain size.
+        self.assertEqual(
+            n_sym_targets,
+            len(symbols),
+            'symbols array length should equal the number '
+            'of symbolic targets (%d), not all symbolic '
+            'variables (%d)' % (
+                n_sym_targets,
+                len(symbols),
+            )
+        )
+        self.assertEqual(
+            2,
+            symbols[0],
+            'symbols[0] should be 2 (target domain size), '
+            'not 3 (feature domain size)'
+        )
+
+
+# ----------------------------------------------------------------------
+
 class ImpurityTest(TestCase):
 
     @classmethod
