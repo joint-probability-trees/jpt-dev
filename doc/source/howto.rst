@@ -5,6 +5,7 @@ Short, task-oriented guides for common ``pyjpt`` workflows.
 
 .. toctree::
 
+    howto_variables
     howto_classification
     howto_regression
     howto_visualization
