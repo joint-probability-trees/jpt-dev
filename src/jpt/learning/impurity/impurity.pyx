@@ -745,6 +745,45 @@ cdef class Impurity:
         """
         return self.n_num_vars_total - self.n_num_vars
 
+    cdef inline void mask_nondependent_variances(
+            Impurity self,
+            SIZE_t var_idx,
+            DTYPE_t[::1] variances_total
+    ) noexcept nogil:
+        """
+        For numeric targets that are NOT dependent on
+        ``var_idx``, set variances_left and variances_right
+        to variances_total so that their contribution to
+        the variance improvement is zero.
+        """
+        cdef SIZE_t i, j
+        cdef int is_dependent
+        for i in range(self.n_num_vars):
+            is_dependent = 0
+            for j in range(
+                self.numeric_dependency_matrix.shape[1]
+            ):
+                if (
+                    self.numeric_dependency_matrix[
+                        var_idx, j
+                    ] == -1
+                ):
+                    break
+                if (
+                    self.numeric_dependency_matrix[
+                        var_idx, j
+                    ] == i
+                ):
+                    is_dependent = 1
+                    break
+            if not is_dependent:
+                self.variances_left[i] = (
+                    variances_total[i]
+                )
+                self.variances_right[i] = (
+                    variances_total[i]
+                )
+
     cdef inline void gini_impurity(Impurity self,
                                    SIZE_t[:, ::1] counts,
                                    SIZE_t n_samples,
@@ -874,7 +913,8 @@ cdef class Impurity:
             # if all numeric targets are within their max_std limits,
             # no split is needed for their benefit
             if not self.check_max_variances(self.variances_total):
-                return ninf
+                if not self.has_symbolic_vars():
+                    return ninf
 
         # if symbolic targets exist
         if self.has_symbolic_vars():
@@ -1154,6 +1194,14 @@ cdef class Impurity:
                     result=self.variances_right
                 )
 
+                # Mask non-dependent numeric targets:
+                # set their variances to var_total so
+                # their improvement contribution is 0.
+                self.mask_nondependent_variances(
+                    var_idx,
+                    variances_total
+                )
+
                 # compute the variance improvement for this split
                 impurity_improvement += compute_var_improvements(
                     variances_total,
@@ -1194,7 +1242,9 @@ cdef class Impurity:
                 # if numeric targets exist
                 if self.has_numeric_vars(var_idx):
                     self.sums_left[...] = 0
+                    self.sums_right[...] = self.sums_total
                     self.sq_sums_left[...] = 0
+                    self.sq_sums_right[...] = self.sq_sums_total
 
             # check if this split is legal, according to self.min_samples_leaf
             if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:

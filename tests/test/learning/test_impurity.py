@@ -8,7 +8,12 @@ import pandas as pd
 from jpt.distributions import SymbolicType, Bool, Numeric
 from jpt.learning.preprocessing import preprocess_data
 from jpt.trees import JPT
-from jpt.variables import SymbolicVariable, NumericVariable, infer_from_dataframe
+from jpt.variables import (
+    SymbolicVariable,
+    NumericVariable,
+    VariableMap,
+    infer_from_dataframe,
+)
 
 from jpt.learning.impurity.impurity import (
     Impurity,
@@ -88,6 +93,166 @@ class ImpuritySymbolsMisalignmentTest(TestCase):
             symbols[0],
             'symbols[0] should be 2 (target domain size), '
             'not 3 (feature domain size)'
+        )
+
+
+# ----------------------------------------------------------------------
+
+class MaxVarianceEarlyReturnTest(TestCase):
+    """Expose bug: ``check_max_variances`` causes
+    ``compute_best_split`` to return ``-inf`` (no split)
+    when all numeric variances are below their ``max_std``
+    limits, even if symbolic targets still have high
+    impurity that would benefit from splitting."""
+
+    def test_symbolic_split_not_blocked_by_max_std(self):
+        """Verify that a tree with a numeric variable
+        whose variance is below ``max_std`` still splits
+        to resolve a symbolic target."""
+        # Arrange
+        #   x is numeric, nearly constant → variance ≈ 0
+        #   y is symbolic with a clear split on x
+        # With max_std set on x, the early return in
+        # compute_best_split fires and prevents any split,
+        # even though y needs splitting.
+        n = 100
+        x = np.concatenate([
+            np.full(n // 2, 1.0),
+            np.full(n // 2, 2.0),
+        ])
+        y = np.array(
+            ['a'] * (n // 2) + ['b'] * (n // 2)
+        )
+        df = pd.DataFrame({'x': x, 'y': y})
+
+        YType = SymbolicType('YType', ['a', 'b'])
+        xvar = NumericVariable('x', max_std=100.0)
+        yvar = SymbolicVariable('y', YType)
+
+        jpt = JPT(
+            variables=[xvar, yvar],
+        )
+        jpt.fit(df)
+
+        # Act
+        n_leaves = len(jpt.leaves)
+
+        # Assert — the tree must have split at least once
+        # to separate 'a' from 'b'.  Without the bug, the
+        # symbolic impurity would drive the split.  With
+        # the bug, the early return from max_std prevents
+        # it and the tree has exactly 1 leaf.
+        self.assertGreater(
+            n_leaves,
+            1,
+            'Tree should have split to resolve the '
+            'symbolic target, but max_std early return '
+            'in compute_best_split blocked all splits '
+            '(got %d leaf)' % n_leaves,
+        )
+
+
+# ----------------------------------------------------------------------
+
+class DependencyStatsResetTest(TestCase):
+    """Expose bug: when custom ``dependencies`` exclude a
+    numeric target from a symbolic feature, the right-side
+    sums/sq_sums for that target are not reset between
+    symbolic value groups, leading to incorrect variance
+    computations."""
+
+    def test_nondependent_target_variance_improvement(
+            self
+    ):
+        """Verify that excluding a numeric target from a
+        symbolic feature's dependencies produces the same
+        gain as a tree without that target entirely."""
+        # Arrange
+        #   A (symbolic feature, 3 values)
+        #   B (numeric target) — depends on A
+        #   C (numeric target) — does NOT depend on A
+        #
+        # When C is excluded from A's dependencies, its
+        # variance improvement for splits on A must be 0.
+        # The resulting gain should match a tree that has
+        # only B as target (no C).
+        #
+        # With the bug, C contributes a spurious non-zero
+        # improvement because its right-side sums are
+        # stale after the symbolic value group reset.
+        AT = SymbolicType('AT', ['x', 'y', 'z'])
+        A = SymbolicVariable('A', AT)
+        B = NumericVariable('B')
+        C = NumericVariable('C')
+
+        df = pd.DataFrame({
+            'A': ['x', 'x', 'y', 'y', 'z', 'z'],
+            'B': [1., 2., 5., 6., 9., 10.],
+            'C': [10., 20., 15., 25., 12., 22.],
+        })
+
+        # Tree 1: C excluded from A's deps
+        deps_excluded = VariableMap({
+            A: [B],
+            B: [B, C],
+            C: [B, C],
+        })
+        jpt_excluded = JPT(
+            variables=[A, B, C],
+            targets=[B, C],
+            features=[A, B, C],
+            dependencies=deps_excluded,
+        )
+        data = preprocess_data(jpt_excluded, df)
+        imp = Impurity.from_tree(jpt_excluded)
+        imp.min_samples_leaf = 1
+        imp.setup(
+            data.values,
+            np.arange(
+                data.shape[0],
+                dtype=np.int64,
+            ),
+        )
+        gain_excluded = imp.compute_best_split(
+            0, data.shape[0]
+        )
+
+        # Tree 2: only B as target (no C at all)
+        jpt_b_only = JPT(
+            variables=[A, B],
+            targets=[B],
+            features=[A, B],
+        )
+        data2 = preprocess_data(
+            jpt_b_only,
+            df[['A', 'B']],
+        )
+        imp2 = Impurity.from_tree(jpt_b_only)
+        imp2.min_samples_leaf = 1
+        imp2.setup(
+            data2.values,
+            np.arange(
+                data2.shape[0],
+                dtype=np.int64,
+            ),
+        )
+        gain_b_only = imp2.compute_best_split(
+            0, data2.shape[0]
+        )
+
+        # Assert — excluding C from A's deps should
+        # give the same gain as having no C at all,
+        # since C contributes zero improvement for A.
+        self.assertAlmostEqual(
+            gain_excluded,
+            gain_b_only,
+            places=10,
+            msg='Gain with C excluded from A deps '
+                '(%.6f) should equal gain with B-only '
+                'tree (%.6f)' % (
+                    gain_excluded,
+                    gain_b_only,
+                ),
         )
 
 
