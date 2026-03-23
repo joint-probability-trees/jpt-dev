@@ -58,8 +58,8 @@ Test Suite
   pruning behavior (noise sensitivity, alpha monotonicity).
 
 
-1.0.0 (unreleased)
--------------------
+1.0.0
+-----
 
 This release contains substantial new features, bug fixes, and infrastructure
 improvements relative to the last ``0.1.x`` series (``0.1.41``).
