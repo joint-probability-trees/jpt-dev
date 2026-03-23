@@ -754,42 +754,92 @@ class JPT:
             min_impurity_improvement: float | None = None,
             max_leaves: int | None = None,
             max_depth: int | None = None,
-            dependencies: dict[Variable, list[Variable]] | None = None
+            dependencies=None
     ) -> None:
+        """Create a JPT.
+
+        :param variables:
+            The variables represented by this model.
+        :param targets:
+            The variables where the information gain
+            will be computed on.
+        :param features:
+            The variables where splits are chosen from.
+        :param min_samples_leaf:
+            If int, the minimum number of samples
+            required to form a leaf. If float, the
+            minimum fraction of samples.
+        :param min_impurity_improvement:
+            The minimal information gain to justify
+            a split.
+        :param max_leaves:
+            The maximum number of leaves (deprecated).
+        :param max_depth:
+            The maximum depth the tree may have.
+        :param dependencies:
+            Specifies which targets depend on which
+            features. Accepts three forms:
+
+            - ``None``: every target depends on every
+              feature (default, fully connected).
+            - ``dict[Variable, list[Variable]]``:
+              explicit mapping from features to their
+              dependent targets.
+            - A ``DependencyDiscovery`` instance:
+              a callable strategy that discovers
+              dependencies from training data during
+              ``learn()``. The strategy is re-invoked
+              on each call to ``learn()`` and its
+              configuration is preserved during
+              serialization.
         """
-        Create a JPT.
-        :param variables: The variables that will be represented this model
-        :param targets: The variables where the information gain will be computed on
-        :param features: The variables where the splits will be chosen from
-        :param min_samples_leaf: If an integer is provided it is the minimal number of samples required to form a leaf,
-        if a float is provided it will be the minimal percentage of samples that is required to form a leaf
-        :param min_impurity_improvement: The minimal amount of information gain to justify a split
-        :param max_leaves: The maximum number of leaves (deprecated)
-        :param max_depth: The maximum depth the tree may have
-        :param dependencies: A dictionary mapping variables to a list of dependent variables. Having this
-        sparse may speed up training a lot.
-        """
+        from jpt.learning.dependency.base import (
+            DependencyDiscovery,
+        )
+
         targets = ifnone(targets, [])
         features = ifnone(features, [])
 
         self._variables = list(variables)
-        self.varnames: OrderedDict[str, Variable] = OrderedDict((var.name, var) for var in self._variables)
+        self.varnames: OrderedDict[str, Variable] = (
+            OrderedDict(
+                (var.name, var)
+                for var in self._variables
+            )
+        )
         self._targets = (
             list(self.variables)
-            if not targets else [self.varnames[v] if type(v) is str else v for v in targets]
+            if not targets
+            else [
+                self.varnames[v]
+                if type(v) is str else v
+                for v in targets
+            ]
         )
 
-        # handle features such that only specifying targets is enough
+        # handle features such that only specifying
+        # targets is enough
         if not targets:
             if not features:
                 self._features = list(self.variables)
             else:
-                self._features = [self.varnames[v] if type(v) is str else v for v in features]
+                self._features = [
+                    self.varnames[v]
+                    if type(v) is str else v
+                    for v in features
+                ]
         else:
             if not features:
-                self._features = [v for v in self.variables if v not in self.targets]
+                self._features = [
+                    v for v in self.variables
+                    if v not in self.targets
+                ]
             else:
-                self._features = [self.varnames[v] if type(v) is str else v for v in features]
+                self._features = [
+                    self.varnames[v]
+                    if type(v) is str else v
+                    for v in features
+                ]
 
         self.leaves: dict[int, Leaf] = {}
         self.innernodes: dict[int, DecisionNode] = {}
@@ -797,24 +847,40 @@ class JPT:
 
         self.min_samples_leaf = min_samples_leaf
         self._keep_samples = False
-        self.min_impurity_improvement = ifnone(min_impurity_improvement, 0)
+        self.min_impurity_improvement = ifnone(
+            min_impurity_improvement, 0
+        )
 
-        # a map saving the minimal distances to prevent infinite high likelihoods
-        self.minimal_distances: VariableMap = VariableMap(variables=self.variables)
+        # a map saving the minimal distances to
+        # prevent infinite high likelihoods
+        self.minimal_distances: VariableMap = (
+            VariableMap(variables=self.variables)
+        )
         self._numsamples = 0
         self.root = None
         self.max_leaves = max_leaves
         self.max_depth = max_depth or np.inf
 
-        # initialize the dependencies as fully dependent on each other.
-        # the interface isn't modified therefore the jpt should work as before if not
-        # specified different
-        if dependencies is None:
-            self.dependencies: VariableMap[Variable, List[Variable]] = VariableMap({
-                var: list(self.targets) for var in self.features
+        # Dependency discovery strategy (if any).
+        # Stored separately so it survives _reset()
+        # and is re-invoked on each learn() call.
+        if isinstance(dependencies, DependencyDiscovery):
+            self._dependency_discovery = dependencies
+        else:
+            self._dependency_discovery = None
+
+        # Initialize the resolved dependency map.
+        # Full dependencies until learn() resolves
+        # via a DependencyDiscovery strategy.
+        if dependencies is None or isinstance(
+                dependencies, DependencyDiscovery
+        ):
+            self.dependencies = VariableMap({
+                var: list(self.targets)
+                for var in self.features
             })
         else:
-            self.dependencies: VariableMap[Variable, List[Variable]] = VariableMap(
+            self.dependencies = VariableMap(
                 dependencies.items(),
                 variables=self.variables
             )
@@ -892,24 +958,57 @@ class JPT:
         return tuple([var for var in self.features if isinstance(var, IntegerVariable)])
 
     def to_json(self) -> dict[str, Any]:
-        """Convert the tree to a json dictionary that can be serialized. """
-        return {
-            'variables': [v.to_json() for v in self.variables],
-            'targets': [v.name for v in self.targets] if self.targets else self.targets,
-            'features': [v.name for v in self.features],
+        """Convert the tree to a JSON-serializable
+        dictionary.
+        """
+        result = {
+            'variables': [
+                v.to_json()
+                for v in self.variables
+            ],
+            'targets': (
+                [v.name for v in self.targets]
+                if self.targets else self.targets
+            ),
+            'features': [
+                v.name for v in self.features
+            ],
             'min_samples_leaf': self.min_samples_leaf,
-            'min_impurity_improvement': self.min_impurity_improvement,
+            'min_impurity_improvement': (
+                self.min_impurity_improvement
+            ),
             'max_leaves': self.max_leaves,
             'max_depth': self.max_depth,
-            'minimal_distances': self.minimal_distances.to_json(),
+            'minimal_distances': (
+                self.minimal_distances.to_json()
+            ),
             'dependencies': {
                 var.name: [v.name for v in deps]
-                for var, deps in self.dependencies.items()},
-            'leaves': [l.to_json() for l in self.leaves.values()],
-            'innernodes': [n.to_json() for n in self.innernodes.values()],
-            'priors': {variable.name: p.to_json() for variable, p in self.priors.items()},
-            'root': ifnone(self.root, None, attrgetter('idx'))
+                for var, deps
+                in self.dependencies.items()
+            },
+            'dependency_discovery': (
+                self._dependency_discovery.to_json()
+                if self._dependency_discovery
+                else None
+            ),
+            'leaves': [
+                l.to_json()
+                for l in self.leaves.values()
+            ],
+            'innernodes': [
+                n.to_json()
+                for n in self.innernodes.values()
+            ],
+            'priors': {
+                variable.name: p.to_json()
+                for variable, p in self.priors.items()
+            },
+            'root': ifnone(
+                self.root, None, attrgetter('idx')
+            )
         }
+        return result
 
     @staticmethod
     def from_json(
@@ -931,6 +1030,22 @@ class JPT:
             variables = OrderedDict(
                 [(d['name'], Variable.from_json(d)) for d in data['variables']]
             )
+        # Restore the dependency discovery strategy
+        # if one was used during learning.
+        from jpt.learning.dependency.base import (
+            DependencyDiscovery,
+        )
+        discovery_data = data.get(
+            'dependency_discovery'
+        )
+        discovery = (
+            DependencyDiscovery.from_json(discovery_data)
+            if discovery_data else None
+        )
+
+        # Pass the resolved dependency dict.
+        # If a discovery strategy exists, it will
+        # be restored separately below.
         jpt = JPT(
             variables=list(variables.values()),
             targets=(
@@ -944,14 +1059,24 @@ class JPT:
                 else []
             ),
             min_samples_leaf=data['min_samples_leaf'],
-            min_impurity_improvement=data['min_impurity_improvement'],
+            min_impurity_improvement=(
+                data['min_impurity_improvement']
+            ),
             max_leaves=data['max_leaves'],
             max_depth=data['max_depth'],
             dependencies={
-                variables[var]: [variables[v] for v in deps]
-                for var, deps in data.get('dependencies', {}).items()
+                variables[var]: [
+                    variables[v] for v in deps
+                ]
+                for var, deps
+                in data.get('dependencies', {}).items()
             }
         )
+
+        # Restore the discovery strategy so that
+        # subsequent learn() calls re-discover.
+        if discovery is not None:
+            jpt._dependency_discovery = discovery
         jpt.minimal_distances = VariableMap.from_json(
             jpt.numeric_variables,
             data.get("minimal_distances", {})
@@ -1669,7 +1794,10 @@ class JPT:
             keep_samples: bool = False,
             close_convex_gaps: bool = False,
             verbose: bool = False,
-            prune_or_split: Callable[..., bool] | None = None,
+            prune_or_split: Callable[
+                ['JPT', Any, np.ndarray, np.ndarray],
+                bool
+            ] | None = None,
             multicore: int | None = None
     ) -> 'JPT':
         """
@@ -1681,7 +1809,15 @@ class JPT:
                         purposes only. Default is false.
         :param close_convex_gaps:
         :param prune_or_split:
-        :param multicore: The number of cores to use for learning. If ``None``, all cores available will be used.
+            A callable ``(jpt, partition, indices,
+            data) -> bool`` that is invoked before
+            each split. Returns ``True`` to prune
+            (make the node a leaf) or ``False`` to
+            allow splitting. ``indices`` and ``data``
+            are numpy arrays.
+        :param multicore:
+            The number of cores to use for learning.
+            If ``None``, all available cores are used.
         :param verbose:
 
         :return: the fitted model

@@ -23,6 +23,7 @@ from ..base.utils.multicore import DummyPool
 from ..base.utils import _write_error
 from ..distributions import Distribution
 from ..distributions.qpd import QuantileDistribution
+from ..variables import VariableMap
 from ..trees import JPT, DecisionNode, Leaf, Node
 from ..variables import Variable
 
@@ -152,7 +153,8 @@ def c45split(
         and prune_or_split(
             jpt,
             partition,
-            indices
+            indices,
+            data
         )
     )
 
@@ -509,6 +511,41 @@ class C45Algorithm:
             )
 
         _locals.jpt = self.jpt
+
+        # Resolve dependency discovery strategy
+        if self.jpt._dependency_discovery is not None:
+            logger.info(
+                'Discovering dependencies via %s...',
+                type(
+                    self.jpt._dependency_discovery
+                ).__name__
+            )
+            discovered = (
+                self.jpt._dependency_discovery(
+                    _locals.data,
+                    list(self.jpt.features),
+                    list(self.jpt.targets),
+                    list(self.jpt.variables)
+                )
+            )
+            self.jpt.dependencies = VariableMap(
+                discovered.items(),
+                variables=self.jpt.variables
+            )
+            n_pairs = sum(
+                len(deps)
+                for deps in discovered.values()
+            )
+            n_total = (
+                len(self.jpt.features)
+                * len(self.jpt.targets)
+            )
+            logger.info(
+                'Dependency discovery: %d/%d '
+                'feature-target pairs significant.',
+                n_pairs, n_total
+            )
+
         self._prune_or_split = prune_or_split
         self.c45queue = PoolCls(
             multicore,
