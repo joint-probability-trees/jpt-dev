@@ -1634,7 +1634,8 @@ class TestPruneOrSplitHook(TestCase):
     def prune_or_split(
         jpt: JPT,
         partition: JPTPartition,
-        indices: np.ndarray
+        indices: np.ndarray,
+        data: np.ndarray
     ):
         return partition.depth > 4
 
