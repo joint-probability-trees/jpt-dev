@@ -1,8 +1,65 @@
 Changelog
 =========
 
-v1.0.0 (unreleased)
---------------------
+1.1.0
+-----
+
+This release adds dependency discovery and xi-based pruning to the JPT
+learning pipeline.
+
+New Features
+~~~~~~~~~~~~
+
+*Dependency discovery*
+
+- Added ``jpt.base.correlation`` package with a standalone
+  implementation of Chatterjee's xi correlation coefficient
+  (``xi_correlation``, ``xi_correlation_matrix``).
+- Added ``jpt.learning.dependency`` package with the
+  ``DependencyDiscovery`` abstract base class and
+  ``XiDependencyDiscovery``, which computes xi for all feature-target
+  pairs and retains only statistically significant dependencies.
+- The ``dependencies`` parameter of ``JPT.__init__`` now accepts
+  ``DependencyDiscovery`` instances in addition to ``None`` and
+  explicit dictionaries. Discovery strategies are re-invoked on each
+  ``learn()`` call and preserved during JSON serialization.
+
+*Pruning*
+
+- Added ``jpt.learning.pruning`` package with
+  ``XiPruningCriterion``, a ``prune_or_split`` callback that stops
+  splitting when no feature-target pair shows significant functional
+  dependence in the current partition.
+- The ``prune_or_split`` callback signature is extended from
+  ``(jpt, partition, indices)`` to ``(jpt, partition, indices, data)``,
+  eliminating the need to access process-local state.
+
+*Documentation*
+
+- Added how-to guide for dependency discovery and xi pruning with
+  mathematical background, worked examples, and extensibility guide.
+- Added Chatterjee (2021), Dalitz et al. (2024), and Shi et al. (2022)
+  to the bibliography.
+- Added ``xi_pruning.py`` example demonstrating both features.
+
+Bug Fixes
+~~~~~~~~~
+
+- Fixed outdated ``important_datastructures.ipynb`` tutorial notebook:
+  replaced removed ``list2interval`` and ``RealSet`` with current
+  ``ContinuousSet`` and ``UnionSet`` API; corrected
+  ``infer_from_dataframe`` import path.
+
+Test Suite
+~~~~~~~~~~
+
+- Added 24 test cases covering xi correlation properties, dependency
+  discovery (structure recovery, serialization, JPT integration), and
+  pruning behavior (noise sensitivity, alpha monotonicity).
+
+
+1.0.0 (unreleased)
+-------------------
 
 This release contains substantial new features, bug fixes, and infrastructure
 improvements relative to the last ``0.1.x`` series (``0.1.41``).
