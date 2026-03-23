@@ -6,6 +6,7 @@
 *.settings/
 *.pydevproject
 *.cpp
+*.so
 */jpt.egg-info/**
 build/**
 dist/**
