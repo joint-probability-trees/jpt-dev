@@ -138,6 +138,26 @@ cdef class QuantileDistribution:
             assert len(self.cdf.intervals) == len(self.cdf.functions), \
                 '# intervals: %s != # functions: %s' % (len(self.cdf.intervals),
                                                         len(self.cdf.functions))
+            # Enforce CDF monotonicity: each segment's
+            # start must be >= previous segment's end.
+            for i in range(2, len(self._cdf.functions)):
+                prev_end = self._cdf.functions[i - 1](
+                    self._cdf.intervals[i - 1].upper
+                )
+                curr_start = self._cdf.functions[i](
+                    self._cdf.intervals[i].lower
+                )
+                if curr_start < prev_end - 1e-12:
+                    curr_end = self._cdf.functions[i](
+                        self._cdf.intervals[i].upper
+                    )
+                    self._cdf.functions[i] = (
+                        ConstantFunction(
+                            max(prev_end, curr_end)
+                        )
+                    )
+            # Reset cached ppf/pdf
+            self._ppf = self._pdf = None
 
     @staticmethod
     def pdf_to_cdf(
@@ -258,6 +278,26 @@ cdef class QuantileDistribution:
             data_buffer[1, i] /= <DTYPE_t> (n_samples - 1)
 
         data_buffer = np.ascontiguousarray(data_buffer[:, :count])
+
+        # Subsample to fixed quantile grid if data exceeds
+        # 1/epsilon points. This bounds the number of CDF
+        # segments independently of sample size while
+        # respecting the precision guarantee: evenly-spaced
+        # quantile points at 1/epsilon intervals ensure
+        # max deviation <= epsilon for any monotone CDF.
+        cdef SIZE_t max_points = max(
+            2, <SIZE_t>(1.0 / self.epsilon)
+        ) if self.epsilon > 0 else count
+        if count > max_points:
+            idx_arr = np.linspace(
+                0, count - 1, max_points, dtype=np.int64
+            )
+            buf_np = np.asarray(data_buffer)
+            data_buffer = np.ascontiguousarray(
+                buf_np[:, idx_arr]
+            )
+            count = max_points
+
         cdef DTYPE_t[::1] x, y
         n_samples = count
 
@@ -265,13 +305,44 @@ cdef class QuantileDistribution:
         if n_samples > 1:
             regressor = CDFRegressor(eps=self.epsilon)
             regressor.fit(data_buffer)
+
+            # Enforce monotonicity on support points:
+            # CDF y-values must be non-decreasing.
+            pts = np.array(
+                regressor.support_points, dtype=np.float64
+            )
+            for i in range(1, pts.shape[0]):
+                if pts[i, 1] < pts[i - 1, 1]:
+                    pts[i, 1] = pts[i - 1, 1]
+
             self._cdf = PiecewiseFunction()
             self._cdf.functions.append(ConstantFunction(0))
             self._cdf.intervals.append(ContinuousSet(-np.inf, np.inf, EXC, EXC))
-            for left, right in pairwise(regressor.support_points):
+            for left, right in pairwise(pts):
                 self._cdf.functions.append(LinearFunction.from_points(tuple(left), tuple(right)))
                 self._cdf.intervals[-1].upper = left[0]
                 self._cdf.intervals.append(ContinuousSet(left[0], right[0], 1, 2))
+
+            # Enforce CDF monotonicity: each segment's
+            # start must be >= previous segment's end.
+            # Replace non-monotone segments with constants
+            # at the previous end value.
+            for i in range(2, len(self._cdf.functions)):
+                prev_end = self._cdf.functions[i - 1](
+                    self._cdf.intervals[i - 1].upper
+                )
+                curr_start = self._cdf.functions[i](
+                    self._cdf.intervals[i].lower
+                )
+                if curr_start < prev_end - 1e-12:
+                    curr_end = self._cdf.functions[i](
+                        self._cdf.intervals[i].upper
+                    )
+                    # Replace with constant at max of
+                    # prev_end and curr_end
+                    self._cdf.functions[i] = (
+                        ConstantFunction(max(prev_end, curr_end))
+                    )
 
             # overwrite right most interval by an interval with an including right border
             self._cdf.intervals[-1] = ContinuousSet(self._cdf.intervals[-1].lower,
@@ -486,6 +557,26 @@ cdef class QuantileDistribution:
                          + ' ' + str(ppf.eval(one_plus_eps)))
                     )
                 )
+            # Enforce PPF monotonicity: each segment's
+            # start must be >= previous segment's end.
+            for i in range(2, len(ppf.functions) - 1):
+                if isinstance(ppf.functions[i], Undefined):
+                    continue
+                if isinstance(ppf.functions[i - 1], Undefined):
+                    continue
+                prev_end = ppf.functions[i - 1](
+                    ppf.intervals[i - 1].upper
+                )
+                curr_start = ppf.functions[i](
+                    ppf.intervals[i].lower
+                )
+                if (not np.isnan(prev_end)
+                        and not np.isnan(curr_start)
+                        and curr_start < prev_end - 1e-12):
+                    ppf.functions[i] = ConstantFunction(
+                        prev_end
+                    )
+
             self._ppf = ppf
         return self._ppf
 
@@ -647,9 +738,12 @@ cdef class QuantileDistribution:
 
     @staticmethod
     def from_json(data):
-        q = QuantileDistribution(epsilon=data['epsilon'],
-                                 min_samples_mars=data['min_samples_mars'])
+        q = QuantileDistribution(
+            epsilon=data['epsilon'],
+            min_samples_mars=data['min_samples_mars']
+        )
         q.cdf = PiecewiseFunction.from_json(data['cdf'])
+        q._assert_consistency()
         return q
 
 
