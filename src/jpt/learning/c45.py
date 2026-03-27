@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from dnutils import getlogger
 from dnutils import mapstr, ifnone
+import sys
 from tqdm import tqdm
 
 from .impurity import Impurity
@@ -436,7 +437,8 @@ class C45Algorithm:
         if verbose:
             self._progressbar = tqdm(
                 total=len(self.jpt.variables),
-                desc='Learning prior distributions'
+                desc='Learning prior distributions',
+                file=sys.stderr
             )
 
         if multicore == 0:
@@ -556,7 +558,8 @@ class C45Algorithm:
         if verbose:
             self._progressbar = tqdm(
                 total=_data.shape[0],
-                desc='Learning'
+                desc='Learning',
+                file=sys.stderr
             )
 
         # build up tree
