@@ -512,8 +512,18 @@ class Integer(Distribution):
             for v, p in d.probabilities.items():
                 params[v] = params.get(v, 0) + d.probabilities.get(v, 0) * w
 
-        if abs(sum(params.values())) < 1e-10:
-            raise Unsatisfiability('Sum of weights must not be zero.')
+        prob_sum = sum(params.values())
+        if abs(prob_sum) < 1e-10:
+            raise Unsatisfiability(
+                'Sum of weights must not be zero.'
+            )
+
+        # Normalize to compensate for floating-point drift
+        # from weighted accumulation of child distributions
+        if abs(prob_sum - 1) > 1e-10:
+            params = {
+                k: v / prob_sum for k, v in params.items()
+            }
 
         return type(distributions[0])()._set(params)
 
@@ -589,7 +599,8 @@ class Integer(Distribution):
                 )
         if abs(sum(probabilities.values()) - 1) > 1e-8:
             raise ValueError(
-                'Probabilities must sum to 1, got %s' % sum(probabilities.values())
+                'Probabilities must sum to 1, got %s'
+                % sum(probabilities.values())
             )
         self._params = probabilities
         return self
