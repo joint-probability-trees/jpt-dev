@@ -545,17 +545,21 @@ cdef class LinearFunction(Function):
         """
         cdef DTYPE_t x1 = p1[0], y1 = p1[1]
         cdef DTYPE_t x2 = p2[0], y2 = p2[1]
-        if x1 == x2:
-            raise ValueError('Points must have different coordinates '
-                             'to fit a line: p1=%s, p2=%s' % (p1, p2))
         if any(np.isnan(p) for p in itertools.chain(p1, p2)):
-            raise ValueError('Arguments %s, %s are invalid.' % (p1, p2))
+            raise ValueError(
+                'Arguments %s, %s are invalid.' % (p1, p2)
+            )
+        cdef DTYPE_t dx = x2 - x1
+        if dx == 0:
+            return ConstantFunction(max(y1, y2))
         if y2 == y1:
             return ConstantFunction(y2)
-        cdef DTYPE_t m = (y2 - y1) / (x2 - x1)
+        cdef DTYPE_t m = (y2 - y1) / dx
         cdef DTYPE_t c = y1 - m * x1
-        assert np.isfinite(m) and np.isfinite(c), \
-            'Fitting linear function from %s to %s resulted in m=%s, c=%s' % (p1, p2, m, c)
+        if not (np.isfinite(m) and np.isfinite(c)):
+            # Overflow: dx is subnormal. Use the higher
+            # y value (right-continuous CDF convention).
+            return ConstantFunction(max(y1, y2))
         return cls(m, c)
 
     cpdef SIZE_t is_invertible(self):

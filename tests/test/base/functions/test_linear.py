@@ -72,12 +72,65 @@ class LinearFunctionTest(TestCase):
 
     @data(((0, 0), (0, 0)), ((1, 1), (1, 1)))
     @unpack
-    def test_fit_integrity_check(self, p1, p2):
-        """Verify fitting from identical points raises ValueError."""
-        self.assertRaises(
-            ValueError,
-            LinearFunction.from_points, p1, p2
-        )
+    def test_fit_degenerate_returns_constant(self, p1, p2):
+        """Verify fitting from identical points returns ConstantFunction."""
+        # Arrange & Act
+        result = LinearFunction.from_points(p1, p2)
+
+        # Assert
+        self.assertIsInstance(result, ConstantFunction)
+        self.assertAlmostEqual(result.value, p1[1])
+
+    def test_from_points_subnormal_dx(self):
+        """Verify subnormal x-difference returns ConstantFunction."""
+        # Arrange — the exact case from JPT quantile fitting
+        p1 = (-5e-324, 0.493)
+        p2 = (0.0, 0.513)
+
+        # Act
+        result = LinearFunction.from_points(p1, p2)
+
+        # Assert — should not crash, returns constant
+        self.assertIsInstance(result, ConstantFunction)
+
+    def test_from_points_overflow_returns_constant(self):
+        """Verify near-zero dx with large dy returns ConstantFunction."""
+        # Arrange
+        p1 = (1e-310, 0.0)
+        p2 = (2e-310, 1.0)
+
+        # Act
+        result = LinearFunction.from_points(p1, p2)
+
+        # Assert
+        self.assertIsInstance(result, ConstantFunction)
+
+    def test_from_points_normal_case(self):
+        """Verify normal two-point fitting still works."""
+        # Arrange
+        p1 = (0.0, 0.0)
+        p2 = (1.0, 2.0)
+
+        # Act
+        result = LinearFunction.from_points(p1, p2)
+
+        # Assert
+        self.assertIsInstance(result, LinearFunction)
+        self.assertAlmostEqual(result.m, 2.0)
+        self.assertAlmostEqual(result.c, 0.0)
+
+    def test_from_points_equal_y_returns_constant(self):
+        """Verify equal y-values return ConstantFunction."""
+        # Arrange
+        p1 = (1.0, 5.0)
+        p2 = (3.0, 5.0)
+
+        # Act
+        result = LinearFunction.from_points(p1, p2)
+
+        # Assert
+        self.assertIsInstance(result, ConstantFunction)
+        self.assertAlmostEqual(result.value, 5.0)
 
     @data(
         (LinearFunction(0, 1), ConstantFunction(1)),
