@@ -805,7 +805,7 @@ cdef class Impurity:
         :param n_samples: number of samples 
         :param result: resulting array to write into, will be overwritten completely
         """
-        cdef SIZE_t i, j
+        cdef SIZE_t i, j, n_local
         result[...] = 0
         for i in range(self.n_sym_vars):
 
@@ -813,12 +813,26 @@ cdef class Impurity:
             if self.symbols[i] == 1:
                 continue
 
+            # Count symbols actually present in this
+            # partition (non-zero histogram bins)
+            n_local = 0
             for j in range(self.symbols[i]):
-                result[i] += <DTYPE_t> counts[j, i] * counts[j, i]
+                if counts[j, i] > 0:
+                    n_local += 1
+                result[i] += (
+                    <DTYPE_t> counts[j, i]
+                    * counts[j, i]
+                )
+
+            if n_local <= 1:
+                result[i] = 0
+                continue
 
             result[i] /= <DTYPE_t> (n_samples * n_samples)
             result[i] -= 1
-            result[i] /= 1. / (<DTYPE_t> self.symbols[i]) - 1.
+            result[i] /= (
+                1. / (<DTYPE_t> n_local) - 1.
+            )
 
             if self.invert_impurity[i]:
                 result[i] = 1 - result[i]
