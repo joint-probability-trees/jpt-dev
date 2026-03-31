@@ -8,6 +8,7 @@
 *.cpp
 *.so
 */jpt.egg-info/**
+*.egg-info/
 build/**
 dist/**
 **/TEST/**
