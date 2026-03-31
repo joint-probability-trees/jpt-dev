@@ -698,3 +698,275 @@ class VarianceImprovementTest(TestCase):
 
         # Assert
         print('improvements:', improvements)
+
+
+# ----------------------------------------------------------------------
+
+class SplitValidationTest(TestCase):
+    """Tests for the split validation feature at the Impurity level.
+
+    These tests directly construct Impurity objects with C-contiguous
+    data arrays to avoid environment-specific pandas contiguity issues.
+    """
+
+    @staticmethod
+    def _make_numeric_impurity(n_features, n_targets):
+        """Helper to create an Impurity for numeric-only variables.
+
+        Returns (impurity, feature_indices, target_indices) where
+        variables are [feat0, feat1, ..., tgt0, tgt1, ...].
+        """
+        feat_vars = [NumericVariable(f'f{i}') for i in range(n_features)]
+        tgt_vars = [NumericVariable(f't{i}') for i in range(n_targets)]
+        variables = feat_vars + tgt_vars
+        jpt = JPT(variables=variables, targets=tgt_vars)
+        impurity = Impurity.from_tree(jpt)
+        impurity.min_samples_leaf = 1
+        return impurity
+
+    @staticmethod
+    def _make_symbolic_impurity():
+        """Helper to create an Impurity with 1 numeric feature
+        and 1 symbolic target (Bool, 2 values)."""
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(variables=[xvar, yvar], targets=[yvar])
+        impurity = Impurity.from_tree(jpt)
+        impurity.min_samples_leaf = 1
+        return impurity
+
+    def test_no_mask_same_as_default(self):
+        """compute_best_split with mask=None gives the same result
+        as without a mask."""
+        # 10 samples: feature x, target y with clear split at x=5
+        data = np.array([
+            [1.0, 10.0],
+            [2.0, 11.0],
+            [3.0, 12.0],
+            [4.0, 13.0],
+            [5.0, 14.0],
+            [6.0, 50.0],
+            [7.0, 51.0],
+            [8.0, 52.0],
+            [9.0, 53.0],
+            [10.0, 54.0],
+        ], dtype=np.float64)
+        indices = np.arange(10, dtype=np.int64)
+
+        imp1 = self._make_numeric_impurity(1, 1)
+        imp1.setup(data, indices.copy())
+        gain1 = imp1.compute_best_split(0, 10)
+
+        imp2 = self._make_numeric_impurity(1, 1)
+        imp2.setup(data, indices.copy(), None, 0)
+        gain2 = imp2.compute_best_split(0, 10)
+
+        self.assertAlmostEqual(gain1, gain2, places=10)
+        self.assertEqual(imp1.best_var, imp2.best_var)
+
+    def test_all_training_mask_same_as_no_mask(self):
+        """compute_best_split with all-True mask gives the same
+        result as without a mask."""
+        data = np.array([
+            [1.0, 10.0],
+            [2.0, 11.0],
+            [3.0, 12.0],
+            [4.0, 13.0],
+            [5.0, 14.0],
+            [6.0, 50.0],
+            [7.0, 51.0],
+            [8.0, 52.0],
+            [9.0, 53.0],
+            [10.0, 54.0],
+        ], dtype=np.float64)
+        indices = np.arange(10, dtype=np.int64)
+        mask = np.ones(10, dtype=np.uint8)
+
+        imp1 = self._make_numeric_impurity(1, 1)
+        imp1.setup(data, indices.copy())
+        gain1 = imp1.compute_best_split(0, 10)
+
+        imp2 = self._make_numeric_impurity(1, 1)
+        imp2.setup(data, indices.copy(), mask, 0)
+        gain2 = imp2.compute_best_split(0, 10)
+
+        self.assertAlmostEqual(gain1, gain2, places=10)
+        self.assertEqual(imp1.best_var, imp2.best_var)
+        self.assertEqual(imp1.best_split_pos, imp2.best_split_pos)
+
+    def test_mask_skips_eval_as_candidates(self):
+        """Evaluation samples should not be used as candidate split points
+        but the impurity should still find a good split."""
+        # Clear numeric split: low values vs high values
+        data = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [4.0, 0.0],
+            [5.0, 0.0],
+            [6.0, 100.0],
+            [7.0, 100.0],
+            [8.0, 100.0],
+            [9.0, 100.0],
+            [10.0, 100.0],
+        ], dtype=np.float64)
+        indices = np.arange(10, dtype=np.int64)
+        # Only even-indexed samples are training
+        mask = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 0], dtype=np.uint8)
+
+        imp = self._make_numeric_impurity(1, 1)
+        imp.setup(data, indices.copy(), mask, 0)  # SV_BOTH
+        gain = imp.compute_best_split(0, 10)
+
+        # Should still find a split with positive gain
+        self.assertGreater(gain, 0, 'Should find a split with positive gain')
+        self.assertEqual(imp.best_var, 0, 'Should split on feature 0')
+
+    def test_mask_eval_targets_contribute_to_impurity(self):
+        """In SV_BOTH mode, evaluation targets contribute to impurity.
+        A split that separates training features well but not evaluation
+        targets should have lower gain than one that separates all targets."""
+        # Scenario: feature x has two clusters
+        # Training samples (mask=1) are at x=1..5 and x=6..10
+        # Targets: all consistent (low target for x<5.5, high for x>5.5)
+        data = np.array([
+            [1.0, 0.0],   # train
+            [2.0, 0.0],   # eval
+            [3.0, 0.0],   # train
+            [4.0, 0.0],   # eval
+            [5.0, 0.0],   # train
+            [6.0, 100.0], # eval
+            [7.0, 100.0], # train
+            [8.0, 100.0], # eval
+            [9.0, 100.0], # train
+            [10.0, 100.0],# eval
+        ], dtype=np.float64)
+        indices = np.arange(10, dtype=np.int64)
+        mask = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 0], dtype=np.uint8)
+
+        imp = self._make_numeric_impurity(1, 1)
+        imp.setup(data, indices.copy(), mask, 0)  # SV_BOTH
+        gain = imp.compute_best_split(0, 10)
+
+        # The gain should be high since all targets (train + eval) agree
+        self.assertGreater(gain, 0.5,
+                           'Gain should be high when all targets agree with the split')
+
+    def test_symbolic_target_with_mask(self):
+        """Split validation works with symbolic targets."""
+        # x is numeric feature, y is symbolic (0 or 1)
+        # Clear split: x < 5 -> y=0, x >= 5 -> y=1
+        data = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [4.0, 0.0],
+            [5.0, 0.0],
+            [6.0, 1.0],
+            [7.0, 1.0],
+            [8.0, 1.0],
+            [9.0, 1.0],
+            [10.0, 1.0],
+        ], dtype=np.float64)
+        indices = np.arange(10, dtype=np.int64)
+        mask = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 0], dtype=np.uint8)
+
+        imp = self._make_symbolic_impurity()
+        imp.setup(data, indices.copy(), mask, 0)  # SV_BOTH
+        gain = imp.compute_best_split(0, 10)
+
+        self.assertGreater(gain, 0, 'Should split on symbolic target with mask')
+        self.assertEqual(imp.best_var, 0, 'Should split on feature x')
+
+    def test_mode_training_only(self):
+        """SV_TRAINING mode only uses training targets for impurity."""
+        data = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [4.0, 0.0],
+            [5.0, 0.0],
+            [6.0, 100.0],
+            [7.0, 100.0],
+            [8.0, 100.0],
+            [9.0, 100.0],
+            [10.0, 100.0],
+        ], dtype=np.float64)
+        indices = np.arange(10, dtype=np.int64)
+        mask = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 0], dtype=np.uint8)
+
+        imp = self._make_numeric_impurity(1, 1)
+        imp.setup(data, indices.copy(), mask, 1)  # SV_TRAINING
+        gain = imp.compute_best_split(0, 10)
+
+        self.assertGreater(gain, 0, 'Should find a split in training-only mode')
+
+    def test_mode_evaluation_only(self):
+        """SV_EVALUATION mode only uses evaluation targets for impurity."""
+        data = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [4.0, 0.0],
+            [5.0, 0.0],
+            [6.0, 100.0],
+            [7.0, 100.0],
+            [8.0, 100.0],
+            [9.0, 100.0],
+            [10.0, 100.0],
+        ], dtype=np.float64)
+        indices = np.arange(10, dtype=np.int64)
+        mask = np.array([1, 0, 1, 0, 1, 0, 1, 0, 1, 0], dtype=np.uint8)
+
+        imp = self._make_numeric_impurity(1, 1)
+        imp.setup(data, indices.copy(), mask, 2)  # SV_EVALUATION
+        gain = imp.compute_best_split(0, 10)
+
+        self.assertGreater(gain, 0, 'Should find a split in evaluation-only mode')
+
+    def test_input_validation_mask_length(self):
+        """Verify that mismatched mask length raises ValueError via C45Algorithm."""
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(variables=[xvar, yvar], targets=[yvar])
+
+        data = pd.DataFrame({
+            'x': [1.0, 2.0, 3.0],
+            'y': [True, False, True]
+        })
+        mask = np.array([1, 0], dtype=np.uint8)  # wrong length
+
+        with self.assertRaises(ValueError):
+            jpt.fit(data, multicore=0, split_validation_mask=mask)
+
+    def test_input_validation_no_training(self):
+        """Verify that all-zero mask raises ValueError."""
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(variables=[xvar, yvar], targets=[yvar])
+
+        data = pd.DataFrame({
+            'x': [1.0, 2.0, 3.0],
+            'y': [True, False, True]
+        })
+        mask = np.zeros(3, dtype=np.uint8)
+
+        with self.assertRaises(ValueError):
+            jpt.fit(data, multicore=0, split_validation_mask=mask)
+
+    def test_input_validation_invalid_mode(self):
+        """Verify that invalid mode string raises ValueError."""
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(variables=[xvar, yvar], targets=[yvar])
+
+        data = pd.DataFrame({
+            'x': [1.0, 2.0, 3.0],
+            'y': [True, False, True]
+        })
+        mask = np.ones(3, dtype=np.uint8)
+
+        with self.assertRaises(ValueError):
+            jpt.fit(data, multicore=0,
+                    split_validation_mask=mask,
+                    split_validation_mode='invalid')

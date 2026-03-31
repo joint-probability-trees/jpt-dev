@@ -21,6 +21,11 @@ from ...base.cutils.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort, ninf
 cdef int LEFT = 0
 cdef int RIGHT = 1
 
+# Split validation modes: which targets contribute to impurity
+cdef int SV_BOTH = 0        # all targets (training + evaluation)
+cdef int SV_TRAINING = 1    # training targets only
+cdef int SV_EVALUATION = 2  # evaluation targets only
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -362,6 +367,12 @@ cdef class Impurity:
     # 2D integer array describing all dependencies that are considered under symbolic variables
     cdef SIZE_t[:, ::1] symbolic_dependency_matrix
 
+    # per-sample mask: 1 = training, 0 = evaluation; None = disabled (all training)
+    cdef np.uint8_t[::1] validation_mask
+
+    # split validation mode: SV_BOTH (0), SV_TRAINING (1), SV_EVALUATION (2)
+    cdef int validation_mode
+
     @classmethod
     def from_tree(cls, tree):
         """
@@ -692,12 +703,15 @@ cdef class Impurity:
             return True
         return False
 
-    cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices):
+    cpdef void setup(Impurity self, DTYPE_t[:, ::1] data, SIZE_t[::1] indices,
+                     np.uint8_t[::1] validation_mask=None, int validation_mode=0):
         """
         Set data and indices, update features and index_buffer
-        
+
         :param data: the data to set
         :param indices: the indices to set
+        :param validation_mask: per-sample mask (1=training, 0=evaluation), or None to disable
+        :param validation_mode: SV_BOTH (0), SV_TRAINING (1), or SV_EVALUATION (2)
         """
         self.data = data
         self.feat = np.ndarray(
@@ -709,6 +723,8 @@ cdef class Impurity:
             shape=indices.shape[0],
             dtype=np.int64
         )
+        self.validation_mask = validation_mask
+        self.validation_mode = validation_mode
 
     cpdef int has_numeric_vars_(Impurity self, SIZE_t except_var=-1):
         '''Python variant of ``has_numeric_vars()`` for testing purpose only.'''
@@ -856,8 +872,8 @@ cdef class Impurity:
     cpdef DTYPE_t compute_best_split(self, SIZE_t start, SIZE_t end):
         """
         Calculate the best split on all variables.
-        
-        
+
+
         Note:
         Computation uses the impurity proxy from sklearn: ::
 
@@ -866,7 +882,7 @@ cdef class Impurity:
 
         See also: 'https://github.com/scikit-learn/scikit-learn/blob/de1262c35e2aa4ee062d050281ee576ce9e35c94/
                    sklearn/tree/_criterion.pyx#L683'
-                   
+
         :param start:  the start index used in ``self.indices``
         :param end: the end index in ``self.indices``
         :return: The best impurity improvement as a float
@@ -882,6 +898,40 @@ cdef class Impurity:
         # calculate the number of samples
         cdef int n_samples = end - start
 
+        # ---- Split validation: build filtered row indices for impurity computation ----
+        # When validation_mode != SV_BOTH, only a subset of samples contributes to
+        # the impurity totals and running stats. Build that subset here.
+        cdef SIZE_t[::1] impurity_rows
+        cdef SIZE_t n_impurity_samples
+        cdef SIZE_t ii
+
+        if self.validation_mask is not None and self.validation_mode != SV_BOTH:
+            # Count matching samples first
+            n_impurity_samples = 0
+            for ii in range(n_samples):
+                if self.validation_mode == SV_TRAINING:
+                    if self.validation_mask[self.indices[self.start + ii]] == 1:
+                        n_impurity_samples += 1
+                else:  # SV_EVALUATION
+                    if self.validation_mask[self.indices[self.start + ii]] == 0:
+                        n_impurity_samples += 1
+
+            # Build the filtered index array
+            impurity_rows = np.empty(n_impurity_samples, dtype=np.int64)
+            n_impurity_samples = 0
+            for ii in range(n_samples):
+                if self.validation_mode == SV_TRAINING:
+                    if self.validation_mask[self.indices[self.start + ii]] == 1:
+                        impurity_rows[n_impurity_samples] = self.indices[self.start + ii]
+                        n_impurity_samples += 1
+                else:  # SV_EVALUATION
+                    if self.validation_mask[self.indices[self.start + ii]] == 0:
+                        impurity_rows[n_impurity_samples] = self.indices[self.start + ii]
+                        n_impurity_samples += 1
+        else:
+            impurity_rows = self.indices[self.start:self.end]
+            n_impurity_samples = n_samples
+
         # initialize impurity and gini index
         cdef np.float64_t impurity_total = 0
         cdef np.float64_t gini_total = 0
@@ -894,20 +944,20 @@ cdef class Impurity:
 
             # calculate square sums of all current data
             sq_sum_at(self.data,
-                      self.indices[self.start:self.end],
+                      impurity_rows,
                       self.numeric_vars,
                       result=self.sq_sums_total)
 
             # calculate ordinary sums of all current data
             sum_at(self.data,
-                   self.indices[self.start:self.end],
+                   impurity_rows,
                    self.numeric_vars,
                    result=self.sums_total)
 
             # calculate variances from square and ordinary sums of all current data
             variances(self.sq_sums_total,
                       self.sums_total,
-                      n_samples,
+                      n_impurity_samples,
                       result=self.variances_total)
 
             # if all numeric targets are within their max_std limits,
@@ -921,12 +971,12 @@ cdef class Impurity:
 
             # compute histogram of all current data
             bincount(self.data,
-                     self.indices[self.start:self.end],
+                     impurity_rows,
                      self.symbolic_vars,
                      result=self.symbols_total)
 
             # calculate gini impurity of histogram
-            self.gini_impurity(self.symbols_total, n_samples, self.gini_impurities)
+            self.gini_impurity(self.symbols_total, n_impurity_samples, self.gini_impurities)
 
             gini_total = mean(self.gini_impurities)
 
@@ -973,7 +1023,8 @@ cdef class Impurity:
                 self.variances_total if self.has_numeric_vars() else None,
                 gini_total,
                 self.index_buffer,
-                &split_pos
+                &split_pos,
+                n_impurity_samples
             )
 
             # if the best impurity improvement of this variable is better than
@@ -1045,20 +1096,21 @@ cdef class Impurity:
             DTYPE_t[::1] variances_total,
             DTYPE_t gini_total,
             SIZE_t[::1] index_buffer,
-            SIZE_t* best_split_pos
+            SIZE_t* best_split_pos,
+            SIZE_t n_impurity_samples
     ) noexcept nogil:
         """
-        Evaluate a variable w. r. t. its possible slit. Calculate the best split on this variable
+        Evaluate a variable w. r. t. its possible split. Calculate the best split on this variable
         and the corresponding impurity.
-        
+
         :param var_idx: the index of the variable in self.data
         :param symbolic: 1 if the variable is symbolic, 0 if numeric
-        :param symbolic_idx: 
-        :param variances_total: 
-        :param gini_total: 
-        :param index_buffer: 
+        :param symbolic_idx:
+        :param variances_total:
+        :param gini_total:
+        :param index_buffer:
         :param best_split_pos: pointer to the position of the best split
-        :return: 
+        :return:
         """
 
         # copy data
@@ -1105,11 +1157,14 @@ cdef class Impurity:
             self.symbols_left[...] = 0
             self.symbols_right[...] = self.symbols_total[...]
 
-        # reset number of samples left and right of the split
+        # reset number of samples left and right of the split (impurity-relevant samples)
         self.num_samples[:] = 0
 
         # counter for number of samples left and right of the split
         cdef SIZE_t samples_left, samples_right
+
+        # total sample counters (all samples, for min_samples_leaf check)
+        cdef SIZE_t total_left = 0, total_right
 
         # initialize impurity improvement
         cdef DTYPE_t impurity_improvement = 0.
@@ -1129,6 +1184,17 @@ cdef class Impurity:
 
         cdef int subsequent_equal
 
+        # ---- Split validation locals ----
+        # has_mask: 1 if validation mask is active, 0 otherwise (safe for nogil)
+        cdef int has_mask = self.validation_mask is not None
+        cdef int sv_mode = self.validation_mode
+        # is_training: whether current sample is a training sample
+        cdef int is_training
+        # should_update: whether current sample contributes to impurity stats
+        cdef int should_update
+        # is_candidate: whether current sample can be a split candidate
+        cdef int is_candidate
+
         # for every split position as index
         for split_pos in range(n_samples):
 
@@ -1139,30 +1205,54 @@ cdef class Impurity:
             last_iter = (symbolic and split_pos == n_samples - 1
                          or numeric and split_pos == n_samples - 2)
 
-            # track number of samples left and right of the split
-            self.num_samples[LEFT] += 1
-            self.num_samples[RIGHT] = n_samples - self.num_samples[LEFT]
+            # ---- Split validation: determine sample role ----
+            if has_mask:
+                is_training = self.validation_mask[sample_idx] == 1
+                # Determine if this sample's targets should update running stats
+                if sv_mode == SV_BOTH:
+                    should_update = 1
+                elif sv_mode == SV_TRAINING:
+                    should_update = is_training
+                else:  # SV_EVALUATION
+                    should_update = not is_training
+                # Only training feature values can be candidate split points
+                is_candidate = is_training
+            else:
+                is_training = 1
+                should_update = 1
+                is_candidate = 1
+
+            # track total number of samples left (for min_samples_leaf, always counted)
+            total_left += 1
+            total_right = n_samples - total_left
+
+            # track number of impurity-relevant samples left and right of the split
+            if should_update:
+                self.num_samples[LEFT] += 1
+            self.num_samples[RIGHT] = n_impurity_samples - self.num_samples[LEFT]
             samples_left = self.num_samples[LEFT]
-            samples_right = n_samples - samples_left
 
             # if it is symbolic
             if symbolic:
                 # get the symbolic value
                 VAL_IDX = <SIZE_t> data[sample_idx, var_idx]
 
-            # Compute the numeric impurity (variance)
-            if self.has_numeric_vars(var_idx):
-                self.update_numeric_stats_with_dependencies(
-                    sample_idx,
-                    self.numeric_dependency_matrix[var_idx, :]
-                )
+            # Update running stats only for impurity-relevant samples
+            if should_update:
 
-            # Compute the symbolic impurity (Gini index)
-            if self.has_symbolic_vars():
-                self.update_symbolic_stats_with_dependencies(
-                    sample_idx,
-                    self.symbolic_dependency_matrix[var_idx, :]
-                )
+                # Compute the numeric impurity (variance)
+                if self.has_numeric_vars(var_idx):
+                    self.update_numeric_stats_with_dependencies(
+                        sample_idx,
+                        self.numeric_dependency_matrix[var_idx, :]
+                    )
+
+                # Compute the symbolic impurity (Gini index)
+                if self.has_symbolic_vars():
+                    self.update_symbolic_stats_with_dependencies(
+                        sample_idx,
+                        self.symbolic_dependency_matrix[var_idx, :]
+                    )
 
             # Skip calculation for identical values (i.e. until next 'real' split point is reached:
             # for skipping, the sample must not be the last one (1) and consecutive values must be equal (2)
@@ -1174,8 +1264,28 @@ cdef class Impurity:
                     if not last_iter:
                         continue
 
+            # ---- Split validation: skip candidate evaluation for non-training samples ----
+            if not is_candidate:
+                # For symbolic variables, still need to reset stats after each unique value group
+                if symbolic:
+                    if self.has_symbolic_vars():
+                        self.symbols_left[...] = 0
+                        self.symbols_right[...] = self.symbols_total[...]
+                        self.gini_improvements[...] = 0
+                        self.num_samples[...] = 0
+                    if self.has_numeric_vars(var_idx):
+                        self.sums_left[...] = 0
+                        self.sums_right[...] = self.sums_total
+                        self.sq_sums_left[...] = 0
+                        self.sq_sums_right[...] = self.sq_sums_total
+                if last_iter:
+                    break
+                continue
+
             # reset impurity improvement
             impurity_improvement = 0.
+
+            samples_right = self.num_samples[RIGHT]
 
             # if numeric targets exist
             if self.has_numeric_vars(var_idx):
@@ -1186,6 +1296,7 @@ cdef class Impurity:
                     samples_left,
                     result=self.variances_left
                 )
+
                 # calculate variance of right split
                 variances(
                     self.sq_sums_right,
@@ -1223,8 +1334,8 @@ cdef class Impurity:
                     self.gini_impurity(self.symbols_right, samples_right, self.gini_right)
                     impurity_improvement += (
                         (gini_total -
-                        mean(self.gini_left) * (<DTYPE_t> samples_left / <DTYPE_t> n_samples) -
-                        mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> n_samples)) / gini_total
+                        mean(self.gini_left) * (<DTYPE_t> samples_left / <DTYPE_t> (samples_left + samples_right)) -
+                        mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> (samples_left + samples_right))) / gini_total
                         * (1 - self.w_numeric)
                     )
 
@@ -1247,7 +1358,8 @@ cdef class Impurity:
                     self.sq_sums_right[...] = self.sq_sums_total
 
             # check if this split is legal, according to self.min_samples_leaf
-            if samples_left < self.min_samples_leaf or samples_right < self.min_samples_leaf:
+            # Use total sample counts (all samples), not just impurity-relevant ones
+            if total_left < self.min_samples_leaf or total_right < self.min_samples_leaf:
                 impurity_improvement = ninf
 
             # check if this split is improving the impurity by the minimal required amount

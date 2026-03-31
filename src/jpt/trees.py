@@ -1798,7 +1798,9 @@ class JPT:
                 ['JPT', Any, np.ndarray, np.ndarray],
                 bool
             ] | None = None,
-            multicore: int | None = None
+            multicore: int | None = None,
+            split_validation_mask: np.ndarray | None = None,
+            split_validation_mode: str = 'both'
     ) -> 'JPT':
         """
         Fit the jpt to ``data``.
@@ -1819,6 +1821,21 @@ class JPT:
             The number of cores to use for learning.
             If ``None``, all available cores are used.
         :param verbose:
+        :param split_validation_mask:
+            A boolean or uint8 array of length ``len(data)``.
+            ``True``/``1`` marks training samples whose feature
+            values serve as candidate split points;
+            ``False``/``0`` marks evaluation samples whose
+            feature values are excluded from candidates.
+            Target values of *all* samples always contribute
+            to the impurity score (unless ``split_validation_mode``
+            restricts this).  ``None`` disables split validation
+            (default).
+        :param split_validation_mode:
+            Controls which targets contribute to the impurity
+            score: ``'both'`` (default) uses all targets,
+            ``'training'`` uses only training targets,
+            ``'evaluation'`` uses only evaluation targets.
 
         :return: the fitted model
         """
@@ -1835,7 +1852,9 @@ class JPT:
             close_convex_gaps=close_convex_gaps,
             verbose=verbose,
             prune_or_split=prune_or_split,
-            multicore=multicore
+            multicore=multicore,
+            split_validation_mask=split_validation_mask,
+            split_validation_mode=split_validation_mode
         )
         return self
 

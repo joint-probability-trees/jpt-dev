@@ -130,7 +130,9 @@ def c45split(
     n_samples = end - start
 
     impurity = Impurity.from_tree(jpt)
-    impurity.setup(data, indices)
+    validation_mask = getattr(_locals, 'validation_mask', None)
+    validation_mode = getattr(_locals, 'validation_mode', 0)
+    impurity.setup(data, indices, validation_mask, validation_mode)
     impurity.min_samples_leaf = partition.min_samples_leaf
 
     max_gain = impurity.compute_best_split(start, end)
@@ -359,7 +361,9 @@ class C45Algorithm:
             close_convex_gaps: bool = True,
             verbose: bool = False,
             prune_or_split: Optional[Callable] = None,
-            multicore: Optional[int] = None
+            multicore: Optional[int] = None,
+            split_validation_mask: Optional[np.ndarray] = None,
+            split_validation_mode: str = 'both'
     ) -> None:
         """
         Fit the jpt to ``data``.
@@ -410,6 +414,10 @@ class C45Algorithm:
             del _locals.indices
         if hasattr(_locals, 'jpt'):
             del _locals.jpt
+        if hasattr(_locals, 'validation_mask'):
+            del _locals.validation_mask
+        if hasattr(_locals, 'validation_mode'):
+            del _locals.validation_mode
         _locals.__dict__.clear()
         gc.collect()
 
@@ -422,6 +430,30 @@ class C45Algorithm:
         _locals.data = _data.values
         _locals.indices = Array(c.c_long, indices.shape[0])
         _locals.indices[:] = indices
+
+        # ---- Split validation mask ----
+        _sv_mode_map = {'both': 0, 'training': 1, 'evaluation': 2}
+        if split_validation_mask is not None:
+            _mask = np.asarray(split_validation_mask, dtype=np.uint8)
+            if _mask.shape[0] != _data.shape[0]:
+                raise ValueError(
+                    f'split_validation_mask length ({_mask.shape[0]}) must equal '
+                    f'number of samples ({_data.shape[0]})'
+                )
+            if not np.any(_mask):
+                raise ValueError(
+                    'split_validation_mask must contain at least one training sample (True/1)'
+                )
+            _locals.validation_mask = _mask
+        else:
+            _locals.validation_mask = None
+
+        if split_validation_mode not in _sv_mode_map:
+            raise ValueError(
+                f"split_validation_mode must be one of {list(_sv_mode_map.keys())}, "
+                f"got '{split_validation_mode}'"
+            )
+        _locals.validation_mode = _sv_mode_map[split_validation_mode]
 
         logger.info(
             f'Data transformation... {_data.shape[0]} x {_data.shape[1]}: '
@@ -625,6 +657,10 @@ class C45Algorithm:
             del _locals.indices
         if hasattr(_locals, 'jpt'):
             del _locals.jpt
+        if hasattr(_locals, 'validation_mask'):
+            del _locals.validation_mask
+        if hasattr(_locals, 'validation_mode'):
+            del _locals.validation_mode
         _locals.__dict__.clear()
 
         # Also delete local variables holding large data
