@@ -343,7 +343,7 @@ class Numeric(Distribution):
     ) -> 'Numeric':
         self._quantile = QuantileDistribution(epsilon=self.precision)
         self._quantile.fit(
-            data,
+            np.ascontiguousarray(data),
             rows=ifnone(
                 rows,
                 np.array(list(range(data.shape[0])), dtype=np.int64)

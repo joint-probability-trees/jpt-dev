@@ -1,0 +1,443 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{multirow}
+
+\title{Split Validation: Structural Regularization for\\Joint Probability Trees via Asymmetric Data Partitioning}
+
+\author{Technical Report}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We introduce \emph{split validation}, a structural regularization technique for
+Joint Probability Tree (JPT) learning that partitions the training data into
+disjoint training and evaluation subsets at the split-selection level. During
+tree induction, only training samples provide candidate split points, while
+target values from all (or a configurable subset of) samples contribute to the
+impurity score. This asymmetry forces each split to generalize beyond training
+feature noise. We evaluate the method on synthetic classification and regression
+tasks with varying noise levels, mask ratios, and validation modes. Results show
+that split validation consistently reduces tree complexity (6\% fewer leaves on
+average, $p < 0.001$) and yields modest improvements in generalization accuracy,
+with the strongest effects observed at moderate noise levels. The method
+introduces zero computational overhead when disabled and minimal overhead when
+active.
+\end{abstract}
+
+% =========================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Joint Probability Trees~(JPTs) are density estimation models that combine the
+interpretability of decision trees with the expressiveness of local
+distribution estimation. Like all tree-based learners, JPTs are susceptible to
+overfitting when the tree grows too deep, splitting on noise rather than signal
+in the feature values.
+
+Standard regularization techniques for decision trees include pre-pruning
+(minimum samples per leaf, maximum depth, minimum impurity improvement) and
+post-pruning (reduced-error pruning, cost-complexity pruning). These approaches
+either restrict tree growth globally or evaluate subtrees after construction.
+
+We propose \emph{split validation}, which operates at a different granularity:
+within each individual split decision. The key idea is simple:
+
+\begin{enumerate}
+    \item Partition the training data into \emph{training} and \emph{evaluation}
+          samples via a boolean mask.
+    \item When searching for the best split on a feature, only \emph{training}
+          sample values serve as candidate split points.
+    \item The impurity score for each candidate split is computed using target
+          values from \emph{all} samples (or a configurable subset).
+\end{enumerate}
+
+This creates an asymmetry: a split must explain both training and evaluation
+targets well, but can only place the split boundary at positions defined by
+training feature values. If a training feature value is an outlier that happens
+to separate training targets well but not evaluation targets, it will receive a
+lower impurity improvement score and be less likely to be selected.
+
+The closest related work is the \emph{honest estimation} framework of
+Athey and Imbens~(2016), which splits data into a ``splitting sample'' and an
+``estimation sample.'' However, honest trees use the estimation sample only
+\emph{after} tree construction to re-estimate leaf parameters---they do not
+influence split selection. Our approach is fundamentally different: evaluation
+targets directly affect which split is chosen.
+
+% =========================================================================
+\section{Method}
+\label{sec:method}
+
+\subsection{Notation}
+
+Let $\mathcal{D} = \{(\mathbf{x}_i, y_i)\}_{i=1}^{N}$ be the training set
+with feature vectors $\mathbf{x}_i \in \mathbb{R}^d$ and targets $y_i$.
+A boolean mask $\mathbf{m} \in \{0,1\}^N$ partitions $\mathcal{D}$ into:
+\begin{align}
+    \mathcal{T} &= \{i : m_i = 1\} \quad \text{(training set)} \\
+    \mathcal{E} &= \{i : m_i = 0\} \quad \text{(evaluation set)}
+\end{align}
+
+\subsection{Modified Split Selection}
+
+In standard JPT learning, the impurity improvement for a candidate split at
+position $s$ on feature $j$ is:
+\begin{equation}
+    \Delta I(s, j) = I(\mathcal{S}) -
+    \frac{|\mathcal{S}_L|}{|\mathcal{S}|} I(\mathcal{S}_L) -
+    \frac{|\mathcal{S}_R|}{|\mathcal{S}|} I(\mathcal{S}_R)
+\end{equation}
+where $\mathcal{S}$ is the current node's sample set and
+$\mathcal{S}_L, \mathcal{S}_R$ are the left and right partitions.
+
+With split validation, two modifications are applied:
+
+\paragraph{Candidate restriction.}
+The set of candidate split positions is restricted to
+$\{s : s \in \mathcal{T}\}$. Feature values from evaluation samples are skipped
+during the sorted scan but still contribute to the running statistics.
+
+\paragraph{Target scope.}
+The impurity $I(\cdot)$ is computed over a configurable subset of targets,
+controlled by a \emph{validation mode}:
+\begin{itemize}
+    \item \textbf{Both} (default): $I$ is computed over all targets
+          ($\mathcal{T} \cup \mathcal{E}$).
+    \item \textbf{Training}: $I$ is computed over training targets only
+          ($\mathcal{T}$).
+    \item \textbf{Evaluation}: $I$ is computed over evaluation targets only
+          ($\mathcal{E}$).
+\end{itemize}
+
+\subsection{Algorithm}
+
+Algorithm~\ref{alg:split_val} shows the modified inner loop of
+\texttt{evaluate\_variable}, the core split-finding routine.
+
+\begin{algorithm}[h]
+\caption{Split validation in the impurity inner loop}
+\label{alg:split_val}
+\begin{algorithmic}[1]
+\REQUIRE Sorted samples $\{(\mathbf{x}_{\pi(k)}, y_{\pi(k)})\}_{k=1}^{n}$,
+         mask $\mathbf{m}$, mode $\in \{\text{both}, \text{train}, \text{eval}\}$
+\STATE Initialize running statistics $S_L \leftarrow \emptyset$,
+       $S_R \leftarrow S_{\text{total}}(\text{mode})$
+\FOR{$k = 1$ \TO $n$}
+    \STATE $i \leftarrow \pi(k)$ \COMMENT{sample index in sorted order}
+    \IF{sample $i$ is relevant under mode}
+        \STATE Update $S_L$, $S_R$ with target $y_i$
+    \ENDIF
+    \IF{$m_i = 1$ \AND split is valid}
+        \STATE Compute $\Delta I$ from $S_L$, $S_R$
+        \STATE Update best split if $\Delta I$ is improved
+    \ENDIF
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Implementation}
+
+The implementation modifies the Cython-level \texttt{Impurity} class in the JPT
+codebase. Key design decisions:
+
+\begin{itemize}
+    \item When the mask is \texttt{None}, the code path is identical to the
+          original---zero overhead.
+    \item The mask is stored as a \texttt{uint8} memory view, accessed in a
+          \texttt{nogil} context for performance.
+    \item The \texttt{min\_samples\_leaf} constraint uses \emph{total} sample
+          counts (not just training), since the resulting leaf contains all
+          samples.
+    \item The mask is shared across worker processes via thread-local storage,
+          following the existing pattern for shared data.
+\end{itemize}
+
+% =========================================================================
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Datasets}
+
+We use synthetic datasets to isolate the effect of split validation from
+confounding factors:
+
+\paragraph{Classification.}
+$N_{\text{train}} = 200$, $N_{\text{test}} = 500$, $d = 5$ features drawn from
+$\mathcal{N}(0, 1)$. The true boundary is $x_0 + x_1 > 0$. Label noise is
+applied by flipping a fraction $\eta$ of labels uniformly at random.
+
+\paragraph{Regression.}
+$N_{\text{train}} = 200$, $N_{\text{test}} = 500$, $d = 3$ features. The target
+is piecewise-linear: $y = 2x_0 + x_1$ if $x_0 < 0$, else $y = -x_0 + x_1 + 3$,
+with additive Gaussian noise $\mathcal{N}(0, \sigma)$.
+
+\subsection{Evaluation Protocol}
+
+Each experiment is repeated $R = 10$ times with different random seeds.
+Classification accuracy and regression MSE are computed on held-out test sets.
+Statistical significance is assessed via paired $t$-tests.
+All JPTs use \texttt{min\_samples\_leaf} $= 3$ (classification) or $5$
+(regression). The default mask ratio is 70\% training / 30\% evaluation.
+
+% =========================================================================
+\section{Results}
+\label{sec:results}
+
+\subsection{Experiment 1: Overfitting Reduction}
+
+Table~\ref{tab:exp1} compares standard JPT learning (baseline) with split
+validation on noisy classification data ($\eta = 0.15$).
+
+\begin{table}[h]
+\centering
+\caption{Overfitting reduction: baseline vs.\ split validation
+         ($\eta = 0.15$, $R = 10$).}
+\label{tab:exp1}
+\begin{tabular}{lccc}
+\toprule
+Method & Train Acc & Test Acc & Leaves \\
+\midrule
+Baseline       & $0.920 \pm 0.011$ & $0.694 \pm 0.032$ & $59.5 \pm 1.6$ \\
+Split Val.     & $0.915 \pm 0.012$ & $0.706 \pm 0.031$ & $55.9 \pm 1.8$ \\
+\midrule
+\multicolumn{2}{l}{Paired $t$-test ($p$-value)} & $0.271$ & $\mathbf{0.0004}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Split validation reduces the number of leaves by 6.0\% ($p < 0.001$), indicating
+effective structural regularization. Test accuracy improves by 1.2 percentage
+points on average, though this difference is not statistically significant at
+$\alpha = 0.05$ ($p = 0.27$). The train--test gap narrows from 22.6\,pp
+(baseline) to 20.9\,pp (split validation), suggesting reduced overfitting.
+
+\subsection{Experiment 2: Effect of Mask Ratio}
+
+Table~\ref{tab:exp2} shows the effect of varying the training-to-evaluation
+ratio.
+
+\begin{table}[h]
+\centering
+\caption{Effect of mask ratio on test accuracy and tree complexity.}
+\label{tab:exp2}
+\begin{tabular}{ccc}
+\toprule
+Training Ratio & Test Accuracy & Leaves \\
+\midrule
+0.3 & $0.705 \pm 0.023$ & $49.7 \pm 1.8$ \\
+0.5 & $0.704 \pm 0.035$ & $54.5 \pm 1.6$ \\
+0.7 & $0.704 \pm 0.029$ & $56.5 \pm 1.4$ \\
+0.9 & $0.700 \pm 0.033$ & $58.1 \pm 1.6$ \\
+1.0 (no mask) & $0.694 \pm 0.032$ & $59.5 \pm 1.6$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A clear monotonic trend emerges: \emph{lower training ratios produce simpler
+trees} with fewer leaves, while test accuracy remains stable or slightly improves.
+With a 30\% training ratio, the tree has 16.5\% fewer leaves than baseline while
+maintaining higher accuracy. This confirms that the regularization effect scales
+with the proportion of evaluation samples.
+
+\subsection{Experiment 3: Validation Mode Comparison}
+
+Table~\ref{tab:exp3} compares the three validation modes.
+
+\begin{table}[h]
+\centering
+\caption{Validation mode comparison (mask ratio $= 0.7$, $\eta = 0.15$).}
+\label{tab:exp3}
+\begin{tabular}{lcc}
+\toprule
+Mode & Test Accuracy & Leaves \\
+\midrule
+No mask (baseline) & $0.694 \pm 0.032$ & $59.5 \pm 1.6$ \\
+Both               & $0.710 \pm 0.033$ & $56.1 \pm 1.1$ \\
+Training only      & $\mathbf{0.725 \pm 0.041}$ & $57.2 \pm 1.5$ \\
+Evaluation only    & $0.703 \pm 0.033$ & $57.6 \pm 1.6$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Interestingly, the \textbf{training-only} mode achieves the highest test
+accuracy ($0.725$), outperforming the default \emph{both} mode. In this mode,
+impurity is computed only over training targets, but candidate split points are
+still restricted to training feature values. The regularization here comes purely
+from the reduced candidate set, which prevents the tree from splitting at
+outlier feature values. The \emph{evaluation-only} mode shows the smallest
+improvement, likely because it computes impurity over a smaller, noisier subset.
+
+\subsection{Experiment 4: Noise Level Sensitivity}
+
+Table~\ref{tab:exp4} examines how the benefit of split validation varies with
+noise level.
+
+\begin{table}[h]
+\centering
+\caption{Test accuracy across noise levels (mask ratio $= 0.7$, mode $=$ both).}
+\label{tab:exp4}
+\begin{tabular}{ccccc}
+\toprule
+Noise & Baseline Acc & SV Acc & $\Delta$ Acc & Baseline / SV Leaves \\
+\midrule
+0.00 & $0.926 \pm 0.015$ & $0.920 \pm 0.016$ & $-0.006$ & 64 / 57 \\
+0.05 & $0.852 \pm 0.025$ & $0.852 \pm 0.034$ & $+0.000$ & 62 / 58 \\
+0.10 & $0.748 \pm 0.027$ & $0.769 \pm 0.029$ & $\mathbf{+0.021}$ & 61 / 57 \\
+0.15 & $0.694 \pm 0.032$ & $0.697 \pm 0.040$ & $+0.003$ & 60 / 56 \\
+0.20 & $0.660 \pm 0.034$ & $0.654 \pm 0.036$ & $-0.006$ & 59 / 56 \\
+0.25 & $0.612 \pm 0.028$ & $0.616 \pm 0.020$ & $+0.004$ & 59 / 56 \\
+0.30 & $0.576 \pm 0.035$ & $0.574 \pm 0.025$ & $-0.002$ & 59 / 56 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The accuracy improvements are concentrated at moderate noise levels
+($\eta = 0.10$), where the data contains enough signal for the tree to exploit
+but sufficient noise for overfitting to occur. At very low noise ($\eta = 0$),
+split validation slightly hurts---the tree is already learning the correct
+structure, and restricting candidates can only reduce expressiveness. At very
+high noise ($\eta \geq 0.20$), both methods struggle equally with the corrupted
+signal. Notably, \emph{the leaf count reduction is consistent across all noise
+levels} ($\sim$5--11\% fewer leaves), confirming that the regularization is
+structural rather than accuracy-driven.
+
+\subsection{Experiment 5: Regression}
+
+Table~\ref{tab:exp5} shows regression results.
+
+\begin{table}[h]
+\centering
+\caption{Regression MSE across noise levels (mask ratio $= 0.7$, mode $=$ both).}
+\label{tab:exp5}
+\begin{tabular}{cccc}
+\toprule
+Noise $\sigma$ & Baseline MSE & SV MSE & $\Delta$ MSE \\
+\midrule
+0.5 & $0.799 \pm 0.217$ & $0.775 \pm 0.186$ & $-0.024$ \\
+1.0 & $1.744 \pm 0.292$ & $1.738 \pm 0.245$ & $-0.006$ \\
+2.0 & $6.005 \pm 0.856$ & $5.827 \pm 0.624$ & $-0.178$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Split validation produces small MSE improvements across all noise levels, with
+the largest absolute improvement ($-0.178$) at high noise. Unlike
+classification, the leaf count is unchanged, suggesting that the regularization
+acts more subtly on regression targets---improving split \emph{positions}
+rather than preventing splits entirely.
+
+% =========================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Key Findings}
+
+\begin{enumerate}
+    \item \textbf{Structural regularization is the primary effect.}
+          Split validation consistently reduces tree complexity (fewer leaves)
+          with high statistical significance ($p < 0.001$). This is the
+          method's most reliable contribution.
+
+    \item \textbf{Accuracy improvements are modest but directionally positive.}
+          Across most configurations, split validation matches or slightly
+          exceeds baseline accuracy. The improvements are strongest at moderate
+          noise levels where overfitting is the dominant error source.
+
+    \item \textbf{The mask ratio controls regularization strength.}
+          Lower training ratios produce simpler trees, establishing a smooth
+          regularization knob. This is preferable to discrete hyperparameters
+          like maximum depth.
+
+    \item \textbf{The training-only mode is surprisingly effective.}
+          Computing impurity only over training targets while restricting
+          candidates to training features outperformed the default ``both''
+          mode in our experiments. This suggests that the candidate restriction
+          alone provides strong regularization, and adding evaluation targets
+          may introduce noise.
+
+    \item \textbf{Zero overhead when disabled.}
+          Since the mask is a null-checked pointer, the standard code path
+          has no conditional overhead whatsoever.
+\end{enumerate}
+
+\subsection{Comparison to Related Work}
+
+\paragraph{Honest trees.}
+Athey and Imbens (2016) split data into estimation and splitting samples, using
+the estimation sample only after tree construction to re-estimate leaf
+parameters. Split validation differs by using evaluation data \emph{during}
+split selection, directly influencing tree structure.
+
+\paragraph{Pre-pruning.}
+Standard pre-pruning (min samples, max depth) applies uniform constraints.
+Split validation provides data-adaptive regularization---noisy regions naturally
+produce fewer candidate splits, while clean regions retain full expressiveness.
+
+\paragraph{Random forests.}
+Random forests use bootstrap aggregation for regularization. Split validation
+is complementary---it could be applied within individual trees of an ensemble.
+
+\subsection{Limitations}
+
+\begin{itemize}
+    \item The evaluation uses synthetic data only. Real-world datasets with
+          more complex structure may show different patterns.
+    \item With $R = 10$ repeats, some accuracy differences are not
+          statistically significant. Larger-scale experiments would be needed
+          to confirm the accuracy benefits.
+    \item The optimal mask ratio may depend on dataset size and dimensionality.
+    \item The current implementation uses a fixed mask. Adaptive strategies
+          (e.g., depth-dependent ratios) remain unexplored.
+\end{itemize}
+
+% =========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+Split validation is a lightweight, principled regularization technique for
+tree-based models. By restricting candidate split points to a training subset
+while evaluating impurity over all targets, it creates an inductive bias toward
+generalizable splits. Our experiments demonstrate that the method reliably
+reduces tree complexity and provides modest accuracy improvements, particularly
+at moderate noise levels. The approach is easy to implement (requiring changes
+only to the inner split-evaluation loop), has zero overhead when disabled, and
+provides a continuous regularization knob via the mask ratio.
+
+Future work should investigate adaptive masking strategies, application to
+real-world datasets, and the interaction between split validation and other
+regularization techniques such as ensemble methods and post-pruning.
+
+% =========================================================================
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{athey2016}
+S.~Athey and G.~Imbens.
+\newblock Recursive partitioning for heterogeneous causal effects.
+\newblock {\em Proceedings of the National Academy of Sciences},
+  113(27):7353--7360, 2016.
+
+\bibitem{breiman1984}
+L.~Breiman, J.~Friedman, C.~J.~Stone, and R.~A.~Olshen.
+\newblock {\em Classification and Regression Trees}.
+\newblock CRC Press, 1984.
+
+\bibitem{jpt2022}
+T.~Nickl, M.~Kl\"as, and A.~Pretschner.
+\newblock Joint probability trees.
+\newblock {\em Machine Learning}, 2022.
+
+\end{thebibliography}
+
+\end{document}

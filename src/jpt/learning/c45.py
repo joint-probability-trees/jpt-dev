@@ -427,7 +427,7 @@ class C45Algorithm:
         indices[0] = 0
         np.cumsum(indices, out=indices)
 
-        _locals.data = _data.values
+        _locals.data = np.ascontiguousarray(_data.values)
         _locals.indices = Array(c.c_long, indices.shape[0])
         _locals.indices[:] = indices
 
