@@ -8,6 +8,7 @@
 *.cpp
 *.so
 */jpt.egg-info/**
+*.egg-info/
 build/**
 dist/**
 **/TEST/**
@@ -15,3 +16,6 @@ doc/build/**
 doc/source/autoapi/**
 .version
 src/jpt/_version.py
+*.aux
+*.log
+*.out
