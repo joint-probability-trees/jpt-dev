@@ -54,7 +54,6 @@ class QuantileDistributionFitTest(TestCase):
             q.cdf
         )
 
-    # TODO: finish test implementation
     def test_quantile_dist_jump_first(self):
         """Verify CDF fitting when the first data points are duplicates."""
         # Arrange
@@ -68,9 +67,20 @@ class QuantileDistributionFitTest(TestCase):
 
         # Act
         q.fit(data, None, 0)
-        print(q.cdf)
 
-    # TODO: finish test implementation
+        # Assert: CDF should have 3 intervals (before, linear, after)
+        self.assertEqual(3, len(q.cdf.intervals))
+        # Before the data range, CDF is 0
+        self.assertAlmostEqual(0.0, q.cdf.eval(0.5), places=10)
+        # At the start (duplicate point), CDF should be 1/3
+        self.assertAlmostEqual(1 / 3, q.cdf.eval(1.0), places=10)
+        # Midpoint
+        self.assertAlmostEqual(0.5, q.cdf.eval(1.5), places=10)
+        # At the end, CDF should reach 1.0
+        self.assertAlmostEqual(1.0, q.cdf.eval(3.0), places=10)
+        # After the data range, CDF stays at 1.0
+        self.assertAlmostEqual(1.0, q.cdf.eval(3.5), places=10)
+
     def test_quantile_dist_jump_last(self):
         """Verify CDF fitting when the last data points are duplicates."""
         # Arrange
@@ -84,7 +94,19 @@ class QuantileDistributionFitTest(TestCase):
 
         # Act
         q.fit(data, None, 0)
-        print(q.cdf)
+
+        # Assert: CDF should have 4 intervals (before, two linear segments, after)
+        self.assertEqual(4, len(q.cdf.intervals))
+        # Before the data range, CDF is 0
+        self.assertAlmostEqual(0.0, q.cdf.eval(0.5), places=10)
+        # At the start, CDF is 0
+        self.assertAlmostEqual(0.0, q.cdf.eval(1.0), places=10)
+        # At the midpoint of first segment
+        self.assertAlmostEqual(1 / 3, q.cdf.eval(2.0), places=10)
+        # At the duplicate point, CDF should reach ~1.0
+        self.assertAlmostEqual(1.0, q.cdf.eval(3.0), places=5)
+        # After the data range, CDF stays at 1.0
+        self.assertAlmostEqual(1.0, q.cdf.eval(3.5), places=10)
 
 
 # ------------------------------------------------------------------------------
