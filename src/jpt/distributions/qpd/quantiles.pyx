@@ -279,6 +279,19 @@ cdef class QuantileDistribution:
 
         data_buffer = np.ascontiguousarray(data_buffer[:, :count])
 
+        # NOTE: we experimented with a "cluster expansion" step
+        # here (inserting a (nextafter(x, -inf), y_prev) companion
+        # for every distinct x whose multiplicity exceeds 1) to
+        # make real probability-mass jumps visible as explicit
+        # step discontinuities in the resulting CDF. It was
+        # reverted before 1.3.0: the explicit flat-then-step
+        # representation creates flat PDF regions where data
+        # points used to have non-zero density, which conflicts
+        # with the density-based likelihood machinery and sample
+        # machinery used downstream. Restoring that feature
+        # requires first rewriting those downstream paths to
+        # understand mixed continuous-discrete densities.
+
         # Subsample to fixed quantile grid if data exceeds
         # 1/epsilon points. This bounds the number of CDF
         # segments independently of sample size while
@@ -303,14 +316,21 @@ cdef class QuantileDistribution:
 
         self._ppf = self._pdf = None
         if n_samples > 1:
-            regressor = CDFRegressor(eps=self.epsilon)
-            regressor.fit(data_buffer)
+            # Greedy L∞-optimal knot simplification (bottom-up,
+            # Visvalingam-Whyatt style) starting from the full
+            # empirical support.
+            from jpt.distributions.qpd.vwcdfreg import (
+                VWCDFRegressor,
+            )
+            reg = VWCDFRegressor(eps=self.epsilon)
+            reg.fit(
+                np.asarray(data_buffer[0, :]),
+                np.asarray(data_buffer[1, :]),
+            )
+            pts = reg.support_points
 
             # Enforce monotonicity on support points:
             # CDF y-values must be non-decreasing.
-            pts = np.array(
-                regressor.support_points, dtype=np.float64
-            )
             for i in range(1, pts.shape[0]):
                 if pts[i, 1] < pts[i - 1, 1]:
                     pts[i, 1] = pts[i - 1, 1]

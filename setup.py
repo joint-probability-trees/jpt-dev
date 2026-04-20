@@ -23,6 +23,7 @@ if not os.environ.get('JPT_NO_CYTHON'):
         "jpt/base/intervals/unionset.pyx",
         "jpt/distributions/qpd/quantiles.pyx",
         "jpt/distributions/qpd/cdfreg.pyx",
+        "jpt/distributions/qpd/vwcdfreg.pyx",
         "jpt/learning/impurity/impurity.pyx",
     ]
 
