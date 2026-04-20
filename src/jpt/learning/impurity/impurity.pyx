@@ -859,13 +859,12 @@ cdef class Impurity:
 
             if n_local <= 1:
                 result[i] = 0
-                continue
-
-            result[i] /= <DTYPE_t> (n_samples * n_samples)
-            result[i] -= 1
-            result[i] /= (
-                1. / (<DTYPE_t> n_local) - 1.
-            )
+            else:
+                result[i] /= <DTYPE_t> (n_samples * n_samples)
+                result[i] -= 1
+                result[i] /= (
+                    1. / (<DTYPE_t> n_local) - 1.
+                )
 
             if self.invert_impurity[i]:
                 result[i] = 1 - result[i]
