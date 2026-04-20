@@ -72,7 +72,8 @@ class JPTPartition:
             child_idx: Optional[int],
             path: List[Set or Interval],
             min_samples_leaf: int,
-            depth: int
+            depth: int,
+            min_eval_samples: int = 0
     ):
         """
         :param data:        the indices for the training samples used to calculate the gain.
@@ -91,6 +92,7 @@ class JPTPartition:
         self.child_idx = child_idx
         self.depth = depth
         self.min_samples_leaf = min_samples_leaf
+        self.min_eval_samples = min_eval_samples
         self.path = path
 
     @property
@@ -135,6 +137,7 @@ def c45split(
     validation_mode = getattr(_locals, 'validation_mode', 0)
     impurity.setup(data, indices, validation_mask, validation_mode)
     impurity.min_samples_leaf = partition.min_samples_leaf
+    impurity.min_eval_samples = partition.min_eval_samples
 
     max_gain = impurity.compute_best_split(start, end)
     split_pos = impurity.best_split_pos
@@ -225,6 +228,7 @@ def c45split(
             child_idx=0,
             path=path + [(split_var, splits[0].copy())],
             min_samples_leaf=partition.min_samples_leaf,
+            min_eval_samples=partition.min_eval_samples,
             depth=depth + 1
         )
         right = JPTPartition(
@@ -236,6 +240,7 @@ def c45split(
             child_idx=1,
             path=path + [(split_var, splits[1].copy())],
             min_samples_leaf=partition.min_samples_leaf,
+            min_eval_samples=partition.min_eval_samples,
             depth=depth + 1
         )
 
@@ -284,6 +289,7 @@ class C45Algorithm:
         self.queue_length = 0
         self.indices = None
         self.min_samples_leaf = None
+        self.min_eval_samples = 0
         self._node_counter = 0
 
     def _node_created(
@@ -515,6 +521,25 @@ class C45Algorithm:
         else:
             self.min_samples_leaf = self.jpt.min_samples_leaf
 
+        # Resolve min_eval_samples using the same
+        # convention as min_samples_leaf: fractions
+        # are taken against the total number of rows.
+        raw_min_eval = getattr(
+            self.jpt, 'min_eval_samples', 0
+        )
+        if type(raw_min_eval) is int:
+            self.min_eval_samples = raw_min_eval
+        elif (
+                type(raw_min_eval) is float
+                and 0 < raw_min_eval < 1
+        ):
+            self.min_eval_samples = max(
+                0,
+                int(raw_min_eval * len(_data))
+            )
+        else:
+            self.min_eval_samples = int(raw_min_eval)
+
         self.keep_samples = keep_samples
 
         started = dt.datetime.now()
@@ -609,6 +634,7 @@ class C45Algorithm:
                         child_idx=None,
                         path=[],
                         min_samples_leaf=self.min_samples_leaf,
+                        min_eval_samples=self.min_eval_samples,
                         depth=0
                     ),
                     prune_or_split

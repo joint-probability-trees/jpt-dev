@@ -754,7 +754,8 @@ class JPT:
             min_impurity_improvement: float | None = None,
             max_leaves: int | None = None,
             max_depth: int | None = None,
-            dependencies=None
+            dependencies=None,
+            min_eval_samples: float | int = 0
     ) -> None:
         """Create a JPT.
 
@@ -769,6 +770,19 @@ class JPT:
             If int, the minimum number of samples
             required to form a leaf. If float, the
             minimum fraction of samples.
+        :param min_eval_samples:
+            Minimum number of EVALUATION samples
+            required in each child partition when
+            split validation is active in
+            ``'evaluation'`` mode. Only enforced when a
+            ``split_validation_mask`` is passed to
+            ``learn()`` and
+            ``split_validation_mode='evaluation'``.
+            If int, the absolute minimum. If a float in
+            ``(0, 1)``, the minimum fraction of the
+            *total* training rows (same convention as
+            ``min_samples_leaf``). ``0`` disables the
+            check (default).
         :param min_impurity_improvement:
             The minimal information gain to justify
             a split.
@@ -846,6 +860,7 @@ class JPT:
         self.priors: VariableMap = VariableMap()
 
         self.min_samples_leaf = min_samples_leaf
+        self.min_eval_samples = min_eval_samples
         self._keep_samples = False
         self.min_impurity_improvement = ifnone(
             min_impurity_improvement, 0
@@ -974,6 +989,7 @@ class JPT:
                 v.name for v in self.features
             ],
             'min_samples_leaf': self.min_samples_leaf,
+            'min_eval_samples': self.min_eval_samples,
             'min_impurity_improvement': (
                 self.min_impurity_improvement
             ),
@@ -1059,6 +1075,7 @@ class JPT:
                 else []
             ),
             min_samples_leaf=data['min_samples_leaf'],
+            min_eval_samples=data.get('min_eval_samples', 0),
             min_impurity_improvement=(
                 data['min_impurity_improvement']
             ),
@@ -1114,6 +1131,7 @@ class JPT:
             self.leaves == o.leaves,
             self.priors == o.priors,
             self.min_samples_leaf == o.min_samples_leaf,
+            self.min_eval_samples == o.min_eval_samples,
             self.min_impurity_improvement == o.min_impurity_improvement,
             self.targets == o.targets,
             self.variables == o.variables,
@@ -2493,6 +2511,7 @@ class JPT:
         hyperparameters["targets"] = [v.name for v in self.targets]
         hyperparameters["features"] = [v.name for v in self.features]
         hyperparameters["min_samples_leaf"] = self.min_samples_leaf
+        hyperparameters["min_eval_samples"] = self.min_eval_samples
         hyperparameters["min_impurity_improvement"] = self.min_impurity_improvement
         hyperparameters["max_leaves"] = self.max_leaves
         hyperparameters["max_depth"] = self.max_depth

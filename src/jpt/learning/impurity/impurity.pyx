@@ -294,6 +294,17 @@ cdef class Impurity:
     # percentage of samples that have to be in a leaf to valid
     cdef public DTYPE_t min_samples_leaf
 
+    # minimum number of EVALUATION samples required in each
+    # child partition when split validation is active in
+    # SV_EVALUATION mode. Accepts the same int/float-in-(0,1)
+    # convention as min_samples_leaf: C45Algorithm.learn()
+    # resolves fractions to absolute counts; callers that
+    # construct Impurity directly (e.g. via from_tree) may
+    # assign the raw value, in which case the comparison
+    # against the integer per-side sample count will still
+    # behave correctly for absolute thresholds. 0 disables.
+    cdef public DTYPE_t min_eval_samples
+
     # integer array describing the number of symbols per symbolic variable
     cdef SIZE_t[::1] symbols
 
@@ -384,6 +395,7 @@ cdef class Impurity:
         :rtype: Impurity
         """
         min_samples_leaf = tree.min_samples_leaf
+        min_eval_samples = getattr(tree, 'min_eval_samples', 0)
         numeric_vars = Impurity.get_indices_of_numeric_targets_from_tree(tree)
         symbolic_vars = Impurity.get_indices_of_symbolic_targets_from_tree(tree)
         invert_impurity = Impurity.get_invert_impurity_from_tree(tree)
@@ -397,17 +409,22 @@ cdef class Impurity:
         dependency_indices = Impurity.get_dependency_indices_from_tree(tree)
         return cls(min_samples_leaf, numeric_vars, symbolic_vars, invert_impurity,
                    n_sym_vars_total, n_num_vars_total, numeric_features, symbolic_features,
-                   symbols, max_variances, min_improvements, dependency_indices)
+                   symbols, max_variances, min_improvements, dependency_indices,
+                   min_eval_samples=min_eval_samples)
 
     def __init__(self, min_samples_leaf, numeric_vars, symbolic_vars, invert_impurity,
                    n_sym_vars_total, n_num_vars_total, numeric_features, symbolic_features,
-                   symbols, max_variances, min_improvements, dependency_indices):
+                   symbols, max_variances, min_improvements, dependency_indices,
+                   min_eval_samples=0):
         """
         Construct the impurity
         """
 
         # copy min_samples_leaf
         self.min_samples_leaf = min_samples_leaf
+
+        # copy minimum evaluation samples per child
+        self.min_eval_samples = min_eval_samples
 
         # initialize data, features, index buffer and indices as None
         self.data = self.feat = self.index_buffer = self.indices = None
@@ -1374,6 +1391,16 @@ cdef class Impurity:
             # check if this split is legal, according to self.min_samples_leaf
             # Use total sample counts (all samples), not just impurity-relevant ones
             if total_left < self.min_samples_leaf or total_right < self.min_samples_leaf:
+                impurity_improvement = ninf
+
+            # reject splits where either child has too few evaluation samples.
+            # Only active in SV_EVALUATION mode: in that mode num_samples[LEFT/RIGHT]
+            # already hold per-side eval-row counts (should_update == not is_training).
+            if (has_mask
+                    and sv_mode == SV_EVALUATION
+                    and self.min_eval_samples > 0
+                    and (samples_left < self.min_eval_samples
+                         or samples_right < self.min_eval_samples)):
                 impurity_improvement = ninf
 
             # check if this split is improving the impurity by the minimal required amount

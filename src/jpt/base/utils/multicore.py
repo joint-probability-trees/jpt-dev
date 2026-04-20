@@ -167,6 +167,9 @@ class DummyPool:
                         raise
         self._execting = False
 
+    def terminate(self):
+        pass
+
     def join(self):
         pass
 
