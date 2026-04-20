@@ -970,3 +970,586 @@ class SplitValidationTest(TestCase):
             jpt.fit(data, multicore=0,
                     split_validation_mask=mask,
                     split_validation_mode='invalid')
+
+
+# ----------------------------------------------------------------------
+
+class SplitValidationEndToEndTest(TestCase):
+    """End-to-end tests for the split validation feature
+    via ``JPT.fit()`` and subsequent inference."""
+
+    @staticmethod
+    def _make_separable_data(n=200):
+        """Create a DataFrame with a clear split:
+        x < 0.5 => y = False, x >= 0.5 => y = True.
+
+        Returns (data, mask) where mask marks every
+        other row as evaluation.
+        """
+        rng = np.random.RandomState(42)
+        x = rng.uniform(0, 1, n)
+        y = x >= 0.5
+        data = pd.DataFrame({'x': x, 'y': y})
+        mask = np.zeros(n, dtype=np.uint8)
+        mask[::2] = 1  # even indices are training
+        return data, mask
+
+    def test_fit_with_mask_both_mode(self):
+        """JPT.fit with split_validation_mask in 'both'
+        mode produces a tree with leaves."""
+        # Arrange
+        data, mask = self._make_separable_data()
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5
+        )
+
+        # Act
+        jpt.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='both'
+        )
+
+        # Assert
+        self.assertGreater(
+            len(jpt.leaves), 0,
+            'Tree should have at least one leaf'
+        )
+
+    def test_fit_with_mask_training_mode(self):
+        """JPT.fit with split_validation_mask in
+        'training' mode produces a valid tree."""
+        # Arrange
+        data, mask = self._make_separable_data()
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5
+        )
+
+        # Act
+        jpt.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='training'
+        )
+
+        # Assert
+        self.assertGreater(
+            len(jpt.leaves), 0,
+            'Tree should have at least one leaf'
+        )
+
+    def test_fit_with_mask_evaluation_mode(self):
+        """JPT.fit with split_validation_mask in
+        'evaluation' mode produces a valid tree."""
+        # Arrange
+        data, mask = self._make_separable_data()
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5
+        )
+
+        # Act
+        jpt.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='evaluation'
+        )
+
+        # Assert
+        self.assertGreater(
+            len(jpt.leaves), 0,
+            'Tree should have at least one leaf'
+        )
+
+    def test_fit_predict_roundtrip(self):
+        """A tree trained with split validation can
+        still perform posterior inference."""
+        # Arrange
+        data, mask = self._make_separable_data(300)
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5
+        )
+        jpt.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='both'
+        )
+
+        # Act
+        result = jpt.posterior(
+            evidence={xvar: 0.1}
+        )
+
+        # Assert — x=0.1 is in the False region
+        p_false = result[yvar].p({False})
+        self.assertGreater(
+            p_false, 0.5,
+            'P(y=False | x=0.1) should be > 0.5'
+        )
+
+    def test_no_mask_and_mask_both_produce_trees(self):
+        """Trees trained with and without a mask both
+        produce valid models on the same data."""
+        # Arrange
+        data, mask = self._make_separable_data()
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+
+        jpt_plain = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5
+        )
+        jpt_masked = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5
+        )
+
+        # Act
+        jpt_plain.fit(data, multicore=0)
+        jpt_masked.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask
+        )
+
+        # Assert — both should have leaves
+        self.assertGreater(len(jpt_plain.leaves), 0)
+        self.assertGreater(len(jpt_masked.leaves), 0)
+
+    def test_serialization_roundtrip(self):
+        """A tree trained with split validation
+        survives JSON serialization."""
+        # Arrange
+        data, mask = self._make_separable_data()
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5
+        )
+        jpt.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask
+        )
+
+        # Act
+        json_data = jpt.to_json()
+        jpt2 = JPT.from_json(json_data)
+
+        # Assert
+        self.assertEqual(
+            len(jpt.leaves), len(jpt2.leaves)
+        )
+        self.assertEqual(
+            len(jpt.innernodes), len(jpt2.innernodes)
+        )
+        self.assertEqual(
+            jpt.min_samples_leaf,
+            jpt2.min_samples_leaf
+        )
+        self.assertEqual(
+            jpt.min_eval_samples,
+            jpt2.min_eval_samples
+        )
+
+    def test_numeric_target_with_mask(self):
+        """Split validation works with numeric targets."""
+        # Arrange — x < 0.5 => y ~ 0, x >= 0.5 => y ~ 100
+        rng = np.random.RandomState(42)
+        n = 200
+        x = rng.uniform(0, 1, n)
+        y = np.where(x < 0.5, rng.normal(0, 1, n),
+                     rng.normal(100, 1, n))
+        data = pd.DataFrame({'x': x, 'y': y})
+        mask = np.zeros(n, dtype=np.uint8)
+        mask[::2] = 1
+
+        xvar = NumericVariable('x')
+        yvar = NumericVariable('y')
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5
+        )
+
+        # Act
+        jpt.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='evaluation'
+        )
+
+        # Assert
+        self.assertGreater(
+            len(jpt.leaves), 1,
+            'Should split on a clear numeric pattern'
+        )
+
+
+# ----------------------------------------------------------------------
+
+class MinEvalSamplesImpurityTest(TestCase):
+    """Unit tests for the ``min_eval_samples`` threshold
+    at the Impurity level."""
+
+    @staticmethod
+    def _make_numeric_impurity(
+            n_features,
+            n_targets,
+            min_eval_samples=0
+    ):
+        """Create an Impurity for numeric-only variables
+        with a given ``min_eval_samples``.
+        """
+        feat_vars = [
+            NumericVariable(f'f{i}')
+            for i in range(n_features)
+        ]
+        tgt_vars = [
+            NumericVariable(f't{i}')
+            for i in range(n_targets)
+        ]
+        variables = feat_vars + tgt_vars
+        jpt = JPT(
+            variables=variables,
+            targets=tgt_vars,
+            min_eval_samples=min_eval_samples
+        )
+        impurity = Impurity.from_tree(jpt)
+        impurity.min_samples_leaf = 1
+        return impurity
+
+    def test_disabled_by_default(self):
+        """min_eval_samples=0 does not reject any
+        splits."""
+        # Arrange — clear split with 1 eval sample
+        # per side
+        data = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [6.0, 100.0],
+            [7.0, 100.0],
+            [8.0, 100.0],
+        ], dtype=np.float64)
+        indices = np.arange(6, dtype=np.int64)
+        # train: 0, 2, 3, 5; eval: 1, 4
+        mask = np.array(
+            [1, 0, 1, 1, 0, 1], dtype=np.uint8
+        )
+
+        imp = self._make_numeric_impurity(1, 1, 0)
+        imp.setup(data, indices.copy(), mask, 2)
+        gain = imp.compute_best_split(0, 6)
+
+        # Assert — split should be accepted
+        self.assertGreater(gain, 0)
+
+    def test_rejects_split_with_too_few_eval(self):
+        """A split where one child has fewer eval
+        samples than the threshold is rejected."""
+        # Arrange — 6 samples, eval at indices 1 and 4
+        # With a split at ~4.5, left has 1 eval, right
+        # has 1 eval. Requiring 2 should reject.
+        data = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [6.0, 100.0],
+            [7.0, 100.0],
+            [8.0, 100.0],
+        ], dtype=np.float64)
+        indices = np.arange(6, dtype=np.int64)
+        mask = np.array(
+            [1, 0, 1, 1, 0, 1], dtype=np.uint8
+        )
+
+        imp = self._make_numeric_impurity(1, 1, 2)
+        imp.setup(data, indices.copy(), mask, 2)
+        gain = imp.compute_best_split(0, 6)
+
+        # Assert — all candidate splits leave < 2
+        # eval samples on at least one side
+        self.assertLessEqual(
+            gain, 0,
+            'Split should be rejected when eval '
+            'samples per child < min_eval_samples'
+        )
+
+    def test_accepts_split_with_enough_eval(self):
+        """A split where both children have enough
+        eval samples is accepted."""
+        # Arrange — 10 samples, 4 eval, split in the
+        # middle gives 2 eval per side
+        data = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [4.0, 0.0],
+            [5.0, 0.0],
+            [6.0, 100.0],
+            [7.0, 100.0],
+            [8.0, 100.0],
+            [9.0, 100.0],
+            [10.0, 100.0],
+        ], dtype=np.float64)
+        indices = np.arange(10, dtype=np.int64)
+        # eval at indices 1, 3, 6, 8
+        mask = np.array(
+            [1, 0, 1, 0, 1, 1, 0, 1, 0, 1],
+            dtype=np.uint8
+        )
+
+        imp = self._make_numeric_impurity(1, 1, 2)
+        imp.setup(data, indices.copy(), mask, 2)
+        gain = imp.compute_best_split(0, 10)
+
+        # Assert — best split gives >= 2 eval per side
+        self.assertGreater(
+            gain, 0,
+            'Split should be accepted when each '
+            'child has >= min_eval_samples eval rows'
+        )
+
+    def test_only_active_in_evaluation_mode(self):
+        """min_eval_samples has no effect in 'both'
+        or 'training' modes."""
+        # Arrange — same data where evaluation mode
+        # would reject
+        data = np.array([
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 0.0],
+            [6.0, 100.0],
+            [7.0, 100.0],
+            [8.0, 100.0],
+        ], dtype=np.float64)
+        indices = np.arange(6, dtype=np.int64)
+        mask = np.array(
+            [1, 0, 1, 1, 0, 1], dtype=np.uint8
+        )
+
+        # Act — SV_BOTH (mode 0) with high threshold
+        imp_both = self._make_numeric_impurity(1, 1, 5)
+        imp_both.setup(
+            data, indices.copy(), mask, 0
+        )
+        gain_both = imp_both.compute_best_split(0, 6)
+
+        # Act — SV_TRAINING (mode 1) with high threshold
+        imp_train = self._make_numeric_impurity(1, 1, 5)
+        imp_train.setup(
+            data, indices.copy(), mask, 1
+        )
+        gain_train = imp_train.compute_best_split(0, 6)
+
+        # Assert — both should still find splits
+        self.assertGreater(
+            gain_both, 0,
+            'min_eval_samples should not affect '
+            'SV_BOTH mode'
+        )
+        self.assertGreater(
+            gain_train, 0,
+            'min_eval_samples should not affect '
+            'SV_TRAINING mode'
+        )
+
+
+# ----------------------------------------------------------------------
+
+class MinEvalSamplesEndToEndTest(TestCase):
+    """End-to-end tests for ``min_eval_samples``
+    via ``JPT.fit()``."""
+
+    def test_fit_with_int_min_eval_samples(self):
+        """JPT with int min_eval_samples produces a
+        valid tree."""
+        # Arrange
+        rng = np.random.RandomState(42)
+        n = 200
+        x = rng.uniform(0, 1, n)
+        y = x >= 0.5
+        data = pd.DataFrame({'x': x, 'y': y})
+        mask = np.zeros(n, dtype=np.uint8)
+        mask[::2] = 1
+
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5,
+            min_eval_samples=3
+        )
+
+        # Act
+        jpt.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='evaluation'
+        )
+
+        # Assert
+        self.assertGreater(len(jpt.leaves), 0)
+
+    def test_fit_with_float_min_eval_samples(self):
+        """JPT with float min_eval_samples resolves
+        the fraction against total rows."""
+        # Arrange
+        rng = np.random.RandomState(42)
+        n = 200
+        x = rng.uniform(0, 1, n)
+        y = x >= 0.5
+        data = pd.DataFrame({'x': x, 'y': y})
+        mask = np.zeros(n, dtype=np.uint8)
+        mask[::2] = 1
+
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5,
+            min_eval_samples=0.05  # 5% of 200 = 10
+        )
+
+        # Act
+        jpt.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='evaluation'
+        )
+
+        # Assert
+        self.assertGreater(len(jpt.leaves), 0)
+
+    def test_high_threshold_limits_splits(self):
+        """A very high min_eval_samples should result in
+        fewer leaves than a low one, because many splits
+        are rejected for insufficient eval samples."""
+        # Arrange
+        rng = np.random.RandomState(42)
+        n = 400
+        x = rng.uniform(0, 1, n)
+        y = np.where(x < 0.25, 0.0,
+                     np.where(x < 0.5, 1.0,
+                              np.where(x < 0.75, 2.0,
+                                       3.0)))
+        data = pd.DataFrame({'x': x, 'y': y})
+        mask = np.zeros(n, dtype=np.uint8)
+        mask[::2] = 1
+
+        xvar = NumericVariable('x')
+        yvar = NumericVariable('y')
+
+        jpt_low = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5,
+            min_eval_samples=2
+        )
+        jpt_high = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_samples_leaf=5,
+            min_eval_samples=80
+        )
+
+        # Act
+        jpt_low.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='evaluation'
+        )
+        jpt_high.fit(
+            data,
+            multicore=0,
+            split_validation_mask=mask,
+            split_validation_mode='evaluation'
+        )
+
+        # Assert — high threshold should constrain tree
+        self.assertGreaterEqual(
+            len(jpt_low.leaves),
+            len(jpt_high.leaves),
+            'Higher min_eval_samples should result '
+            'in same or fewer leaves'
+        )
+
+    def test_serialization_preserves_min_eval_samples(
+            self
+    ):
+        """min_eval_samples survives JSON
+        serialization."""
+        # Arrange
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar],
+            min_eval_samples=42
+        )
+
+        # Act
+        json_data = jpt.to_json()
+        jpt2 = JPT.from_json(json_data)
+
+        # Assert
+        self.assertEqual(jpt2.min_eval_samples, 42)
+
+    def test_default_is_zero(self):
+        """min_eval_samples defaults to 0."""
+        # Arrange & Act
+        xvar = NumericVariable('x')
+        yvar = NumericVariable('y')
+        jpt = JPT(variables=[xvar, yvar])
+
+        # Assert
+        self.assertEqual(jpt.min_eval_samples, 0)
+
+    def test_from_json_missing_key_defaults_zero(self):
+        """Deserializing a JSON dict without
+        min_eval_samples defaults to 0."""
+        # Arrange
+        xvar = NumericVariable('x')
+        yvar = SymbolicVariable('y', Bool)
+        jpt = JPT(
+            variables=[xvar, yvar],
+            targets=[yvar]
+        )
+        json_data = jpt.to_json()
+        del json_data['min_eval_samples']
+
+        # Act
+        jpt2 = JPT.from_json(json_data)
+
+        # Assert
+        self.assertEqual(jpt2.min_eval_samples, 0)

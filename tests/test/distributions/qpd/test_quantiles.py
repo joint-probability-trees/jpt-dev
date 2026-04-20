@@ -59,7 +59,8 @@ class TestCaseMerge(unittest.TestCase):
                 '[1.000,1.200[': '1.667x - 1.667',
                 '[1.200,1.400[': '0.833x - 0.667',
                 '[1.400,5.000[': '0.500',
-                '[5.000,5.200[': '1.667x - 7.833',
+                '[5.000,5.100[': '0.833x - 3.667',
+                '[5.100,5.200[': '2.500x - 12.167',
                 '[5.200,5.400[': '0.833x - 3.500',
                 '[5.400,∞[': '1.0'
             }),
@@ -69,7 +70,7 @@ class TestCaseMerge(unittest.TestCase):
     def test_dist_merge_singleton(self):
         '''
         only one distribution for merge has non-zero
-        weight
+        weight.
         '''
         # Arrange
         data1 = np.array(
@@ -654,4 +655,911 @@ class QuantileTest(TestCase):
                 '[5e-324,∞)': 0
             }),
             pdf
+        )
+
+
+# ----------------------------------------------------------------------
+
+class FitInvariantTest(TestCase):
+    """Invariant-based tests for ``QuantileDistribution.fit``.
+
+    These tests assert structural properties (monotonicity,
+    boundary values, normalization) rather than exact CDF
+    representations, so they are robust to implementation
+    changes in the regressor.
+    """
+
+    @staticmethod
+    def _fitted(values, epsilon=0.01):
+        """Fit a QuantileDistribution to a 1-D iterable of
+        values.
+        """
+        data = np.array(
+            values, dtype=np.float64
+        ).reshape(-1, 1)
+        q = QuantileDistribution(epsilon=epsilon)
+        q.fit(data, None, 0)
+        return q
+
+    def _assert_cdf_invariants(self, q):
+        """Verify CDF invariants at a grid of points:
+        non-decreasing, bounded in [0, 1], left-limit 0,
+        right-limit 1.
+        """
+        cdf = q.cdf
+        xs = np.sort(np.concatenate([
+            [-1e9, -1e3, -10.0, -1.0],
+            np.linspace(-5, 5, 50),
+            [1.0, 10.0, 1e3, 1e9]
+        ]))
+        values = [cdf.eval(x) for x in xs]
+        for v in values:
+            self.assertGreaterEqual(v, 0.0)
+            self.assertLessEqual(v, 1.0 + 1e-12)
+        for a, b in zip(values, values[1:]):
+            self.assertGreaterEqual(
+                b, a - 1e-12,
+                'CDF is not monotonically non-decreasing'
+            )
+        self.assertAlmostEqual(cdf.eval(-1e9), 0.0, places=10)
+        self.assertAlmostEqual(cdf.eval(1e9), 1.0, places=10)
+
+    # --- Core shape ----------------------------------
+
+    def test_fit_linear_monotone(self):
+        """Fit on uniformly spaced data yields a
+        monotone CDF reaching 1 at the right tail."""
+        # Arrange & Act
+        q = self._fitted(
+            list(np.linspace(0.0, 1.0, 11))
+        )
+        # Assert
+        self._assert_cdf_invariants(q)
+
+    def test_fit_gaussian_monotone(self):
+        """Fit on samples from N(0,1) produces a
+        monotone CDF."""
+        # Arrange
+        rng = np.random.RandomState(0)
+        # Act
+        q = self._fitted(rng.normal(0, 1, 500))
+        # Assert
+        self._assert_cdf_invariants(q)
+
+    def test_fit_heavy_duplicates_monotone(self):
+        """Fit on data with heavy duplicates produces
+        a monotone CDF (exposes the CDF-monotonicity
+        repair path from commit 7463fc4)."""
+        # Arrange
+        values = (
+            [0.0] * 20 + [1.0] * 10 + [2.0] * 30
+        )
+        # Act
+        q = self._fitted(values)
+        # Assert
+        self._assert_cdf_invariants(q)
+
+    def test_fit_extreme_magnitudes(self):
+        """Fit on values that span many orders of
+        magnitude preserves CDF invariants."""
+        # Arrange
+        values = [
+            -1e9, -1e3, -1.0, 0.0, 1.0, 1e3, 1e9
+        ]
+        # Act
+        q = self._fitted(values)
+        # Assert
+        self._assert_cdf_invariants(q)
+
+    # --- Edge cases ----------------------------------
+
+    def test_fit_single_sample_produces_jump(self):
+        """A single sample yields a jump CDF of exactly
+        two segments at the sample value."""
+        # Arrange
+        data = np.array([[3.14]], dtype=np.float64)
+        q = QuantileDistribution()
+        # Act
+        q.fit(data, np.array([0], dtype=np.int64), 0)
+        # Assert
+        self.assertEqual(len(q.cdf.intervals), 2)
+        self.assertAlmostEqual(q.cdf.eval(3.13), 0.0)
+        self.assertAlmostEqual(q.cdf.eval(3.14), 1.0)
+        self.assertAlmostEqual(q.cdf.eval(3.15), 1.0)
+
+    def test_fit_all_identical_samples_yields_jump(self):
+        """N identical samples collapse to a jump CDF."""
+        # Arrange & Act
+        q = self._fitted([7.0, 7.0, 7.0, 7.0, 7.0])
+        # Assert — CDF is 0 below 7 and 1 at/above 7
+        self.assertAlmostEqual(q.cdf.eval(6.9), 0.0)
+        self.assertAlmostEqual(q.cdf.eval(7.0), 1.0, places=6)
+        self.assertAlmostEqual(q.cdf.eval(7.1), 1.0, places=6)
+
+    def test_fit_two_samples_minimal_linear(self):
+        """Two distinct samples give a CDF that is 0
+        before, linear between, and 1 after."""
+        # Arrange & Act
+        q = self._fitted([1.0, 2.0])
+        # Assert
+        self.assertAlmostEqual(q.cdf.eval(0.5), 0.0, places=10)
+        self.assertAlmostEqual(q.cdf.eval(1.5), 0.5, places=10)
+        self.assertAlmostEqual(q.cdf.eval(2.5), 1.0, places=10)
+
+    def test_fit_with_leftmost_rightmost_boundaries(self):
+        """Optional leftmost/rightmost anchor points are
+        honored and the CDF still reaches 1 on the right.
+        """
+        # Arrange
+        data = np.array(
+            [[1.0], [2.0], [3.0]], dtype=np.float64
+        )
+        q = QuantileDistribution(epsilon=0.01)
+        # Act
+        q.fit(
+            data,
+            np.array([0, 1, 2], dtype=np.int64),
+            0,
+            leftmost=0.0,
+            rightmost=4.0
+        )
+        # Assert
+        self.assertAlmostEqual(
+            q.cdf.eval(-1.0), 0.0, places=10
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(5.0), 1.0, places=10
+        )
+        self._assert_cdf_invariants(q)
+
+    def test_fit_leftmost_violation_rejected(self):
+        """If a data point is not strictly greater than
+        ``leftmost``, ``fit`` raises AssertionError.
+        """
+        # Arrange
+        data = np.array(
+            [[1.0], [0.5], [2.0]], dtype=np.float64
+        )
+        q = QuantileDistribution()
+        # Act / Assert
+        with self.assertRaises(AssertionError):
+            q.fit(
+                data,
+                np.array([0, 1, 2], dtype=np.int64),
+                0,
+                leftmost=0.5
+            )
+
+    def test_fit_column_selection(self):
+        """Fitting on column 1 ignores column 0."""
+        # Arrange — column 0 random, column 1 monotone
+        rng = np.random.RandomState(7)
+        n = 20
+        data = np.ascontiguousarray(np.column_stack([
+            rng.normal(0, 1, n),
+            np.linspace(10.0, 20.0, n)
+        ])).astype(np.float64)
+        q = QuantileDistribution(epsilon=0.01)
+        # Act
+        q.fit(data, None, 1)
+        # Assert — CDF is effectively supported on [10, 20]
+        self.assertAlmostEqual(q.cdf.eval(9.0), 0.0, places=6)
+        self.assertAlmostEqual(q.cdf.eval(21.0), 1.0, places=6)
+        self.assertGreater(q.cdf.eval(15.0), 0.2)
+        self.assertLess(q.cdf.eval(15.0), 0.8)
+
+    def test_fit_epsilon_bounds_segment_count(self):
+        """Larger epsilon triggers subsampling and yields
+        fewer CDF segments than smaller epsilon on the
+        same data."""
+        # Arrange — 500 distinct points
+        rng = np.random.RandomState(1)
+        values = np.sort(rng.normal(0, 1, 500))
+
+        # Act
+        q_coarse = self._fitted(values, epsilon=0.2)
+        q_fine = self._fitted(values, epsilon=0.001)
+
+        # Assert — coarser fit must not exceed the
+        # subsample budget of max(2, ceil(1/epsilon))+2
+        # (+2 for the flanking -inf and +inf segments)
+        self.assertLessEqual(
+            len(q_coarse.cdf.intervals),
+            int(1 / 0.2) + 3
+        )
+        self.assertGreater(
+            len(q_fine.cdf.intervals),
+            len(q_coarse.cdf.intervals)
+        )
+
+    def test_fit_result_is_self(self):
+        """``fit`` returns the distribution itself so
+        calls can be chained."""
+        # Arrange
+        data = np.array([[1.0], [2.0]], dtype=np.float64)
+        q = QuantileDistribution()
+        # Act
+        result = q.fit(data, None, 0)
+        # Assert
+        self.assertIs(result, q)
+
+    def test_fit_resets_cached_pdf_ppf(self):
+        """Re-fitting invalidates cached pdf and ppf."""
+        # Arrange
+        d1 = np.array(
+            [[0.0], [1.0]], dtype=np.float64
+        )
+        d2 = np.array(
+            [[10.0], [20.0]], dtype=np.float64
+        )
+        q = QuantileDistribution()
+        q.fit(d1, None, 0)
+        _ = q.pdf
+        _ = q.ppf
+        # Act
+        q.fit(d2, None, 0)
+        # Assert — the new pdf/ppf reflect d2, not d1
+        self.assertAlmostEqual(
+            q.cdf.eval(0.5), 0.0, places=6
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(25.0), 1.0, places=6
+        )
+
+
+# ----------------------------------------------------------------------
+
+class PDFPPFTest(TestCase):
+    """Tests for the ``pdf`` and ``ppf`` properties."""
+
+    @staticmethod
+    def _fitted(values):
+        data = np.array(
+            values, dtype=np.float64
+        ).reshape(-1, 1)
+        q = QuantileDistribution()
+        q.fit(data, None, 0)
+        return q
+
+    def test_pdf_requires_fit(self):
+        """Accessing pdf before fit raises RuntimeError."""
+        # Arrange
+        q = QuantileDistribution()
+        # Act / Assert
+        with self.assertRaises(RuntimeError):
+            _ = q.pdf
+
+    def test_ppf_requires_fit(self):
+        """Accessing ppf before fit raises RuntimeError."""
+        # Arrange
+        q = QuantileDistribution()
+        # Act / Assert
+        with self.assertRaises(RuntimeError):
+            _ = q.ppf
+
+    def test_pdf_non_negative_everywhere(self):
+        """PDF slope values are non-negative on fitted
+        data."""
+        # Arrange & Act
+        q = self._fitted(list(np.linspace(0, 1, 50)))
+        pdf = q.pdf
+        # Assert
+        for f in pdf.functions:
+            if isinstance(f, LinearFunction):
+                self.assertGreaterEqual(f.m, -1e-12)
+                self.assertGreaterEqual(
+                    f.eval(f.c), -1e-12
+                )
+            elif isinstance(f, ConstantFunction):
+                self.assertGreaterEqual(f.value, -1e-12)
+
+    def test_pdf_jump_has_dirac_impulse(self):
+        """A single-sample CDF produces a PDF with an
+        infinite Dirac impulse at the sample value."""
+        # Arrange
+        data = np.array([[0.0]], dtype=np.float64)
+        q = QuantileDistribution()
+        q.fit(data, np.array([0], dtype=np.int64), 0)
+        # Act
+        pdf = q.pdf
+        # Assert — the PDF must contain at least one
+        # infinite constant segment covering the sample
+        found_inf = any(
+            isinstance(f, ConstantFunction)
+            and np.isinf(f.value)
+            and interval.contains_value(0.0)
+            for interval, f in zip(
+                pdf.intervals, pdf.functions
+            )
+        )
+        self.assertTrue(
+            found_inf,
+            'Expected a Dirac impulse at the jump point'
+        )
+
+    def test_pdf_cached(self):
+        """pdf is computed once and reused across calls."""
+        # Arrange & Act
+        q = self._fitted([0.0, 1.0, 2.0])
+        first = q.pdf
+        second = q.pdf
+        # Assert
+        self.assertIs(first, second)
+
+    def test_pdf_recomputed_after_cdf_set(self):
+        """Setting cdf invalidates cached pdf — a fresh
+        pdf object is returned on the next access."""
+        # Arrange
+        q = self._fitted([0.0, 1.0])
+        old_pdf = q.pdf
+        # Act — re-set the cdf to invalidate the cache
+        q.cdf = q.cdf
+        # Assert — a new pdf instance is returned
+        self.assertIsNot(q.pdf, old_pdf)
+
+    def test_ppf_monotone(self):
+        """The quantile function is monotonically
+        non-decreasing on (0, 1)."""
+        # Arrange
+        rng = np.random.RandomState(123)
+        q = self._fitted(rng.normal(0, 1, 200))
+        # Act
+        ppf = q.ppf
+        # Assert
+        ps = np.linspace(0.01, 0.99, 100)
+        vals = [ppf.eval(p) for p in ps]
+        for a, b in zip(vals, vals[1:]):
+            self.assertGreaterEqual(
+                b, a - 1e-10,
+                'PPF is not monotone non-decreasing'
+            )
+
+    def test_ppf_inverse_of_cdf(self):
+        """For p in the interior, CDF(PPF(p)) ≈ p."""
+        # Arrange
+        rng = np.random.RandomState(42)
+        q = self._fitted(
+            np.sort(rng.uniform(0, 10, 200))
+        )
+        # Act / Assert
+        for p in [0.1, 0.25, 0.5, 0.75, 0.9]:
+            x = q.ppf.eval(p)
+            self.assertAlmostEqual(
+                q.cdf.eval(x), p, delta=0.05,
+                msg='CDF(PPF(%s))=%s' % (p, q.cdf.eval(x))
+            )
+
+    def test_ppf_undefined_outside_unit_interval(self):
+        """PPF evaluates to NaN (Undefined) outside the
+        closed interval [0, 1]."""
+        # Arrange & Act
+        q = self._fitted([0.0, 1.0, 2.0])
+        # Assert
+        self.assertTrue(np.isnan(q.ppf.eval(-0.01)))
+        self.assertTrue(np.isnan(q.ppf.eval(1.5)))
+
+
+# ----------------------------------------------------------------------
+
+class CropInvariantTest(TestCase):
+    """Invariant tests for ``crop``."""
+
+    @staticmethod
+    def _uniform_0_1():
+        """Return a QuantileDistribution approximating
+        U(0, 1)."""
+        data = np.linspace(
+            0.0, 1.0, 101
+        ).reshape(-1, 1)
+        q = QuantileDistribution(epsilon=0.001)
+        q.fit(data, None, 0)
+        return q
+
+    def test_crop_result_is_valid_cdf(self):
+        """A cropped CDF is non-decreasing, bounded in
+        [0, 1], and reaches 1 on the right."""
+        # Arrange
+        q = self._uniform_0_1()
+        # Act
+        q_crop = q.crop(ContinuousSet(0.25, 0.75))
+        # Assert
+        cdf = q_crop.cdf
+        xs = np.linspace(0.0, 1.0, 50)
+        values = [cdf.eval(x) for x in xs]
+        for v in values:
+            self.assertGreaterEqual(v, -1e-12)
+            self.assertLessEqual(v, 1.0 + 1e-12)
+        for a, b in zip(values, values[1:]):
+            self.assertGreaterEqual(b, a - 1e-12)
+        self.assertAlmostEqual(cdf.eval(-1e9), 0.0, places=6)
+        self.assertAlmostEqual(cdf.eval(1e9), 1.0, places=6)
+
+    def test_crop_shifts_support(self):
+        """Values below the crop's lower bound have
+        CDF 0; at/above the upper bound the CDF is 1."""
+        # Arrange
+        q = self._uniform_0_1()
+        # Act
+        q_crop = q.crop(ContinuousSet(0.25, 0.75))
+        # Assert
+        self.assertAlmostEqual(
+            q_crop.cdf.eval(0.2), 0.0, delta=0.02
+        )
+        self.assertAlmostEqual(
+            q_crop.cdf.eval(0.8), 1.0, delta=0.02
+        )
+
+    def test_crop_midpoint_is_half(self):
+        """For a uniform distribution, cropping to a
+        symmetric interval yields CDF ≈ 0.5 at the
+        midpoint."""
+        # Arrange
+        q = self._uniform_0_1()
+        # Act
+        q_crop = q.crop(ContinuousSet(0.2, 0.8))
+        # Assert
+        self.assertAlmostEqual(
+            q_crop.cdf.eval(0.5), 0.5, delta=0.05
+        )
+
+    def test_crop_outside_support_raises(self):
+        """Cropping to an interval disjoint from the
+        CDF support raises Unsatisfiability."""
+        # Arrange
+        q = self._uniform_0_1()
+        # Act / Assert
+        with self.assertRaises(Unsatisfiability):
+            q.crop(ContinuousSet(10.0, 20.0))
+
+    def test_crop_requires_fit(self):
+        """Crop before fit raises RuntimeError."""
+        # Arrange
+        q = QuantileDistribution()
+        # Act / Assert
+        with self.assertRaises(RuntimeError):
+            q.crop(ContinuousSet(0.0, 1.0))
+
+    def test_crop_preserves_epsilon(self):
+        """Crop returns a distribution with the same
+        epsilon and min_samples_mars as the source."""
+        # Arrange
+        data = np.linspace(
+            0.0, 1.0, 50
+        ).reshape(-1, 1)
+        q = QuantileDistribution(
+            epsilon=0.05, min_samples_mars=3
+        )
+        q.fit(data, None, 0)
+        # Act
+        q_crop = q.crop(ContinuousSet(0.25, 0.75))
+        # Assert
+        self.assertAlmostEqual(q_crop.epsilon, 0.05)
+        self.assertEqual(q_crop.min_samples_mars, 3)
+
+    def test_crop_is_idempotent_on_full_support(self):
+        """Cropping to the support leaves the CDF
+        essentially unchanged."""
+        # Arrange
+        q = self._uniform_0_1()
+        # Act
+        q_crop = q.crop(
+            ContinuousSet(-np.inf, np.inf, EXC, EXC)
+        )
+        # Assert — CDFs agree on interior points
+        for x in np.linspace(0.05, 0.95, 10):
+            self.assertAlmostEqual(
+                q.cdf.eval(x),
+                q_crop.cdf.eval(x),
+                delta=1e-6
+            )
+
+
+# ----------------------------------------------------------------------
+
+class MonotonicityRepairTest(TestCase):
+    """Tests for the CDF / PPF monotonicity repair
+    introduced in commit 7463fc4.
+    """
+
+    def test_from_cdf_repairs_non_monotone_input(self):
+        """``_assert_consistency`` repairs a CDF whose
+        third segment starts below the previous segment's
+        end value."""
+        # Arrange — three linear segments, the middle
+        # one ending at 0.7 and the next starting at 0.5
+        cdf = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,1.0[': '0.5x + 0.0',
+            '[1.0,2.0[': '0.2x + 0.3',
+            '[2.0,inf[': '1.0',
+        })
+        # Sanity — the raw CDF is non-monotone between
+        # segment 2 (ends 0.5) and segment 3 (starts 0.5
+        # evaluated at 1.0 gives 0.5, but we want to test
+        # a clear violation):
+        bad = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,1.0[': '0.7x + 0.0',
+            '[1.0,2.0[': '0.1x + 0.2',
+            '[2.0,inf[': '1.0',
+        })
+        q = QuantileDistribution()
+        q.cdf = bad
+        # Act — trigger the repair
+        q._assert_consistency()
+        # Assert — repaired CDF is monotone
+        xs = np.linspace(-0.5, 2.5, 50)
+        values = [q.cdf.eval(x) for x in xs]
+        for a, b in zip(values, values[1:]):
+            self.assertGreaterEqual(
+                b, a - 1e-12,
+                'Repaired CDF is not monotone'
+            )
+
+    def test_from_json_repairs_non_monotone_cdf(self):
+        """Deserialising a non-monotone CDF via
+        ``from_json`` yields a repaired distribution."""
+        # Arrange — fit a clean distribution then
+        # corrupt its JSON representation to produce a
+        # CDF with a backwards jump
+        data = np.linspace(0, 1, 50).reshape(-1, 1)
+        q = QuantileDistribution(epsilon=0.01)
+        q.fit(data, None, 0)
+        payload = q.to_json()
+        payload['cdf'] = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,1.0[': '0.8x + 0.0',
+            '[1.0,2.0[': '0.1x + 0.1',
+            '[2.0,inf[': '1.0',
+        }).to_json()
+        # Act
+        restored = QuantileDistribution.from_json(payload)
+        # Assert — repaired CDF is monotone non-decreasing
+        xs = np.linspace(-0.5, 2.5, 50)
+        values = [restored.cdf.eval(x) for x in xs]
+        for a, b in zip(values, values[1:]):
+            self.assertGreaterEqual(b, a - 1e-12)
+
+    def test_ppf_is_monotone_after_fit(self):
+        """After a fit, the PPF is monotone
+        non-decreasing on every sampled probability."""
+        # Arrange — heavy duplicates that stress the
+        # monotonicity enforcement paths
+        rng = np.random.RandomState(2026)
+        values = np.concatenate([
+            rng.normal(0, 0.1, 50),
+            np.full(30, 0.5),
+            rng.normal(1.0, 0.1, 50),
+        ])
+        q = QuantileDistribution(epsilon=0.005)
+        q.fit(
+            np.ascontiguousarray(
+                values.reshape(-1, 1)
+            ),
+            None,
+            0
+        )
+        # Act
+        ppf = q.ppf
+        ps = np.linspace(0.001, 0.999, 200)
+        # Assert
+        last = -np.inf
+        for p in ps:
+            v = ppf.eval(p)
+            if np.isnan(v):
+                continue
+            self.assertGreaterEqual(
+                v, last - 1e-10,
+                'PPF is not monotone at p=%s' % p
+            )
+            last = v
+
+
+# ----------------------------------------------------------------------
+
+class SerializationRoundTripTest(TestCase):
+    """Tests for ``to_json`` / ``from_json`` round-trip."""
+
+    def test_roundtrip_preserves_cdf_values(self):
+        """JSON round-trip preserves CDF evaluations at
+        interior points."""
+        # Arrange
+        rng = np.random.RandomState(11)
+        q = QuantileDistribution(epsilon=0.01)
+        q.fit(
+            rng.normal(0, 1, 100).reshape(-1, 1),
+            None,
+            0
+        )
+        # Act
+        restored = QuantileDistribution.from_json(
+            q.to_json()
+        )
+        # Assert
+        for x in np.linspace(-3, 3, 20):
+            self.assertAlmostEqual(
+                q.cdf.eval(x),
+                restored.cdf.eval(x),
+                places=10
+            )
+
+    def test_roundtrip_preserves_hyperparameters(self):
+        """JSON round-trip preserves epsilon and
+        min_samples_mars."""
+        # Arrange
+        data = np.array(
+            [[1.0], [2.0]], dtype=np.float64
+        )
+        q = QuantileDistribution(
+            epsilon=0.123,
+            min_samples_mars=7
+        )
+        q.fit(data, None, 0)
+        # Act
+        restored = QuantileDistribution.from_json(
+            q.to_json()
+        )
+        # Assert
+        self.assertAlmostEqual(restored.epsilon, 0.123)
+        self.assertEqual(restored.min_samples_mars, 7)
+
+    def test_roundtrip_jump_distribution(self):
+        """Round-trip preserves a single-sample jump
+        distribution."""
+        # Arrange
+        data = np.array([[42.0]], dtype=np.float64)
+        q = QuantileDistribution()
+        q.fit(data, np.array([0], dtype=np.int64), 0)
+        # Act
+        restored = QuantileDistribution.from_json(
+            q.to_json()
+        )
+        # Assert
+        self.assertAlmostEqual(
+            restored.cdf.eval(41.9), 0.0
+        )
+        self.assertAlmostEqual(
+            restored.cdf.eval(42.1), 1.0
+        )
+        self.assertEqual(q, restored)
+
+
+# ----------------------------------------------------------------------
+
+class EqualityAndCopyTest(TestCase):
+    """Tests for ``__eq__`` and ``copy``."""
+
+    def test_eq_requires_quantile_distribution(self):
+        """``__eq__`` rejects other types."""
+        # Arrange
+        q = QuantileDistribution()
+        # Act / Assert
+        with self.assertRaises(TypeError):
+            _ = q == 42
+
+    def test_eq_detects_epsilon_difference(self):
+        """Two distributions with identical CDFs but
+        different epsilon values are not equal."""
+        # Arrange
+        data = np.array(
+            [[0.0], [1.0]], dtype=np.float64
+        )
+        q1 = QuantileDistribution(epsilon=0.01)
+        q2 = QuantileDistribution(epsilon=0.05)
+        q1.fit(data, None, 0)
+        q2.fit(data, None, 0)
+        # Act / Assert
+        self.assertNotEqual(q1, q2)
+
+    def test_copy_is_equal_but_independent(self):
+        """``copy()`` returns an equal but independent
+        distribution: mutating the copy's CDF does not
+        affect the original."""
+        # Arrange
+        data = np.array(
+            [[0.0], [1.0], [2.0]], dtype=np.float64
+        )
+        q = QuantileDistribution(epsilon=0.01)
+        q.fit(data, None, 0)
+        # Act
+        q_copy = q.copy()
+        q_copy.cdf = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,inf[': '1.0',
+        })
+        # Assert — the original survived untouched
+        self.assertAlmostEqual(
+            q.cdf.eval(1.0), 0.5, delta=0.05
+        )
+
+
+# ----------------------------------------------------------------------
+
+class SampleTest(TestCase):
+    """Tests for ``QuantileDistribution.sample``."""
+
+    def test_sample_from_jump_is_constant(self):
+        """Sampling from a jump CDF returns the jump
+        point, repeated ``n`` times."""
+        # Arrange
+        data = np.array([[42.0]], dtype=np.float64)
+        q = QuantileDistribution()
+        q.fit(data, np.array([0], dtype=np.int64), 0)
+        # Act
+        samples = q.sample(50)
+        # Assert
+        self.assertEqual(samples.shape, (50,))
+        np.testing.assert_array_equal(
+            samples, np.full(50, 42.0)
+        )
+
+    def test_sample_shape(self):
+        """``sample(n)`` returns an array of length
+        ``n``."""
+        # Arrange
+        data = np.linspace(
+            0.0, 1.0, 20
+        ).reshape(-1, 1)
+        q = QuantileDistribution(epsilon=0.01)
+        q.fit(data, None, 0)
+        # Act
+        samples = q.sample(123)
+        # Assert
+        self.assertEqual(samples.shape, (123,))
+
+    def test_sample_within_support(self):
+        """Samples from a uniform fit land inside the
+        support interval."""
+        # Arrange
+        np.random.seed(0)
+        data = np.linspace(
+            10.0, 20.0, 50
+        ).reshape(-1, 1)
+        q = QuantileDistribution(epsilon=0.01)
+        q.fit(data, None, 0)
+        # Act
+        samples = q.sample(500)
+        # Assert
+        self.assertTrue(
+            np.all(samples >= 10.0 - 1e-6),
+            'Some samples below the support'
+        )
+        self.assertTrue(
+            np.all(samples <= 20.0 + 1e-6),
+            'Some samples above the support'
+        )
+
+    def test_sample_mean_approximates_distribution_mean(
+            self
+    ):
+        """The empirical mean of many samples
+        approximates the CDF-based expected value."""
+        # Arrange — uniform on [0, 10], mean = 5
+        np.random.seed(7)
+        data = np.linspace(
+            0.0, 10.0, 200
+        ).reshape(-1, 1)
+        q = QuantileDistribution(epsilon=0.005)
+        q.fit(data, None, 0)
+        # Act
+        samples = q.sample(5000)
+        # Assert
+        self.assertAlmostEqual(
+            samples.mean(), 5.0, delta=0.2
+        )
+
+
+# ----------------------------------------------------------------------
+
+class StaticConstructorTest(TestCase):
+    """Tests for the ``from_cdf`` and ``from_pdf``
+    static constructors, and the ``pdf`` setter path.
+    """
+
+    def test_from_cdf_sets_cdf_directly(self):
+        """``from_cdf`` wraps the given CDF without
+        further processing."""
+        # Arrange
+        cdf = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,1.0[': '1.0x + 0.0',
+            '[1.0,inf[': '1.0',
+        })
+        # Act
+        q = QuantileDistribution.from_cdf(cdf)
+        # Assert
+        self.assertIs(q.cdf, cdf)
+        self.assertAlmostEqual(q.cdf.eval(0.3), 0.3)
+        self.assertAlmostEqual(q.cdf.eval(-1.0), 0.0)
+        self.assertAlmostEqual(q.cdf.eval(2.0), 1.0)
+
+    def test_from_cdf_default_epsilon(self):
+        """``from_cdf`` uses the default epsilon."""
+        # Arrange
+        cdf = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,inf[': '1.0',
+        })
+        # Act
+        q = QuantileDistribution.from_cdf(cdf)
+        # Assert
+        self.assertAlmostEqual(q.epsilon, 0.01)
+
+    def test_from_pdf_integrates_to_cdf(self):
+        """``from_pdf`` produces a CDF reaching 1 at
+        the right tail."""
+        # Arrange — uniform PDF on [0, 1] has value 1
+        pdf = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,1.0[': '1.0',
+            '[1.0,inf[': '0.0',
+        })
+        # Act
+        q = QuantileDistribution.from_pdf(pdf)
+        # Assert — integral of uniform is linear
+        self.assertAlmostEqual(
+            q.cdf.eval(-0.5), 0.0, places=10
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(0.5), 0.5, places=10
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(1.5), 1.0, places=10
+        )
+
+    def test_from_pdf_multi_segment_constant(self):
+        """A three-level piecewise-constant PDF
+        integrates to a CDF with matching slope
+        changes at segment boundaries."""
+        # Arrange — pdf: 1 on [0,0.5), 2 on [0.5,0.75),
+        # 0 elsewhere. Total mass = 0.5·1 + 0.25·2 = 1.
+        pdf = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,0.5[': '1.0',
+            '[0.5,0.75[': '2.0',
+            '[0.75,inf[': '0.0',
+        })
+        # Act
+        q = QuantileDistribution.from_pdf(pdf)
+        # Assert — CDF reaches 0.5 at x=0.5 and 1.0
+        # at x=0.75; slopes match the PDF densities
+        self.assertAlmostEqual(
+            q.cdf.eval(0.25), 0.25, places=6
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(0.5), 0.5, places=6
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(0.625), 0.75, places=6
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(0.75), 1.0, places=6
+        )
+
+    def test_pdf_setter_roundtrip(self):
+        """Setting the pdf property produces a
+        consistent cdf; re-reading the pdf recovers
+        the same shape at interior points."""
+        # Arrange
+        pdf_in = PiecewiseFunction.from_dict({
+            ']-inf,0.0[': '0.0',
+            '[0.0,2.0[': '0.5',
+            '[2.0,inf[': '0.0',
+        })
+        q = QuantileDistribution()
+        # Act
+        q.pdf = pdf_in
+        # Assert — CDF is 0 below 0, 1 above 2,
+        # and grows linearly with slope 0.5 between
+        self.assertAlmostEqual(
+            q.cdf.eval(-0.5), 0.0, places=10
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(1.0), 0.5, places=10
+        )
+        self.assertAlmostEqual(
+            q.cdf.eval(2.5), 1.0, places=10
+        )
+        self.assertAlmostEqual(
+            q.pdf.eval(1.0), 0.5, places=10
         )

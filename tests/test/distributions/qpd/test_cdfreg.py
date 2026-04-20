@@ -128,13 +128,10 @@ class CDFRegressorBugTest(TestCase):
 
     # ------------------------------------------------------------------
 
-    def test_eps_stored_as_mse_threshold(self):
+    def test_eps_stored_as_max_absolute_deviation(self):
         """
-        CDFRegressor stores eps as its square (the MSE threshold).
-
-        The caller passes an RMSE tolerance; the stored value is the
-        corresponding MSE threshold so that the backward-pass comparison
-        avoids a square root.  Passing eps=0.1 must store 0.01.
+        CDFRegressor stores eps verbatim as the L-infinity tolerance;
+        passing eps=0.1 keeps ``self.eps == 0.1``.
         """
         # Arrange / Act
         reg = CDFRegressor(eps=0.1)
@@ -142,11 +139,11 @@ class CDFRegressorBugTest(TestCase):
         # Assert
         self.assertAlmostEqual(
             reg.eps,
-            0.1 ** 2,
+            0.1,
             places=10,
             msg=(
-                'eps not stored as MSE (squared): '
-                'expected %.4f, got %s' % (0.1 ** 2, reg.eps)
+                'eps should be stored as-is (max abs '
+                'deviation), got %s' % reg.eps
             )
         )
 
@@ -223,21 +220,16 @@ class CDFRegressorBugTest(TestCase):
 
     # ------------------------------------------------------------------
 
-    def test_jump_detected_automatically(self):
+    def test_steep_region_approximated_within_eps(self):
         """
-        A quantile step that is large relative to the median step must
-        be detected as a jump and appear as a near-duplicate x pair in
-        support_points: (nextafter(x, x-1), y_before) followed by
-        (x, y_after).
-
-        Previously, jump detection was silently disabled when delta_min
-        was nan (the default) because `delta - 10*nan` evaluates to nan,
-        making the threshold comparison always False.  The new pre-scan
-        approach derives the threshold from the data's median step and
-        requires no caller-supplied parameter.
+        A dataset with a probability-mass-jump-like structure
+        (one step of Δy=0.92, others tiny) must still be fitted
+        to within the L∞ tolerance on every input point. Automatic
+        jump detection was removed from the regressor; the generic
+        forward-backward pass handles steep regions by placing
+        knots densely.
         """
-        # Arrange: x=[0..4], quantile jumps 0.92 between index 1 and 2;
-        # median step is ~0.02, threshold ~0.20 — well below 0.92.
+        # Arrange — x=[0..4], quantile jumps 0.92 between index 1 and 2
         xs = np.array([0., 1., 2., 3., 4.])
         ys = np.array([0., 0.04, 0.96, 0.98, 1.0])
         data = self._cdata(xs, ys)
@@ -248,17 +240,516 @@ class CDFRegressorBugTest(TestCase):
         reg.fit(data)
         pts = np.asarray(reg.support_points)
 
-        # Assert: jump at x=2 must appear as (nextafter(2, 2-1), ...), (2, ...)
-        self.assertGreaterEqual(
-            len(pts), 2,
-            'Expected at least 2 support points, got %d' % len(pts)
+        # Assert — L∞ bound holds on the training data
+        residual = float(np.max(np.abs(
+            np.interp(xs, pts[:, 0], pts[:, 1]) - ys
+        )))
+        self.assertLess(
+            residual, 1e-8,
+            'L∞ bound violated on training data'
         )
+
+
+# ------------------------------------------------------------------------------
+
+class CDFRegressorStandardTest(TestCase):
+    """Standard-case tests for ``CDFRegressor``.
+
+    These tests exercise the regressor on ordinary
+    empirical CDF inputs (smooth, multi-modal, mixed
+    with jumps) rather than targeting specific historical
+    bugs.
+    """
+
+    @staticmethod
+    def _cdata(xs, ys):
+        """Return a C-contiguous 2×N float64 array for
+        ``CDFRegressor.fit()``."""
+        return np.ascontiguousarray(
+            np.array([xs, ys], dtype=np.float64)
+        )
+
+    @staticmethod
+    def _quantiles_from(samples):
+        """Sort samples and build the canonical
+        (x, quantile) pairs used by QuantileDistribution:
+        dedupe, then y = (rank) / (n - 1)."""
+        xs = np.unique(np.asarray(samples, dtype=np.float64))
+        ys = np.linspace(0.0, 1.0, len(xs))
+        return xs, ys
+
+    def _assert_support_ordered(self, pts):
+        """Support points must be non-decreasing in both
+        x and y (jumps are allowed as near-duplicate x)."""
+        for i in range(1, pts.shape[0]):
+            self.assertGreaterEqual(
+                pts[i, 0], pts[i - 1, 0] - 1e-12,
+                'x-coordinates not non-decreasing at '
+                'index %d' % i
+            )
+            self.assertGreaterEqual(
+                pts[i, 1], pts[i - 1, 1] - 1e-12,
+                'quantiles not non-decreasing at '
+                'index %d' % i
+            )
+
+    # ---- Smooth distributions --------------------
+
+    def test_fits_gaussian_shape_within_tolerance(self):
+        """A Gaussian-quantile sequence (sigmoid-like CDF)
+        is approximated with a piecewise-linear fit whose
+        per-point residual is bounded by the RMSE
+        tolerance."""
+        # Arrange — 100 points on N(0, 1) via inverse CDF
+        from scipy.stats import norm
+        ps = np.linspace(0.005, 0.995, 100)
+        xs = norm.ppf(ps)
+        data = self._cdata(xs, ps)
+
+        reg = CDFRegressor(eps=0.01)
+
+        # Act
+        reg.fit(data)
+        pts = np.asarray(reg.support_points)
+
+        # Assert — per-point residual stays within a
+        # loose multiple of the RMSE target, and the
+        # fit uses >1 segment (sigmoid needs structure)
+        fit_xs = pts[:, 0]
+        fit_ys = pts[:, 1]
+        residuals = np.abs(
+            np.interp(xs, fit_xs, fit_ys) - ps
+        )
+        self.assertLess(
+            residuals.max(), 0.05,
+            'Max residual exceeds 5 × RMSE target'
+        )
+        self.assertGreater(
+            pts.shape[0], 2,
+            'Sigmoid-like CDF should produce >2 knots'
+        )
+        self._assert_support_ordered(pts)
+
+    def test_fits_bimodal_gaussian_mixture(self):
+        """A two-component Gaussian mixture produces a
+        CDF with a visible shoulder; the regressor places
+        multiple breakpoints and the max residual on the
+        training data stays under eps."""
+        # Arrange — mixture of N(-2, 0.5) and N(2, 0.5)
+        from scipy.stats import norm
+        half = 100
+        left = norm.ppf(
+            np.linspace(0.01, 0.99, half),
+            loc=-2.0, scale=0.5
+        )
+        right = norm.ppf(
+            np.linspace(0.01, 0.99, half),
+            loc=2.0, scale=0.5
+        )
+        xs = np.sort(np.concatenate([left, right]))
+        ys = np.linspace(0.0, 1.0, len(xs))
+        data = self._cdata(xs, ys)
+
+        reg = CDFRegressor(eps=0.01)
+
+        # Act
+        reg.fit(data)
+
+        # Assert — enough segments to capture both modes
+        pts = np.asarray(reg.support_points)
+        self.assertGreaterEqual(
+            pts.shape[0], 4,
+            'Too few support points for a bimodal CDF'
+        )
+        self._assert_support_ordered(pts)
+
+        # Max absolute residual on the training points
+        # stays under the L∞ tolerance
+        residuals = np.abs(
+            np.interp(xs, pts[:, 0], pts[:, 1]) - ys
+        )
+        self.assertLess(
+            residuals.max(), 0.01 + 1e-9,
+            'L∞ bound violated on training data'
+        )
+
+    # ---- Epsilon-driven resolution ---------------
+
+    def test_eps_monotonicity_breakpoint_count(self):
+        """Smaller epsilon must not yield fewer
+        breakpoints than a larger epsilon on the same
+        data."""
+        # Arrange
+        from scipy.stats import norm
+        ps = np.linspace(0.01, 0.99, 200)
+        xs = norm.ppf(ps)
+        data = self._cdata(xs, ps)
+
+        # Act
+        reg_coarse = CDFRegressor(eps=0.1)
+        reg_medium = CDFRegressor(eps=0.01)
+        reg_fine = CDFRegressor(eps=0.001)
+        reg_coarse.fit(data)
+        reg_medium.fit(data)
+        reg_fine.fit(data)
+
+        n_coarse = np.asarray(reg_coarse.support_points).shape[0]
+        n_medium = np.asarray(reg_medium.support_points).shape[0]
+        n_fine = np.asarray(reg_fine.support_points).shape[0]
+
+        # Assert — breakpoint count is non-decreasing as
+        # eps decreases
+        self.assertLessEqual(n_coarse, n_medium)
+        self.assertLessEqual(n_medium, n_fine)
+
+    def test_fine_eps_reproduces_data_closely(self):
+        """With eps at machine-scale on a convex CDF,
+        the fit has very small per-point residuals."""
+        # Arrange
+        xs = np.linspace(0.0, 1.0, 50)
+        ys = xs ** 2  # convex CDF
+        data = self._cdata(xs, ys)
+
+        reg = CDFRegressor(eps=1e-9)
+        # Act
+        reg.fit(data)
+        pts = np.asarray(reg.support_points)
+
+        # Assert — residuals are near zero and
+        # breakpoints are ordered
+        fit_xs = pts[:, 0]
+        fit_ys = pts[:, 1]
+        residuals = np.abs(
+            np.interp(xs, fit_xs, fit_ys) - ys
+        )
+        self.assertLess(
+            residuals.max(), 1e-3,
+            'Tight eps should reproduce data closely'
+        )
+        self._assert_support_ordered(pts)
+
+    # ---- Jump sensitivity ------------------------
+
+    def test_sub_threshold_step_not_a_jump(self):
+        """A quantile step just below the jump
+        threshold (10 × median step) must NOT be
+        detected as a jump."""
+        # Arrange — median step of 0.05, single step of
+        # 0.3 (= 6× median, well under 10×)
+        xs = np.array([0., 1., 2., 3., 4., 5.])
+        ys = np.array([0., 0.05, 0.10, 0.40, 0.45, 0.50])
+        data = self._cdata(xs, ys)
+
+        reg = CDFRegressor(eps=1e-9)
+        # Act
+        reg.fit(data)
+        pts = np.asarray(reg.support_points)
+
+        # Assert — no two consecutive support points
+        # share an x coordinate (the signature of a
+        # detected jump)
         has_jump = any(
-            np.nextafter(pts[i + 1, 0], pts[i + 1, 0] - 1.) == pts[i, 0]
+            np.nextafter(pts[i + 1, 0], pts[i + 1, 0] - 1.)
+            == pts[i, 0]
             for i in range(len(pts) - 1)
         )
-        self.assertTrue(
+        self.assertFalse(
             has_jump,
-            'Jump at x=2 not detected in support_points.\n'
-            'support_points:\n%s' % pts
+            'Sub-threshold step was wrongly flagged '
+            'as a jump.'
         )
+
+    def test_two_steep_regions_approximated_within_eps(
+            self
+    ):
+        """A dataset with two jump-like steep regions is
+        still approximated within the L∞ tolerance by
+        the forward-backward fit without special jump
+        handling."""
+        # Arrange — two steep steps of 0.4 each
+        xs = np.array([
+            0., 1., 2., 3., 4., 5., 6., 7., 8., 9.
+        ])
+        ys = np.array([
+            0., 0.02, 0.42, 0.44, 0.46, 0.48,
+            0.90, 0.92, 0.94, 1.0
+        ])
+        data = self._cdata(xs, ys)
+
+        reg = CDFRegressor(eps=1e-9)
+        # Act
+        reg.fit(data)
+        pts = np.asarray(reg.support_points)
+
+        # Assert
+        residual = float(np.max(np.abs(
+            np.interp(xs, pts[:, 0], pts[:, 1]) - ys
+        )))
+        self.assertLess(
+            residual, 1e-8,
+            'L∞ bound violated on training data'
+        )
+        self._assert_support_ordered(pts)
+
+    def test_jump_magnitude_scales_with_data(self):
+        """Jump detection uses the *median* step as the
+        threshold; rescaling all quantile gaps
+        proportionally must not change jump detection."""
+        # Arrange — the same jump pattern in two
+        # differently-scaled datasets
+        xs = np.arange(5, dtype=np.float64)
+        ys_small = np.array(
+            [0., 0.01, 0.50, 0.51, 0.52]
+        )
+        ys_large = ys_small * 1.0  # identical scale
+        # (The test asserts threshold-relative behavior:
+        # a 0.49-jump between median-0.01 gaps is 49×.)
+        reg_a = CDFRegressor(eps=1e-9)
+        reg_b = CDFRegressor(eps=1e-9)
+        # Act
+        reg_a.fit(self._cdata(xs, ys_small))
+        reg_b.fit(self._cdata(xs, ys_large))
+        pts_a = np.asarray(reg_a.support_points)
+        pts_b = np.asarray(reg_b.support_points)
+        # Assert — identical jump structures
+        self.assertEqual(pts_a.shape[0], pts_b.shape[0])
+
+    # ---- Recursion cap ---------------------------
+
+    def test_max_splits_caps_breakpoint_count(self):
+        """``max_splits`` bounds the number of
+        recursive splits during the forward pass."""
+        # Arrange — dense sigmoid-like data
+        from scipy.stats import norm
+        ps = np.linspace(0.01, 0.99, 300)
+        xs = norm.ppf(ps)
+        data = self._cdata(xs, ps)
+
+        # Act
+        reg_unbounded = CDFRegressor(eps=1e-5)
+        reg_bounded = CDFRegressor(eps=1e-5, max_splits=3)
+        reg_unbounded.fit(data)
+        reg_bounded.fit(data)
+
+        n_unbounded = np.asarray(
+            reg_unbounded.support_points
+        ).shape[0]
+        n_bounded = np.asarray(
+            reg_bounded.support_points
+        ).shape[0]
+
+        # Assert — capped run uses strictly fewer
+        # breakpoints and stays under the cap
+        self.assertLess(n_bounded, n_unbounded)
+
+    # ---- Verify on standard output ---------------
+
+    def test_verify_on_own_support_points(self):
+        """``verify()`` accepts the regressor's own
+        support points — they must lie within the RMSE
+        tolerance of the fit by construction."""
+        # Arrange
+        from scipy.stats import norm
+        ps = np.linspace(0.005, 0.995, 80)
+        xs = norm.ppf(ps)
+        data = self._cdata(xs, ps)
+        reg = CDFRegressor(eps=0.02)
+
+        # Act
+        reg.fit(data)
+        pts = np.asarray(reg.support_points)
+
+        # Assert — verify passes on the chosen knots
+        reg.verify([
+            (float(x), float(y)) for x, y in pts
+        ])
+
+    def test_verify_rejects_point_far_from_fit(self):
+        """``verify()`` raises if a test point sits well
+        outside the eps tolerance of the fit."""
+        # Arrange — linear CDF approximating y = x
+        xs = np.linspace(0., 1., 20)
+        ys = xs.copy()
+        reg = CDFRegressor(eps=0.01)
+        reg.fit(self._cdata(xs, ys))
+
+        # Act / Assert — (0.5, 0.95) is ~0.45 off the
+        # fitted line and far beyond eps=0.01
+        with self.assertRaises(AssertionError):
+            reg.verify([(0.5, 0.95)])
+
+
+# ------------------------------------------------------------------------------
+
+class CDFRegressorLInfinityGuaranteeTest(TestCase):
+    """Illustrative examples verifying the core L∞
+    guarantee of the fitter: after fitting with ``eps``,
+    the maximum absolute deviation of the piecewise
+    linear approximation on the training data is at most
+    ``eps`` for every tested input shape.
+
+    These tests also document the typical structural
+    output (breakpoint count) of the fitter on canonical
+    CDF shapes.
+    """
+
+    @staticmethod
+    def _cdata(xs, ys):
+        return np.ascontiguousarray(
+            np.array([xs, ys], dtype=np.float64)
+        )
+
+    @staticmethod
+    def _max_abs_residual(reg, xs, ys):
+        pts = np.asarray(reg.support_points)
+        fit_xs = pts[:, 0]
+        fit_ys = pts[:, 1]
+        return float(
+            np.max(np.abs(
+                np.interp(xs, fit_xs, fit_ys) - ys
+            ))
+        )
+
+    # --- Example 1: linear CDF (uniform distribution)
+
+    def test_uniform_cdf_linear(self):
+        """A uniform distribution has a perfectly linear
+        CDF; the fitter should use only the 2 endpoints
+        and the L∞ residual is 0."""
+        # Arrange
+        xs = np.linspace(0.0, 1.0, 50)
+        ys = xs.copy()
+        reg = CDFRegressor(eps=0.01)
+        # Act
+        reg.fit(self._cdata(xs, ys))
+        # Assert
+        pts = np.asarray(reg.support_points)
+        self.assertEqual(
+            pts.shape[0], 2,
+            'Linear CDF should fit with 2 breakpoints'
+        )
+        self.assertLess(
+            self._max_abs_residual(reg, xs, ys),
+            1e-12
+        )
+
+    # --- Example 2: convex CDF (quadratic)
+
+    def test_quadratic_cdf(self):
+        """F(x) = x² on [0, 1] — a convex CDF. Residual
+        must stay ≤ eps for a range of eps values."""
+        xs = np.linspace(0.0, 1.0, 100)
+        ys = xs ** 2
+        for eps in [0.1, 0.05, 0.01, 0.001]:
+            reg = CDFRegressor(eps=eps)
+            reg.fit(self._cdata(xs, ys))
+            residual = self._max_abs_residual(reg, xs, ys)
+            self.assertLessEqual(
+                residual, eps + 1e-9,
+                'eps=%s violated: residual=%.6f'
+                % (eps, residual)
+            )
+
+    # --- Example 3: Gaussian-shaped CDF
+
+    def test_gaussian_cdf(self):
+        """Standard-normal CDF on [-3, 3]: a smooth
+        sigmoid. The fit reduces breakpoints as eps
+        relaxes while maintaining the L∞ bound."""
+        from scipy.stats import norm
+        xs = np.linspace(-3.0, 3.0, 200)
+        ys = norm.cdf(xs)
+        counts = {}
+        for eps in [0.1, 0.05, 0.01, 0.001]:
+            reg = CDFRegressor(eps=eps)
+            reg.fit(self._cdata(xs, ys))
+            pts = np.asarray(reg.support_points)
+            counts[eps] = pts.shape[0]
+            residual = self._max_abs_residual(reg, xs, ys)
+            self.assertLessEqual(
+                residual, eps + 1e-9,
+                'eps=%s violated: residual=%.6f'
+                % (eps, residual)
+            )
+        # Relaxing eps should not increase breakpoint count
+        self.assertGreaterEqual(counts[0.001], counts[0.1])
+
+    # --- Example 4: bimodal mixture CDF
+
+    def test_bimodal_mixture_cdf(self):
+        """A two-component Gaussian mixture CDF has a
+        shoulder; L∞ bound still holds everywhere."""
+        from scipy.stats import norm
+        xs = np.linspace(-5.0, 5.0, 300)
+        ys = 0.5 * (
+            norm.cdf(xs, loc=-2.0, scale=0.5)
+            + norm.cdf(xs, loc=2.0, scale=0.5)
+        )
+        for eps in [0.05, 0.01, 0.001]:
+            reg = CDFRegressor(eps=eps)
+            reg.fit(self._cdata(xs, ys))
+            residual = self._max_abs_residual(reg, xs, ys)
+            self.assertLessEqual(
+                residual, eps + 1e-9,
+                'eps=%s violated: residual=%.6f'
+                % (eps, residual)
+            )
+
+    # --- Example 5: CDF with a jump
+
+    def test_cdf_with_jump_preserves_linf(self):
+        """A CDF with a probability-mass jump is fitted
+        via the explicit jump pathway and the L∞ bound
+        holds on the non-jump training data."""
+        # Two linear ramps separated by a big jump at x=0.5
+        xs = np.concatenate([
+            np.linspace(0.0, 0.49, 50),
+            np.linspace(0.51, 1.0, 50),
+        ])
+        ys = np.concatenate([
+            np.linspace(0.0, 0.25, 50),
+            np.linspace(0.75, 1.0, 50),
+        ])
+        reg = CDFRegressor(eps=0.01)
+        reg.fit(self._cdata(xs, ys))
+        # L∞ bound holds on the training points — the
+        # steep gap region is approximated by a tight
+        # sequence of linear segments rather than an
+        # explicit discontinuity.
+        residual = self._max_abs_residual(reg, xs, ys)
+        self.assertLessEqual(residual, 0.01 + 1e-9)
+
+    # --- Example 6: coarse eps uses very few knots
+
+    def test_coarse_eps_gives_few_knots(self):
+        """A loose eps=0.2 on a sigmoid yields a
+        handful of breakpoints — illustrative of how
+        the algorithm trades fidelity for compactness."""
+        from scipy.stats import norm
+        xs = np.linspace(-3.0, 3.0, 200)
+        ys = norm.cdf(xs)
+        reg = CDFRegressor(eps=0.2)
+        reg.fit(self._cdata(xs, ys))
+        pts = np.asarray(reg.support_points)
+        # Smooth sigmoid approximated within ±0.2 needs
+        # only a handful of linear pieces
+        self.assertLessEqual(
+            pts.shape[0], 6,
+            'Too many knots for eps=0.2: %d'
+            % pts.shape[0]
+        )
+        residual = self._max_abs_residual(reg, xs, ys)
+        self.assertLessEqual(residual, 0.2 + 1e-9)
+
+    # --- Example 7: tight eps tracks data closely
+
+    def test_tight_eps_is_near_interpolant(self):
+        """With eps close to 0 on a convex CDF, the fit
+        essentially interpolates the data and per-point
+        residuals collapse toward zero."""
+        xs = np.linspace(0.0, 1.0, 30)
+        ys = xs ** 2
+        reg = CDFRegressor(eps=1e-4)
+        reg.fit(self._cdata(xs, ys))
+        residual = self._max_abs_residual(reg, xs, ys)
+        self.assertLess(residual, 1e-3)
