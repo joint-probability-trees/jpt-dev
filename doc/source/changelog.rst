@@ -1,6 +1,23 @@
 Changelog
 =========
 
+1.3.1
+-----
+
+Patch release — CI fix only, no library changes.
+
+Bug Fixes
+~~~~~~~~~
+
+- Fixed the manylinux wheel build step on GitHub Actions: the
+  ``RalfG/python-wheels-manylinux-build`` step now runs
+  ``git config --global --add safe.directory /github/workspace``
+  before ``pip wheel`` so that version derivation through
+  ``setuptools-scm`` / ``vcs-versioning`` is not blocked by Git's
+  "dubious ownership" safety check inside the bind-mounted
+  container.
+
+
 1.3.0
 -----
 
