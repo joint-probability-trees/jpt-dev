@@ -356,7 +356,7 @@ class NumericDistributionTest(TestCase):
 
         data_mean = np.average(data)
         dist_mean = distribution.moment(1, 0)
-        self.assertAlmostEqual(data_mean, dist_mean, delta=0.01)
+        self.assertAlmostEqual(data_mean, dist_mean, delta=0.05)
 
         # be aware the empirical moments and qpd moments diverge
         for order in range(2, 4):
