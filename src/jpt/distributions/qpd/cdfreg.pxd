@@ -14,6 +14,7 @@ cdef class CDFRegressor:
     '''Piecewise-linear CDF regressor with explicit jump detection.'''
 
     cdef readonly DTYPE_t eps
+    cdef readonly DTYPE_t jump_factor
     cdef SIZE_t max_splits
     cdef DTYPE_t[:, ::1] data
     cdef SIZE_t[::1] indices
