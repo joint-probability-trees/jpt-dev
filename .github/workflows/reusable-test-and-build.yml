@@ -77,6 +77,14 @@ jobs:
           python-versions: ${{ inputs.python-versions || 'cp311-cp311' }}
           build-requirements: 'cython numpy setuptools-scm'
           pip-wheel-args: '-w ./dist-raw --no-deps'
+          # Git 2.35.2+ refuses to operate on repositories whose
+          # on-disk ownership differs from the running user
+          # ("dubious ownership" safety check). Inside the
+          # manylinux container the bind-mounted /github/workspace
+          # hits this check, which in turn breaks version
+          # derivation by setuptools-scm / vcs-versioning. Mark
+          # the workspace as safe before the wheel build runs.
+          pre-build-command: 'git config --global --add safe.directory /github/workspace'
 
       # ----------------------------------------------------------------------------------------------------------------
 
