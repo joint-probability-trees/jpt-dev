@@ -478,51 +478,56 @@ class IntegerVariable(Variable):
 
     def str(self, assignment, **kwargs) -> str:
         fmt = kwargs.get('fmt', 'set')
+        if isinstance(assignment, numbers.Number):
+            return '%s = %s' % (
+                self.name, assignment
+            )
         if isinstance(assignment, IntSet):
-            if assignment.size() == 1:
-                return self.str(
-                    first(assignment), fmt=fmt
-                )
-            elif fmt == 'set':
+            assignment = UnionSet([assignment])
+        if isinstance(assignment, UnionSet):
+            if fmt == 'set':
                 return (
                     f'{self.name} {SYMBOL.IN} '
                     f'{assignment}'
                 )
             elif fmt == 'logic':
-                if (
-                    assignment.isninf()
-                    and assignment.ispinf()
-                ):
-                    return (
-                        f'{self.name} {SYMBOL.IN} '
-                        f'{assignment}'
-                    )
-                elif assignment.isninf():
-                    return (
-                        f'{self.name} {SYMBOL.LTE} '
-                        f'{assignment.upper}'
-                    )
-                elif assignment.ispinf():
-                    return (
-                        f'{self.name} {SYMBOL.GTE} '
-                        f'{assignment.lower}'
-                    )
-                else:
-                    return (
-                        f'{assignment.lower} '
-                        f'{SYMBOL.LTE} {self.name} '
-                        f'{SYMBOL.LTE} '
-                        f'{assignment.upper}'
-                    )
-        if isinstance(assignment, numbers.Number):
-            return '%s = %s' % (
-                self.name, assignment
+                return f' {SYMBOL.LOR} '.join(
+                    self._intset_logic_str(i)
+                    for i in assignment.intervals
+                )
+            else:
+                raise ValueError(
+                    'Unknown format for integer '
+                    'variable: %s.' % fmt
+                )
+        raise TypeError(
+            'Unexpected type for assignment: '
+            f'{type(assignment)}'
+        )
+
+    def _intset_logic_str(self, i: IntSet) -> str:
+        if i.size() == 1:
+            return '%s = %s' % (self.name, i.lower)
+        if i.isninf() and i.ispinf():
+            return (
+                f'{self.name} {SYMBOL.IN} {i}'
             )
-        else:
-            raise TypeError(
-                'Unexpected type for assignment: '
-                f'{type(assignment)}'
+        if i.isninf():
+            return (
+                f'{self.name} {SYMBOL.LTE} '
+                f'{i.upper}'
             )
+        if i.ispinf():
+            return (
+                f'{self.name} {SYMBOL.GTE} '
+                f'{i.lower}'
+            )
+        return (
+            f'{i.lower} '
+            f'{SYMBOL.LTE} {self.name} '
+            f'{SYMBOL.LTE} '
+            f'{i.upper}'
+        )
 
     def assignment2set(
             self,

@@ -470,6 +470,42 @@ class JPTTest(TestCase):
         else:
             raise RuntimeError('jpt.posterior did not raise Unsatisfiability.')
 
+    def test_unsatisfiability_integer_unionset(self):
+        """Verify unsatisfiable UnionSet evidence on an integer variable raises Unsatisfiability.
+
+        Regression test: previously ``IntegerVariable.str()`` raised ``TypeError``
+        on a ``UnionSet``, which escaped from ``JPT.posterior()`` while it was
+        building the ``Unsatisfiability`` message via ``format_path(evidence)``,
+        masking the real ``Unsatisfiability``.
+        """
+        # Arrange — tiny tree with one integer + one symbolic variable.
+        # Domain is wider than the training range so the unsatisfiable
+        # ``UnionSet`` evidence stays inside ``label2value``'s domain bounds.
+        toss = IntegerVariable(
+            'Toss', IntegerType('Doy', lmin=0, lmax=400)
+        )
+        heads = SymbolicVariable('Heads', Bool)
+        df = pd.DataFrame({
+            'Toss': [1, 2, 3, 4, 5, 6],
+            'Heads': [True] * 6,
+        })
+        tree = JPT([toss, heads], min_samples_leaf=1)
+        tree.fit(df)
+
+        # Evidence is unsatisfiable: ``Toss`` values lie outside the trained
+        # support [1..6], so no leaf matches.
+        evidence = tree.bind({
+            toss: UnionSet([IntSet(100, 200), IntSet(250, 365)]),
+            heads: False,
+        })
+
+        # Act / Assert — must raise Unsatisfiability (NOT TypeError), and the
+        # message must include the integer variable's name (proving
+        # ``format_path`` succeeded).
+        with self.assertRaises(Unsatisfiability) as ctx:
+            tree.posterior(evidence=evidence)
+        self.assertIn('Toss', str(ctx.exception))
+
     def test_exact_mpe_discrete(self):
         """Verify MPE yields exactly one maximum for discrete data."""
         # Arrange

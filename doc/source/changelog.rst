@@ -1,6 +1,29 @@
 Changelog
 =========
 
+1.3.2
+-----
+
+Patch release — bug fix in evidence formatting for integer variables.
+
+Bug Fixes
+~~~~~~~~~
+
+- ``JPT.posterior()`` now correctly raises ``Unsatisfiability`` when
+  unsatisfiable evidence contains a ``UnionSet`` for an integer
+  variable. Previously, ``IntegerVariable.str()`` only handled
+  ``IntSet`` and ``numbers.Number`` and raised ``TypeError`` on a
+  ``UnionSet``; that ``TypeError`` escaped from ``posterior()`` while
+  it was building the ``Unsatisfiability`` message via
+  ``format_path(evidence)``, masking the intended exception so callers
+  could not catch and recover. ``IntegerVariable.str()`` now mirrors
+  the ``UnionSet`` handling already present in
+  ``NumericVariable.str()``: it normalises ``IntSet`` inputs into a
+  one-element ``UnionSet``, joins intervals with ``∪`` for
+  ``fmt='set'`` and with ``∨`` for ``fmt='logic'``, and raises
+  ``ValueError`` (instead of ``TypeError``) for an unknown ``fmt``.
+
+
 1.3.1
 -----
 
