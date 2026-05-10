@@ -1323,6 +1323,22 @@ class SerializationRoundTripTest(TestCase):
         )
         self.assertEqual(q, restored)
 
+    def test_from_json_single_function_cdf_raises_value_error(self):
+        """``from_json`` raises ``ValueError`` (not ``AssertionError``)
+        when the serialised CDF has only one segment."""
+        # Arrange — build a minimal valid payload then replace the
+        # CDF with a single-segment constant (mathematically invalid)
+        data = np.array([[1.0], [2.0]], dtype=np.float64)
+        q = QuantileDistribution()
+        q.fit(data, None, 0)
+        payload = q.to_json()
+        payload['cdf'] = PiecewiseFunction.from_dict({
+            ']-inf,inf[': ConstantFunction(1.0),
+        }).to_json()
+        # Act / Assert
+        with self.assertRaises(ValueError):
+            QuantileDistribution.from_json(payload)
+
 
 # ----------------------------------------------------------------------
 
