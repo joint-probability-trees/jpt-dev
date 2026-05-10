@@ -1323,6 +1323,28 @@ class SerializationRoundTripTest(TestCase):
         )
         self.assertEqual(q, restored)
 
+    def test_from_json_rejects_degenerate_single_function_cdf(self):
+        """A single-function CDF (e.g. ConstantFunction(1.0)
+        over ]-inf,inf[) is mathematically invalid;
+        ``from_json`` must raise ``ValueError`` rather than
+        the legacy bare ``AssertionError``."""
+        # Arrange — start from a valid fitted distribution
+        # then overwrite its CDF with a degenerate
+        # single-function payload.
+        data = np.linspace(0, 1, 50).reshape(-1, 1)
+        q = QuantileDistribution(epsilon=0.01)
+        q.fit(data, None, 0)
+        payload = q.to_json()
+        payload['cdf'] = PiecewiseFunction.from_dict({
+            ']-inf,inf[': '1.0',
+        }).to_json()
+        # Act / Assert — ``AssertionError`` is not a
+        # subclass of ``ValueError``, so this also pins the
+        # error type to the new contract.
+        with self.assertRaises(ValueError) as ctx:
+            QuantileDistribution.from_json(payload)
+        self.assertIn('Degenerate', str(ctx.exception))
+
 
 # ----------------------------------------------------------------------
 

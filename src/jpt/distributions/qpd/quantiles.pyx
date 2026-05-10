@@ -134,7 +134,12 @@ cdef class QuantileDistribution:
 
     cpdef _assert_consistency(self):
         if self._cdf is not None:
-            assert len(self.cdf.functions) > 1, self.cdf.pfmt()
+            if len(self.cdf.functions) < 2:
+                raise ValueError(
+                    'Degenerate QuantileDistribution CDF (%d function(s)): %s' % (
+                        len(self.cdf.functions), self.cdf.pfmt()
+                    )
+                )
             assert len(self.cdf.intervals) == len(self.cdf.functions), \
                 '# intervals: %s != # functions: %s' % (len(self.cdf.intervals),
                                                         len(self.cdf.functions))
