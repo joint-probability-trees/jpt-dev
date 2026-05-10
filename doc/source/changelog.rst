@@ -1,6 +1,21 @@
 Changelog
 =========
 
+1.3.3
+-----
+
+Patch release — bug fix in ``QuantileDistribution`` deserialisation.
+
+Bug Fixes
+~~~~~~~~~
+
+- ``QuantileDistribution.from_json`` no longer raises ``AssertionError``
+  when deserialising a CDF with a single function segment.
+  ``_assert_consistency`` now raises ``ValueError`` with a descriptive
+  message instead of relying on a bare ``assert`` statement, so callers
+  can catch and handle the error as a ``ValueError``.
+
+
 1.3.2
 -----
 
