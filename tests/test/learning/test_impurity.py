@@ -20,7 +20,8 @@ from jpt.learning.impurity.impurity import (
     _sum_at,
     _sq_sum_at,
     _variances,
-    _compute_var_improvements
+    _compute_var_improvements,
+    _compute_gini_improvement,
 )
 from test.testutils import EXAMPLES_DATA
 
@@ -604,100 +605,513 @@ class VariancesTest(TestCase):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-@unittest.skip
 class VarianceImprovementTest(TestCase):
-    data = np.array(
-            [
-                [1, 0, 0, 0, 1],
-                [2, 1, 0, 1, 0],
-                [0, 1, 0, 1, 2],
-                [1, 2, 0, 2, 1],
-                [0, 1, 1, 1, 1],
-                [2, 1, 1, 1, 1],
-                [1, 0, 1, 1, 1],
-                [1, 2, 1, 1, 1],
-                [1, 2, 2, 0, 1],
-                [0, 1, 2, 1, 0],
-                [2, 1, 2, 1, 2],
-                [1, 0, 2, 2, 1],
-            ],
-            dtype=np.float64
-    )
+    """Pin the new ``compute_var_improvements`` semantics:
+    mean over dependent active targets, bounded in [0, 1]."""
 
-    def compute_variances(self, arr: np.ndarray):
-        rows = np.array(range(arr.shape[0]), dtype=np.int64)
-        cols = np.array(range(arr.shape[1]), dtype=np.int64)
-        sq_sums = np.ndarray(
-            shape=cols.shape[0],
-            dtype=np.float64
-        )
-        _sq_sum_at(self.data, rows, cols, sq_sums)
-        sums = np.ndarray(
-            shape=cols.shape[0],
-            dtype=np.float64
-        )
-        _sum_at(self.data, rows, cols, sums)
-        variances = np.ndarray(
-            shape=cols.shape[0],
-            dtype=np.float64
-        )
-        _variances(sq_sums, sums, rows.shape[0], variances)
-        return variances
+    @staticmethod
+    def _dep_row(indices):
+        """Pack ``indices`` followed by a -1 sentinel into a contiguous
+        SIZE_t row, matching the on-disk dependency-matrix layout."""
+        return np.array(list(indices) + [-1], dtype=np.int64)
 
-    def compute_var_left_right(self, arr, i):
-        variances_left = self.compute_variances(arr[:i, :])
-        variances_right = self.compute_variances(arr[i:, :])
-        return variances_left, variances_right
-
-    def test_compute_best_split(self):
-        """Verify best split computation on mixed variable data."""
-        # Arrange
-        df = pd.DataFrame(
-            data=self.data,
-            columns=['xi', 'yi', 'a', 'xo', 'yo'],
-            dtype=np.int_
+    def _improvement(self, var_total, var_left, var_right, n_l, n_r, dep):
+        return _compute_var_improvements(
+            np.ascontiguousarray(var_total, dtype=np.float64),
+            np.ascontiguousarray(var_left, dtype=np.float64),
+            np.ascontiguousarray(var_right, dtype=np.float64),
+            int(n_l),
+            int(n_r),
+            self._dep_row(dep),
         )
 
-        vars = infer_from_dataframe(df)
-        t = JPT(
-            variables=vars,
-            targets=vars[3:]
+    def test_single_target_reduction_unchanged(self):
+        """One dependent target with a perfect split scores 1.0."""
+        # Parent var = 0.25, perfect split → both child vars = 0
+        result = self._improvement(
+            var_total=[0.25],
+            var_left=[0.0],
+            var_right=[0.0],
+            n_l=2,
+            n_r=2,
+            dep=[0],
+        )
+        self.assertAlmostEqual(1.0, result, places=10)
+
+    def test_partial_reduction_unchanged(self):
+        """One dependent target with a 50% variance reduction scores 0.5."""
+        # left+right weighted variance = 0.5 * var_total
+        result = self._improvement(
+            var_total=[1.0],
+            var_left=[0.5],
+            var_right=[0.5],
+            n_l=5,
+            n_r=5,
+            dep=[0],
+        )
+        self.assertAlmostEqual(0.5, result, places=10)
+
+    def test_mean_over_three_targets(self):
+        """Three dependent targets, only first reduces fully → mean is 1/3.
+
+        This is the regression the plan calls out — the old
+        factorial-weighted update returned 2.0 for the same inputs.
+        """
+        # Targets 1 and 2 are unchanged by the split (vars stay at parent).
+        result = self._improvement(
+            var_total=[1.0, 1.0, 1.0],
+            var_left=[0.0, 1.0, 1.0],
+            var_right=[0.0, 1.0, 1.0],
+            n_l=5,
+            n_r=5,
+            dep=[0, 1, 2],
+        )
+        self.assertAlmostEqual(1.0 / 3.0, result, places=10)
+        self.assertLessEqual(result, 1.0)
+
+    def test_permutation_invariance(self):
+        """The mean does not depend on the order targets appear in
+        the dependency row."""
+        var_total = [1.0, 0.5, 2.0]
+        var_left = [0.2, 0.1, 1.0]
+        var_right = [0.4, 0.3, 1.5]
+        baseline = self._improvement(
+            var_total, var_left, var_right, 4, 6, [0, 1, 2]
+        )
+        for perm in [(2, 0, 1), (1, 2, 0), (2, 1, 0)]:
+            permuted = self._improvement(
+                var_total, var_left, var_right, 4, 6, list(perm)
+            )
+            self.assertAlmostEqual(
+                baseline, permuted, places=10,
+                msg='Result must be invariant under target permutation '
+                    '(perm %r differs by %r)' % (perm, permuted - baseline),
+            )
+
+    def test_result_bounded_above_by_one(self):
+        """For any valid weighted-mean partition, the score stays ≤ 1."""
+        rng = np.random.RandomState(1)
+        for _ in range(50):
+            n = rng.randint(1, 5)
+            n_l = int(rng.randint(1, 10))
+            n_r = int(rng.randint(1, 10))
+            var_total = rng.uniform(0.1, 5.0, n)
+            # Pick child variances that satisfy the law of total variance
+            # (so the *weighted* combination cannot exceed the parent).
+            var_left = rng.uniform(0, 1, n) * var_total
+            var_right = rng.uniform(0, 1, n) * var_total
+            dep = list(range(n))
+            result = self._improvement(
+                var_total, var_left, var_right, n_l, n_r, dep
+            )
+            self.assertLessEqual(result, 1.0 + 1e-9)
+            self.assertGreaterEqual(result, -1e-9)
+
+    def test_negative_zero_parent_variance_skipped(self):
+        """Float cancellation in ``variances`` can produce a tiny
+        negative parent variance for near-constant numeric columns;
+        the helper must skip those targets (treat as un-reducible)
+        instead of dividing through and blowing up the running mean.
+        """
+        # Target 0 is a near-constant numeric (numerically tiny-negative
+        # variance), target 1 has reducible variance. Without the
+        # ``<= 0`` skip, target 0 would dominate with a finite-but-huge
+        # contribution.
+        result = self._improvement(
+            var_total=[-1e-18, 1.0],
+            var_left=[0.0, 0.5],
+            var_right=[0.0, 0.5],
+            n_l=4,
+            n_r=4,
+            dep=[0, 1],
+        )
+        self.assertTrue(np.isfinite(result))
+        # Only target 1 contributes, with a 0.5 reduction.
+        self.assertAlmostEqual(0.5, result, places=10)
+
+
+# ----------------------------------------------------------------------
+
+class DependentAggregatorTest(TestCase):
+    """The aggregator divides by the number of *dependent* targets,
+    not the total. Excluding non-dependents from the row leaves the
+    per-target scores untouched and the mean tighter."""
+
+    def test_excluded_targets_do_not_affect_mean(self):
+        # Two targets; only the first is in the dependency row.
+        var_total = np.array([1.0, 1.0], dtype=np.float64)
+        var_left = np.array([0.0, 0.7], dtype=np.float64)
+        var_right = np.array([0.0, 0.7], dtype=np.float64)
+
+        dep_one = np.array([0, -1], dtype=np.int64)
+        dep_both = np.array([0, 1, -1], dtype=np.int64)
+
+        score_one = _compute_var_improvements(
+            var_total, var_left, var_right, 4, 4, dep_one
+        )
+        score_both = _compute_var_improvements(
+            var_total, var_left, var_right, 4, 4, dep_both
         )
 
-        _data = t._preprocess_data(data=df)
-        indices = np.ones(shape=(_data.shape[0],), dtype=np.int64)
-        indices[0] = 0
-        np.cumsum(indices, out=indices)
+        # Restricted to the dependent target, the split is perfect.
+        self.assertAlmostEqual(1.0, score_one, places=10)
+        # With both, the mean halves: (1.0 + 0.3) / 2 = 0.65.
+        self.assertAlmostEqual(0.65, score_both, places=10)
 
-        impurity = Impurity.from_tree(t)
-        impurity.setup(_data, indices)
-        impurity.min_samples_leaf = 1
+    def test_zero_variance_targets_skipped(self):
+        # Target 1 has zero parent variance — must not pollute the
+        # divisor; only target 0 contributes.
+        var_total = np.array([1.0, 0.0], dtype=np.float64)
+        var_left = np.array([0.5, 0.0], dtype=np.float64)
+        var_right = np.array([0.5, 0.0], dtype=np.float64)
+        dep = np.array([0, 1, -1], dtype=np.int64)
 
-        # Act
-        max_gain = impurity.compute_best_split(0, _data.shape[0])
+        score = _compute_var_improvements(
+            var_total, var_left, var_right, 3, 3, dep
+        )
+        self.assertAlmostEqual(0.5, score, places=10)
 
-        # Assert
-        print('maxgain:', max_gain)
 
-    def test_var_improvement(self):
-        """Verify variance improvement computation for all split positions."""
-        # Arrange
-        data = np.ascontiguousarray(self.data[:, -2:], dtype=np.float64)
+# ----------------------------------------------------------------------
 
-        variances_total = self.compute_variances(data)
-        print('variances total:', variances_total)
+class GiniImpurityRawTest(TestCase):
+    """Pin the new ``gini_impurity`` output: raw ΣP² − 1 per target,
+    no per-partition normaliser and no in-place inversion flip."""
 
-        # Act
-        improvements = [
-            _compute_var_improvements(
-                variances_total,
-                *self.compute_var_left_right(data, i),
-                float(i),
-                float(data.shape[0] - i)
-            ) for i in range(1, data.shape[0])]
+    @staticmethod
+    def _make_impurity(domain_size, invert=False):
+        """Build an Impurity over one symbolic target with the given
+        domain size."""
+        labels = ['v%d' % i for i in range(domain_size)]
+        ST = SymbolicType('ST_%d' % domain_size, labels=labels)
+        x = NumericVariable('x')
+        y = SymbolicVariable('y', ST, invert_impurity=invert)
+        jpt = JPT(variables=[x, y], targets=[y], features=[x, y])
+        return Impurity.from_tree(jpt)
 
-        # Assert
-        print('improvements:', improvements)
+    def test_balanced_two_class(self):
+        """Counts ``[3, 3]`` (6 samples) → raw gini = 9/36 + 9/36 − 1 = −0.5."""
+        imp = self._make_impurity(2)
+        counts = np.array([[3], [3]], dtype=np.int64)
+        result = np.zeros(1, dtype=np.float64)
+        imp._gini_impurity(counts, 6, result)
+        self.assertAlmostEqual(-0.5, result[0], places=10)
+
+    def test_balanced_three_class(self):
+        """Counts ``[2, 2, 2]`` → raw gini = 3·(4/36) − 1 = −2/3."""
+        imp = self._make_impurity(3)
+        counts = np.array([[2], [2], [2]], dtype=np.int64)
+        result = np.zeros(1, dtype=np.float64)
+        imp._gini_impurity(counts, 6, result)
+        self.assertAlmostEqual(-2.0 / 3.0, result[0], places=10)
+
+    def test_pure_partition_is_zero(self):
+        """A single non-empty class → raw gini collapses to 0 via the
+        ``n_local <= 1`` short-circuit."""
+        imp = self._make_impurity(3)
+        counts = np.array([[5], [0], [0]], dtype=np.int64)
+        result = np.zeros(1, dtype=np.float64)
+        imp._gini_impurity(counts, 5, result)
+        self.assertEqual(0.0, result[0])
+
+    def test_inversion_no_longer_applied_inplace(self):
+        """With ``invert_impurity=True``, the raw output is still the
+        un-flipped ΣP² − 1 — inversion now lives in the caller, not
+        in ``gini_impurity`` itself."""
+        imp = self._make_impurity(2, invert=True)
+        counts = np.array([[3], [3]], dtype=np.int64)
+        result = np.zeros(1, dtype=np.float64)
+        imp._gini_impurity(counts, 6, result)
+        # Old behaviour would have produced 1 − (8/9 · −0.5) ≈ 1.444;
+        # new behaviour must keep the raw ≤ 0 value.
+        self.assertAlmostEqual(-0.5, result[0], places=10)
+
+    def test_no_per_partition_normaliser(self):
+        """Re-introducing the old ``1/(1/n_local − 1)`` normaliser
+        would scale the raw output by ``-2`` for any 2-class partition
+        with both classes present. Confirm the output equals raw
+        ΣP² − 1, not the rescaled form."""
+        imp = self._make_impurity(4)
+        counts = np.array([[2], [3], [0], [0]], dtype=np.int64)
+        result = np.zeros(1, dtype=np.float64)
+        imp._gini_impurity(counts, 5, result)
+        # ΣP² = (4 + 9)/25 = 0.52 → raw = -0.48; old normaliser would
+        # divide by (1/2 − 1) = −0.5 giving +0.96.
+        self.assertAlmostEqual(-0.48, result[0], places=10)
+
+
+# ----------------------------------------------------------------------
+
+class DependencyMatrixSelfExclusionTest(TestCase):
+    """Item 2's self-exclusion replaces the old ``skip_idx`` plumbing:
+    a variable that is both feature and target must not appear in its
+    own dependency rows."""
+
+    def test_numeric_and_symbolic_rows_exclude_self(self):
+        # Mixed tree: A symbolic + B numeric + C symbolic, all are
+        # features and all are targets, with the default fully-connected
+        # dependency map.
+        AT = SymbolicType('AT_excl', ['a0', 'a1'])
+        CT = SymbolicType('CT_excl', ['c0', 'c1', 'c2'])
+        A = SymbolicVariable('A', AT)
+        B = NumericVariable('B')
+        C = SymbolicVariable('C', CT)
+        jpt = JPT(variables=[A, B, C], targets=[A, B, C], features=[A, B, C])
+        imp = Impurity.from_tree(jpt)
+
+        num_mat = np.asarray(imp.numeric_dependency_matrix)
+        sym_mat = np.asarray(imp.symbolic_dependency_matrix)
+
+        # Helper: indices in the row before the -1 sentinel.
+        def deps(row):
+            row = list(row)
+            if -1 in row:
+                row = row[: row.index(-1)]
+            return set(row)
+
+        # A's numeric dep row covers [B_num_idx] (only numeric target);
+        # A is symbolic so no self-collision in numeric_dependency_matrix
+        # is possible — but the symbolic row must omit A's own slot.
+        a_var_idx = jpt.variables.index(A)
+        b_var_idx = jpt.variables.index(B)
+        c_var_idx = jpt.variables.index(C)
+
+        # numeric_vars / symbolic_vars store variable indices in
+        # jpt.variables. Find each target's local index.
+        a_sym_local = 0  # A is the first symbolic target
+        c_sym_local = 1
+        b_num_local = 0
+
+        # A row: numeric dep = {B}, symbolic dep = {C} (A excluded).
+        self.assertEqual({b_num_local}, deps(num_mat[a_var_idx]))
+        self.assertEqual({c_sym_local}, deps(sym_mat[a_var_idx]))
+        self.assertNotIn(a_sym_local, deps(sym_mat[a_var_idx]))
+
+        # B row: numeric dep = {} (B excluded as self), symbolic = {A, C}.
+        self.assertEqual(set(), deps(num_mat[b_var_idx]))
+        self.assertEqual({a_sym_local, c_sym_local}, deps(sym_mat[b_var_idx]))
+        self.assertNotIn(b_num_local, deps(num_mat[b_var_idx]))
+
+        # C row: numeric dep = {B}, symbolic dep = {A} (C excluded).
+        self.assertEqual({b_num_local}, deps(num_mat[c_var_idx]))
+        self.assertEqual({a_sym_local}, deps(sym_mat[c_var_idx]))
+        self.assertNotIn(c_sym_local, deps(sym_mat[c_var_idx]))
+
+
+# ----------------------------------------------------------------------
+
+class GiniImprovementTest(TestCase):
+    """Behaviour of the new ``compute_gini_improvement`` helper."""
+
+    @staticmethod
+    def _raw_gini(counts):
+        """Raw ΣP² − 1 for a histogram."""
+        counts = np.asarray(counts, dtype=np.float64)
+        n = counts.sum()
+        return float((counts * counts).sum() / (n * n) - 1.0)
+
+    def test_three_equal_partitions(self):
+        """Parent split into three identical children → no reduction."""
+        g_p = self._raw_gini([4, 4, 4])  # parent 12
+        g_l = self._raw_gini([2, 2, 2])
+        g_r = self._raw_gini([2, 2, 2])
+        result = _compute_gini_improvement(g_p, g_l, g_r, 6, 6)
+        self.assertAlmostEqual(0.0, result, places=10)
+
+    def test_perfect_split(self):
+        """Pure children → full reduction = 1.0."""
+        g_p = self._raw_gini([5, 5])
+        g_l = self._raw_gini([5, 0])
+        g_r = self._raw_gini([0, 5])
+        result = _compute_gini_improvement(g_p, g_l, g_r, 5, 5)
+        self.assertAlmostEqual(1.0, result, places=10)
+
+    def test_worked_example_50_10_10_10(self):
+        """Parent 50/10/10/10 → left 50/10, right 10/10 → ≈ 0.407.
+
+        Today's per-partition normaliser would emit ≈ 0.111 here.
+        """
+        g_p = self._raw_gini([50, 10, 10, 10])
+        g_l = self._raw_gini([50, 10, 0, 0])
+        g_r = self._raw_gini([0, 0, 10, 10])
+        result = _compute_gini_improvement(g_p, g_l, g_r, 60, 20)
+        self.assertAlmostEqual(0.4074, result, places=3)
+
+    def test_random_grid_in_unit_interval(self):
+        """For arbitrary histograms with weighted-average law of total
+        variance, the score stays inside ``[0, 1]``."""
+        rng = np.random.RandomState(7)
+        for _ in range(100):
+            k = rng.randint(2, 6)
+            n_l = int(rng.randint(2, 50))
+            n_r = int(rng.randint(2, 50))
+            left = rng.multinomial(n_l, np.full(k, 1.0 / k))
+            right = rng.multinomial(n_r, np.full(k, 1.0 / k))
+            parent = left + right
+            if parent.sum() == 0:
+                continue
+            g_p = self._raw_gini(parent)
+            if g_p == 0:
+                continue
+            g_l = self._raw_gini(left) if left.sum() > 0 else 0.0
+            g_r = self._raw_gini(right) if right.sum() > 0 else 0.0
+            result = _compute_gini_improvement(g_p, g_l, g_r, n_l, n_r)
+            self.assertLessEqual(result, 1.0 + 1e-9)
+            self.assertGreaterEqual(result, -1e-9)
+
+
+# ----------------------------------------------------------------------
+
+class InvertedImpurityBoundedTest(TestCase):
+    """Inversion now applies to the per-target improvement, not the
+    raw gini, so the bounded ``[0, 1]`` invariant survives."""
+
+    def test_pure_children_with_inverted_target(self):
+        """Parent ``G_p = 0.9`` (≈ −0.5 raw), both children pure →
+        ``score = 1 − 1 = 0``, never the −9 the old code produced."""
+        # Construct a tree whose only target is symbolic with
+        # ``invert_impurity=True``. Feed a clean two-class split.
+        InvType = SymbolicType('Inv', labels=['a', 'b'])
+        x = NumericVariable('x')
+        y = SymbolicVariable('y', InvType, invert_impurity=True)
+        df = pd.DataFrame({
+            'x': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            'y': ['a', 'a', 'a', 'b', 'b', 'b'],
+        })
+        jpt = JPT(variables=[x, y], targets=[y], features=[x, y])
+        data = preprocess_data(jpt, df)
+        imp = Impurity.from_tree(jpt)
+        imp.min_samples_leaf = 1
+        imp.setup(
+            data.values,
+            np.arange(data.shape[0], dtype=np.int64),
+        )
+        gain = imp.compute_best_split(0, data.shape[0])
+
+        # Inverted target + a discriminative split = no preference for
+        # the split (score 0 after inversion). The numeric features can
+        # still drive a split, but for this all-symbolic-target tree
+        # the best gain must not be the runaway negative the old code
+        # produced.
+        self.assertGreaterEqual(gain, -1e-9)
+        self.assertLessEqual(gain, 1.0 + 1e-9)
+
+
+# ----------------------------------------------------------------------
+
+class SymmetricModalityWeightTest(TestCase):
+    """The per-variable ``w_num_local`` collapses to the single
+    surviving modality when the other has no reducible impurity."""
+
+    def test_all_symbolic_pure_numeric_perfect_split(self):
+        """One numeric target with a perfect split + one already-pure
+        symbolic target → impurity improvement should be ≈ 1.0
+        (not the old half-weight 0.5)."""
+        Y2T = SymbolicType('Y2T', labels=['a'])  # single value → pure
+        x = NumericVariable('x')
+        y1 = NumericVariable('y1')
+        # Symbolic target whose only legal value is 'a' — Patrons-style
+        # degenerate target. The symbolic side has nothing to learn.
+        y2 = SymbolicVariable('y2', Y2T)
+        df = pd.DataFrame({
+            'x': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            'y1': [0.0, 0.0, 0.0, 100.0, 100.0, 100.0],
+            'y2': ['a'] * 6,
+        })
+        jpt = JPT(
+            variables=[x, y1, y2],
+            targets=[y1, y2],
+            features=[x],
+        )
+        data = preprocess_data(jpt, df)
+        imp = Impurity.from_tree(jpt)
+        imp.min_samples_leaf = 1
+        imp.setup(
+            data.values,
+            np.arange(data.shape[0], dtype=np.int64),
+        )
+        gain = imp.compute_best_split(0, data.shape[0])
+
+        # Numeric side perfect split → 1.0 mean reduction. Symbolic
+        # side is pure → contributes nothing. With dynamic
+        # ``w_num_local`` the active count of sym targets is 0, so
+        # the weight collapses to the numeric side and we get 1.0.
+        self.assertAlmostEqual(1.0, gain, places=6)
+
+    def test_all_numeric_pure_symbolic_perfect_split(self):
+        """One numeric target that is *already constant* + one
+        symbolic target with a perfect split → the symbolic side
+        carries the whole score."""
+        YBoolT = SymbolicType('YBoolT', labels=['a', 'b'])
+        x = NumericVariable('x')
+        y1 = NumericVariable('y1')   # constant → variance 0 → pure
+        y2 = SymbolicVariable('y2', YBoolT)
+        df = pd.DataFrame({
+            'x': [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            'y1': [7.0] * 6,
+            'y2': ['a', 'a', 'a', 'b', 'b', 'b'],
+        })
+        jpt = JPT(
+            variables=[x, y1, y2],
+            targets=[y1, y2],
+            features=[x],
+        )
+        data = preprocess_data(jpt, df)
+        imp = Impurity.from_tree(jpt)
+        imp.min_samples_leaf = 1
+        imp.setup(
+            data.values,
+            np.arange(data.shape[0], dtype=np.int64),
+        )
+        gain = imp.compute_best_split(0, data.shape[0])
+
+        # Numeric pure → contributes 0 with active count 0. Symbolic
+        # side fully separates → 1.0.
+        self.assertAlmostEqual(1.0, gain, places=6)
+
+    def test_mixed_modality_combines_as_unweighted_mean(self):
+        """One numeric + one symbolic active target → the combined
+        score must equal ``0.5·num_score + 0.5·sym_score``.
+
+        Pins the symmetric reformulation: the per-modality means are
+        themselves weighted by the per-variable active counts, not by
+        the tree-wide n_num_vars / n_vars ratio the old aggregator
+        used. With one active target per modality, both weights are
+        ½ and the combined score is the unweighted per-target mean.
+        """
+        YBoolT = SymbolicType('YBoolT_mixed', labels=['a', 'b'])
+        x = NumericVariable('x')
+        y_num = NumericVariable('y_num')
+        y_sym = SymbolicVariable('y_sym', YBoolT)
+        # 6 rows, balanced a/b in y_sym; y_num jumps at the same
+        # midpoint y_sym mixes around. The best split is at x=3.5:
+        #   num_score = 1.0 (var-perfect)
+        #   sym_score = 1/9 (parent {a:3, b:3} → g_p=−0.5;
+        #                   left {a:2, b:1}, right {a:1, b:2} →
+        #                   each child g = −4/9;
+        #                   imp_orig = (−0.5 − 0.5·−4/9 − 0.5·−4/9)
+        #                              / −0.5 = (1/18)/(0.5) = 1/9)
+        # Both modalities contribute one active target → combined
+        # = 0.5·1.0 + 0.5·(1/9) = 5/9.
+        df = pd.DataFrame({
+            'x':     [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            'y_num': [0.0, 0.0, 0.0, 10.0, 10.0, 10.0],
+            'y_sym': ['a', 'a', 'b', 'a', 'b', 'b'],
+        })
+        jpt = JPT(
+            variables=[x, y_num, y_sym],
+            targets=[y_num, y_sym],
+            features=[x],
+        )
+        data = preprocess_data(jpt, df)
+        imp = Impurity.from_tree(jpt)
+        imp.min_samples_leaf = 1
+        imp.setup(
+            data.values,
+            np.arange(data.shape[0], dtype=np.int64),
+        )
+        gain = imp.compute_best_split(0, data.shape[0])
+        self.assertAlmostEqual(5.0 / 9.0, gain, places=6)
 
 
 # ----------------------------------------------------------------------

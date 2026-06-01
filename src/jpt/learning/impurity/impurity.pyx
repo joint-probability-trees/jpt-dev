@@ -15,7 +15,7 @@ from libc.math cimport isinf, isnan
 
 from dnutils import mapstr
 
-from ...base.cutils.cutils cimport DTYPE_t, SIZE_t, mean, nan, sort, ninf
+from ...base.cutils.cutils cimport DTYPE_t, SIZE_t, nan, sort, ninf
 
 # variables declaring that at num_samples[0] are the number of samples left of the split and vice versa
 cdef int LEFT = 0
@@ -36,38 +36,51 @@ cdef inline DTYPE_t compute_var_improvements(
     DTYPE_t[::1] variances_right,
     SIZE_t samples_left,
     SIZE_t samples_right,
-    SIZE_t skip_idx=-1) noexcept nogil:
+    SIZE_t[::1] dependent_columns) noexcept nogil:
     """
-    Compute the variance improvement of a split. 
-    
+    Compute the mean relative variance improvement of a split across the
+    dependent numeric targets.
+
     :param variances_total: The variances before the split
     :param variances_left: The variances of the left side of the split
     :param variances_right: The variances of the right side of the split
     :param samples_left: The amount of samples on the left side of the split
     :param samples_right: The amount of samples on the right side of the split
-    :param skip_idx: Skip the variable with this index for the computation
-    
-    :return: double describing the relative variance improvement
+    :param dependent_columns: indices into the numeric-target buffers to
+        iterate over; -1 acts as an end-of-row sentinel.
+
+    :return: double describing the mean per-target relative variance
+        improvement, in [0, 1] for non-empty inputs.
     """
-    cdef SIZE_t i
+    cdef SIZE_t j, i
     cdef DTYPE_t variance_impr = 0
     cdef DTYPE_t[::1] variances_old = variances_total
     cdef DTYPE_t n_samples = <DTYPE_t> samples_left + samples_right
     cdef DTYPE_t divisor = 0
 
-    for i in range(variances_old.shape[0]):
+    for j in range(dependent_columns.shape[0]):
+        i = dependent_columns[j]
 
-        # skip the index specified from the signature or if variance old is 0, since then variance new has to be 0 too.
-        # if this was not skipped, nans would pollute the sum.
-        if skip_idx == i or variances_old[i] == 0:
+        # -1 marks the end of the dependency row.
+        if i == -1:
+            break
+
+        # Skip targets with non-positive parent variance — nothing to
+        # improve and dividing by zero (or a tiny negative produced by
+        # float cancellation in `variances`) would otherwise blow up
+        # the per-target ratio.
+        if variances_old[i] <= 0:
             continue
 
-        variance_impr = variance_impr * <DTYPE_t> divisor + (
+        variance_impr = (
+            variance_impr * divisor + (
+                variances_old[i] -
                 (
-                    variances_old[i] -
-                    (variances_left[i] * <DTYPE_t> samples_left + variances_right[i] * <DTYPE_t> samples_right) / n_samples
-                ) / variances_old[i]
-        ) / <DTYPE_t> (divisor + 1)
+                    variances_left[i] * <DTYPE_t> samples_left
+                    + variances_right[i] * <DTYPE_t> samples_right
+                ) / n_samples
+            ) / variances_old[i]
+        ) / (divisor + 1)
         divisor += 1
 
     return variance_impr
@@ -79,7 +92,7 @@ cpdef inline DTYPE_t _compute_var_improvements(
     DTYPE_t[::1] variances_right,
     SIZE_t samples_left,
     SIZE_t samples_right,
-    SIZE_t skip_idx=-1
+    SIZE_t[::1] dependent_columns
 ) noexcept nogil:
     """Python-callable version for testing only."""
     return compute_var_improvements(
@@ -88,8 +101,38 @@ cpdef inline DTYPE_t _compute_var_improvements(
         variances_right,
         samples_left,
         samples_right,
-        skip_idx
+        dependent_columns
     )
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
+cdef inline DTYPE_t compute_gini_improvement(
+    DTYPE_t g_p,
+    DTYPE_t g_l,
+    DTYPE_t g_r,
+    SIZE_t n_l,
+    SIZE_t n_r,
+) noexcept nogil:
+    """
+    Per-target normalised gini reduction in [0, 1] using the parent's raw
+    ``ΣP² − 1`` as denominator. Caller must ensure ``g_p != 0``.
+    """
+    cdef DTYPE_t w_l = <DTYPE_t> n_l / <DTYPE_t> (n_l + n_r)
+    cdef DTYPE_t w_r = 1.0 - w_l
+    return (g_p - w_l * g_l - w_r * g_r) / g_p
+
+
+cpdef inline DTYPE_t _compute_gini_improvement(
+    DTYPE_t g_p,
+    DTYPE_t g_l,
+    DTYPE_t g_r,
+    SIZE_t n_l,
+    SIZE_t n_r,
+) noexcept nogil:
+    """Python-callable version for testing only."""
+    return compute_gini_improvement(g_p, g_l, g_r, n_l, n_r)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -369,14 +412,11 @@ cdef class Impurity:
     # float describing the best impurity improvement
     cdef readonly  DTYPE_t max_impurity_improvement
 
-    # percentage of numeric targets
-    cdef DTYPE_t w_numeric
-
     # 2D integer array describing all dependencies that are considered under numeric variables
-    cdef SIZE_t[:, ::1] numeric_dependency_matrix
+    cdef readonly SIZE_t[:, ::1] numeric_dependency_matrix
 
     # 2D integer array describing all dependencies that are considered under symbolic variables
-    cdef SIZE_t[:, ::1] symbolic_dependency_matrix
+    cdef readonly SIZE_t[:, ::1] symbolic_dependency_matrix
 
     # per-sample mask: 1 = training, 0 = evaluation; None = disabled (all training)
     cdef np.uint8_t[::1] validation_mask
@@ -560,9 +600,6 @@ cdef class Impurity:
         # aligned with self.features (numeric features first, then symbolic)
         self.min_improvements = min_improvements
 
-        # calculate percentage of numeric targets
-        self.w_numeric = <DTYPE_t> self.n_num_vars / <DTYPE_t> self.n_vars
-
         # construct the dependency structure
         dependency_indices = dependency_indices
         cdef int idx_var
@@ -580,19 +617,24 @@ cdef class Impurity:
         )
         self.symbolic_dependency_matrix = self.numeric_dependency_matrix.copy()
 
+        # Exclude idx_var from its own dependency rows so a feature
+        # that is also a target does not score impurity reduction
+        # against itself (this replaces the old skip_idx parameter).
         for idx_var in self.features:  # For all feature variables...
             # ...get the indices of the dependent numeric variables...
             indices = np.array([
-                i_num for i_num, i_var in enumerate(self.numeric_vars) if i_var in dependency_indices[idx_var]
+                i_num for i_num, i_var in enumerate(self.numeric_vars)
+                if i_var in dependency_indices[idx_var] and i_var != idx_var
             ], dtype=np.int64)
             if indices.shape[0]:  # ...and store them in the numeric dependency matrix
                 self.numeric_dependency_matrix[idx_var, :indices.shape[0]] = indices
 
-            # Get the indices of the dependent numeric variables
+            # Get the indices of the dependent symbolic variables
             indices = np.array([
-                i_sym for i_sym, i_var in enumerate(self.symbolic_vars) if i_var in dependency_indices[idx_var]
+                i_sym for i_sym, i_var in enumerate(self.symbolic_vars)
+                if i_var in dependency_indices[idx_var] and i_var != idx_var
             ], dtype=np.int64)
-            if indices.shape[0]:  # ... and store them in the numeric dependency matrix.
+            if indices.shape[0]:  # ... and store them in the symbolic dependency matrix.
                 self.symbolic_dependency_matrix[idx_var, :indices.shape[0]] = indices
 
     @classmethod
@@ -778,96 +820,54 @@ cdef class Impurity:
         """
         return self.n_num_vars_total - self.n_num_vars
 
-    cdef inline void mask_nondependent_variances(
-            Impurity self,
-            SIZE_t var_idx,
-            DTYPE_t[::1] variances_total
-    ) noexcept nogil:
-        """
-        For numeric targets that are NOT dependent on
-        ``var_idx``, set variances_left and variances_right
-        to variances_total so that their contribution to
-        the variance improvement is zero.
-        """
-        cdef SIZE_t i, j
-        cdef int is_dependent
-        for i in range(self.n_num_vars):
-            is_dependent = 0
-            for j in range(
-                self.numeric_dependency_matrix.shape[1]
-            ):
-                if (
-                    self.numeric_dependency_matrix[
-                        var_idx, j
-                    ] == -1
-                ):
-                    break
-                if (
-                    self.numeric_dependency_matrix[
-                        var_idx, j
-                    ] == i
-                ):
-                    is_dependent = 1
-                    break
-            if not is_dependent:
-                self.variances_left[i] = (
-                    variances_total[i]
-                )
-                self.variances_right[i] = (
-                    variances_total[i]
-                )
-
     cdef inline void gini_impurity(Impurity self,
                                    SIZE_t[:, ::1] counts,
                                    SIZE_t n_samples,
                                    DTYPE_t[::1] result) noexcept nogil:
         """
-        Calculate gini impurity of histogram
-        
-        Following the gini impurity measure (normalized by the number of possible symbolic values:
-        ..
-        In the uniform distribution: -Gini_u(C) = -|C|/|C| + |C|/|C|^2 = 1/|C| - 1
-        
-         Gini(C) = 1 / Gini_u(C) * \sum_c (P(c) * (1 - P(c)) = 1 / Gini_u(C) * \sum_c (P(c) - P(c)^2)
-        -Gini(C) = 1 / Gini_u(C) * (\sum_c P(c)^2 - \sum_c P(c)) | \sum_c P(c) = 1 
-        -Gini(C) = 1 / Gini_u(C) * (\sum_c P(c)^2 - 1)
-         Gini(C) = 1 / -Gini_u(C) * (\sum_c P(c)^2 - 1)
-         Gini(C) = (\sum_c P(c)^2 - 1) / (1 / |C| - 1)
-         
-        :param counts: TODO: histogram?
-        :param n_samples: number of samples 
-        :param result: resulting array to write into, will be overwritten completely
+        Per-target raw ``ΣP(c)² − 1`` from the histogram counts.
+
+        Always ≤ 0; equals 0 when the partition is pure (≤ 1 class
+        actually present), the target has a single-value domain, or the
+        partition is empty. Callers compose the per-target normalised
+        reduction via ``compute_gini_improvement``.
+
+        The whole ``result`` row is overwritten; slots that the caller
+        did not feed valid counts for (e.g. non-dependent targets whose
+        ``counts[:, i]`` was never updated) get a syntactically-valid
+        but semantically-meaningless raw gini and must not be read.
         """
         cdef SIZE_t i, j, n_local
+        cdef DTYPE_t sum_sq
         result[...] = 0
         for i in range(self.n_sym_vars):
 
-            # skip variables that only have 1 possible value
+            # skip targets that only have 1 possible value
             if self.symbols[i] == 1:
                 continue
 
-            # Count symbols actually present in this
-            # partition (non-zero histogram bins)
+            # Count classes actually present in this partition;
+            # if at most one is present, the partition is pure.
             n_local = 0
+            sum_sq = 0
             for j in range(self.symbols[i]):
                 if counts[j, i] > 0:
                     n_local += 1
-                result[i] += (
-                    <DTYPE_t> counts[j, i]
-                    * counts[j, i]
-                )
+                sum_sq += <DTYPE_t> counts[j, i] * counts[j, i]
 
-            if n_local <= 1:
+            if n_local <= 1 or n_samples <= 0:
                 result[i] = 0
             else:
-                result[i] /= <DTYPE_t> (n_samples * n_samples)
-                result[i] -= 1
-                result[i] /= (
-                    1. / (<DTYPE_t> n_local) - 1.
-                )
+                result[i] = sum_sq / <DTYPE_t> (n_samples * n_samples) - 1.0
 
-            if self.invert_impurity[i]:
-                result[i] = 1 - result[i]
+    cpdef void _gini_impurity(
+            Impurity self,
+            SIZE_t[:, ::1] counts,
+            SIZE_t n_samples,
+            DTYPE_t[::1] result,
+    ):
+        """Python-callable version of ``gini_impurity`` for testing only."""
+        self.gini_impurity(counts, n_samples, result)
 
     cpdef SIZE_t _col_is_constant(Impurity self, SIZE_t start, SIZE_t end, SIZE_t col):
         '''For testing only.'''
@@ -962,9 +962,8 @@ cdef class Impurity:
             impurity_rows = self.indices[self.start:self.end]
             n_impurity_samples = n_samples
 
-        # initialize impurity and gini index
+        # initialize impurity index
         cdef np.float64_t impurity_total = 0
-        cdef np.float64_t gini_total = 0
 
         # if numeric targets exist
         if self.has_numeric_vars():
@@ -1005,13 +1004,10 @@ cdef class Impurity:
                      self.symbolic_vars,
                      result=self.symbols_total)
 
-            # calculate gini impurity of histogram
+            # calculate per-target raw ΣP² − 1 of the parent histogram;
+            # this is the g_p input fed to compute_gini_improvement and
+            # also the per-target pure-parent skip signal.
             self.gini_impurity(self.symbols_total, n_impurity_samples, self.gini_impurities)
-
-            gini_total = mean(self.gini_impurities)
-
-        else:
-            gini_total = 0
 
 
         # int describing if the current variable is symbolic or not
@@ -1051,7 +1047,6 @@ cdef class Impurity:
                 symbolic,
                 symbolic_idx,
                 self.variances_total if self.has_numeric_vars() else None,
-                gini_total,
                 self.index_buffer,
                 &split_pos,
                 n_impurity_samples
@@ -1124,7 +1119,6 @@ cdef class Impurity:
             int symbolic,
             int symbolic_idx,
             DTYPE_t[::1] variances_total,
-            DTYPE_t gini_total,
             SIZE_t[::1] index_buffer,
             SIZE_t* best_split_pos,
             SIZE_t n_impurity_samples
@@ -1137,7 +1131,6 @@ cdef class Impurity:
         :param symbolic: 1 if the variable is symbolic, 0 if numeric
         :param symbolic_idx:
         :param variances_total:
-        :param gini_total:
         :param index_buffer:
         :param best_split_pos: pointer to the position of the best split
         :return:
@@ -1203,14 +1196,45 @@ cdef class Impurity:
         cdef SIZE_t sample_idx
         cdef int last_iter
         cdef DTYPE_t min_samples
-        cdef SIZE_t num_feat_idx = -1
 
-        # check if currently evaluated variable is numeric target variable
-        if self.has_numeric_vars(var_idx):
-            for i in range(self.n_num_vars):
-                if self.numeric_vars[i] == var_idx:
-                    num_feat_idx = i
+        # ---- Active dependent target counts for the modality weighting ----
+        # Per-variable counts (not per-tree): targets that actually carry
+        # reducible impurity and that this variable is allowed to optimise
+        # against. variances_total may be None when there are no numeric
+        # targets at all.
+        cdef SIZE_t[::1] num_dep_row = self.numeric_dependency_matrix[var_idx, :]
+        cdef SIZE_t[::1] sym_dep_row = self.symbolic_dependency_matrix[var_idx, :]
+        cdef SIZE_t n_num_active = 0
+        cdef SIZE_t n_sym_active = 0
+        cdef SIZE_t dep_idx
+
+        if variances_total is not None:
+            for j in range(num_dep_row.shape[0]):
+                dep_idx = num_dep_row[j]
+                if dep_idx == -1:
                     break
+                if variances_total[dep_idx] > 0:
+                    n_num_active += 1
+
+        if self.has_symbolic_vars():
+            for j in range(sym_dep_row.shape[0]):
+                dep_idx = sym_dep_row[j]
+                if dep_idx == -1:
+                    break
+                if self.gini_impurities[dep_idx] != 0:
+                    n_sym_active += 1
+
+        cdef DTYPE_t w_num_local = 0.
+        if n_num_active + n_sym_active > 0:
+            w_num_local = (
+                <DTYPE_t> n_num_active
+                / <DTYPE_t> (n_num_active + n_sym_active)
+            )
+
+        cdef DTYPE_t sym_score
+        cdef DTYPE_t sym_sum
+        cdef DTYPE_t imp_orig
+        cdef DTYPE_t g_p
 
         cdef int subsequent_equal
 
@@ -1317,8 +1341,8 @@ cdef class Impurity:
 
             samples_right = self.num_samples[RIGHT]
 
-            # if numeric targets exist
-            if self.has_numeric_vars(var_idx):
+            # if numeric targets exist and any of them is active
+            if n_num_active > 0:
                 # calculate variance of left split
                 variances(
                     self.sq_sums_left,
@@ -1335,39 +1359,52 @@ cdef class Impurity:
                     result=self.variances_right
                 )
 
-                # Mask non-dependent numeric targets:
-                # set their variances to var_total so
-                # their improvement contribution is 0.
-                self.mask_nondependent_variances(
-                    var_idx,
-                    variances_total
-                )
-
-                # compute the variance improvement for this split
+                # compute mean per-target variance improvement, restricted
+                # to dependent numeric targets (the dep row already
+                # excludes var_idx itself).
                 impurity_improvement += compute_var_improvements(
                     variances_total,
                     self.variances_left,
                     self.variances_right,
                     samples_left,
                     samples_right,
-                    num_feat_idx
-                ) * self.w_numeric
+                    num_dep_row
+                ) * w_num_local
 
-            # if symbolic targets exist
-            if self.has_symbolic_vars():
+            # if symbolic targets exist and any of them is active
+            if n_sym_active > 0:
 
-                # if total gini impurity is not 0
-                if gini_total:
+                # raw ΣP² − 1 of each child histogram per target
+                self.gini_impurity(self.symbols_left, samples_left, self.gini_left)
+                self.gini_impurity(self.symbols_right, samples_right, self.gini_right)
 
-                    # update gini impurity left and right of the split
-                    self.gini_impurity(self.symbols_left, samples_left, self.gini_left)
-                    self.gini_impurity(self.symbols_right, samples_right, self.gini_right)
-                    impurity_improvement += (
-                        (gini_total -
-                        mean(self.gini_left) * (<DTYPE_t> samples_left / <DTYPE_t> (samples_left + samples_right)) -
-                        mean(self.gini_right) * (<DTYPE_t> samples_right / <DTYPE_t> (samples_left + samples_right))) / gini_total
-                        * (1 - self.w_numeric)
+                # mean of the per-target normalised reductions across the
+                # active dependent symbolic targets; inverted targets
+                # contribute 1 − imp_orig instead of imp_orig.
+                sym_sum = 0.
+                for j in range(sym_dep_row.shape[0]):
+                    dep_idx = sym_dep_row[j]
+                    if dep_idx == -1:
+                        break
+                    g_p = self.gini_impurities[dep_idx]
+                    # pure parent → no reducible impurity; skip uniformly
+                    # in both orientations (do NOT translate to 1 − 0 = 1)
+                    if g_p == 0:
+                        continue
+                    imp_orig = compute_gini_improvement(
+                        g_p,
+                        self.gini_left[dep_idx],
+                        self.gini_right[dep_idx],
+                        samples_left,
+                        samples_right,
                     )
+                    if self.invert_impurity[dep_idx]:
+                        sym_sum += 1.0 - imp_orig
+                    else:
+                        sym_sum += imp_orig
+
+                sym_score = sym_sum / <DTYPE_t> n_sym_active
+                impurity_improvement += sym_score * (1.0 - w_num_local)
 
             # if this variable is symbolic
             if symbolic:
