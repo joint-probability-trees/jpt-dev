@@ -1,6 +1,25 @@
 Changelog
 =========
 
+1.3.4
+-----
+
+Patch release — impurity aggregator fix and example cleanup.
+
+Bug Fixes
+~~~~~~~~~
+
+- Fixed incorrect impurity averaging in ``compute_var_improvements``
+  (``learning/impurity/impurity.pyx``): the function now accepts a
+  sentinel-terminated ``dependent_columns`` buffer and iterates only
+  over active dependent targets, skipping targets with non-positive
+  parent variance. Previously it used a ``skip_idx`` scalar that caused
+  incorrect averaging when some modalities were inactive.
+
+- Removed the deprecated ``columns=`` keyword argument from
+  ``examples/banana.py`` and ``examples/federal.py``.
+
+
 1.3.3
 -----
 
