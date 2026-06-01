@@ -279,7 +279,7 @@ def main(visualize=True) -> None:
         variables=variables,
         min_samples_leaf=int(data.shape[0] * .01)
     )
-    tree.learn(columns=data.values.T)
+    tree.learn(data)
 
     # Plot and save the tree
     out_dir: str = tempfile.mkdtemp(

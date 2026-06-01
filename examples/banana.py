@@ -76,7 +76,7 @@ def main(visualize=True):
         variables=variables,
         min_samples_leaf=data.shape[0] * .01
     )
-    tree.learn(columns=data.values.T)
+    tree.learn(data)
     tree.save(
         os.path.join(out_dir, 'banana.json')
     )
