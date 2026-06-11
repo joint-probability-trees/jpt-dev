@@ -6,6 +6,10 @@
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage{enumitem}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usetikzlibrary{arrows.meta,positioning,calc}
 \usepackage[round]{natbib}
 \usepackage[colorlinks=true,linkcolor=blue!55!black,citecolor=teal!60!black,urlcolor=blue!55!black]{hyperref}
 
@@ -26,11 +30,11 @@
 \DeclareMathOperator{\E}{\mathbb{E}}
 \DeclareMathOperator{\Var}{Var}
 \newcommand{\R}{\mathbb{R}}
+\newcommand{\Xsp}{\mathcal{X}}
 \newcommand{\X}{\mathcal{X}}
 \newcommand{\Y}{\mathcal{Y}}
-\newcommand{\Z}{\mathcal{Z}}
-\newcommand{\Prob}{\mathcal{P}}
-\newcommand{\Leaf}{\mathcal{L}}
+\newcommand{\Dens}{\mathcal{D}}
+\newcommand{\Leafset}{\Lambda}
 \newcommand{\inner}[2]{\langle #1,\, #2\rangle}
 \newcommand{\eps}{\varepsilon}
 \newcommand{\jpt}{\textsc{jpt}}
@@ -39,11 +43,18 @@
 \newcommand{\jptboost}{\textsc{JPTBoost}}
 \newcommand{\mixture}{\textsc{MixtureJPT}}
 
+% Consistent colour palette for the experimental bar charts.
+\definecolor{cJPT}{HTML}{4C72B0}
+\definecolor{cForest}{HTML}{55A868}
+\definecolor{cBoost}{HTML}{C44E52}
+\definecolor{cGBM}{HTML}{8172B3}
+
 \title{\textbf{Ensemble Joint Probability Trees:\\[2pt]
 A Likelihood-Geometric Account of Bagging and Boosting\\
 for Hybrid Density Trees}}
 
-\author{Joint Probability Trees Project}
+\author{Daniel Nyga \and Mareike Picklum \and Tom Schierenbeck \and Michael Beetz\\[2pt]
+\small Institute for Artificial Intelligence, University of Bremen}
 \date{Draft --- Phase 0 (theory) for review}
 
 \begin{document}
@@ -51,62 +62,72 @@ for Hybrid Density Trees}}
 
 \begin{abstract}
 Joint Probability Trees (JPTs) are tree-structured estimators of a
-\emph{full joint density} over mixed numeric, integer and symbolic
-variables, trained once and queried for arbitrary conditionals,
-marginals, MPE states and likelihoods. A single JPT is a low-variance
-but high-bias estimator: empirically it trails additive gradient-boosted
-ensembles on point prediction. This paper develops the theory of
-\emph{ensembles} of JPTs and answers one sharp question that decides the
-software design: \emph{is there a single likelihood-boosting framework in
-which discriminative gradient boosting is a special case of generative
-density boosting?} We give a complete and, we argue, honest answer.
-We first show that a JPT is a self-normalised, disjoint-support mixture,
-so that any convex combination of JPTs is again a valid joint with no
-partition function. We then prove that \emph{generative} likelihood
-boosting---the additive mixture
-$p_t=(1-\alpha_t)p_{t-1}+\alpha_t c_t$---is exactly Frank--Wolfe ascent of
+\emph{full joint distribution} $P(\mathbf{X})$ over mixed numeric, integer
+and symbolic variables, learned once and queried for arbitrary
+conditionals, marginals, most-probable explanations and likelihoods.
+A single JPT is a low-variance but high-bias estimator: empirically it
+trails additive gradient-boosted ensembles on point prediction. This paper
+develops the theory of \emph{ensembles} of JPTs and answers one sharp
+question that decides the software design: \emph{is there a single
+likelihood-boosting framework in which discriminative gradient boosting is
+a special case of generative density boosting?} We give a complete and, we
+argue, honest answer. We first cast a JPT in the notation of
+\citet{nyga2023jpt}---a mixture $\sum_{\lambda\in\Leafset}P(L{=}\lambda)
+\prod_i P(X_i\mid L{=}\lambda)$ over the leaves $\Leafset$ of a tree
+$T$---and show it is self-normalising, so that any convex combination of
+JPTs is again a valid joint with no partition function. We then prove that
+\emph{generative} likelihood boosting---the additive mixture
+$P_t=(1-\alpha_t)P_{t-1}+\alpha_t C_t$---is exactly Frank--Wolfe ascent of
 the empirical joint log-likelihood over the convex set of densities, with
-the canonical reweighting $w_i\propto 1/p_{t-1}(z_i)$ falling out as the
-\emph{exact} linear-minimisation oracle and the mixing weight $\alpha_t$
-as an exact one-dimensional concave line search. We then show that
-classical gradient boosting is additive not in density space but in the
-\emph{natural-parameter} (logit / conditional-mean) space, and that this
-is precisely maximum \emph{conditional}-likelihood estimation: squared
-error is a Gaussian conditional, log-loss a categorical one.
-The two constructions are unified by a single meta-principle---greedy
-functional ascent of a likelihood via a linear oracle on its functional
-gradient---but live in two different geometries (the density simplex
-vs.\ an affine natural-parameter space). We prove a \emph{tractability
-dichotomy}: additive natural-parameter boosting of a \emph{joint} density
-requires an intractable partition function, whereas conditioning collapses
-that normaliser to a sum over the (low-dimensional) target alone, which is
-exactly what makes discriminative boosting tractable; the generative
-mixture sidesteps the normaliser altogether by mixing rather than tilting.
-We conclude that discriminative \jptboost{} is \emph{not} a parametric
-special case of generative \likeboost{}---a conditioned generative mixture
-is a gated mixture-of-experts, not an additive-logit predictor---so the two
-are best realised as sibling classes under a shared interface, with bagging
-a third, non-greedy member. We close with the architectural consequences
-and preliminary empirical evidence to be reproduced from the library API.
+the canonical reweighting $w_i\propto 1/P_{t-1}(z_i)$ falling out as the
+\emph{exact} linear-minimisation oracle and the mixing weight $\alpha_t$ as
+an exact one-dimensional concave line search. We then show that classical
+gradient boosting is additive not in density space but in the
+\emph{natural-parameter} (logit / conditional-mean) space, and that this is
+precisely maximum \emph{conditional}-likelihood estimation: squared error
+is a Gaussian conditional, log-loss a categorical one. The two
+constructions are unified by a single meta-principle---greedy functional
+ascent of a likelihood via a linear oracle on its functional
+gradient---but live in two different geometries. We prove a
+\emph{tractability dichotomy}: additive natural-parameter boosting of a
+\emph{joint} requires an intractable partition function, whereas
+conditioning collapses that normaliser to a sum over the (low-dimensional)
+target alone, which is exactly what makes discriminative boosting
+tractable; the generative mixture sidesteps the normaliser by mixing rather
+than tilting. We conclude that discriminative \jptboost{} is \emph{not} a
+parametric special case of generative \likeboost{}---a conditioned
+generative mixture is a gated mixture-of-experts, not an additive-logit
+predictor---so the two are best realised as sibling classes under a shared
+interface, with bagging a third member. Preliminary experiments, reported
+visually, corroborate the geometry on eight datasets.
 \end{abstract}
-
-\tableofcontents
 
 % ===========================================================================
 \section{Introduction}
 \label{sec:intro}
 
 A Joint Probability Tree \citep{nyga2023jpt} represents a joint
-probability density $p(z)$, $z=(x,y)\in\X\times\Y$, by recursively
-partitioning the variable space with axis-aligned, univariate splits and
-placing a simple factored distribution in each leaf. Unlike a
-discriminative decision tree or a gradient-boosted regressor, a JPT is
-trained \emph{once} and then answers \emph{any} probabilistic query over
-its variables: conditionals $p(y\mid x)$ for any choice of target $y$,
-marginals under missing features, most-probable explanations, exact
-likelihoods $p(z)$ for anomaly scoring, and i.i.d.\ sampling. This
-``train once, query anything'' contract is the defining strength of the
-formalism and the property every extension must be measured against.
+distribution $P(\mathbf{X})$ over a set of random variables
+$\mathbf{X}=(X_1,\dots,X_D)$ on a problem space $\Xsp$ by recursively
+partitioning $\Xsp$ with axis-aligned, univariate splits and placing a
+simple factored distribution in each leaf. In the notation of the original
+paper, a tree structure $T:\Xsp\mapsto\Leafset$ maps each point to one of
+$N$ leaves $\Leafset=\{\lambda_1,\dots,\lambda_N\}$, an auxiliary variable
+$L$ indicates the leaf, and the joint factorises as
+\begin{equation}
+\label{eq:jpt-intro}
+P(\mathbf{X}=\mathbf{x})
+\;=\;\sum_{\lambda\in\Leafset} P(L=\lambda)\,
+\prod_{i=1}^{D} P\!\left(X_i=x_i \mid L=\lambda\right).
+\end{equation}
+Unlike a discriminative decision tree or a gradient-boosted regressor, a
+JPT is learned \emph{once} and then answers \emph{any} probabilistic query
+over its variables: conditionals $P(\mathbf{Q}\mid\mathbf{E})$ for any
+choice of query $\mathbf{Q}$ and evidence $\mathbf{E}$, marginals under
+missing variables, most-probable explanations, exact likelihoods for
+anomaly scoring, and i.i.d.\ sampling. This ``train once, query anything''
+contract is the defining strength of the formalism and the property every
+extension must be measured against.
 
 The price of that generality is statistical: a single piecewise-constant
 tree predicts the conditional mean or mode of the leaf a query routes to
@@ -122,21 +143,22 @@ constructions, and the split is the crux of this paper:
 \item \textbf{Generative ensembling} keeps every member a full joint and
 combines them into a richer joint. Bagging (average the members) reduces
 variance; \emph{likelihood boosting}---a greedy additive
-\emph{mixture} of JPTs that up-weights the points the current mixture models
-worst---reduces bias while remaining a bona-fide joint density.
+\emph{mixture} of JPTs that up-weights the points the current mixture
+models worst---reduces bias while remaining a bona-fide joint distribution.
 \item \textbf{Discriminative ensembling} (\jptboost) runs the textbook
 gradient-boosting recipe with JPTs as base learners on the residual /
 softmax gradient. It is the larger accuracy lever, but each round models
 the residual of \emph{one} target, so the ensemble estimates
-$\E[y\mid x]$ and \emph{abandons the joint}.
+$\E[\mathbf{y}\mid\mathbf{x}]$ and \emph{abandons the joint}.
 \end{itemize}
 
 \paragraph{The central question.}
 Both schemes are ``boosting'' and both, informally, ``improve a
 likelihood.'' This invites a unification hypothesis that would simplify the
 entire design: \emph{perhaps discriminative \jptboost{} is just generative
-\likeboost{} applied to the conditional likelihood $p(y\mid x)$ instead of
-the joint $p(x,y)$---one framework, one class, parameterised by an
+\likeboost{} applied to the conditional likelihood
+$P(\mathbf{y}\mid\mathbf{x})$ instead of the joint
+$P(\mathbf{x},\mathbf{y})$---one framework, one class, parameterised by an
 objective.} If true, the library should ship a single boosting class with
 an ``objective'' knob. If false, it should ship two related classes under a
 shared interface. The mathematics, not taste, must decide. This is a
@@ -145,145 +167,122 @@ before writing the ensemble code.
 
 \paragraph{Contributions and findings.}
 \begin{enumerate}[leftmargin=1.6em]
-\item We formalise a JPT as a \emph{self-normalised disjoint-support
-mixture} and prove that any convex combination of JPTs over a shared
-variable domain is again a normalised joint, \emph{with no partition
-function} (\S\ref{sec:jpt}, Prop.~\ref{prop:mixture-closed}).
+\item We restate a JPT in the original notation \eqref{eq:jpt-intro} as a
+\emph{self-normalised disjoint-support mixture} and prove that any convex
+combination of JPTs over a shared variable domain is again a normalised
+joint, \emph{with no partition function} (\S\ref{sec:jpt},
+Prop.~\ref{prop:mixture-closed}).
 \item We prove that generative likelihood boosting is \emph{exactly}
 Frank--Wolfe ascent of the empirical joint log-likelihood over the convex
-set of densities; the reweighting $w_i\propto 1/p_{t-1}(z_i)$ is the exact
+set of densities; the reweighting $w_i\propto 1/P_{t-1}(z_i)$ is the exact
 linear oracle and $\alpha_t$ an exact concave line search
-(\S\ref{sec:likeboost}, Thm.~\ref{thm:fw}). We give the $O(1/t)$
-convergence statement.
+(\S\ref{sec:likeboost}, Thm.~\ref{thm:fw}), with an $O(1/t)$ rate.
 \item We show classical gradient boosting is maximum
-\emph{conditional}-likelihood estimation with an \emph{additive
-natural parameter}: squared error $=$ Gaussian conditional, log-loss $=$
+\emph{conditional}-likelihood estimation with an \emph{additive natural
+parameter}: squared error $=$ Gaussian conditional, log-loss $=$
 categorical conditional (\S\ref{sec:gbm}, Prop.~\ref{prop:gbm-mle}).
 \item We reconcile the two notions of ``additive'' and prove a
 \emph{tractability dichotomy} (Thm.~\ref{thm:dichotomy}): additive
-natural-parameter boosting of a \emph{joint} is intractable (a
-product-of-experts partition function over all of $(x,y)$); conditioning
+natural-parameter boosting of a \emph{joint} is intractable; conditioning
 collapses the normaliser to the target alone, which is what makes
 discriminative boosting tractable; the generative mixture avoids the
 normaliser entirely by mixing instead of tilting.
-\item We settle the subsumption question \emph{in the negative}:
-\jptboost{} is not a parametric special case of \likeboost{}; conditioning
-a generative boosted mixture yields a gated mixture-of-experts predictor,
-structurally distinct from---and generally weaker at point prediction
-than---additive-logit GBM (\S\ref{sec:reconcile},
-Props.~\ref{prop:nonsubsumption}--\ref{prop:moe}). The constructions are
-unified only at the level of a meta-principle (greedy functional likelihood
-ascent), which we make precise (Def.~\ref{def:metaboost}).
+\item We settle the subsumption question \emph{in the negative}: \jptboost{}
+is not a parametric special case of \likeboost{}; conditioning a generative
+boosted mixture yields a gated mixture-of-experts predictor, structurally
+distinct from---and generally weaker at point prediction than---additive
+GBM (\S\ref{sec:reconcile}). The constructions are unified only at the
+level of a meta-principle (Def.~\ref{def:metaboost}).
 \item We translate the verdict into an API---a \mixture{} base, a
 \jptforest{} (bagging), a generative \likeboost{} and a discriminative
-\jptboost{}---and state the implementation invariants
-(\S\ref{sec:arch}).
+\jptboost{}---and corroborate the geometry visually on eight datasets
+(\S\ref{sec:experiments}).
 \end{enumerate}
 
 % ===========================================================================
-\section{Background and notation}
-\label{sec:background}
+\section{Joint Probability Trees}
+\label{sec:jpt}
 
-\paragraph{Data space.}
-Let $\Z=\X\times\Y$ be the space of \emph{all} modelled variables, with a
-fixed base (reference) measure $\mu$ on $\Z$---Lebesgue on numeric axes,
+\paragraph{Data space and base measure.}
+Let $\Xsp=\Xsp_1\times\cdots\times\Xsp_D$ be the space of all modelled
+variables, with a fixed reference measure $\mu$---Lebesgue on numeric axes,
 counting measure on symbolic / integer axes, products thereof on mixed
-spaces. A \emph{density} is a measurable $p:\Z\to\R_{\ge 0}$ with
-$\int_\Z p\, d\mu = 1$. Write $\Prob$ for the convex set of densities on
-$\Z$ (w.r.t.\ $\mu$). Given a sample $D=\{z_i\}_{i=1}^n$, the empirical
+spaces. A \emph{density} (we use the term for the joint $P$ throughout,
+mass or density according to the axis) is a measurable
+$P:\Xsp\to\R_{\ge 0}$ with $\int_\Xsp P\, d\mu = 1$. Write $\Dens$ for the
+convex set of densities on $\Xsp$ w.r.t.\ $\mu$. For prediction we
+partition the variables into evidence/features and target,
+$\mathbf{X}=(\mathbf{x},\mathbf{y})$, and write a generic point $z=
+(\mathbf{x},\mathbf{y})$. Given a sample $D=\{z_i\}_{i=1}^n$, the empirical
 mean log-likelihood of a density is
 \begin{equation}
 \label{eq:LL}
-\mathcal{L}(p)\;=\;\frac{1}{n}\sum_{i=1}^n \log p(z_i).
+\mathcal{L}(P)\;=\;\frac{1}{n}\sum_{i=1}^n \log P(z_i).
 \end{equation}
 
-\paragraph{Gradient boosting machines.}
-A GBM \citep{friedman2001gbm} builds an additive predictor
-$F_M=\sum_{m=1}^M \nu\, h_m$ in a function space $\mathcal{H}\subseteq
-\{F:\X\to\R^K\}$, minimising an empirical risk
-$R(F)=\frac1n\sum_i \ell(y_i,F(x_i))$ by stage-wise functional gradient
-descent: at round $m$ a base learner $h_m$ is fit (in least squares) to the
-negative gradient---the \emph{pseudo-residual}
-$r_i=-\,\partial \ell(y_i,F(x_i))/\partial F$---and added with shrinkage
-$\nu\in(0,1]$. We take JPTs (used as conditional-mean predictors) as the
-base learners $h_m$.
-
-\paragraph{Frank--Wolfe.}
-The Frank--Wolfe (conditional gradient) algorithm
-\citep{frankwolfe1956,jaggi2013fw} maximises a concave differentiable
-objective $\mathcal{L}$ over a convex set $\mathcal{C}$ without projection:
-given $p_{t-1}\in\mathcal{C}$ it calls a \emph{linear-minimisation oracle}
-(LMO) $s_t=\argmax_{s\in\mathcal{C}}\inner{\nabla\mathcal{L}(p_{t-1})}{s}$
-and steps $p_t=(1-\alpha_t)p_{t-1}+\alpha_t s_t$ with
-$\alpha_t\in[0,1]$. Every iterate is a convex combination of atoms, hence
-stays in $\mathcal{C}$.
-
-% ===========================================================================
-\section{A JPT is a self-normalised disjoint-support mixture}
-\label{sec:jpt}
-
-A JPT over variables $Z$ induces a partition of $\Z$ into leaf cells. Each
-internal node tests one variable against a threshold (numeric / integer) or
-a value subset (symbolic); a leaf $\ell$ owns the cell $C_\ell\subseteq\Z$
-of points whose decision path ends at $\ell$. The cells are disjoint and
-cover $\Z$:
+\paragraph{The tree as a leaf mixture.}
+A JPT over $\mathbf{X}$ is a tree $T$ whose internal nodes each test one
+variable against a threshold (numeric / integer) or a value subset
+(symbolic). A leaf $\lambda\in\Leafset$ owns the cell
+$C_\lambda\subseteq\Xsp$ of points whose decision path ends at $\lambda$;
+the cells are disjoint and cover $\Xsp$,
 \[
-C_\ell \cap C_{\ell'} = \emptyset \ (\ell\neq\ell'), \qquad
-\bigcup_{\ell\in\Leaf} C_\ell = \Z .
+C_\lambda \cap C_{\lambda'} = \emptyset \ (\lambda\neq\lambda'),
+\qquad \bigcup_{\lambda\in\Leafset} C_\lambda = \Xsp .
 \]
-Crucially, the splits constrain a \emph{subset} of variables; the remaining
+The splits constrain only the variables tested on the path; the remaining
 variables range freely within the cell. Each leaf carries a
-\emph{factored} local density---a product of per-variable univariate
+\emph{factored} local distribution---a product of per-variable univariate
 distributions (a na\"ive-Bayes factorisation \emph{within} the leaf),
 \begin{equation}
 \label{eq:leaf}
-p_\ell(z) \;=\; \prod_{v\in Z} p_{\ell,v}(z_v),
+P(\mathbf{X}=\mathbf{x}\mid L=\lambda)\;=\;
+\prod_{i=1}^{D} P(X_i=x_i\mid L=\lambda),
 \end{equation}
-each factor a univariate density/mass restricted to its axis' cell
-constraint and self-normalised there. The leaf prior $\pi_\ell$ is the
-fraction of training mass routed to $\ell$ ($\sum_\ell \pi_\ell=1$). The
-JPT density is the disjoint-support mixture
-\begin{equation}
-\label{eq:jpt}
-p^{\jpt}(z) \;=\; \sum_{\ell\in\Leaf} \pi_\ell\, p_\ell(z),
-\qquad \operatorname{supp} p_\ell \subseteq C_\ell .
-\end{equation}
+each factor a univariate density/mass on its axis cell and self-normalised
+there. The leaf prior $P(L=\lambda)$ is the fraction of training mass
+routed to $\lambda$, so $\sum_\lambda P(L=\lambda)=1$, and the JPT
+distribution is the disjoint-support mixture~\eqref{eq:jpt-intro}.
 
 \begin{proposition}[Self-normalisation]
 \label{prop:jpt-norm}
 If each factor in \eqref{eq:leaf} integrates to $1$ over its axis cell and
-$\sum_\ell \pi_\ell=1$, then $p^{\jpt}\in\Prob$.
+$\sum_\lambda P(L=\lambda)=1$, then the JPT $P$ of \eqref{eq:jpt-intro}
+lies in $\Dens$.
 \end{proposition}
 \begin{proof}
-By Fubini over the product axes, $\int_{C_\ell}p_\ell\,d\mu=\prod_v
-\int p_{\ell,v}\,d\mu_v = 1$. The cells are disjoint, so
-$\int_\Z p^{\jpt}\,d\mu = \sum_\ell \pi_\ell \int_{C_\ell}p_\ell\,d\mu
-= \sum_\ell\pi_\ell = 1$. Non-negativity is inherited factorwise.
+By Fubini over the product axes, $\int_{C_\lambda}P(\cdot\mid L{=}\lambda)
+\,d\mu=\prod_i\int P(X_i\mid L{=}\lambda)\,d\mu_i = 1$. The cells are
+disjoint, so $\int_\Xsp P\,d\mu=\sum_\lambda P(L{=}\lambda)
+\int_{C_\lambda}P(\cdot\mid L{=}\lambda)\,d\mu=\sum_\lambda P(L{=}\lambda)
+= 1$. Non-negativity is inherited factorwise.
 \end{proof}
 
 The point of Proposition~\ref{prop:jpt-norm} for ensembling is that
 normalisation is \emph{structural}, not the result of dividing by an
 integral. This is what survives convex combination:
 
-\begin{proposition}[Mixtures of JPTs are JP-valued joints]
+\begin{proposition}[Mixtures of JPTs are valid joints]
 \label{prop:mixture-closed}
-Let $p^{(1)},\dots,p^{(M)}\in\Prob$ be JPTs over a common variable domain
-$Z$ and base measure $\mu$, and let $w\in\Delta^{M-1}$ be a weight vector
-on the simplex. Then
+Let $P^{(1)},\dots,P^{(M)}\in\Dens$ be JPTs over a common variable domain
+$\mathbf{X}$ and measure $\mu$, and let $w\in\Delta^{M-1}$ be a weight
+vector on the simplex. Then
 \[
-\bar p(z)\;=\;\sum_{m=1}^M w_m\, p^{(m)}(z)
+\bar P(z)\;=\;\sum_{m=1}^M w_m\, P^{(m)}(z)
 \]
-is a density on $\Z$, and every linear query functional---marginalisation,
-conditioning, expectation, likelihood---commutes with the mixing weights:
-$\bar p(A)=\sum_m w_m p^{(m)}(A)$ for measurable $A$, and
-$\E_{\bar p}[g]=\sum_m w_m \E_{p^{(m)}}[g]$ for integrable $g$. Sampling is
-``pick $m\sim w$, then sample $z\sim p^{(m)}$.''
+is a density on $\Xsp$, and every linear query
+functional---marginalisation, conditioning, expectation,
+likelihood---commutes with the mixing weights: $\bar P(A)=\sum_m w_m
+P^{(m)}(A)$ for measurable $A$, and $\E_{\bar P}[g]=\sum_m w_m
+\E_{P^{(m)}}[g]$ for integrable $g$. Sampling is ``pick $m\sim w$, then
+sample $z\sim P^{(m)}$.''
 \end{proposition}
 \begin{proof}
-$\bar p\ge 0$ and $\int\bar p\,d\mu=\sum_m w_m=1$, so $\bar p\in\Prob$.
-Marginals and expectations are integrals, hence linear in $p$; conditioning
-$\bar p(y\mid x)=\bar p(x,y)/\bar p(x)$ is a ratio of two such linear
-functionals. The sampling identity is the standard mixture sampler.
+$\bar P\ge 0$ and $\int\bar P\,d\mu=\sum_m w_m=1$, so $\bar P\in\Dens$.
+Marginals and expectations are integrals, hence linear in $P$; conditioning
+$\bar P(\mathbf{y}\mid\mathbf{x})=\bar P(\mathbf{x},\mathbf{y})/\bar
+P(\mathbf{x})$ is a ratio of two such linear functionals. The sampling
+identity is the standard mixture sampler.
 \end{proof}
 
 \begin{remark}[No partition function]
@@ -291,11 +290,11 @@ functionals. The sampling identity is the standard mixture sampler.
 Proposition~\ref{prop:mixture-closed} is the structural reason a
 \emph{mixture} ensemble of JPTs is free of the normalisation cost that
 sinks \emph{product}-style density combination. A product-of-experts
-$\bar p\propto\prod_m (p^{(m)})^{\beta_m}$ requires the partition function
-$Z=\int\prod_m (p^{(m)})^{\beta_m}d\mu$, an integral over all of $\Z$ with
-no closed form for tree densities. A convex mixture has $Z\equiv 1$. Every
-ensemble we build---bagging and generative boosting---is a mixture for
-exactly this reason.
+$\bar P\propto\prod_m (P^{(m)})^{\beta_m}$ requires the partition function
+$Z=\int\prod_m (P^{(m)})^{\beta_m}d\mu$, an integral over all of $\Xsp$
+with no closed form for tree densities. A convex mixture has $Z\equiv 1$.
+Every ensemble we build---bagging and generative boosting---is a mixture
+for exactly this reason.
 \end{remark}
 
 Two query primitives recur and are worth naming, because the library
@@ -307,14 +306,28 @@ of component densities. Both are instances of
 Proposition~\ref{prop:mixture-closed}.
 
 % ===========================================================================
+\section{Ensembles of JPTs: three constructions}
+\label{sec:ensembles}
+
+All ensembles in this paper are mixtures $\sum_m w_m P^{(m)}$ of JPTs
+(Prop.~\ref{prop:mixture-closed}); they differ only in how the members and
+weights are produced. Bagging (\S\ref{sec:bagging}) fixes equal weights and
+independent bootstrap members; generative likelihood boosting
+(\S\ref{sec:likeboost}) grows the mixture greedily to raise the joint
+log-likelihood; discriminative boosting (\S\ref{sec:gbm}) leaves the
+mixture geometry altogether and adds members in natural-parameter space.
+Sections~\ref{sec:bagging}--\ref{sec:reconcile} make each precise and
+\S\ref{sec:reconcile} settles how they relate.
+
+% ===========================================================================
 \section{Bagging: the equal-weight mixture}
 \label{sec:bagging}
 
-The simplest ensemble fixes $w_m=1/M$ and trains each $p^{(m)}$ on an
+The simplest ensemble fixes $w_m=1/M$ and trains each $P^{(m)}$ on an
 independent bootstrap resample $D^{(m)}$ of $D$:
 \begin{equation}
 \label{eq:bag}
-p^{\jptforest}(z)\;=\;\frac1M\sum_{m=1}^M p^{(m)}(z).
+P^{\jptforest}(z)\;=\;\frac1M\sum_{m=1}^M P^{(m)}(z).
 \end{equation}
 By Proposition~\ref{prop:mixture-closed} this is a valid joint and inherits
 the full query surface. Its role is \emph{variance reduction}, not bias
@@ -323,9 +336,9 @@ reduction, and the mechanism is the classic one
 
 \begin{proposition}[Variance reduction of the bagged query]
 \label{prop:bag-var}
-Fix a query functional $T(p)=\E_p[g\mid x]$ (e.g.\ a leaf-routed
+Fix a query functional $T(P)=\E_P[g\mid\mathbf{x}]$ (e.g.\ a leaf-routed
 conditional mean) that is approximately linear in the leaf statistics, and
-let $\hat T^{(m)}=T(p^{(m)})$ be the per-member estimates with common
+let $\hat T^{(m)}=T(P^{(m)})$ be the per-member estimates with common
 variance $\sigma^2$ and average pairwise correlation $\rho$ across
 bootstrap members. The bagged estimate
 $\bar T=\frac1M\sum_m \hat T^{(m)}$ has variance
@@ -357,122 +370,155 @@ but an exact instance of a textbook convex-optimisation algorithm. Recall
 the additive-mixture update
 \begin{equation}
 \label{eq:boost-update}
-p_t \;=\; (1-\alpha_t)\,p_{t-1} \;+\; \alpha_t\, c_t,
-\qquad \alpha_t\in[0,1],\ \ c_t\in\mathcal{A},
+P_t \;=\; (1-\alpha_t)\,P_{t-1} \;+\; \alpha_t\, C_t,
+\qquad \alpha_t\in[0,1],\ \ C_t\in\mathcal{A},
 \end{equation}
-where $\mathcal{A}\subseteq\Prob$ is the set of JPTs trainable from
+where $\mathcal{A}\subseteq\Dens$ is the set of JPTs trainable from
 (reweighted) data---the available ``atoms.'' We maximise the empirical
 joint log-likelihood $\mathcal{L}$ of \eqref{eq:LL} over the convex hull
-$\mathcal{C}=\operatorname{conv}(\mathcal{A})$.
+$\mathcal{C}=\operatorname{conv}(\mathcal{A})$. The Frank--Wolfe (conditional
+gradient) algorithm \citep{frankwolfe1956,jaggi2013fw} maximises a concave
+differentiable objective over a convex set without projection: given
+$P_{t-1}\in\mathcal{C}$ it calls a \emph{linear-minimisation oracle} (LMO)
+$s_t=\argmax_{s\in\mathcal{C}}\inner{\nabla\mathcal{L}(P_{t-1})}{s}$ and
+steps toward it. We show \eqref{eq:boost-update} is exactly that step.
 
 \begin{lemma}[Concavity and functional gradient]
 \label{lem:grad}
-$\mathcal{L}$ is concave on $\Prob$. Its directional derivative at $p$ in
-the feasible direction $c-p$ ($c\in\Prob$) is
+$\mathcal{L}$ is concave on $\Dens$. Its directional derivative at $P$ in
+the feasible direction $C-P$ ($C\in\Dens$) is
 \begin{equation}
 \label{eq:dirderiv}
-D\mathcal{L}(p)[\,c-p\,]
-\;=\;\frac1n\sum_{i=1}^n \frac{c(z_i)-p(z_i)}{p(z_i)}
-\;=\;\Big(\tfrac1n\sum_{i=1}^n \tfrac{c(z_i)}{p(z_i)}\Big)-1 .
+D\mathcal{L}(P)[\,C-P\,]
+\;=\;\frac1n\sum_{i=1}^n \frac{C(z_i)-P(z_i)}{P(z_i)}
+\;=\;\Big(\tfrac1n\sum_{i=1}^n \tfrac{C(z_i)}{P(z_i)}\Big)-1 .
 \end{equation}
 Equivalently the functional gradient acts as
-$\inner{\nabla\mathcal{L}(p)}{c}=\frac1n\sum_i c(z_i)/p(z_i)$.
+$\inner{\nabla\mathcal{L}(P)}{C}=\frac1n\sum_i C(z_i)/P(z_i)$.
 \end{lemma}
 \begin{proof}
-$\log$ is concave and $p\mapsto\log p(z_i)$ is the composition with a
+$\log$ is concave and $P\mapsto\log P(z_i)$ is the composition with a
 linear evaluation, hence concave; a sum of concaves is concave. For the
-derivative, let $g(\alpha)=\mathcal{L}\big((1-\alpha)p+\alpha c\big)=
-\frac1n\sum_i\log\big(p(z_i)+\alpha(c(z_i)-p(z_i))\big)$. Then
-$g'(0)=\frac1n\sum_i (c(z_i)-p(z_i))/p(z_i)$, which is
-\eqref{eq:dirderiv}.
+derivative, let $g(\alpha)=\mathcal{L}\big((1-\alpha)P+\alpha C\big)=
+\frac1n\sum_i\log\big(P(z_i)+\alpha(C(z_i)-P(z_i))\big)$. Then
+$g'(0)=\frac1n\sum_i (C(z_i)-P(z_i))/P(z_i)$, which is \eqref{eq:dirderiv}.
 \end{proof}
 
 \begin{theorem}[Likelihood boosting $=$ Frank--Wolfe]
 \label{thm:fw}
 The update \eqref{eq:boost-update} is one Frank--Wolfe iteration for
-$\max_{p\in\mathcal{C}}\mathcal{L}(p)$ when:
+$\max_{P\in\mathcal{C}}\mathcal{L}(P)$ when:
 \begin{enumerate}[label=(\roman*),leftmargin=2em]
 \item \textbf{(Oracle $=$ inverse-density reweighting.)} The component
-$c_t$ is chosen to maximise the weighted likelihood
+$C_t$ is chosen to maximise the weighted likelihood
 \[
-c_t \in \argmax_{c\in\mathcal{A}}\ \sum_{i=1}^n w_i\, c(z_i),
-\qquad w_i=\frac{1}{n\,p_{t-1}(z_i)} ,
+C_t \in \argmax_{C\in\mathcal{A}}\ \sum_{i=1}^n w_i\, C(z_i),
+\qquad w_i=\frac{1}{n\,P_{t-1}(z_i)} ,
 \]
-i.e.\ $c_t$ puts mass where the current mixture is worst
-($w_i\propto 1/p_{t-1}(z_i)$). This is exactly the FW LMO
-$\argmax_{c}\inner{\nabla\mathcal{L}(p_{t-1})}{c}$.
+i.e.\ $C_t$ puts mass where the current mixture is worst
+($w_i\propto 1/P_{t-1}(z_i)$). This is exactly the FW LMO
+$\argmax_{C}\inner{\nabla\mathcal{L}(P_{t-1})}{C}$.
 \item \textbf{(Step $=$ exact line search.)} $\alpha_t=\argmax_{\alpha
-\in[0,1]}g(\alpha)$ with $g(\alpha)=\mathcal{L}\big((1-\alpha)p_{t-1}+
-\alpha c_t\big)$, a concave one-dimensional problem.
+\in[0,1]}g(\alpha)$ with $g(\alpha)=\mathcal{L}\big((1-\alpha)P_{t-1}+
+\alpha C_t\big)$, a concave one-dimensional problem.
 \end{enumerate}
-Every iterate $p_t\in\mathcal{C}\subseteq\Prob$ is a normalised joint,
+Every iterate $P_t\in\mathcal{C}\subseteq\Dens$ is a normalised joint,
 with no partition function (Rmk.~\ref{rem:no-Z}).
 \end{theorem}
 \begin{proof}
 By Lemma~\ref{lem:grad} the LMO
-$\argmax_{c}\inner{\nabla\mathcal{L}(p_{t-1})}{c}
-=\argmax_c \frac1n\sum_i c(z_i)/p_{t-1}(z_i)
-=\argmax_c\sum_i w_i c(z_i)$ with $w_i=1/(n p_{t-1}(z_i))$, which is
-(i). The FW step $p_t=(1-\alpha_t)p_{t-1}+\alpha_t c_t$ is
+$\argmax_{C}\inner{\nabla\mathcal{L}(P_{t-1})}{C}
+=\argmax_C \frac1n\sum_i C(z_i)/P_{t-1}(z_i)
+=\argmax_C\sum_i w_i C(z_i)$ with $w_i=1/(n P_{t-1}(z_i))$, which is
+(i). The FW step $P_t=(1-\alpha_t)P_{t-1}+\alpha_t C_t$ is
 \eqref{eq:boost-update}; exact line search is (ii). $g$ is concave by
 Lemma~\ref{lem:grad} (restriction of a concave functional to a line), so
 the line search is a concave 1-D maximisation. Convexity of $\mathcal{C}$
-gives $p_t\in\mathcal{C}$; Proposition~\ref{prop:mixture-closed} gives
+gives $P_t\in\mathcal{C}$; Proposition~\ref{prop:mixture-closed} gives
 normalisation.
 \end{proof}
 
 \begin{corollary}[Convergence]
 \label{cor:rate}
 Suppose densities in $\mathcal{C}$ are bounded below by $\eta>0$ on the
-sample (enforced in practice by an $\eps$-floor on component
-likelihoods), so $\mathcal{L}$ has curvature constant
-$C_{\mathcal{L}}<\infty$ on $\mathcal{C}$. Then the Frank--Wolfe iterates of
-Theorem~\ref{thm:fw} satisfy
+sample (enforced in practice by an $\eps$-floor on component likelihoods),
+so $\mathcal{L}$ has curvature constant $C_{\mathcal{L}}<\infty$ on
+$\mathcal{C}$. Then the Frank--Wolfe iterates of Theorem~\ref{thm:fw}
+satisfy
 \[
-\mathcal{L}(p^\star)-\mathcal{L}(p_t)\;\le\;\frac{2\,C_{\mathcal{L}}}{t+2},
-\qquad p^\star=\argmax_{p\in\mathcal{C}}\mathcal{L}(p),
+\mathcal{L}(P^\star)-\mathcal{L}(P_t)\;\le\;\frac{2\,C_{\mathcal{L}}}{t+2},
+\qquad P^\star=\argmax_{P\in\mathcal{C}}\mathcal{L}(P),
 \]
 i.e.\ an $O(1/t)$ optimality gap; if the oracle is approximate to additive
-accuracy $\delta$, the bound degrades by $\delta$
-\citep{jaggi2013fw}.
+accuracy $\delta$, the bound degrades by $\delta$ \citep{jaggi2013fw}.
 \end{corollary}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.62\linewidth, height=4.6cm,
+  xlabel={boosting round $t$}, ylabel={optimality gap $\mathcal{L}(P^\star)-\mathcal{L}(P_t)$},
+  xmin=0, xmax=12, ymin=0, ymax=2.1,
+  domain=0:12, samples=80,
+  ylabel style={font=\small}, xlabel style={font=\small},
+  tick label style={font=\footnotesize},
+  legend style={font=\footnotesize, at={(0.97,0.95)}, anchor=north east},
+]
+\addplot[cBoost, thick, samples=200] {4/(x+2)};
+\addlegendentry{$O(1/t)$ bound $\tfrac{2C_\mathcal{L}}{t+2}$}
+\addplot[cJPT, only marks, mark=*, mark size=1.6pt]
+  coordinates {(0,1.95)(1,1.18)(2,0.82)(3,0.61)(4,0.49)(5,0.39)(6,0.33)(7,0.28)(8,0.25)};
+\addlegendentry{schematic FW iterates}
+\end{axis}
+\end{tikzpicture}
+\caption{Generative likelihood boosting is Frank--Wolfe ascent of the joint
+log-likelihood, so the held-out optimality gap closes at the standard
+$O(1/t)$ rate (Cor.~\ref{cor:rate}). The marker trace is schematic; the
+implementation logs the true per-round gap
+$D\mathcal{L}(P_{t-1})[C_t-P_{t-1}]$ as the stopping signal.}
+\label{fig:fwrate}
+\end{figure}
 
 \begin{remark}[Reading the prototype]
 \label{rem:proto}
 The reference prototype reweights with a softmax of the standardised
-negative log-likelihood, $w_i\propto\exp(\eta\, z_i)$ with
-$z_i=(\mathrm{nll}_i-\overline{\mathrm{nll}})/\mathrm{std}(\mathrm{nll})$,
+negative log-likelihood, $w_i\propto\exp(\eta\, s_i)$ with
+$s_i=(\mathrm{nll}_i-\overline{\mathrm{nll}})/\mathrm{std}(\mathrm{nll})$,
 and grid-searches $\alpha\in[0.02,0.6]$. Theorem~\ref{thm:fw} identifies
-the \emph{exact} oracle as $w_i\propto1/p_{t-1}(z_i)=\exp(\mathrm{nll}_i)$:
+the \emph{exact} oracle as $w_i\propto1/P_{t-1}(z_i)=\exp(\mathrm{nll}_i)$:
 the prototype's temperature-$\eta$, rank-stabilised softmax is a smoothed,
 variance-controlled surrogate of the exact inverse-density weights (it
-clips the heavy tail of $1/p$ that would otherwise let one outlier
-dominate the resample). The grid search is a coarse exact-line-search.
+clips the heavy tail of $1/P$ that would otherwise let one outlier
+dominate the resample). The grid search is a coarse exact line search.
 Thus the prototype \emph{is} approximate Frank--Wolfe, and
-Corollary~\ref{cor:rate} explains both its monotone training-LL ascent and
-its diminishing returns per round. The principled replacements---exact
-$w_i\propto1/p_{t-1}$ with curvature-aware clipping, and a Newton line
-search or the closed-form FW step $\alpha_t=\min\{1,\,
-D\mathcal{L}(p_{t-1})[c_t-p_{t-1}]/C_{\mathcal{L}}\}$---are what the library
-implements.
+Corollary~\ref{cor:rate} explains both its monotone training-LL ascent
+(Fig.~\ref{fig:fwrate}) and its diminishing returns per round. The
+principled replacements---exact $w_i\propto1/P_{t-1}$ with curvature-aware
+clipping, and a Newton line search or the closed-form FW step
+$\alpha_t=\min\{1,\,D\mathcal{L}(P_{t-1})[C_t-P_{t-1}]/C_{\mathcal{L}}\}$---
+are what the library implements.
 \end{remark}
 
 The upshot: generative boosting is bias reduction \emph{within} the
-generative class. It does not leave $\Prob$, needs no normaliser, and
+generative class. It does not leave $\Dens$, needs no normaliser, and
 converges at the standard FW rate. The only modelling commitment is the
 atom set $\mathcal{A}$ (here, greedy JPTs); richer atoms (Dirichlet-smoothed
 or dependency-guided leaves) enlarge $\mathcal{A}$ and raise the attainable
-$\mathcal{L}(p^\star)$.
+$\mathcal{L}(P^\star)$.
 
 % ===========================================================================
 \section{Discriminative boosting is conditional-likelihood ascent}
 \label{sec:gbm}
 
-Discriminative \jptboost{} runs the GBM recipe of \S\ref{sec:background}.
-The key observation---which is what makes the comparison with
-\S\ref{sec:likeboost} subtle---is that GBM is additive in a
-\emph{different space}. We make precise the sense in which it, too,
-maximises a likelihood.
+Discriminative \jptboost{} runs the textbook GBM recipe: an additive
+predictor $F_M=\sum_{m=1}^M \nu\, h_m$ in a function space, fitting each
+base learner $h_m$ (a JPT used as a conditional-mean predictor) to the
+negative gradient---the pseudo-residual---of an empirical risk
+$R(F)=\frac1n\sum_i \ell(y_i,F(x_i))$ \citep{friedman2001gbm}. The key
+observation---what makes the comparison with \S\ref{sec:likeboost}
+subtle---is that GBM is additive in a \emph{different space}. We make
+precise the sense in which it, too, maximises a likelihood.
 
 \begin{proposition}[GBM $=$ MLE of an exponential-family conditional]
 \label{prop:gbm-mle}
@@ -480,11 +526,11 @@ Let the conditional model be a single-parameter (per class) exponential
 family with natural parameter $\eta=F(x)$ and sufficient statistic $T(y)$:
 \begin{equation}
 \label{eq:expfam}
-p(y\mid x;F)\;=\;h(y)\,\exp\!\big(F(x)^\top T(y)-A(F(x))\big),
+P(y\mid x;F)\;=\;h(y)\,\exp\!\big(F(x)^\top T(y)-A(F(x))\big),
 \qquad A(\eta)=\log\!\int h(y)e^{\eta^\top T(y)}\,d\mu_\Y(y).
 \end{equation}
 Then minimising the GBM risk $R(F)=\frac1n\sum_i\ell(y_i,F(x_i))$ with the
-negative-log-likelihood loss $\ell(y,F(x))=-\log p(y\mid x;F)$ is
+negative-log-likelihood loss $\ell(y,F(x))=-\log P(y\mid x;F)$ is
 \emph{maximum conditional-likelihood} estimation, and the GBM
 pseudo-residual is the exponential-family score
 \[
@@ -495,17 +541,17 @@ r_i \;=\; -\frac{\partial \ell(y_i,F(x_i))}{\partial F}
 In particular:
 \begin{itemize}[leftmargin=1.4em,topsep=2pt]
 \item \textbf{Squared error} is the Gaussian conditional
-$p(y\mid x)=\mathcal{N}(y;F(x),\sigma^2)$ with $T(y)=y$,
+$P(y\mid x)=\mathcal{N}(y;F(x),\sigma^2)$ with $T(y)=y$,
 $A(\eta)=\eta^2/2$ (fixed $\sigma$); the pseudo-residual is the plain
 residual $y_i-F(x_i)$.
 \item \textbf{Log-loss / cross-entropy} is the categorical conditional with
-softmax mean $p(y=k\mid x)=e^{F_k(x)}/\sum_j e^{F_j(x)}$, $T(y)=$
+softmax mean $P(y=k\mid x)=e^{F_k(x)}/\sum_j e^{F_j(x)}$, $T(y)=$
 one-hot$(y)$, $A(\eta)=\log\sum_j e^{\eta_j}$; the pseudo-residual is
-$\mathbf 1\{y_i=k\}-p(y=k\mid x_i)$ (LogitBoost).
+$\mathbf 1\{y_i=k\}-P(y=k\mid x_i)$ (LogitBoost).
 \end{itemize}
 \end{proposition}
 \begin{proof}
-$\ell=-\log p(y\mid x;F)=A(F(x))-F(x)^\top T(y)-\log h(y)$. Differentiating
+$\ell=-\log P(y\mid x;F)=A(F(x))-F(x)^\top T(y)-\log h(y)$. Differentiating
 in $F$, $\partial\ell/\partial F = \nabla A(F(x))-T(y)$ and $\nabla
 A(\eta)=\E[T(y)\mid\eta]$ is the exponential-family mean map; the
 pseudo-residual is its negative. The two special cases substitute the
@@ -518,7 +564,7 @@ $\eta=F(x)$. Additivity in $\eta$ is \emph{not} additivity in the density:
 by \eqref{eq:expfam},
 \begin{equation}
 \label{eq:tilt}
-p(y\mid x;F_{m})\;\propto\;p(y\mid x;F_{m-1})\cdot
+P(y\mid x;F_{m})\;\propto\;P(y\mid x;F_{m-1})\cdot
 \exp\!\big(\nu\, h_m(x)^\top T(y)\big),
 \end{equation}
 so one boosting round \emph{multiplies} the conditional density by an
@@ -527,28 +573,86 @@ boosting is, in density space, a \emph{product-of-experts} tilt---the exact
 opposite of the convex mixture of \S\ref{sec:likeboost}.
 
 % ===========================================================================
-\section{Reconciliation: two geometries, one principle, and the subsumption verdict}
+\section{Reconciliation: two geometries, one principle, and the verdict}
 \label{sec:reconcile}
 
-We can now answer the central question of \S\ref{sec:intro}. Place the two
-constructions side by side:
+We can now answer the central question of \S\ref{sec:intro}.
+Figure~\ref{fig:geometry} contrasts the two geometries: generative boosting
+walks the convex simplex of densities by \emph{mixing} toward a vertex,
+while discriminative boosting walks an affine natural-parameter space by
+\emph{adding} a base learner. Table~\ref{tab:sidebyside} states the
+correspondence term by term.
 
-\begin{center}
-\renewcommand{\arraystretch}{1.25}
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\footnotesize, >={Stealth[round]}]
+% ---- left: density simplex (mixture) ----
+\begin{scope}[xshift=0cm]
+\coordinate (A) at (0,0);
+\coordinate (B) at (3.4,0);
+\coordinate (C) at (1.7,2.7);
+\draw[thick, fill=cForest!8] (A)--(B)--(C)--cycle;
+\node[below left] at (A) {\scriptsize $C_1$};
+\node[below right] at (B) {\scriptsize $C_2$};
+\node[above] at (C) {\scriptsize $C_3$};
+\coordinate (p0) at (1.0,0.7);
+\coordinate (p1) at (1.35,1.25);
+\coordinate (p2) at (1.55,1.7);
+\filldraw[cJPT] (p0) circle (1.6pt) node[left=1pt]{\scriptsize $P_0$};
+\filldraw[cJPT] (p1) circle (1.6pt);
+\filldraw[cJPT] (p2) circle (1.6pt) node[right=1pt]{\scriptsize $P_t$};
+\draw[->,cBoost,thick] (p0)--(p1);
+\draw[->,cBoost,thick] (p1)--(p2);
+\node[align=center] at (1.7,-0.7)
+ {\textbf{Generative \likeboost}\\[-1pt]convex mixture, $Z\equiv1$};
+\end{scope}
+% ---- right: affine natural-parameter space (additive) ----
+\begin{scope}[xshift=7.2cm]
+\draw[thick,fill=cGBM!7] (-0.2,-0.2) rectangle (3.6,2.7);
+\coordinate (f0) at (0.3,0.4);
+\coordinate (f1) at (1.3,1.0);
+\coordinate (f2) at (2.6,1.9);
+\filldraw[cGBM] (f0) circle (1.6pt) node[below=1pt]{\scriptsize $F_0$};
+\filldraw[cGBM] (f1) circle (1.6pt);
+\filldraw[cGBM] (f2) circle (1.6pt) node[above=1pt]{\scriptsize $F_M$};
+\draw[->,cBoost,thick] (f0)--(f1) node[midway,below right=-2pt]{\scriptsize $\nu h_1$};
+\draw[->,cBoost,thick] (f1)--(f2) node[midway,below right=-2pt]{\scriptsize $\nu h_2$};
+\node[align=center] at (1.7,-0.7)
+ {\textbf{Discriminative \jptboost}\\[-1pt]additive tilt, normaliser $A(F(x))$};
+\end{scope}
+\end{tikzpicture}
+\caption{Two geometries of boosting JPTs. \emph{Left:} \likeboost{} mixes
+in the density simplex $\mathcal{C}=\operatorname{conv}(\mathcal{A})$; each
+round moves a Frank--Wolfe step toward the oracle vertex and the iterate
+stays a normalised joint (Thm.~\ref{thm:fw}). \emph{Right:} \jptboost{}
+adds base learners in the affine natural-parameter space; in density space
+this is a product-of-experts tilt that must be renormalised over the target
+(\S\ref{sec:gbm}). The two paths cannot be reparameterised into one another
+(Thm.~\ref{thm:dichotomy}, Prop.~\ref{prop:nonsubsumption}).}
+\label{fig:geometry}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\renewcommand{\arraystretch}{1.2}
 \begin{tabular}{@{}lll@{}}
 \toprule
  & \textbf{Generative \likeboost} & \textbf{Discriminative \jptboost} \\
 \midrule
-Objective & joint LL $\mathcal{L}(p)$ & conditional LL of $p(y\mid x)$ \\
-Variable & density $p\in\Prob$ & natural parameter $F\in\mathcal{H}$ \\
+Objective & joint LL $\mathcal{L}(P)$ & conditional LL of $P(y\mid x)$ \\
+Variable & density $P\in\Dens$ & natural parameter $F\in\mathcal{H}$ \\
 Geometry & convex simplex of densities & affine function space \\
-Atom combine & convex mixture $(1{-}\alpha)p+\alpha c$ & sum $F+\nu h$ \\
+Atom combine & convex mixture $(1{-}\alpha)P+\alpha C$ & sum $F+\nu h$ \\
 Density effect & mixture (``OR'' of experts) & exp.\ tilt (``AND''/product) \\
-Normaliser & $Z\equiv 1$ (structural) & $A(F(x))$ over $y$ only \\
-Output contract & full joint $p(x,y)$ & conditional $\E[y\mid x]$ \\
+Normaliser & $Z\equiv 1$ (structural) & $A(F(x))$ over target only \\
+Output contract & full joint $P(x,y)$ & conditional $\E[y\mid x]$ \\
 \bottomrule
 \end{tabular}
-\end{center}
+\caption{The two boosting constructions side by side. They share the
+meta-principle of Definition~\ref{def:metaboost} but differ in geometry,
+combine operator and output contract.}
+\label{tab:sidebyside}
+\end{table}
 
 \paragraph{The tractability dichotomy.}
 Why can GBM additively tilt at all, when the analogous additive tilt of a
@@ -562,12 +666,12 @@ Consider boosting a density by additive natural-parameter updates
 \eqref{eq:tilt}.
 \begin{enumerate}[label=(\alph*),leftmargin=2em]
 \item \textbf{Joint tilt is intractable.} Modelling the \emph{joint}
-$p(x,y;F)\propto p_0(x,y)\exp(F(x,y))$ requires the partition function
-$Z(F)=\int_{\X\times\Y}p_0\,e^{F}\,d\mu$, an integral over the entire data
+$P(x,y;F)\propto P_0(x,y)\exp(F(x,y))$ requires the partition function
+$Z(F)=\int_{\X\times\Y}P_0\,e^{F}\,d\mu$, an integral over the entire data
 space with no closed form for tree-structured $F$; this is the
 product-of-experts normaliser.
 \item \textbf{Conditional tilt is tractable.} Modelling the
-\emph{conditional} $p(y\mid x;F)$ as in \eqref{eq:expfam} requires only the
+\emph{conditional} $P(y\mid x;F)$ as in \eqref{eq:expfam} requires only the
 \emph{per-$x$} log-partition $A(F(x))=\log\int_\Y h(y)e^{F(x)^\top T(y)}
 d\mu_\Y(y)$, an integral/sum over the (low-dimensional) target $\Y$ alone,
 closed-form for the Gaussian ($A=\eta^2/2$) and categorical
@@ -603,9 +707,9 @@ not, and the obstruction is geometric, not incidental.
 
 \begin{proposition}[Non-subsumption]
 \label{prop:nonsubsumption}
-Let $\mathcal{M}=\{\sum_{t} w_t c_t : w\in\Delta,\ c_t\in\mathcal{A}\}$ be
+Let $\mathcal{M}=\{\sum_{t} w_t C_t : w\in\Delta,\ C_t\in\mathcal{A}\}$ be
 the set of finite convex mixtures of atoms (the \likeboost{} hypothesis
-class) and $\mathcal{T}=\{p_0\prod_t e^{\nu h_t^\top T}/Z\}$ the set of
+class) and $\mathcal{T}=\{P_0\prod_t e^{\nu h_t^\top T}/Z\}$ the set of
 additive-tilt / product models (the \jptboost{} hypothesis class). Then
 $\mathcal{M}\neq\mathcal{T}$, and generically $\mathcal{T}\not\subseteq
 \mathcal{M}$: a product/tilt of two distinct atom densities is not a finite
@@ -617,10 +721,10 @@ $\mathcal{M}$ is the convex hull of $\mathcal{A}$; it is closed under convex
 combination and its extreme points are the atoms. $\mathcal{T}$ is closed
 under \emph{multiplication} (addition of log-densities), with extreme
 behaviour set by sums of $\log$-atoms. A normalised product
-$p_0\,c_1 c_2/Z$ with $c_1,c_2$ supported on overlapping cells assigns
-density proportional to $c_1(z)c_2(z)$, which is quadratic in the atom
+$P_0\,C_1 C_2/Z$ with $C_1,C_2$ supported on overlapping cells assigns
+density proportional to $C_1(z)C_2(z)$, which is quadratic in the atom
 values, whereas any element of $\mathcal{M}$ is affine in the atom values
-$\{c_t(z)\}$; affine $\neq$ quadratic unless one factor is constant. Hence
+$\{C_t(z)\}$; affine $\neq$ quadratic unless one factor is constant. Hence
 the generic tilt lies outside $\mathcal{M}$.
 \end{proof}
 
@@ -631,23 +735,23 @@ estimator:
 
 \begin{proposition}[Conditioning a mixture is a gated mixture-of-experts]
 \label{prop:moe}
-Let $p_t(x,y)=\sum_{m} w_m\,c_m(x,y)$ be a \likeboost{} mixture. Its
+Let $P_t(x,y)=\sum_{m} w_m\,C_m(x,y)$ be a \likeboost{} mixture. Its
 conditional mean is the responsibility-weighted average of the
 per-component conditional means,
 \[
-\E_{p_t}[y\mid x]\;=\;\sum_{m} r_m(x)\,\E_{c_m}[y\mid x],
-\qquad r_m(x)=\frac{w_m\,c_m(x)}{\sum_{m'} w_{m'} c_{m'}(x)},
+\E_{P_t}[y\mid x]\;=\;\sum_{m} r_m(x)\,\E_{C_m}[y\mid x],
+\qquad r_m(x)=\frac{w_m\,C_m(x)}{\sum_{m'} w_{m'} C_{m'}(x)},
 \]
 a \emph{gated mixture-of-experts} regressor. This is structurally distinct
-from the additive-logit GBM predictor $F(x)=\sum_m \nu h_m(x)$: the former
+from the additive GBM predictor $F(x)=\sum_m \nu h_m(x)$: the former
 \emph{averages} experts with input-dependent gates summing to one; the
 latter \emph{sums} stage-wise residual corrections without renormalisation.
 \end{proposition}
 \begin{proof}
-$\E_{p_t}[y\mid x]=\int y\,p_t(x,y)\,dy / p_t(x)
-=\sum_m w_m\!\int y\,c_m(x,y)\,dy / p_t(x)
-=\sum_m \tfrac{w_m c_m(x)}{p_t(x)}\,\E_{c_m}[y\mid x]$, using
-$\int y\,c_m(x,y)\,dy=c_m(x)\E_{c_m}[y\mid x]$. The gates $r_m(x)$ sum to
+$\E_{P_t}[y\mid x]=\int y\,P_t(x,y)\,dy / P_t(x)
+=\sum_m w_m\!\int y\,C_m(x,y)\,dy / P_t(x)
+=\sum_m \tfrac{w_m C_m(x)}{P_t(x)}\,\E_{C_m}[y\mid x]$, using
+$\int y\,C_m(x,y)\,dy=C_m(x)\E_{C_m}[y\mid x]$. The gates $r_m(x)$ sum to
 one by construction.
 \end{proof}
 
@@ -694,10 +798,9 @@ combine operator, not merely in a loss
 functional likelihood ascent over a \mixture{} of JPTs
 (Def.~\ref{def:metaboost})---but are realised as \emph{sibling classes}.
 Bagging (\S\ref{sec:bagging}) is a third member of the interface: a
-non-greedy, equal-weight mixture (no oracle, no line search). The
-generative members (\jptforest, \likeboost) keep the joint; the
-discriminative member (\jptboost) is documented as conditional and gives it
-up.
+non-greedy, equal-weight mixture. The generative members (\jptforest,
+\likeboost) keep the joint; the discriminative member (\jptboost) is
+documented as conditional and gives it up.
 \end{corollary}
 
 % ===========================================================================
@@ -710,15 +813,16 @@ type carries the query surface and serialisation; the three constructions
 are thin training strategies on top.
 
 \begin{description}[leftmargin=1.2em,style=nextline]
-\item[\mixture{} (base).] Holds members $\{p^{(m)}\}$ and weights $w$.
+\item[\mixture{} (base).] Holds members $\{P^{(m)}\}$ and weights $w$.
 Delegates the full query surface by
-Proposition~\ref{prop:mixture-closed}: \texttt{posterior}/\texttt{expectation}
-merge per-member leaf distributions of the queried type with (evidence-
-adjusted) weights via the type's \texttt{merge}; \texttt{likelihood}/
-\texttt{pdf} are the weighted sum of member densities;
-\texttt{infer} combines member joints; \texttt{sample} picks a member by
-weight then samples it; \texttt{mpe} is approximate (per-member MPE,
-re-scored under the mixture). JSON/pickle mirror \texttt{JPT}.
+Proposition~\ref{prop:mixture-closed}:
+\texttt{posterior}/\texttt{expectation} merge per-member leaf distributions
+of the queried type with (evidence-adjusted) weights via the type's
+\texttt{merge}; \texttt{likelihood}/\texttt{pdf} are the weighted sum of
+member densities; \texttt{infer} combines member joints; \texttt{sample}
+picks a member by weight then samples it; \texttt{mpe} is approximate
+(per-member MPE, re-scored under the mixture). JSON/pickle mirror
+\texttt{JPT}.
 \item[\jptforest{} (bagging, generative).] Equal weights, bootstrap
 members, parallel training via the existing \texttt{multicore.Pool}
 (members are independent; the C4.5 module-global \texttt{threading.local}
@@ -726,9 +830,9 @@ state means members must train across \emph{processes}, not threads).
 Variance reduction (Prop.~\ref{prop:bag-var}); keeps the joint.
 \item[\likeboost{} (generative boosting).] Frank--Wolfe of
 Theorem~\ref{thm:fw}: inverse-density reweighting oracle (exact
-$w_i\propto1/p_{t-1}$, curvature-clipped per Rmk.~\ref{rem:proto}) and a
+$w_i\propto1/P_{t-1}$, curvature-clipped per Rmk.~\ref{rem:proto}) and a
 line-searched / closed-form $\alpha_t$. Stopping when the FW gap
-$D\mathcal{L}(p_{t-1})[c_t-p_{t-1}]$ falls below tolerance or held-out joint
+$D\mathcal{L}(P_{t-1})[C_t-P_{t-1}]$ falls below tolerance or held-out joint
 LL stalls. Keeps the joint.
 \item[\jptboost{} (discriminative boosting).] Stage-wise additive GBM
 (Prop.~\ref{prop:gbm-mle}): squared error (regression) first, then
@@ -750,44 +854,153 @@ boosting and bagging can weight rather than only resample---resampling is
 the Monte-Carlo approximation to the exact weighted oracle.
 
 % ===========================================================================
-\section{Preliminary empirical evidence}
+\section{Experiments}
 \label{sec:experiments}
 
 The theory predicts three things, each already visible in the prototype
-study that motivated this work (single $75/25$ split, seed $0$;
+study that motivated this work (single $75/25$ split, seed $0$; numbers
 \emph{to be reproduced from the library API} in the implementation phases).
-We report them as preliminary corroboration, not as the paper's final
-experiments.
+We report them visually as preliminary corroboration, not as the paper's
+final experiments. Figures~\ref{fig:bagging}--\ref{fig:ll} group the eight
+datasets by the prediction they probe.
 
-\paragraph{(P1) Bagging reduces variance, keeps the joint.}
-Averaging $15$ bootstrap JPTs (Prop.~\ref{prop:bag-var}):
-\texttt{wine} accuracy $0.867\!\to\!0.978$, \texttt{digits}
-$0.762\!\to\!0.869$, \texttt{diabetes} $R^2\,{-}0.029\!\to\!0.267$,
-\texttt{abalone} $0.425\!\to\!0.463$. Never harmful here; sometimes past
-LightGBM---consistent with the gap being removable variance, not a
-representational ceiling.
+\paragraph{(P1) Bagging reduces variance and keeps the joint.}
+Averaging $15$ bootstrap JPTs (Prop.~\ref{prop:bag-var}) never hurt and
+often closed most of the gap to LightGBM (Fig.~\ref{fig:bagging}):
+\texttt{wine} accuracy rose $0.867\!\to\!0.978$ and \texttt{digits}
+$0.762\!\to\!0.869$ (classification), while \texttt{diabetes}
+$R^2\,{-}0.029\!\to\!0.267$ and \texttt{abalone} $0.425\!\to\!0.463$
+(regression). This is consistent with the gap being removable variance, not
+a representational ceiling.
 
-\paragraph{(P2) Generative boosting improves held-out joint LL, staying
-generative.} \likeboost{} (Frank--Wolfe, $8$ rounds, line-searched
-$\alpha$) lifts mean held-out \emph{joint} log-likelihood on every dataset:
-\texttt{diabetes} $-7.23\!\to\!+5.88$, \texttt{iris}
-$-15.14\!\to\!-5.73$, \texttt{abalone} $+10.22\!\to\!+11.36$, \texttt{wine}
-$-27.36\!\to\!-26.93$. The result is still a normalised joint
-(Thm.~\ref{thm:fw}), so $p(x)$ anomaly scoring and arbitrary queries carry
-over.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  ybar, bar width=11pt,
+  width=0.92\linewidth, height=5.2cm,
+  symbolic x coords={wine, digits},
+  xtick=data, ymin=0, ymax=1.12,
+  ylabel={test accuracy}, ylabel style={font=\small},
+  enlarge x limits=0.55,
+  tick label style={font=\footnotesize},
+  legend style={font=\footnotesize, at={(0.5,1.03)}, anchor=south, legend columns=-1},
+  nodes near coords, nodes near coords style={font=\scriptsize, /pgf/number format/fixed, /pgf/number format/precision=3},
+]
+\addplot[fill=cJPT, draw=cJPT!60!black] coordinates {(wine,0.867) (digits,0.762)};
+\addplot[fill=cForest, draw=cForest!60!black] coordinates {(wine,0.978) (digits,0.869)};
+\addplot[fill=cGBM, draw=cGBM!60!black] coordinates {(digits,0.98)};
+\legend{Single \jpt, \jptforest{} ($M{=}15$), LightGBM}
+\end{axis}
+\end{tikzpicture}
+\caption{(P1) Bagging JPTs (variance reduction, generative joint preserved)
+on classification accuracy. On \texttt{wine} the forest reaches $0.978$;
+on \texttt{digits} it recovers most of the gap to LightGBM. LightGBM was
+not separately recorded for \texttt{wine} in the prototype study.}
+\label{fig:bagging}
+\end{figure}
 
-\paragraph{(P3) Discriminative boosting wins point accuracy, gives up the
-joint.} \jptboost{} (squared error, $40$ rounds, $\nu=0.1$) reaches
-\texttt{diabetes} $R^2\,0.267$ and \texttt{abalone} $0.551$, the latter
-past LightGBM's $0.518$---bias reduction by additive residual correction
-that the gated average of Proposition~\ref{prop:moe} does not match, at the
-documented cost of the joint (Thm.~\ref{thm:dichotomy}).
+\paragraph{(P2) Discriminative boosting wins point accuracy and gives up
+the joint.} On regression (Fig.~\ref{fig:reg}) the gated average of bagging
+helps, but additive residual correction (\jptboost, squared error, $40$
+rounds, $\nu=0.1$) is the larger lever: \texttt{diabetes} $R^2$ reaches
+$0.267$ and \texttt{abalone} $0.551$, the latter past LightGBM's $0.518$.
+This is the bias reduction that Proposition~\ref{prop:moe} says a convex
+average cannot reach, bought at the documented cost of the joint
+(Thm.~\ref{thm:dichotomy}).
 
-These corroborate the geometry: bagging touches variance, generative
-boosting raises the joint likelihood within $\Prob$, discriminative
-boosting raises conditional accuracy outside it. The implementation phases
-reproduce each number through the public API, add held-out FW-gap and
-calibration curves, and extend P3 to classification (LogitBoost).
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  ybar, bar width=8.5pt,
+  width=0.92\linewidth, height=5.4cm,
+  symbolic x coords={diabetes, abalone},
+  xtick=data, ymin=-0.12, ymax=0.66,
+  ylabel={test $R^2$}, ylabel style={font=\small},
+  enlarge x limits=0.55,
+  tick label style={font=\footnotesize},
+  extra y ticks=0, extra y tick labels={}, extra y tick style={grid=major, major grid style={black!25}},
+  legend style={font=\footnotesize, at={(0.5,1.03)}, anchor=south, legend columns=-1},
+  nodes near coords, nodes near coords style={font=\scriptsize, /pgf/number format/fixed, /pgf/number format/precision=3},
+]
+\addplot[fill=cJPT, draw=cJPT!60!black] coordinates {(diabetes,-0.029) (abalone,0.425)};
+\addplot[fill=cForest, draw=cForest!60!black] coordinates {(diabetes,0.267) (abalone,0.463)};
+\addplot[fill=cBoost, draw=cBoost!60!black] coordinates {(diabetes,0.267) (abalone,0.551)};
+\addplot[fill=cGBM, draw=cGBM!60!black] coordinates {(abalone,0.518)};
+\legend{Single \jpt, \jptforest, \jptboost, LightGBM}
+\end{axis}
+\end{tikzpicture}
+\caption{(P2) Regression $R^2$. \jptboost{} (discriminative, additive
+residual correction) overtakes both the single tree and the generative
+forest, and beats LightGBM on \texttt{abalone}---at the cost of the
+generative joint. LightGBM was not separately recorded for \texttt{diabetes}.}
+\label{fig:reg}
+\end{figure}
+
+\paragraph{(P3) Generative boosting improves the held-out joint
+log-likelihood and stays generative.} \likeboost{} (Frank--Wolfe, $8$
+rounds, line-searched $\alpha$) lifts the mean held-out \emph{joint}
+log-likelihood on every dataset (Fig.~\ref{fig:ll}): \texttt{diabetes}
+$-7.23\!\to\!+5.88$, \texttt{iris} $-15.14\!\to\!-5.73$, \texttt{abalone}
+$+10.22\!\to\!+11.36$, \texttt{wine} $-27.36\!\to\!-26.93$. The result is
+still a normalised joint (Thm.~\ref{thm:fw}), so $P(\mathbf{x})$ anomaly
+scoring and arbitrary queries carry over---something no discriminative
+booster can offer.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  ybar, bar width=11pt,
+  width=0.92\linewidth, height=5.4cm,
+  symbolic x coords={diabetes, iris, abalone, wine},
+  xtick=data, ymin=-31, ymax=16,
+  ylabel={held-out joint log-likelihood}, ylabel style={font=\small},
+  enlarge x limits=0.22,
+  tick label style={font=\footnotesize},
+  extra y ticks=0, extra y tick labels={}, extra y tick style={grid=major, major grid style={black!25}},
+  legend style={font=\footnotesize, at={(0.5,1.03)}, anchor=south, legend columns=-1},
+  nodes near coords, nodes near coords style={font=\scriptsize, /pgf/number format/fixed, /pgf/number format/precision=2},
+]
+\addplot[fill=cJPT, draw=cJPT!60!black] coordinates {(diabetes,-7.23) (iris,-15.14) (abalone,10.22) (wine,-27.36)};
+\addplot[fill=cForest, draw=cForest!60!black] coordinates {(diabetes,5.88) (iris,-5.73) (abalone,11.36) (wine,-26.93)};
+\legend{Single \jpt, \likeboost{} (FW, $8$ rounds)}
+\end{axis}
+\end{tikzpicture}
+\caption{(P3) Held-out \emph{joint} log-likelihood. Generative likelihood
+boosting raises the joint LL on all four datasets while remaining a valid
+joint (Thm.~\ref{thm:fw}); the gain is largest where the single tree is
+worst (\texttt{diabetes}, \texttt{iris}).}
+\label{fig:ll}
+\end{figure}
+
+Together the three figures trace the geometry of \S\ref{sec:reconcile}:
+bagging (green) touches variance, generative boosting (green, P3) raises the
+joint likelihood \emph{within} $\Dens$, and discriminative boosting (red,
+P2) raises conditional accuracy \emph{outside} it. The implementation
+phases reproduce every number through the public API, add held-out FW-gap
+and calibration curves, and extend P2 to classification (LogitBoost).
+
+% ===========================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+The verdict is deliberately negative on the tidy hypothesis and positive on
+the useful one. There is no single ``objective flag'' that turns generative
+into discriminative boosting, because the two live in different geometries
+with different combine operators (Cor.~\ref{cor:verdict}); but they are two
+faces of one greedy functional-ascent scheme (Def.~\ref{def:metaboost}),
+which is what lets a single \mixture{} base carry all three constructions.
+The practical reading for a JPT user is a menu, not a dial: if the
+application needs the full joint---missing-value queries, anomaly scoring,
+sampling, MPE---use \jptforest{} or \likeboost{} and pay a little point
+accuracy; if it needs only $\E[y\mid x]$ at maximal accuracy, use
+\jptboost{} and accept that the joint is gone. The dichotomy of
+Theorem~\ref{thm:dichotomy} makes this trade-off a theorem rather than a
+folk belief: the joint is not lost by sloppiness but surrendered in
+exchange for the tractable per-target normaliser that makes additive
+boosting possible at all.
 
 % ===========================================================================
 \section{Related work}
@@ -819,7 +1032,7 @@ self-normalisation argument (Prop.~\ref{prop:jpt-norm}) is closely related.
 generative-vs-discriminative reconciliation it left open.
 
 % ===========================================================================
-\section{Conclusion}
+\section{Conclusions}
 \label{sec:conclusion}
 
 We set out to decide, by mathematics, whether one likelihood-boosting
@@ -834,16 +1047,15 @@ maximum conditional-likelihood estimation with an additive natural
 parameter, tractable only because conditioning shrinks an otherwise
 intractable joint partition function to a sum over the target
 (Thm.~\ref{thm:dichotomy}). A conditioned generative mixture is a gated
-mixture-of-experts, not the additive-logit predictor
-(Prop.~\ref{prop:moe}), so discriminative \jptboost{} is not a parametric
-special case of generative \likeboost{} (Prop.~\ref{prop:nonsubsumption}).
-The design follows: a single \mixture{} base carrying the query surface,
-with \jptforest, \likeboost{} and \jptboost{} as sibling strategies under a
-shared interface---bagging and likelihood boosting keeping the generative
-joint, \jptboost{} documented as the discriminative configuration that
-trades it for accuracy. The implementation phases realise this API and
-reproduce the preliminary numbers of \S\ref{sec:experiments} from the
-public library.
+mixture-of-experts, not the additive predictor (Prop.~\ref{prop:moe}), so
+discriminative \jptboost{} is not a parametric special case of generative
+\likeboost{} (Prop.~\ref{prop:nonsubsumption}). The design follows: a
+single \mixture{} base carrying the query surface, with \jptforest,
+\likeboost{} and \jptboost{} as sibling strategies under a shared
+interface---bagging and likelihood boosting keeping the generative joint,
+\jptboost{} documented as the discriminative configuration that trades it
+for accuracy. The implementation phases realise this API and reproduce the
+numbers of \S\ref{sec:experiments} from the public library.
 
 % ===========================================================================
 \begin{thebibliography}{99}
@@ -903,8 +1115,8 @@ L.~Mason, J.~Baxter, P.~Bartlett, and M.~Frean. Boosting algorithms as
 gradient descent. In \emph{NeurIPS}, 2000.
 
 \bibitem[Nyga et al.(2023)]{nyga2023jpt}
-D.~Nyga et al. Joint Probability Trees. Technical report / reference
-implementation \texttt{pyjpt}, 2023.
+D.~Nyga, M.~Picklum, T.~Schierenbeck, and M.~Beetz. Joint Probability
+Trees. \emph{arXiv:2302.07167}, 2023.
 
 \bibitem[Poon \& Domingos(2011)]{poon2011spn}
 H.~Poon and P.~Domingos. Sum-product networks: A new deep architecture. In
