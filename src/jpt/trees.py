@@ -890,10 +890,13 @@ class JPT:
         if dependencies is None or isinstance(
                 dependencies, DependencyDiscovery
         ):
+            # Register ALL variables (not just the feature keys) so the map
+            # compares equal to the one rebuilt by from_json, which passes
+            # variables=self.variables explicitly.
             self.dependencies = VariableMap({
                 var: list(self.targets)
                 for var in self.features
-            })
+            }, variables=self.variables)
         else:
             self.dependencies = VariableMap(
                 dependencies.items(),
@@ -1200,7 +1203,12 @@ class JPT:
         for leaf in self.apply(values_sets):
             pdf += leaf.prior * (
                 prod(
+                    # values_scalars holds value-space scalars: numeric pdfs
+                    # evaluate in value space directly, symbolic/integer
+                    # distributions need the value-space _p().
                     leaf.distributions[var].pdf(value)
+                    if var.numeric
+                    else leaf.distributions[var]._p(value)
                     for var, value in values_scalars.items()
                 ) if values_scalars else 1
             )
