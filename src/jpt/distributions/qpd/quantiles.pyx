@@ -729,10 +729,17 @@ cdef class QuantileDistribution:
         if len(self.cdf.intervals) == 2:
             return np.full(n, self.cdf.intervals[0].upper)
 
-        # create probability distribution with the probabilities of each function part
-        interval_probabilities = np.array([function.eval(interval.upper) - function.eval(interval.lower)
-                                           for function, interval in
-                                           zip(self.cdf.functions[1:-1], self.cdf.intervals[1:-1])])
+        # Create the probability distribution over the inner function parts by
+        # differencing the CDF at the segment boundaries. Differencing the full
+        # CDF (instead of evaluating each segment's own function at both of its
+        # endpoints) telescopes to exactly cdf(sup) - cdf(inf) = 1 and
+        # attributes the mass of jump discontinuities to the interval left of
+        # the jump; per-segment evaluation silently drops that mass and made
+        # np.random.choice reject the weights as improper.
+        boundaries = np.array([interval.lower for interval in self.cdf.intervals[1:]])
+        interval_probabilities = np.diff(np.array([self.cdf.eval(b) for b in boundaries]))
+        interval_probabilities = np.clip(interval_probabilities, 0, None)
+        interval_probabilities /= interval_probabilities.sum()
 
         # sample in which function part the samples will be
         sample_intervals = np.random.choice(list(range(0, len(interval_probabilities))), size=(n,),
