@@ -12,6 +12,7 @@ import uuid
 from typing import Any, cast
 
 import numpy as np
+import pandas as pd
 from dnutils import first, edict, ifnone
 
 from jpt.base.utils import mapstr, to_json, setstr
@@ -704,7 +705,8 @@ def infer_from_dataframe(
     '''
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
-        if dtype in (str, object, bool, np.bool_):
+        # pandas >= 3.0 infers string columns as StringDtype instead of object
+        if isinstance(dtype, pd.StringDtype) or dtype in (str, object, bool, np.bool_):
             if (
                 excluded_columns is not None
                 and col in excluded_columns
