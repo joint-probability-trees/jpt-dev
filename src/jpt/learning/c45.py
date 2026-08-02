@@ -370,7 +370,8 @@ class C45Algorithm:
             prune_or_split: Optional[Callable] = None,
             multicore: Optional[int] = None,
             split_validation_mask: Optional[np.ndarray] = None,
-            split_validation_mode: str = 'both'
+            split_validation_mode: str = 'both',
+            sample_weight: Optional[np.ndarray] = None
     ) -> None:
         """
         Fit the jpt to ``data``.
@@ -398,6 +399,34 @@ class C45Algorithm:
             verbose=verbose,
             multicore=multicore
         )
+
+        # ---- Sample weights (integer multiplicities) ----
+        # Every learner statistic (impurities, leaf fits, priors, leaf-size
+        # accounting) is additive over rows, so repeating row i
+        # ``sample_weight[i]`` times realizes exact integer-weighted
+        # learning without touching the Cython accumulation kernels.
+        if sample_weight is not None:
+            _weights = np.asarray(sample_weight)
+            if _weights.shape[0] != _data.shape[0]:
+                raise ValueError(
+                    f'sample_weight length ({_weights.shape[0]}) must equal '
+                    f'number of samples ({_data.shape[0]})'
+                )
+            if np.any(_weights < 0) or np.any(_weights != np.floor(_weights)):
+                raise ValueError(
+                    'sample_weight must contain non-negative integers.'
+                )
+            _weights = _weights.astype(np.int64)
+            if not np.any(_weights):
+                raise ValueError(
+                    'sample_weight must contain at least one positive weight.'
+                )
+            _repeat = np.repeat(np.arange(_data.shape[0]), _weights)
+            _data = _data.iloc[_repeat].reset_index(drop=True)
+            if split_validation_mask is not None:
+                split_validation_mask = np.asarray(
+                    split_validation_mask
+                )[_repeat]
 
         logger.info('Initializing JPT learning...')
         self.jpt._reset()

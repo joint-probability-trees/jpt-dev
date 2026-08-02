@@ -1826,7 +1826,8 @@ class JPT:
             ] | None = None,
             multicore: int | None = None,
             split_validation_mask: np.ndarray | None = None,
-            split_validation_mode: str = 'both'
+            split_validation_mode: str = 'both',
+            sample_weight: np.ndarray | None = None
     ) -> 'JPT':
         """
         Fit the jpt to ``data``.
@@ -1862,6 +1863,15 @@ class JPT:
             score: ``'both'`` (default) uses all targets,
             ``'training'`` uses only training targets,
             ``'evaluation'`` uses only evaluation targets.
+        :param sample_weight:
+            An array of non-negative *integer* multiplicities of length
+            ``len(data)``. Every statistic of the learner (split
+            impurities, leaf distributions, priors,
+            ``min_samples_leaf`` accounting) then counts row ``i``
+            with multiplicity ``sample_weight[i]``, exactly as if the
+            row appeared that many times in ``data``. ``None`` (default)
+            weights every row once. Fractional weights are not
+            supported.
 
         :return: the fitted model
         """
@@ -1880,7 +1890,8 @@ class JPT:
             prune_or_split=prune_or_split,
             multicore=multicore,
             split_validation_mask=split_validation_mask,
-            split_validation_mode=split_validation_mode
+            split_validation_mode=split_validation_mode,
+            sample_weight=sample_weight
         )
         return self
 
