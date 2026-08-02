@@ -22,11 +22,12 @@ flavors that share one taxonomy:
     line-searched step size. Keeps the joint; no partition function is
     ever needed because the mixture stays normalized by construction.
   - :class:`JPTBoost` --- *discriminative* gradient boosting with JPTs
-    as base learners (squared-error regression). It models the
-    conditional :math:`E[y \\mid x]` by an additive expansion and
-    deliberately gives up the joint --- this is the trade that makes
-    additive boosting tractable. Classification (softmax-gradient) is
-    future work.
+    as base learners: squared-error regression for numeric targets and
+    softmax-gradient (multinomial deviance) classification for symbolic
+    targets. It models the conditional :math:`E[y \\mid x]` (resp.
+    :math:`P(y \\mid x)`) by an additive expansion and deliberately gives
+    up the joint --- this is the trade that makes additive boosting
+    tractable.
 
 Which variants preserve the generative joint:
 
@@ -62,13 +63,15 @@ _EPS = 1e-12
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def _fit_member(args: Tuple[JPT, pd.DataFrame, int | None]) -> JPT:
-    '''Worker: learn an untrained member tree on its resample.
+def _fit_member(
+        args: Tuple[JPT, pd.DataFrame, np.ndarray | None, int | None]
+) -> JPT:
+    '''Worker: learn an untrained member tree on its (weighted) data.
 
     Module-level so it is picklable by ``multiprocessing``.
     '''
-    tree, data, multicore = args
-    tree.learn(data, multicore=multicore)
+    tree, data, sample_weight, multicore = args
+    tree.learn(data, sample_weight=sample_weight, multicore=multicore)
     return tree
 
 
@@ -129,7 +132,8 @@ class MixtureJPT:
             targets: List[str | Variable] | None = None,
             min_samples_leaf: float | int = .01,
             min_impurity_improvement: float | None = None,
-            max_depth: int | None = None
+            max_depth: int | None = None,
+            prior_alpha: float | None = None
     ) -> None:
         '''
         :param variables: the variables of the joint. If ``None``, they are
@@ -141,6 +145,9 @@ class MixtureJPT:
             float: fraction of the data).
         :param min_impurity_improvement: member-tree split threshold.
         :param max_depth: member-tree depth cap.
+        :param prior_alpha: add-alpha (Dirichlet) smoothing pseudo-count
+            for the members' symbolic leaf distributions. Effective only
+            when the variables are inferred from the training data.
         '''
         self._variables: List[Variable] | None = (
             list(variables) if variables is not None else None
@@ -149,6 +156,7 @@ class MixtureJPT:
         self.min_samples_leaf = min_samples_leaf
         self.min_impurity_improvement = min_impurity_improvement
         self.max_depth = max_depth
+        self.prior_alpha = prior_alpha
         self.members: List[JPT] = []
         self.weights: List[float] = []
 
@@ -181,7 +189,8 @@ class MixtureJPT:
         if self._variables is None:
             self._variables = infer_from_dataframe(
                 data,
-                scale_numeric_types=False
+                scale_numeric_types=False,
+                prior_alpha=self.prior_alpha
             )
 
     def _blueprint(self) -> JPT:
@@ -321,7 +330,8 @@ class MixtureJPT:
             targets=self.targets,
             min_samples_leaf=self.min_samples_leaf,
             min_impurity_improvement=self.min_impurity_improvement,
-            max_depth=self.max_depth
+            max_depth=self.max_depth,
+            prior_alpha=self.prior_alpha
         )
         result.members = members
         result.weights = list(normalized(weights))
@@ -460,6 +470,7 @@ class MixtureJPT:
             'min_samples_leaf': self.min_samples_leaf,
             'min_impurity_improvement': self.min_impurity_improvement,
             'max_depth': self.max_depth,
+            'prior_alpha': self.prior_alpha,
         }
 
     def to_json(self) -> Dict[str, Any]:
@@ -533,6 +544,7 @@ class JPTForest(MixtureJPT):
             min_samples_leaf: float | int = .01,
             min_impurity_improvement: float | None = None,
             max_depth: int | None = None,
+            prior_alpha: float | None = None,
             bootstrap: bool = True,
             random_state: int | None = None
     ) -> None:
@@ -548,7 +560,8 @@ class JPTForest(MixtureJPT):
             targets=targets,
             min_samples_leaf=min_samples_leaf,
             min_impurity_improvement=min_impurity_improvement,
-            max_depth=max_depth
+            max_depth=max_depth,
+            prior_alpha=prior_alpha
         )
         self.n_estimators = n_estimators
         self.bootstrap = bootstrap
@@ -569,13 +582,15 @@ class JPTForest(MixtureJPT):
         '''
         self._init_variables(data)
         rng = np.random.RandomState(self.random_state)
-        resamples = []
-        for _ in range(self.n_estimators):
-            if self.bootstrap:
-                idx = rng.randint(0, len(data), len(data))
-                resamples.append(data.iloc[idx].reset_index(drop=True))
-            else:
-                resamples.append(data)
+        # Bootstrap resamples are represented exactly by their integer
+        # multiplicity vectors and fitted natively via
+        # ``JPT.learn(..., sample_weight=...)`` -- no resampled DataFrames
+        # are materialized.
+        weight_vectors: List[np.ndarray | None] = [
+            rng.multinomial(len(data), np.full(len(data), 1. / len(data)))
+            if self.bootstrap else None
+            for _ in range(self.n_estimators)
+        ]
         pool_class = DummyPool if multicore == 1 else Pool
         # Pool workers are daemonic and may not fork their own children, so
         # parallel member training forces the inner C4.5 to run serially.
@@ -584,8 +599,8 @@ class JPTForest(MixtureJPT):
             self.members = list(pool.map(
                 _fit_member,
                 [
-                    (self._blueprint(), resample, inner_multicore)
-                    for resample in resamples
+                    (self._blueprint(), data, weights, inner_multicore)
+                    for weights in weight_vectors
                 ]
             ))
         self.weights = [1. / self.n_estimators] * self.n_estimators
@@ -614,6 +629,7 @@ class JPTForest(MixtureJPT):
             min_samples_leaf=data['min_samples_leaf'],
             min_impurity_improvement=data['min_impurity_improvement'],
             max_depth=data['max_depth'],
+            prior_alpha=data.get('prior_alpha'),
             bootstrap=data['bootstrap'],
             random_state=data['random_state']
         )
@@ -655,6 +671,7 @@ class JPTLikelihoodBoost(MixtureJPT):
             min_samples_leaf: float | int = .05,
             min_impurity_improvement: float | None = None,
             max_depth: int | None = None,
+            prior_alpha: float | None = None,
             patience: int = 2,
             random_state: int | None = None
     ) -> None:
@@ -672,7 +689,8 @@ class JPTLikelihoodBoost(MixtureJPT):
             targets=targets,
             min_samples_leaf=min_samples_leaf,
             min_impurity_improvement=min_impurity_improvement,
-            max_depth=max_depth
+            max_depth=max_depth,
+            prior_alpha=prior_alpha
         )
         self.n_rounds = n_rounds
         self.temperature = temperature
@@ -791,6 +809,7 @@ class JPTLikelihoodBoost(MixtureJPT):
             min_samples_leaf=data['min_samples_leaf'],
             min_impurity_improvement=data['min_impurity_improvement'],
             max_depth=data['max_depth'],
+            prior_alpha=data.get('prior_alpha'),
             patience=data['patience'],
             random_state=data['random_state']
         )
@@ -801,31 +820,50 @@ class JPTLikelihoodBoost(MixtureJPT):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def _softmax(scores: np.ndarray) -> np.ndarray:
+    '''Row-wise numerically stable softmax of a score matrix.'''
+    z = scores - scores.max(axis=1, keepdims=True)
+    e = np.exp(z)
+    return e / e.sum(axis=1, keepdims=True)
+
+
 class JPTBoost:
-    '''Discriminative gradient boosting with JPTs as base learners
-    (squared-error regression).
+    '''Discriminative gradient boosting with JPTs as base learners.
 
-    Models the conditional expectation by an additive expansion
+    Two modes, selected automatically from the target column's dtype on
+    :meth:`learn`:
 
-    .. math:: F_T(x) = F_0 + \\nu \\sum_{t=1}^{T} h_t(x)
+      - *Regression* (numeric target): squared-error boosting of the
+        conditional expectation by the additive expansion
 
-    where :math:`F_0` is the target mean and each :math:`h_t` is a weak
-    JPT fitted to the current residuals :math:`y_i - F_{t-1}(x_i)`.
+        .. math:: F_T(x) = F_0 + \\nu \\sum_{t=1}^{T} h_t(x)
+
+        where :math:`F_0` is the target mean and each :math:`h_t` is a
+        weak JPT fitted to the current residuals
+        :math:`y_i - F_{t-1}(x_i)`.
+
+      - *Classification* (non-numeric target): softmax-gradient boosting
+        of the multinomial deviance. Per-class score functions
+        :math:`F_k` start at the log-priors; each round fits **one**
+        multi-target JPT to the :math:`K` softmax residuals
+        :math:`y_{ik} - p_k(x_i)` jointly and adds its shrunk correction
+        to every class score. :meth:`predict` returns the argmax class,
+        :meth:`predict_proba` the softmax of the summed scores.
+
     Prediction routes a feature row through each member's decision splits
     and reads the residual expectation at the resulting leaf (or
     prior-weighted leaves).
 
     .. warning::
         This ensemble is **discriminative**: it models
-        :math:`E[y \\mid x]` only and gives up JPT's generative joint ---
-        no ``infer``/``posterior``/``sample`` over arbitrary variables.
-        That is the deliberate trade additive boosting makes: tilting a
-        *joint* multiplicatively would require an intractable partition
-        function over the whole data space, while conditioning collapses
-        it to a per-row normalization. Use :class:`JPTForest` or
-        :class:`JPTLikelihoodBoost` if you need the joint.
-
-    Classification (softmax-gradient boosting) is future work.
+        :math:`E[y \\mid x]` (resp. :math:`P(y \\mid x)`) only and gives
+        up JPT's generative joint --- no ``infer``/``posterior``/``sample``
+        over arbitrary variables. That is the deliberate trade additive
+        boosting makes: tilting a *joint* multiplicatively would require
+        an intractable partition function over the whole data space,
+        while conditioning collapses it to a per-row normalization. Use
+        :class:`JPTForest` or :class:`JPTLikelihoodBoost` if you need
+        the joint.
     '''
 
     logger = logger
@@ -852,17 +890,24 @@ class JPTBoost:
         self.learning_rate = learning_rate
         self.min_samples_leaf = min_samples_leaf
         self.max_depth = max_depth
-        self.f0: float = 0.
+        self.f0: float | np.ndarray = 0.
         self.members: List[JPT] = []
         self.feature_names: List[str] | None = None
+        self.classes: List[str] | None = None
 
-    def _predict_member(
+    def _resid_columns(self) -> List[str]:
+        return ['__resid_%d' % j for j in range(len(self.classes))]
+
+    def _predict_member_multi(
             self,
             member: JPT,
-            data: pd.DataFrame
+            data: pd.DataFrame,
+            columns: List[str]
     ) -> np.ndarray:
-        '''Leaf-routing prediction of the member's target expectation.'''
-        predictions = np.empty(len(data))
+        '''Leaf-routing prediction of the member's expectation of every
+        target column in ``columns``; shape ``(len(data), len(columns))``.
+        '''
+        predictions = np.empty((len(data), len(columns)))
         for i, (_, row) in enumerate(data.iterrows()):
             evidence = {name: row[name] for name in self.feature_names}
             leaves = list(member.apply(evidence))
@@ -875,11 +920,20 @@ class JPTBoost:
                 priors / total if total > 0
                 else np.full(len(leaves), 1. / len(leaves))
             )
-            predictions[i] = sum(
-                prior * leaf.distributions[self.target].expectation()
-                for prior, leaf in zip(priors, leaves)
-            )
+            for j, column in enumerate(columns):
+                predictions[i, j] = sum(
+                    prior * leaf.distributions[column].expectation()
+                    for prior, leaf in zip(priors, leaves)
+                )
         return predictions
+
+    def _predict_member(
+            self,
+            member: JPT,
+            data: pd.DataFrame
+    ) -> np.ndarray:
+        '''Leaf-routing prediction of the member's target expectation.'''
+        return self._predict_member_multi(member, data, [self.target])[:, 0]
 
     def learn(
             self,
@@ -888,15 +942,27 @@ class JPTBoost:
     ) -> 'JPTBoost':
         '''Fit the boosted ensemble on ``data``.
 
+        Numeric target columns select squared-error regression;
+        non-numeric ones softmax-gradient classification.
+
         :param data: training data containing the target column and the
             feature columns.
-        :param verbose: log per-round training MSE.
+        :param verbose: log per-round training loss.
         '''
         if self.target not in data.columns:
             raise ValueError(
                 'Target column %s not in data.' % repr(self.target)
             )
         self.feature_names = [c for c in data.columns if c != self.target]
+        if not pd.api.types.is_numeric_dtype(data[self.target]):
+            return self._learn_classification(data, verbose)
+        return self._learn_regression(data, verbose)
+
+    def _learn_regression(
+            self,
+            data: pd.DataFrame,
+            verbose: bool
+    ) -> 'JPTBoost':
         y = data[self.target].astype(float).to_numpy()
         self.f0 = float(y.mean())
         f = np.full(len(data), self.f0)
@@ -925,18 +991,87 @@ class JPTBoost:
                 )
         return self
 
+    def _learn_classification(
+            self,
+            data: pd.DataFrame,
+            verbose: bool
+    ) -> 'JPTBoost':
+        y = data[self.target].astype(str).to_numpy()
+        self.classes = sorted(set(y))
+        n, k = len(data), len(self.classes)
+        onehot = np.zeros((n, k))
+        for j, label in enumerate(self.classes):
+            onehot[y == label, j] = 1.
+        self.f0 = np.log(np.clip(onehot.mean(axis=0), _EPS, None))
+        f = np.tile(self.f0, (n, 1))
+        features = data[self.feature_names]
+        columns = self._resid_columns()
+        self.members = []
+        for t in range(self.n_rounds):
+            residuals = onehot - _softmax(f)
+            stage = features.copy()
+            for j, column in enumerate(columns):
+                stage[column] = residuals[:, j]
+            variables = infer_from_dataframe(
+                stage,
+                scale_numeric_types=False
+            )
+            member = JPT(
+                variables=variables,
+                targets=columns,
+                min_samples_leaf=self.min_samples_leaf,
+                max_depth=self.max_depth
+            ).learn(stage)
+            self.members.append(member)
+            f = f + self.learning_rate * self._predict_member_multi(
+                member, features, columns
+            )
+            if verbose:
+                proba = np.clip(
+                    _softmax(f)[np.arange(n), onehot.argmax(axis=1)],
+                    _EPS, None
+                )
+                logger.info(
+                    'JPTBoost: round %d, train deviance=%.6f' % (
+                        t + 1, float(-np.mean(np.log(proba)))
+                    )
+                )
+        return self
+
     def fit(self, data: pd.DataFrame) -> 'JPTBoost':
         return self.learn(data)
 
     def predict(self, data: pd.DataFrame) -> np.ndarray:
-        '''Predict :math:`E[y \\mid x]` for every row of ``data``.'''
+        '''Predict :math:`E[y \\mid x]` (regression) or the argmax class
+        label (classification) for every row of ``data``.'''
         if not self.members:
             raise RuntimeError('JPTBoost is not fitted yet.')
+        if self.classes is not None:
+            proba = self.predict_proba(data)
+            return np.asarray(self.classes)[np.argmax(proba, axis=1)]
         features = data[self.feature_names]
         f = np.full(len(data), self.f0)
         for member in self.members:
             f = f + self.learning_rate * self._predict_member(member, features)
         return f
+
+    def predict_proba(self, data: pd.DataFrame) -> np.ndarray:
+        '''Class-probability matrix :math:`P(y \\mid x)` (softmax of the
+        summed scores); rows follow ``data``, columns ``self.classes``.'''
+        if not self.members:
+            raise RuntimeError('JPTBoost is not fitted yet.')
+        if self.classes is None:
+            raise RuntimeError(
+                'predict_proba is only available for classification.'
+            )
+        features = data[self.feature_names]
+        columns = self._resid_columns()
+        f = np.tile(np.asarray(self.f0), (len(data), 1))
+        for member in self.members:
+            f = f + self.learning_rate * self._predict_member_multi(
+                member, features, columns
+            )
+        return _softmax(f)
 
     # ------------------------------------------------------------------------------------------------------------------
     # Serialization
@@ -949,7 +1084,11 @@ class JPTBoost:
             'learning_rate': self.learning_rate,
             'min_samples_leaf': self.min_samples_leaf,
             'max_depth': self.max_depth,
-            'f0': self.f0,
+            'f0': (
+                list(self.f0) if isinstance(self.f0, np.ndarray)
+                else self.f0
+            ),
+            'classes': self.classes,
             'feature_names': self.feature_names,
             'members': [m.to_json() for m in self.members],
         }
@@ -963,7 +1102,11 @@ class JPTBoost:
             min_samples_leaf=data['min_samples_leaf'],
             max_depth=data['max_depth']
         )
-        boost.f0 = data['f0']
+        boost.classes = data.get('classes')
+        boost.f0 = (
+            np.asarray(data['f0']) if boost.classes is not None
+            else data['f0']
+        )
         boost.feature_names = data['feature_names']
         boost.members = [JPT.from_json(d) for d in data['members']]
         return boost
@@ -978,7 +1121,10 @@ class JPTBoost:
         return all((
             type(self) is type(other),
             self.target == other.target,
-            self.f0 == other.f0,
+            np.array_equal(
+                np.asarray(self.f0), np.asarray(other.f0)
+            ),
+            self.classes == other.classes,
             self.learning_rate == other.learning_rate,
             self.feature_names == other.feature_names,
             self.members == other.members,

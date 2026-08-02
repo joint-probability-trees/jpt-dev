@@ -169,6 +169,28 @@ class JPTForestTest(unittest.TestCase):
         self.assertEqual(4, len(forest))
         self.assertTrue(np.all(forest.likelihood(self.data) >= 0))
 
+    def test_prior_alpha_smoothing(self):
+        forest = JPTForest(
+            n_estimators=3,
+            min_samples_leaf=.1,
+            prior_alpha=1.,
+            random_state=42
+        ).learn(self.data)
+        # no leaf of any member assigns zero mass to any label
+        for member in forest.members:
+            for leaf in member.leaves.values():
+                self.assertTrue(
+                    np.all(leaf.distributions['label'].probabilities > 0)
+                )
+        recovered = MixtureJPT.from_json(
+            json.loads(json.dumps(forest.to_json()))
+        )
+        self.assertEqual(1., recovered.prior_alpha)
+        self.assertTrue(np.allclose(
+            forest.likelihood(self.data),
+            recovered.likelihood(self.data)
+        ))
+
     def test_variance_reduction(self):
         # the forest's held-out log-likelihood should not be (much) worse
         # than a single tree's
@@ -281,6 +303,62 @@ class JPTBoostTest(unittest.TestCase):
     def test_pickle_roundtrip(self):
         recovered = pickle.loads(pickle.dumps(self.boost))
         self.assertTrue(np.allclose(
+            self.boost.predict(self.test),
+            recovered.predict(self.test)
+        ))
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class JPTBoostClassificationTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = bimodal_data()
+        cls.train, cls.test = cls.data.iloc[:300], cls.data.iloc[300:]
+        cls.boost = JPTBoost(
+            target='label',
+            n_rounds=10,
+            learning_rate=.3,
+            min_samples_leaf=.2
+        ).learn(cls.train)
+
+    def test_mode_detection(self):
+        self.assertEqual(['hi', 'lo'], self.boost.classes)
+
+    def test_accuracy(self):
+        y_test = self.test['label'].to_numpy()
+        accuracy = float(np.mean(self.boost.predict(self.test) == y_test))
+        self.assertGreater(accuracy, .95)
+
+    def test_predict_proba(self):
+        proba = self.boost.predict_proba(self.test)
+        self.assertEqual((len(self.test), 2), proba.shape)
+        self.assertTrue(np.allclose(1., proba.sum(axis=1)))
+        self.assertTrue(np.all(proba >= 0))
+
+    def test_predict_proba_regression_raises(self):
+        regressor = JPTBoost(
+            target='y',
+            n_rounds=2,
+            min_samples_leaf=.3
+        ).learn(regression_data(100))
+        with self.assertRaises(RuntimeError):
+            regressor.predict_proba(self.test)
+
+    def test_json_roundtrip(self):
+        recovered = JPTBoost.from_json(
+            json.loads(json.dumps(self.boost.to_json()))
+        )
+        self.assertEqual(self.boost, recovered)
+        self.assertTrue(np.array_equal(
+            self.boost.predict(self.test),
+            recovered.predict(self.test)
+        ))
+
+    def test_pickle_roundtrip(self):
+        recovered = pickle.loads(pickle.dumps(self.boost))
+        self.assertTrue(np.array_equal(
             self.boost.predict(self.test),
             recovered.predict(self.test)
         ))
