@@ -2030,11 +2030,13 @@ class JPT:
             )
 
             if single_likelihoods:
-                leaf_probabilities, leaf_probs_per_var = leaf_probabilities
-                probs_per_var += [l * leaf.prior for l in leaf_probs_per_var]
+                probs_per_var += leaf.prior * leaf_probabilities
+                probabilities += leaf.prior * leaf_probabilities.prod(axis=1)
+                continue
 
-            # multiply likelihood by leaf prior
-            probabilities += (leaf.prior * leaf_probabilities)
+            # multiply likelihood by leaf prior; Leaf.likelihood returns
+            # shape (n, 1), which would otherwise broadcast to (n, n)
+            probabilities += leaf.prior * leaf_probabilities[:, 0]
 
         if single_likelihoods:
             return probabilities, probs_per_var

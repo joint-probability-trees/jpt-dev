@@ -63,6 +63,33 @@ _EPS = 1e-12
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def joint_density(
+        tree: JPT,
+        data: pd.DataFrame | np.ndarray,
+        dirac_scaling: float = 2.,
+        min_distances: Dict = None
+) -> np.ndarray:
+    '''Prior-weighted joint density of fully assigned worlds under ``tree``,
+
+    .. math:: p(x) = \\sum_\\lambda P(\\lambda) \\prod_v p_\\lambda(x_v).
+
+    Unlike :meth:`jpt.trees.JPT.likelihood`, which reports the density
+    *conditional* on the leaf a sample is routed to, this includes the
+    leaf prior :math:`P(\\lambda)` and is therefore the valid (integrating
+    to one) joint pdf of the tree -- the quantity mixed by ensembles.
+    '''
+    from .learning.preprocessing import preprocess_data
+    if min_distances is None:
+        min_distances = tree.minimal_distances
+    data = preprocess_data(tree, data)
+    result = np.zeros(len(data))
+    for leaf in tree.leaves.values():
+        result += leaf.prior * leaf.likelihood(
+            data, dirac_scaling, min_distances
+        )[:, 0]
+    return result
+
+
 def _fit_member(
         args: Tuple[JPT, pd.DataFrame, np.ndarray | None, int | None]
 ) -> JPT:
@@ -219,12 +246,14 @@ class MixtureJPT:
     ) -> np.ndarray:
         '''Per-row mixture density :math:`\\bar P(z_i) = \\sum_m w_m P^{(m)}(z_i)`.
 
-        Keyword arguments are passed through to :meth:`jpt.trees.JPT.likelihood`.
+        Member densities are the prior-weighted joint pdfs
+        (:func:`joint_density`), so the mixture is a valid pdf.
+        Keyword arguments are passed through to :func:`joint_density`.
         '''
         self._assert_fitted()
         result = np.zeros(len(data))
         for weight, member in zip(self.weights, self.members):
-            result += weight * np.asarray(member.likelihood(data, **kwargs))
+            result += weight * joint_density(member, data, **kwargs)
         return result
 
     def log_likelihood(self, data: pd.DataFrame | np.ndarray) -> float:
@@ -701,7 +730,7 @@ class JPTLikelihoodBoost(MixtureJPT):
     # ------------------------------------------------------------------------------------------------------------------
 
     def _density(self, member: JPT, data: pd.DataFrame) -> np.ndarray:
-        return np.clip(np.asarray(member.likelihood(data)), _EPS, None)
+        return np.clip(joint_density(member, data), _EPS, None)
 
     @staticmethod
     def _line_search(

@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from jpt.ensembles import JPTBoost, JPTForest, JPTLikelihoodBoost, MixtureJPT
+from jpt.ensembles import JPTBoost, JPTForest, JPTLikelihoodBoost, MixtureJPT, joint_density
 from jpt.trees import JPT
 from jpt.variables import infer_from_dataframe
 
@@ -62,7 +62,7 @@ class JPTForestTest(unittest.TestCase):
     def test_likelihood_is_convex_combination(self):
         mixture = self.forest.likelihood(self.data)
         members = np.array([
-            m.likelihood(self.data) for m in self.forest.members
+            joint_density(m, self.data) for m in self.forest.members
         ])
         expected = np.average(members, axis=0, weights=self.forest.weights)
         self.assertTrue(np.allclose(mixture, expected))
@@ -205,7 +205,7 @@ class JPTForestTest(unittest.TestCase):
             random_state=0
         ).learn(train)
         ll_single = float(np.mean(np.log(
-            np.clip(single.likelihood(test), 1e-12, None)
+            np.clip(joint_density(single, test), 1e-12, None)
         )))
         ll_forest = forest.log_likelihood(test)
         self.assertGreater(ll_forest, ll_single - .5)
