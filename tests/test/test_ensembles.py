@@ -106,6 +106,33 @@ class JPTForestTest(unittest.TestCase):
         samples = self.forest.sample(50)
         self.assertEqual(50, len(samples))
 
+    def test_conditional_jpt(self):
+        evidence = {'x': [-4., -2.]}
+        conditional = self.forest.conditional_jpt(evidence)
+        self.assertIsInstance(conditional, MixtureJPT)
+        self.assertAlmostEqual(1., sum(conditional.weights))
+        # querying the conditional mixture without evidence must agree with
+        # querying the original mixture with the evidence
+        self.assertAlmostEqual(
+            self.forest.infer({'label': 'lo'}, evidence),
+            conditional.infer({'label': 'lo'}),
+            places=6
+        )
+        e_orig = self.forest.expectation(['y'], evidence)
+        e_cond = conditional.expectation(['y'])
+        self.assertAlmostEqual(e_orig['y'], e_cond['y'], places=6)
+
+    def test_conditional_jpt_unsatisfiable(self):
+        from jpt.base.errors import Unsatisfiability
+        with self.assertRaises(Unsatisfiability):
+            self.forest.conditional_jpt({'x': [100., 200.]})
+        self.assertIsNone(
+            self.forest.conditional_jpt(
+                {'x': [100., 200.]},
+                fail_on_unsatisfiability=False
+            )
+        )
+
     def test_unsatisfiable_evidence(self):
         from jpt.base.errors import Unsatisfiability
         with self.assertRaises(Unsatisfiability):

@@ -273,6 +273,60 @@ class MixtureJPT:
             return None
         return p_q / p_e
 
+    def conditional_jpt(
+            self,
+            evidence: Dict[Variable | str, Any] | VariableAssignment = None,
+            fail_on_unsatisfiability: bool = True
+    ) -> 'MixtureJPT | None':
+        '''Condition the mixture on ``evidence``.
+
+        Mixtures are closed under conditioning: the conditional
+        :math:`\\bar P(\\cdot \\mid e)` is again a mixture of JPTs, with
+        each member replaced by its conditional tree
+        (:meth:`jpt.trees.JPT.conditional_jpt`) and the weights replaced
+        by the responsibilities :math:`r_m \\propto w_m P^{(m)}(e)`.
+        Members for which the evidence is unsatisfiable drop out.
+
+        :return: a new :class:`MixtureJPT` representing
+            :math:`\\bar P(\\cdot \\mid e)`, or ``None`` if the evidence is
+            unsatisfiable under every member and
+            ``fail_on_unsatisfiability`` is ``False``.
+        '''
+        self._assert_fitted()
+        members: List[JPT] = []
+        weights: List[float] = []
+        for weight, member in zip(self.weights, self.members):
+            p_e_m = (
+                member.infer(evidence, fail_on_unsatisfiability=False)
+                if evidence else 1.
+            )
+            if not p_e_m:
+                continue
+            conditional_m = member.conditional_jpt(
+                evidence,
+                fail_on_unsatisfiability=False
+            )
+            if conditional_m is None:
+                continue
+            members.append(conditional_m)
+            weights.append(weight * p_e_m)
+        if not members:
+            if fail_on_unsatisfiability:
+                raise Unsatisfiability(
+                    'Evidence %s is unsatisfiable.' % _format_evidence(evidence)
+                )
+            return None
+        result = MixtureJPT(
+            variables=self._variables,
+            targets=self.targets,
+            min_samples_leaf=self.min_samples_leaf,
+            min_impurity_improvement=self.min_impurity_improvement,
+            max_depth=self.max_depth
+        )
+        result.members = members
+        result.weights = list(normalized(weights))
+        return result
+
     def posterior(
             self,
             variables: List[Variable | str] = None,
