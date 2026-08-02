@@ -150,6 +150,36 @@ class MultinomialDistributionTest(TestCase):
         self.assertAlmostEqual(d1._p({1}), 3 / 10, 15)
         self.assertAlmostEqual(d1._p({2}), 2 / 10, 15)
 
+    def test_fit_prior_alpha(self):
+        '''Add-alpha (Dirichlet) smoothing in the multinomial fit'''
+        DistABC = self.DistABC
+        d = DistABC(prior_alpha=1.)._fit(
+            MultinomialDistributionTest.DATA,
+            rows=np.array(
+                list(range(MultinomialDistributionTest.DATA.shape[0] - 1)),
+                dtype=np.int32
+            ),
+            col=1
+        )
+        # counts 5/3/2 out of 10, alpha=1, 3 values: (n_v + 1) / 13
+        self.assertAlmostEqual(d.p({'A'}), 6 / 13, 15)
+        self.assertAlmostEqual(d.p({'B'}), 4 / 13, 15)
+        self.assertAlmostEqual(d.p({'C'}), 3 / 13, 15)
+        self.assertAlmostEqual(sum(d.probabilities), 1, 15)
+        # smoothed distributions never assign zero mass
+        empty = DistABC(prior_alpha=.5)._fit(
+            MultinomialDistributionTest.DATA,
+            rows=np.array([0, 1], dtype=np.int32),
+            col=1
+        )
+        self.assertTrue(all(p > 0 for p in empty.probabilities))
+        # round-trip preserves the setting
+        recovered = DistABC.from_json(
+            json.loads(json.dumps(d.inst_to_json()))
+        )
+        self.assertEqual(1., recovered.settings['prior_alpha'])
+        self.assertAlmostEqual(recovered.p({'A'}), 6 / 13, 15)
+
     def test_crop(self):
         """Verify cropping a distribution by label restricts and renormalizes probabilities."""
         # Arrange

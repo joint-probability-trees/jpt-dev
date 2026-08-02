@@ -8,7 +8,7 @@ from typing import Union, Any, Set, Optional, List, Tuple, Iterable, Type, Colle
 
 import numpy as np
 from deprecated import deprecated
-from dnutils import ifnone, first
+from dnutils import edict, ifnone, first
 
 from . import Distribution
 from .distribution import ValueMap
@@ -62,6 +62,12 @@ class Multinomial(Distribution):
     '''
     Abstract supertype of all symbolic domains and distributions.
     '''
+
+    PRIOR_ALPHA = 'prior_alpha'
+
+    SETTINGS = edict(Distribution.SETTINGS) + {
+        PRIOR_ALPHA: 0.
+    }
 
     values: MultinomialValueMap = None
     labels: MultinomialValueMap = None
@@ -491,12 +497,20 @@ class Multinomial(Distribution):
             rows: np.ndarray = None,
             col: int = None
         ) -> 'Multinomial':
-
-        self._params = np.zeros(shape=self.n_values, dtype=np.float64)
+        # Add-alpha (Dirichlet) smoothing: with pseudo-count alpha on every
+        # value, probabilities are (n_v + alpha) / (n + alpha * |values|).
+        # alpha = 0 (the default) gives the plain maximum-likelihood fit.
+        alpha = self.settings.get(self.PRIOR_ALPHA, 0.)
         n_samples = ifnone(rows, len(data), len)
+        normalization = n_samples + alpha * self.n_values
+        self._params = np.full(
+            shape=self.n_values,
+            fill_value=alpha / normalization,
+            dtype=np.float64
+        )
         col = ifnone(col, 0)
         for row in ifnone(rows, range(len(data))):
-            self.probabilities[int(data[row, col])] += 1 / n_samples
+            self.probabilities[int(data[row, col])] += 1 / normalization
         return self
 
     def set(

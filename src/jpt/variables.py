@@ -569,6 +569,7 @@ class IntegerVariable(Variable):
 # Classes to represent symbolic variables
 
 INVERT_IMPURITY = 'invert_impurity'
+PRIOR_ALPHA = 'prior_alpha'
 
 
 class SymbolicVariable(Variable):
@@ -578,6 +579,7 @@ class SymbolicVariable(Variable):
 
     SETTINGS = edict(Variable.SETTINGS) + {
         INVERT_IMPURITY: False,
+        PRIOR_ALPHA: 0.,
     }
 
     def __init__(
@@ -587,8 +589,14 @@ class SymbolicVariable(Variable):
             min_impurity_improvement: (
                 float | None
             ) = None,
-            invert_impurity: bool | None = None
+            invert_impurity: bool | None = None,
+            prior_alpha: float | None = None
     ):
+        '''
+        :param prior_alpha: add-alpha (Dirichlet) smoothing pseudo-count
+            applied when fitting the variable's leaf distributions;
+            ``0`` (default) is the plain maximum-likelihood fit.
+        '''
         super().__init__(
             name,
             domain,
@@ -596,6 +604,7 @@ class SymbolicVariable(Variable):
                 min_impurity_improvement
             ),
             invert_impurity=invert_impurity,
+            prior_alpha=prior_alpha,
         )
 
     @staticmethod
@@ -613,6 +622,9 @@ class SymbolicVariable(Variable):
             ),
             invert_impurity=settings.get(
                 INVERT_IMPURITY
+            ),
+            prior_alpha=settings.get(
+                PRIOR_ALPHA
             ),
         )
 
@@ -678,7 +690,8 @@ def infer_from_dataframe(
         precision: float | None = None,
         unique_domain_names: bool = False,
         excluded_columns: dict[str, type] | None = None,
-        remove_nan: bool = False
+        remove_nan: bool = False,
+        prior_alpha: float | None = None
 ):
     '''
     Creates the ``Variable`` instances from column types
@@ -702,6 +715,9 @@ def infer_from_dataframe(
     :param remove_nan: skip all ``None`` or ``NaN`` or
         ``Inf`` values in the data to construct the
         numeric variable domains.
+    :param prior_alpha: add-alpha (Dirichlet) smoothing
+        pseudo-count applied to symbolic variables' leaf
+        distributions.
     '''
     variables = []
     for col, dtype in zip(df.columns, df.dtypes):
@@ -731,6 +747,7 @@ def infer_from_dataframe(
                 min_impurity_improvement=(
                     min_impurity_improvement
                 ),
+                prior_alpha=prior_alpha,
             )
 
         elif dtype in (
