@@ -751,7 +751,7 @@ generative boosting improves the held-out joint likelihood while keeping
 the model a valid joint. This section tests all three. Every number is
 produced by the public API of the published implementation; the driver
 script (\texttt{paper/evaluation.py}) and the raw results
-(\texttt{paper/results.json}) ship with the paper.
+(\texttt{paper/results\_*.json}) ship with the paper.
 
 \paragraph{Datasets and protocol.} Six standard datasets:
 \texttt{iris} ($150\times4$, $3$ classes), \texttt{wine}
@@ -805,7 +805,12 @@ objective. \jptboost{} and the baselines predict directly.
 \toprule
 dataset & single \jpt & \jptforest{} ($M{=}10$) & \likeboost{} ($\le8$ rounds)\\
 \midrule
-@@LLTABLE@@
+iris & $-5.63 \pm 1.22$ & $\mathbf{-3.53 \pm 0.69}$ & $-4.04 \pm 0.66$ \\
+wine & $-25.80 \pm 0.53$ & $-25.21 \pm 0.61$ & $\mathbf{-24.93 \pm 0.54}$ \\
+breast\_cancer & $-0.32 \pm 0.89$ & $\mathbf{5.34 \pm 1.59}$ & $5.08 \pm 1.49$ \\
+digits & $-27.63$ & $-27.63$ & $-27.63$ \\
+diabetes & $6.55 \pm 0.83$ & $\mathbf{9.64 \pm 1.02}$ & $9.05 \pm 0.69$ \\
+abalone & $7.94 \pm 0.26$ & $\mathbf{8.76 \pm 0.19}$ & $8.56 \pm 0.20$ \\
 \bottomrule
 \end{tabular}
 \caption{Held-out mean joint log-likelihood (higher is better,
@@ -816,7 +821,23 @@ ensembles are valid joints (Props.~\ref{prop:mixture-closed},
 \end{table}
 
 Table~\ref{tab:ll} reports the held-out joint log-likelihood.
-@@LLPROSE@@
+On the five
+datasets where the metric is informative, \emph{both} ensembles improve
+on the single tree, on every dataset: from ${+}0.6$ nats per instance on
+\texttt{wine} up to ${+}5.7$ on \texttt{breast\_cancer}, where single
+trees vary strongly across folds and averaging pays most. Forest and
+likelihood boost land close to each other, with the boost reaching
+forest-level quality from at most $8$ accepted components against the
+forest's fixed $M{=}10$. \texttt{digits} exhibits the announced failure
+mode of bounded-support density estimation: with ${\sim}40$ numeric
+dimensions, every held-out point receives zero model density in at least
+one dimension, the $\eps$-background dominates, and all three generative
+models score the identical constant. The reweighting
+$w\propto1/\bar p$ of \likeboost{} is then uniform and the line search
+rejects every round after the first. The joint likelihood carries no
+signal in this regime---yet the members still differ where it matters:
+the forest lifts accuracy from $.751$ to $.867$
+(Table~\ref{tab:pred}). This confirms \emph{P1} and \emph{P3}.
 
 \begin{figure}[t]
 \centering
@@ -828,8 +849,8 @@ Table~\ref{tab:ll} reports the held-out joint log-likelihood.
   legend style={font=\footnotesize, at={(0.97,0.05)}, anchor=south east},
   title={\footnotesize\texttt{iris}},
 ]
-\addplot[cJPT, thick, mark=*, mark size=1.5pt] coordinates {@@E3IRISTRAIN@@};
-\addplot[cBoost, thick, mark=square*, mark size=1.5pt] coordinates {@@E3IRISTEST@@};
+\addplot[cJPT, thick, mark=*, mark size=1.5pt] coordinates {(1,0.0220) (2,0.4403) (3,0.6834) (4,1.0028) (5,1.2356) (6,1.4950) (7,1.5486) (8,1.5634) (9,1.5812)};
+\addplot[cBoost, thick, mark=square*, mark size=1.5pt] coordinates {(1,-6.0177) (2,-5.6053) (3,-4.8525) (4,-4.7465) (5,-3.7652) (6,-3.6057) (7,-3.6950) (8,-3.6394) (9,-3.5380)};
 \legend{train, held-out}
 \end{axis}
 \end{tikzpicture}\hfill
@@ -841,8 +862,8 @@ Table~\ref{tab:ll} reports the held-out joint log-likelihood.
   legend style={font=\footnotesize, at={(0.97,0.05)}, anchor=south east},
   title={\footnotesize\texttt{diabetes}},
 ]
-\addplot[cJPT, thick, mark=*, mark size=1.5pt] coordinates {@@E3DIABTRAIN@@};
-\addplot[cBoost, thick, mark=square*, mark size=1.5pt] coordinates {@@E3DIABTEST@@};
+\addplot[cJPT, thick, mark=*, mark size=1.5pt] coordinates {(1,16.6790) (2,17.4732) (3,18.1569) (4,18.6868) (5,18.9388) (6,19.2182) (7,19.2760) (8,19.3719) (9,19.5124)};
+\addplot[cBoost, thick, mark=square*, mark size=1.5pt] coordinates {(1,7.3511) (2,8.2319) (3,8.6541) (4,9.1397) (5,9.3208) (6,9.6977) (7,9.8610) (8,10.0918) (9,10.1822)};
 \legend{train, held-out}
 \end{axis}
 \end{tikzpicture}
@@ -856,7 +877,13 @@ final weights (the Frank--Wolfe update scales them uniformly).}
 \end{figure}
 
 Figure~\ref{fig:lboost-curve} resolves the boosting trajectory of
-\likeboost{} over rounds. @@E3PROSE@@
+\likeboost{} over rounds. The held-out curve follows the train curve
+throughout the budget: on \texttt{iris} the mixture gains $2.5$ nats
+per instance over nine components ($-6.02\to-3.54$), on
+\texttt{diabetes} $2.8$ nats ($7.35\to10.18$), with no overfitting
+visible---the acceptance rule (a component enters only if it improves
+the training objective) and the $\mathcal O(1/t)$-shrinking
+Frank--Wolfe step act as regularisers.
 
 \begin{figure}[t]
 \centering
@@ -867,8 +894,8 @@ Figure~\ref{fig:lboost-curve} resolves the boosting trajectory of
   label style={font=\small}, tick label style={font=\footnotesize},
   legend style={font=\footnotesize, at={(0.97,0.05)}, anchor=south east},
 ]
-\addplot[cForest, thick, mark=*, mark size=1.5pt] coordinates {@@E2WINELL@@};
-\addplot[cJPT, thick, dashed, mark=square*, mark size=1.5pt] coordinates {@@E2DIABLL@@};
+\addplot[cForest, thick, mark=*, mark size=1.5pt] coordinates {(1,-26.8230) (2,-26.6227) (5,-25.7998) (10,-25.2070) (15,-24.5802)};
+\addplot[cJPT, thick, dashed, mark=square*, mark size=1.5pt] coordinates {(1,4.3677) (2,6.6008) (5,8.8125) (10,9.6410) (15,10.0040)};
 \legend{\texttt{wine}, \texttt{diabetes}}
 \end{axis}
 \end{tikzpicture}\hfill
@@ -879,8 +906,8 @@ Figure~\ref{fig:lboost-curve} resolves the boosting trajectory of
   label style={font=\small}, tick label style={font=\footnotesize},
   legend style={font=\footnotesize, at={(0.97,0.05)}, anchor=south east},
 ]
-\addplot[cForest, thick, mark=*, mark size=1.5pt] coordinates {@@E2WINEACC@@};
-\addplot[cJPT, thick, dashed, mark=square*, mark size=1.5pt] coordinates {@@E2DIABR2@@};
+\addplot[cForest, thick, mark=*, mark size=1.5pt] coordinates {(1,0.9440) (2,0.9275) (5,0.8990) (10,0.9159) (15,0.9103)};
+\addplot[cJPT, thick, dashed, mark=square*, mark size=1.5pt] coordinates {(1,0.1818) (2,0.2315) (5,0.2667) (10,0.2412) (15,0.2484)};
 \legend{\texttt{wine} (acc), \texttt{diabetes} ($R^2$)}
 \end{axis}
 \end{tikzpicture}
@@ -891,7 +918,15 @@ $M\approx5$--$10$, the classic bagging saturation profile
 \label{fig:sweep}
 \end{figure}
 
-Figure~\ref{fig:sweep} varies the forest size. @@E2PROSE@@
+Figure~\ref{fig:sweep} varies the forest size. The density gain is
+monotone in $M$ on \texttt{wine} ($-26.8$ at $M{=}1$ to $-24.6$ at
+$M{=}15$) and saturates around $M{\approx}10$ on \texttt{diabetes}
+($4.4\to10.0$). The predictive metrics move far less: $R^2$ peaks
+already near $M{=}5$, and \texttt{wine} accuracy stays within one
+fold-std of the single bootstrap tree throughout. Bagging JPTs buys
+density quality first---consistent with Prop.~\ref{prop:bag-var},
+whose variance-reduction argument applies to the density estimate
+itself, not to any downstream decision rule.
 
 % ---------------------------------------------------------------------------
 \subsection{P2: predictive quality across the model family}
@@ -899,8 +934,8 @@ Figure~\ref{fig:sweep} varies the forest size. @@E2PROSE@@
 
 \begin{table}[t]
 \centering
-\small
-\setlength{\tabcolsep}{4.5pt}
+\footnotesize
+\setlength{\tabcolsep}{2.5pt}
 \begin{tabular}{lrrrrrr}
 \toprule
  & \multicolumn{3}{c}{generative (Bayes rule / posterior mean)} &
@@ -909,10 +944,14 @@ Figure~\ref{fig:sweep} varies the forest size. @@E2PROSE@@
 dataset & \jpt & \jptforest & \likeboost & \jptboost & RF & HistGB\\
 \midrule
 \multicolumn{7}{l}{\emph{classification (accuracy)}}\\
-@@ACCTABLE@@
+iris & $0.940 \pm 0.039$ & $0.933 \pm 0.042$ & $0.947 \pm 0.016$ & $0.927 \pm 0.039$ & $0.940 \pm 0.025$ & $0.947 \pm 0.016$ \\
+wine & $0.933 \pm 0.057$ & $0.916 \pm 0.055$ & $0.938 \pm 0.048$ & $0.938 \pm 0.020$ & $0.972 \pm 0.018$ & $0.972 \pm 0.018$ \\
+breast\_cancer & $0.926 \pm 0.013$ & $0.931 \pm 0.006$ & $0.930 \pm 0.008$ & $0.951 \pm 0.016$ & $0.965 \pm 0.015$ & $0.970 \pm 0.012$ \\
+digits & $0.751$ & $0.867$ & $0.751$ & $0.816$ & $0.971$ & $0.971$ \\
 \midrule
 \multicolumn{7}{l}{\emph{regression ($R^2$)}}\\
-@@R2TABLE@@
+diabetes & $0.182 \pm 0.121$ & $0.241 \pm 0.105$ & $0.272 \pm 0.119$ & $0.445 \pm 0.132$ & $0.419 \pm 0.098$ & $0.398 \pm 0.141$ \\
+abalone & $0.310 \pm 0.038$ & $0.342 \pm 0.040$ & $0.409 \pm 0.026$ & $0.541 \pm 0.030$ & $0.557 \pm 0.040$ & $0.531 \pm 0.030$ \\
 \bottomrule
 \end{tabular}
 \caption{Predictive quality ($5$-fold CV mean~$\pm$~std;
@@ -922,8 +961,20 @@ discriminative columns model only $P(y\mid\mathbf x)$.}
 \label{tab:pred}
 \end{table}
 
-Table~\ref{tab:pred} places all six models side by side.
-@@PREDPROSE@@
+Table~\ref{tab:pred} places all six models side by side. Three
+observations. First, the generative models---which answer the
+prediction as one query among many of a full joint and never see a
+discriminative objective---stay within a few points of the dedicated
+discriminative models on the low-dimensional datasets. Second,
+\jptboost{} behaves exactly as designed (\emph{P2}): it is the
+strongest JPT-family predictor on both regression datasets ($0.445$ and
+$0.541$ vs.\ $0.272$ and $0.409$ for the best generative variant) and
+on \texttt{breast\_cancer}, and on \texttt{diabetes} it edges out
+RandomForest---at the price of not being a joint. Third, the remaining
+gap to RF/HistGB concentrates on \texttt{digits} and \texttt{wine},
+where many weakly informative dimensions must be combined: the regime
+where modelling the full joint is hardest and a purely conditional
+model has the easier task.
 
 % ---------------------------------------------------------------------------
 \subsection{Ablation: Dirichlet-smoothed leaves}
@@ -931,12 +982,39 @@ Table~\ref{tab:pred} places all six models side by side.
 
 Symbolic leaf distributions support additive (Dirichlet) smoothing
 $P_\lambda(c)=(n_c+\alpha)/(n+\alpha|C|)$ via the \texttt{prior\_alpha}
-setting. @@E4PROSE@@
+setting. Comparing $\alpha{=}0$ against $\alpha{=}1$ on the
+classification datasets, for single trees and forests: the held-out
+joint log-likelihood shifts by at most $0.15$ nats (\texttt{iris}
+forest, $-3.53\to-3.68$) and accuracy is unchanged to three digits on
+every dataset. At these sample sizes the Dirichlet prior is a numerical
+safety device---it bounds the \likeboost{} reweighting
+$w\propto1/\bar p$ away from infinity when a symbolic leaf assigns a
+class probability zero---rather than an accuracy knob.
 
 % ---------------------------------------------------------------------------
 \subsection{Discussion}
 
-@@DISCUSSION@@
+The experiments support all three claims and delimit their scope.
+\emph{Cost.} The full query surface is not free: a single \jpt{} trains
+in seconds, the ensembles in minutes ($M{=}10$ members cost roughly
+$8$--$10\times$ a single tree), and scikit-learn's RandomForest is
+$1$--$2$ orders of magnitude faster still. The value proposition of an
+ensemble JPT is therefore not predictive rank per compute, but that
+\emph{one} trained object answers likelihoods, arbitrary conditionals,
+marginals, MPE and sampling besides the point prediction
+(\S\ref{sec:inference}). \emph{Limitation.} \texttt{digits} marks the
+boundary: bounded-support piecewise-linear joint densities over
+${\gtrsim}40$ dimensions collapse to the smoothing floor on held-out
+data, so likelihood-driven boosting stalls, while bagging still helps
+predictively. Ensemble JPTs are best deployed at low-to-moderate
+dimensionality---up to a few dozen mixed-type variables---which is
+precisely where full-joint reasoning is typically wanted.
+\emph{Division of labour.} Within the family the practical guidance is
+simple: use \jptforest{} or \likeboost{} whenever the joint is needed
+(they are interchangeable in quality; the boost gets there with fewer
+components, the forest trains embarrassingly parallel), and
+\jptboost{} when only $P(y\mid\mathbf x)$ matters and the last few
+points of accuracy or $R^2$ justify giving the joint up.
 
 % ===========================================================================
 \section{Related work}

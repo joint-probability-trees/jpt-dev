@@ -3,11 +3,26 @@
 `ensemble_jpt.tex` — *Ensemble Joint Probability Trees: A Likelihood-Geometric
 Account of Bagging and Boosting for Hybrid Density Trees*.
 
-This is the **Phase 0 (theory)** draft: it derives bagging, generative
-likelihood boosting, and discriminative gradient boosting of JPTs from first
-principles and settles whether one framework subsumes the other (it does not —
-they share a meta-principle but live in two different geometries). Experiments
-and final polish land in later phases.
+The paper derives bagging (`JPTForest`), generative likelihood boosting
+(`JPTLikelihoodBoost`), and discriminative gradient boosting (`JPTBoost`)
+of JPTs, proves both generative ensembles are valid normalized joints,
+translates the full JPT inference calculus to the ensemble, and reports a
+measured empirical evaluation.
+
+## Experiments
+
+All numbers in the Experiments section are produced by
+`evaluation.py` from the public library API:
+
+```sh
+python evaluation.py                  # everything -> results.json
+python evaluation.py E1 wine          # one experiment / dataset
+EVAL_OUT=results_wine.json python evaluation.py E1 wine   # parallel runs
+```
+
+The measured raw results ship as `results_*.json` (deep-merged by
+`mktables.py`, which formats them into the LaTeX table bodies and
+pgfplots coordinates embedded in `ensemble_jpt.tex`).
 
 ## Build
 
