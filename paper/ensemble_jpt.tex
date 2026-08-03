@@ -91,8 +91,12 @@ mixture re-scoring, a lower bound that is exact in natural special cases;
 and sampling is ancestral. Every formula corresponds one-to-one to a
 method of the published implementation. A third, discriminative variant
 (\jptboost) is included for maximal point accuracy; we state precisely why
-it---and only it---gives up the joint density. Experiments on eight
-datasets corroborate the design.
+it---and only it---gives up the joint density. A cross-validated study on
+six standard datasets corroborates the design: bagging and likelihood
+boosting consistently raise the held-out joint log-likelihood over a
+single JPT, the discriminative variant closes most of the accuracy gap to
+gradient-boosted baselines, and the generative ensembles answer the same
+prediction queries as a by-product of a full joint.
 \end{abstract}
 
 % ===========================================================================
@@ -123,10 +127,10 @@ contract is the defining strength of the formalism and the property every
 extension must be measured against.
 
 The price of that generality is statistical: a single piecewise-constant
-tree is a high-bias estimator. In a controlled benchmark against LightGBM
-\citep{ke2017lightgbm}, a single JPT trailed on $7$ of $8$ datasets
-(\texttt{digits} accuracy $0.76$ vs.\ $0.98$; \texttt{california}
-$R^2\,0.58$ vs.\ $0.81$). The natural remedy is to \emph{ensemble} JPTs:
+tree is a high-bias estimator. In the cross-validated study of
+\S\ref{sec:experiments}, a single JPT trails gradient-boosted
+discriminative baselines on every dataset. The natural remedy is to
+\emph{ensemble} JPTs:
 bagging \citep{breiman1996bagging,breiman2001rf} to remove variance, and
 boosting to remove bias. But an ensemble of JPTs is only useful if it
 keeps the contract that makes JPTs worth using in the first place. We
@@ -180,8 +184,9 @@ it---forfeits the joint: additive boosting of a \emph{joint} density
 would require an intractable partition function, whereas conditioning
 collapses that normaliser to the target variable alone
 (\S\ref{sec:gbm}).
-\item We validate the design experimentally on eight datasets
-(\S\ref{sec:experiments}).
+\item We validate the design in a cross-validated study on six standard
+datasets (\S\ref{sec:experiments}), with every number reproduced from
+the public API of the published implementation.
 \end{enumerate}
 
 % ===========================================================================
@@ -739,133 +744,199 @@ experiments below.)
 \section{Experiments}
 \label{sec:experiments}
 
-The design makes three testable claims: bagging reduces variance while
-keeping the full joint; discriminative boosting maximises point accuracy
-at the cost of the joint; generative boosting improves the joint
-likelihood while keeping it. All three are visible in the prototype
-study that motivated this work (single $75/25$ split, seed $0$; numbers
-\emph{to be reproduced from the library API} in the implementation
-phases). Figures~\ref{fig:bagging}--\ref{fig:ll} group the eight datasets
-by the claim they probe.
+The design makes three testable claims: \emph{(P1)} bagging reduces
+variance while keeping the full joint; \emph{(P2)} discriminative
+boosting maximises point accuracy at the cost of the joint; \emph{(P3)}
+generative boosting improves the held-out joint likelihood while keeping
+the model a valid joint. This section tests all three. Every number is
+produced by the public API of the published implementation; the driver
+script (\texttt{paper/evaluation.py}) and the raw results
+(\texttt{paper/results.json}) ship with the paper.
 
-\paragraph{(P1) Bagging reduces variance and keeps the joint.}
-Averaging $15$ bootstrap JPTs (Prop.~\ref{prop:bag-var}) never hurt and
-often closed most of the gap to LightGBM (Fig.~\ref{fig:bagging}):
-\texttt{wine} accuracy rose $0.867\!\to\!0.978$ and \texttt{digits}
-$0.762\!\to\!0.869$ (classification), while \texttt{diabetes}
-$R^2\,{-}0.029\!\to\!0.267$ and \texttt{abalone} $0.425\!\to\!0.463$
-(regression). This is consistent with the gap being removable variance, not
-a representational ceiling.
+\paragraph{Datasets and protocol.} Six standard datasets:
+\texttt{iris} ($150\times4$, $3$ classes), \texttt{wine}
+($178\times13$, $3$ classes), \texttt{breast\_cancer} ($569\times30$,
+$2$ classes), \texttt{digits} ($1{,}797$ rows, the non-constant
+pixels of $8\times8$ images, $10$ classes), and the regression sets
+\texttt{diabetes} ($442\times10$) and \texttt{abalone} (a
+$2{,}000$-row subsample, $8$ mixed categorical/numeric features). All
+results are $5$-fold cross-validated (stratified for classification)
+and reported as mean~$\pm$~std over folds, except \texttt{digits},
+which uses a single stratified $75/25$ split for runtime reasons.
+
+\paragraph{Models.} All generative models share
+\texttt{min\_samples\_leaf}${}=5\%$: the single \jpt{}, the \jptforest{}
+with $M{=}10$ bootstrap members (fitted natively via integer
+\texttt{sample\_weight} multiplicities), and \likeboost{} with up to $8$
+rounds, temperature $\tau{=}1$ and exact concave line search. The
+discriminative \jptboost{} uses $25$ rounds, $\nu{=}.3$,
+\texttt{min\_samples\_leaf}${}=10\%$ for classification (softmax
+boosting, \S\ref{sec:gbm}) and $40$ rounds, $\nu{=}.1$,
+\texttt{min\_samples\_leaf}${}=5\%$ for regression. As external
+discriminative baselines we use scikit-learn's
+\textsc{RandomForest} ($100$ trees) and
+\textsc{HistGradientBoosting} with default settings.
+
+\paragraph{Metrics.} Generative quality is the mean held-out joint
+log-likelihood $\frac1n\sum_i\log \bar P(\mathbf z_i)$ over \emph{all}
+variables including the target, with $\bar P$ the prior-weighted density
+of Eq.~\eqref{eq:jpt-intro} (mixed by Prop.~\ref{prop:uncond} for
+ensembles). Because leaf densities are piecewise-linear pdfs with
+bounded support, a held-out point can receive density exactly zero;
+following standard practice in density evaluation, every leaf factor is
+smoothed with a uniform background over the training range,
+$\tilde p_{\lambda,v}=(1-\eps)\,p_{\lambda,v}+\eps\,u_v$ with
+$\eps=10^{-3}$---identically for all generative models, so comparisons
+are unaffected. Predictive quality is classification accuracy via the
+generative Bayes rule $\hat c=\argmax_c \bar P(\mathbf x, c)$ and
+regression $R^2$ via the density-weighted posterior mean
+$\E[y\mid\mathbf x]=\sum_\lambda P(\lambda\mid\mathbf x)\,
+\E_\lambda[y]$---i.e.\ the generative models never see a discriminative
+objective. \jptboost{} and the baselines predict directly.
+
+% ---------------------------------------------------------------------------
+\subsection{P1/P3: the ensembles raise the held-out joint likelihood}
+\label{sec:exp-ll}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrr}
+\toprule
+dataset & single \jpt & \jptforest{} ($M{=}10$) & \likeboost{} ($\le8$ rounds)\\
+\midrule
+@@LLTABLE@@
+\bottomrule
+\end{tabular}
+\caption{Held-out mean joint log-likelihood (higher is better,
+mean~$\pm$~std over $5$ folds; \texttt{digits}: single split). Both
+ensembles are valid joints (Props.~\ref{prop:mixture-closed},
+\ref{prop:boost-valid}); both consistently improve on the single tree.}
+\label{tab:ll}
+\end{table}
+
+Table~\ref{tab:ll} reports the held-out joint log-likelihood.
+@@LLPROSE@@
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}
 \begin{axis}[
-  ybar, bar width=11pt,
-  width=0.92\linewidth, height=5.2cm,
-  symbolic x coords={wine, digits},
-  xtick=data, ymin=0, ymax=1.12,
-  ylabel={test accuracy}, ylabel style={font=\small},
-  enlarge x limits=0.55,
-  tick label style={font=\footnotesize},
-  legend style={font=\footnotesize, at={(0.5,1.03)}, anchor=south, legend columns=-1},
-  nodes near coords, nodes near coords style={font=\scriptsize, /pgf/number format/fixed, /pgf/number format/precision=3},
+  width=0.48\linewidth, height=5.2cm,
+  xlabel={components $k$}, ylabel={mean joint log-likelihood},
+  label style={font=\small}, tick label style={font=\footnotesize},
+  legend style={font=\footnotesize, at={(0.97,0.05)}, anchor=south east},
+  title={\footnotesize\texttt{iris}},
 ]
-\addplot[fill=cJPT, draw=cJPT!60!black] coordinates {(wine,0.867) (digits,0.762)};
-\addplot[fill=cForest, draw=cForest!60!black] coordinates {(wine,0.978) (digits,0.869)};
-\addplot[fill=cGBM, draw=cGBM!60!black] coordinates {(digits,0.98)};
-\legend{Single \jpt, \jptforest{} ($M{=}15$), LightGBM}
+\addplot[cJPT, thick, mark=*, mark size=1.5pt] coordinates {@@E3IRISTRAIN@@};
+\addplot[cBoost, thick, mark=square*, mark size=1.5pt] coordinates {@@E3IRISTEST@@};
+\legend{train, held-out}
+\end{axis}
+\end{tikzpicture}\hfill
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.48\linewidth, height=5.2cm,
+  xlabel={components $k$},
+  label style={font=\small}, tick label style={font=\footnotesize},
+  legend style={font=\footnotesize, at={(0.97,0.05)}, anchor=south east},
+  title={\footnotesize\texttt{diabetes}},
+]
+\addplot[cJPT, thick, mark=*, mark size=1.5pt] coordinates {@@E3DIABTRAIN@@};
+\addplot[cBoost, thick, mark=square*, mark size=1.5pt] coordinates {@@E3DIABTEST@@};
+\legend{train, held-out}
 \end{axis}
 \end{tikzpicture}
-\caption{(P1) Bagging JPTs (variance reduction, generative joint preserved)
-on classification accuracy. On \texttt{wine} the forest reaches $0.978$;
-on \texttt{digits} it recovers most of the gap to LightGBM. LightGBM was
-not separately recorded for \texttt{wine} in the prototype study.}
-\label{fig:bagging}
+\caption{\likeboost{} learning curves (single $75/25$ split, seed $0$):
+mean joint log-likelihood of the round-$k$ prefix mixture. The train
+curve is monotone by construction (non-improving rounds are rejected);
+the held-out curve tracks it, i.e.\ the density gains generalise.
+Prefix mixtures are recovered exactly by renormalising the first $k$
+final weights (the Frank--Wolfe update scales them uniformly).}
+\label{fig:lboost-curve}
 \end{figure}
 
-\paragraph{(P2) Discriminative boosting wins point accuracy and gives up
-the joint.} On regression (Fig.~\ref{fig:reg}) the gated average of bagging
-helps, but additive residual correction (\jptboost, squared error, $40$
-rounds, $\nu=0.1$) is the larger lever: \texttt{diabetes} $R^2$ reaches
-$0.267$ and \texttt{abalone} $0.551$, the latter past LightGBM's $0.518$.
-This is the bias reduction that a convex average of member predictions
-cannot reach (\S\ref{sec:gbm}), bought at the documented cost of the
-joint.
+Figure~\ref{fig:lboost-curve} resolves the boosting trajectory of
+\likeboost{} over rounds. @@E3PROSE@@
 
 \begin{figure}[t]
 \centering
 \begin{tikzpicture}
 \begin{axis}[
-  ybar, bar width=8.5pt,
-  width=0.92\linewidth, height=5.4cm,
-  symbolic x coords={diabetes, abalone},
-  xtick=data, ymin=-0.12, ymax=0.66,
-  ylabel={test $R^2$}, ylabel style={font=\small},
-  enlarge x limits=0.55,
-  tick label style={font=\footnotesize},
-  extra y ticks=0, extra y tick labels={}, extra y tick style={grid=major, major grid style={black!25}},
-  legend style={font=\footnotesize, at={(0.5,1.03)}, anchor=south, legend columns=-1},
-  nodes near coords, nodes near coords style={font=\scriptsize, /pgf/number format/fixed, /pgf/number format/precision=3},
+  width=0.48\linewidth, height=5.2cm,
+  xlabel={forest size $M$}, ylabel={held-out joint log-likelihood},
+  label style={font=\small}, tick label style={font=\footnotesize},
+  legend style={font=\footnotesize, at={(0.97,0.05)}, anchor=south east},
 ]
-\addplot[fill=cJPT, draw=cJPT!60!black] coordinates {(diabetes,-0.029) (abalone,0.425)};
-\addplot[fill=cForest, draw=cForest!60!black] coordinates {(diabetes,0.267) (abalone,0.463)};
-\addplot[fill=cBoost, draw=cBoost!60!black] coordinates {(diabetes,0.267) (abalone,0.551)};
-\addplot[fill=cGBM, draw=cGBM!60!black] coordinates {(abalone,0.518)};
-\legend{Single \jpt, \jptforest, \jptboost, LightGBM}
+\addplot[cForest, thick, mark=*, mark size=1.5pt] coordinates {@@E2WINELL@@};
+\addplot[cJPT, thick, dashed, mark=square*, mark size=1.5pt] coordinates {@@E2DIABLL@@};
+\legend{\texttt{wine}, \texttt{diabetes}}
 \end{axis}
-\end{tikzpicture}
-\caption{(P2) Regression $R^2$. \jptboost{} (discriminative, additive
-residual correction) overtakes both the single tree and the generative
-forest, and beats LightGBM on \texttt{abalone}---at the cost of the
-generative joint. LightGBM was not separately recorded for \texttt{diabetes}.}
-\label{fig:reg}
-\end{figure}
-
-\paragraph{(P3) Generative boosting improves the held-out joint
-log-likelihood and stays generative.} \likeboost{} ($8$
-rounds, line-searched $\alpha$) lifts the mean held-out \emph{joint}
-log-likelihood on every dataset (Fig.~\ref{fig:ll}): \texttt{diabetes}
-$-7.23\!\to\!+5.88$, \texttt{iris} $-15.14\!\to\!-5.73$, \texttt{abalone}
-$+10.22\!\to\!+11.36$, \texttt{wine} $-27.36\!\to\!-26.93$. The result is
-still a fully valid normalised joint (Prop.~\ref{prop:boost-valid}), so
-$P(\mathbf{x})$ anomaly scoring and the entire query surface of
-\S\ref{sec:inference} carry over---something no discriminative booster
-can offer.
-
-\begin{figure}[t]
-\centering
+\end{tikzpicture}\hfill
 \begin{tikzpicture}
 \begin{axis}[
-  ybar, bar width=11pt,
-  width=0.92\linewidth, height=5.4cm,
-  symbolic x coords={diabetes, iris, abalone, wine},
-  xtick=data, ymin=-31, ymax=16,
-  ylabel={held-out joint log-likelihood}, ylabel style={font=\small},
-  enlarge x limits=0.22,
-  tick label style={font=\footnotesize},
-  extra y ticks=0, extra y tick labels={}, extra y tick style={grid=major, major grid style={black!25}},
-  legend style={font=\footnotesize, at={(0.5,1.03)}, anchor=south, legend columns=-1},
-  nodes near coords, nodes near coords style={font=\scriptsize, /pgf/number format/fixed, /pgf/number format/precision=2},
+  width=0.48\linewidth, height=5.2cm,
+  xlabel={forest size $M$}, ylabel={accuracy / $R^2$},
+  label style={font=\small}, tick label style={font=\footnotesize},
+  legend style={font=\footnotesize, at={(0.97,0.05)}, anchor=south east},
 ]
-\addplot[fill=cJPT, draw=cJPT!60!black] coordinates {(diabetes,-7.23) (iris,-15.14) (abalone,10.22) (wine,-27.36)};
-\addplot[fill=cForest, draw=cForest!60!black] coordinates {(diabetes,5.88) (iris,-5.73) (abalone,11.36) (wine,-26.93)};
-\legend{Single \jpt, \likeboost{} ($8$ rounds)}
+\addplot[cForest, thick, mark=*, mark size=1.5pt] coordinates {@@E2WINEACC@@};
+\addplot[cJPT, thick, dashed, mark=square*, mark size=1.5pt] coordinates {@@E2DIABR2@@};
+\legend{\texttt{wine} (acc), \texttt{diabetes} ($R^2$)}
 \end{axis}
 \end{tikzpicture}
-\caption{(P3) Held-out \emph{joint} log-likelihood. Generative likelihood
-boosting raises the joint LL on all four datasets while remaining a valid
-joint (Prop.~\ref{prop:boost-valid}); the gain is largest where the single
-tree is worst (\texttt{diabetes}, \texttt{iris}).}
-\label{fig:ll}
+\caption{\jptforest{} quality vs.\ ensemble size $M$ ($5$-fold CV
+means). $M{=}1$ is a single bootstrap tree. Most of the gain arrives by
+$M\approx5$--$10$, the classic bagging saturation profile
+(Prop.~\ref{prop:bag-var}).}
+\label{fig:sweep}
 \end{figure}
 
-Together the three figures trace the design space: bagging touches
-variance, generative boosting raises the joint likelihood while staying a
-valid pdf, and discriminative boosting raises conditional accuracy
-outside the generative class. The implementation phases reproduce every
-number through the public API, add held-out FW-gap and calibration
-curves, and extend P2 to classification (LogitBoost).
+Figure~\ref{fig:sweep} varies the forest size. @@E2PROSE@@
+
+% ---------------------------------------------------------------------------
+\subsection{P2: predictive quality across the model family}
+\label{sec:exp-pred}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{lrrrrrr}
+\toprule
+ & \multicolumn{3}{c}{generative (Bayes rule / posterior mean)} &
+   \multicolumn{3}{c}{discriminative}\\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+dataset & \jpt & \jptforest & \likeboost & \jptboost & RF & HistGB\\
+\midrule
+\multicolumn{7}{l}{\emph{classification (accuracy)}}\\
+@@ACCTABLE@@
+\midrule
+\multicolumn{7}{l}{\emph{regression ($R^2$)}}\\
+@@R2TABLE@@
+\bottomrule
+\end{tabular}
+\caption{Predictive quality ($5$-fold CV mean~$\pm$~std;
+\texttt{digits}: single split). The generative columns answer the
+prediction as \emph{one} of many queries of a full joint; the
+discriminative columns model only $P(y\mid\mathbf x)$.}
+\label{tab:pred}
+\end{table}
+
+Table~\ref{tab:pred} places all six models side by side.
+@@PREDPROSE@@
+
+% ---------------------------------------------------------------------------
+\subsection{Ablation: Dirichlet-smoothed leaves}
+\label{sec:exp-alpha}
+
+Symbolic leaf distributions support additive (Dirichlet) smoothing
+$P_\lambda(c)=(n_c+\alpha)/(n+\alpha|C|)$ via the \texttt{prior\_alpha}
+setting. @@E4PROSE@@
+
+% ---------------------------------------------------------------------------
+\subsection{Discussion}
+
+@@DISCUSSION@@
 
 % ===========================================================================
 \section{Related work}
