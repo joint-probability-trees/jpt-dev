@@ -191,10 +191,12 @@ class MixtureJPT:
 
     @property
     def variables(self) -> Tuple[Variable, ...]:
+        '''The shared variables of all mixture members.'''
         return tuple(ifnone(self._variables, ()))
 
     @property
     def varnames(self) -> Dict[str, Variable]:
+        '''Mapping from variable name to :class:`Variable`.'''
         return {var.name: var for var in self.variables}
 
     def __len__(self) -> int:
@@ -231,9 +233,11 @@ class MixtureJPT:
         )
 
     def learn(self, data: pd.DataFrame) -> 'MixtureJPT':
+        '''Fit the mixture members to ``data``. Subclass responsibility.'''
         raise NotImplementedError()
 
     def fit(self, data: pd.DataFrame) -> 'MixtureJPT':
+        '''Alias of :meth:`learn` (sklearn-style spelling).'''
         return self.learn(data)
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -503,6 +507,7 @@ class MixtureJPT:
         }
 
     def to_json(self) -> Dict[str, Any]:
+        '''Serialize the mixture (hyperparameters, weights, members) to JSON.'''
         return {
             'type': type(self).__name__,
             **self._hyperparams_to_json(),
@@ -1068,6 +1073,7 @@ class JPTBoost:
         return self
 
     def fit(self, data: pd.DataFrame) -> 'JPTBoost':
+        '''Alias of :meth:`learn` (sklearn-style spelling).'''
         return self.learn(data)
 
     def predict(self, data: pd.DataFrame) -> np.ndarray:
@@ -1106,6 +1112,8 @@ class JPTBoost:
     # Serialization
 
     def to_json(self) -> Dict[str, Any]:
+        '''Serialize the boosted model (hyperparameters, base score,
+        member trees) to JSON.'''
         return {
             'type': type(self).__name__,
             'target': self.target,
@@ -1124,6 +1132,7 @@ class JPTBoost:
 
     @staticmethod
     def from_json(data: Dict[str, Any]) -> 'JPTBoost':
+        '''Reconstruct a :class:`JPTBoost` from its JSON representation.'''
         boost = JPTBoost(
             target=data['target'],
             n_rounds=data['n_rounds'],
