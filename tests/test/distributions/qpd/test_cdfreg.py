@@ -68,14 +68,18 @@ class QuantileDistributionFitTest(TestCase):
         # Act
         q.fit(data, None, 0)
 
-        # Assert: CDF should have 3 intervals (before, linear, after)
-        self.assertEqual(3, len(q.cdf.intervals))
+        # Assert: 4 intervals (before, two linear segments, after) --
+        # the leading duplicate run's mass is spread over the segment
+        # to the next distinct value instead of an initial jump, so no
+        # probability mass is invisible to the pdf.
+        self.assertEqual(4, len(q.cdf.intervals))
         # Before the data range, CDF is 0
         self.assertAlmostEqual(0.0, q.cdf.eval(0.5), places=10)
-        # At the start (duplicate point), CDF should be 1/3
-        self.assertAlmostEqual(1 / 3, q.cdf.eval(1.0), places=10)
-        # Midpoint
-        self.assertAlmostEqual(0.5, q.cdf.eval(1.5), places=10)
+        # The CDF is anchored at 0 at the smallest value (no jump)
+        self.assertAlmostEqual(0.0, q.cdf.eval(1.0), places=10)
+        # The duplicate run's mass 2/3 is spread linearly over [1, 2[
+        self.assertAlmostEqual(1 / 3, q.cdf.eval(1.5), places=10)
+        self.assertAlmostEqual(2 / 3, q.cdf.eval(2.0), places=10)
         # At the end, CDF should reach 1.0
         self.assertAlmostEqual(1.0, q.cdf.eval(3.0), places=10)
         # After the data range, CDF stays at 1.0

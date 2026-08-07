@@ -281,6 +281,14 @@ cdef class QuantileDistribution:
             data_buffer[1, i] -= 1
             data_buffer[1, i] /= <DTYPE_t> (n_samples - 1)
 
+        # A duplicated smallest value leaves the first quantile level
+        # above zero, so the CDF would start with a jump whose mass is
+        # invisible to the (continuous) pdf and every moment derived
+        # from it. Anchor the first level at zero instead: the leading
+        # duplicate run's mass is spread over the segment to the next
+        # distinct value -- the same smoothing interior duplicates get.
+        data_buffer[1, 0] = 0
+
         data_buffer = np.ascontiguousarray(data_buffer[:, :count])
 
         # NOTE: we experimented with a "cluster expansion" step
