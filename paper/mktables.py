@@ -5,10 +5,10 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-CLF = ['iris', 'wine', 'breast_cancer', 'digits']
-REG = ['diabetes', 'abalone']
+CLF = ['iris', 'wine', 'breast_cancer', 'digits', 'adult']
+REG = ['diabetes', 'abalone', 'california']
 GEN = ['jpt', 'forest', 'lboost']
-ALL = ['jpt', 'forest', 'lboost', 'jptboost', 'rf', 'histgb']
+ALL = ['jpt', 'forest', 'lboost', 'jptboost', 'rf', 'histgb', 'lgbm']
 
 
 def merged() -> dict:

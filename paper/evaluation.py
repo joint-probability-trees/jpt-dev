@@ -7,8 +7,11 @@ library API. Writes incremental results to ``paper/results.json`` (or
 Experiments:
     E1  held-out joint log-likelihood and predictive quality of
         single JPT / JPTForest / JPTLikelihoodBoost / JPTBoost vs.
-        sklearn RandomForest / HistGradientBoosting (5-fold CV;
-        digits: single stratified 75/25 split).
+        sklearn RandomForest / HistGradientBoosting / LightGBM
+        (5-fold CV; digits, california, adult: single 75/25 split).
+        Datasets already present in the results file are topped up
+        incrementally: only models missing from their entry are run
+        (the split RNG is seeded, so folds are reproducible).
     E2  forest quality vs. number of members M (wine, diabetes).
     E3  likelihood-boost train/held-out LL per round (iris, diabetes).
     E4  prior_alpha ablation (0 vs. 1) on the classification datasets.
@@ -23,7 +26,10 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from lightgbm import LGBMClassifier, LGBMRegressor
 from sklearn.datasets import (
+    fetch_california_housing,
+    fetch_openml,
     load_breast_cancer,
     load_diabetes,
     load_digits,
@@ -56,6 +62,11 @@ MSL = .05          # min_samples_leaf of all generative JPT models
 M_FOREST = 10      # forest size
 LB_ROUNDS = 8      # likelihood-boost rounds
 SEED = 0
+N_BIG = 10000      # subsample size of the large datasets
+
+E1_MODELS = ['jpt', 'forest', 'lboost', 'jptboost', 'rf', 'histgb', 'lgbm']
+# single 75/25 split instead of 5-fold CV, for runtime reasons
+SINGLE_SPLIT = {'digits', 'california', 'adult'}
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -89,6 +100,20 @@ def load_datasets() -> dict:
     abalone['target'] = abalone['target'].astype(float)
     abalone = abalone.sample(2000, random_state=SEED).reset_index(drop=True)
 
+    california = fetch_california_housing(as_frame=True).frame \
+        .rename(columns={'MedHouseVal': 'target'}) \
+        .sample(N_BIG, random_state=SEED).reset_index(drop=True)
+
+    adult = fetch_openml(
+        'adult', version=2, as_frame=True, parser='auto'
+    ).frame
+    adult = adult.drop(columns=['fnlwgt', 'education-num']).dropna()
+    for col in adult.columns:
+        if not pd.api.types.is_numeric_dtype(adult[col]):
+            adult[col] = adult[col].astype(str)
+    adult = adult.rename(columns={'class': 'target'}) \
+        .sample(N_BIG, random_state=SEED).reset_index(drop=True)
+
     return {
         'iris': ('clf', _sk_frame(load_iris())),
         'wine': ('clf', _sk_frame(load_wine())),
@@ -96,6 +121,8 @@ def load_datasets() -> dict:
         'digits': ('clf', ddf),
         'diabetes': ('reg', bdf),
         'abalone': ('reg', abalone),
+        'california': ('reg', california),
+        'adult': ('clf', adult),
     }
 
 
@@ -227,12 +254,18 @@ def mean_ll(density: np.ndarray) -> float:
 # Model runners: each returns {metric: value} for one train/test split
 
 def run_split(task: str, train: pd.DataFrame, test: pd.DataFrame,
-              prior_alpha: float | None = None) -> dict:
+              prior_alpha: float | None = None,
+              models: set | None = None) -> dict:
+    """Run one train/test split; ``models`` restricts which model keys
+    are computed (None = all), enabling incremental top-ups."""
     out = {}
     target = 'target'
     classes = sorted(train[target].unique()) if task == 'clf' else None
     y_test = test[target].to_numpy()
     uniforms = Uniforms(train)
+
+    def want(name: str) -> bool:
+        return models is None or name in models
 
     def score_pred(name, pred, elapsed=None):
         key = 'acc' if task == 'clf' else 'r2'
@@ -245,105 +278,114 @@ def run_split(task: str, train: pd.DataFrame, test: pd.DataFrame,
             out[name]['time'] = elapsed
 
     # --- single JPT
-    t0 = time.time()
-    single = JPT(
-        variables=infer_from_dataframe(
-            train, scale_numeric_types=False, prior_alpha=prior_alpha
-        ),
-        min_samples_leaf=MSL
-    ).learn(train)
-    t_single = time.time() - t0
-    out['jpt'] = {'ll': mixture_ll([(1., single)], test, uniforms),
-                  'time': t_single}
-    if task == 'clf':
-        pred = np.asarray(classes)[
-            class_scores(single, test, target, classes, uniforms)
-            .argmax(axis=1)
-        ]
-    else:
-        pred = posterior_mean(single, test, target, uniforms)
-    score_pred('jpt', pred)
-
-    # --- forest
-    t0 = time.time()
-    forest = JPTForest(
-        n_estimators=M_FOREST, min_samples_leaf=MSL,
-        prior_alpha=prior_alpha, random_state=SEED
-    ).learn(train)
-    t_forest = time.time() - t0
-    out['forest'] = {
-        'll': mixture_ll(
-            list(zip(forest.weights, forest.members)), test, uniforms
-        ),
-        'time': t_forest
-    }
-    if task == 'clf':
-        pred = np.asarray(classes)[
-            mixture_class_scores(forest, test, target, classes, uniforms)
-            .argmax(axis=1)
-        ]
-    else:
-        pred = mixture_posterior_mean(forest, test, target, uniforms)
-    score_pred('forest', pred)
-
-    # --- likelihood boosting
-    t0 = time.time()
-    lboost = JPTLikelihoodBoost(
-        n_rounds=LB_ROUNDS, min_samples_leaf=MSL,
-        prior_alpha=prior_alpha, random_state=SEED
-    ).learn(train)
-    t_lb = time.time() - t0
-    out['lboost'] = {
-        'll': mixture_ll(
-            list(zip(lboost.weights, lboost.members)), test, uniforms
-        ),
-        'time': t_lb,
-        'rounds': len(lboost.members)
-    }
-    if task == 'clf':
-        pred = np.asarray(classes)[
-            mixture_class_scores(lboost, test, target, classes, uniforms)
-            .argmax(axis=1)
-        ]
-    else:
-        pred = mixture_posterior_mean(lboost, test, target, uniforms)
-    score_pred('lboost', pred)
-
-    # --- discriminative JPTBoost
-    t0 = time.time()
-    if task == 'clf':
-        boost = JPTBoost(
-            target=target, n_rounds=25, learning_rate=.3,
-            min_samples_leaf=.1
-        ).learn(train)
-    else:
-        boost = JPTBoost(
-            target=target, n_rounds=40, learning_rate=.1,
+    if want('jpt'):
+        t0 = time.time()
+        single = JPT(
+            variables=infer_from_dataframe(
+                train, scale_numeric_types=False, prior_alpha=prior_alpha
+            ),
             min_samples_leaf=MSL
         ).learn(train)
-    t_boost = time.time() - t0
-    score_pred('jptboost', boost.predict(test[boost.feature_names]), t_boost)
+        t_single = time.time() - t0
+        out['jpt'] = {'ll': mixture_ll([(1., single)], test, uniforms),
+                      'time': t_single}
+        if task == 'clf':
+            pred = np.asarray(classes)[
+                class_scores(single, test, target, classes, uniforms)
+                .argmax(axis=1)
+            ]
+        else:
+            pred = posterior_mean(single, test, target, uniforms)
+        score_pred('jpt', pred)
 
-    # --- sklearn baselines (one-hot for categoricals)
-    X_train = pd.get_dummies(train.drop(columns=[target]))
-    X_test = pd.get_dummies(test.drop(columns=[target]))
-    X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+    # --- forest
+    if want('forest'):
+        t0 = time.time()
+        forest = JPTForest(
+            n_estimators=M_FOREST, min_samples_leaf=MSL,
+            prior_alpha=prior_alpha, random_state=SEED
+        ).learn(train)
+        t_forest = time.time() - t0
+        out['forest'] = {
+            'll': mixture_ll(
+                list(zip(forest.weights, forest.members)), test, uniforms
+            ),
+            'time': t_forest
+        }
+        if task == 'clf':
+            pred = np.asarray(classes)[
+                mixture_class_scores(forest, test, target, classes,
+                                     uniforms).argmax(axis=1)
+            ]
+        else:
+            pred = mixture_posterior_mean(forest, test, target, uniforms)
+        score_pred('forest', pred)
+
+    # --- likelihood boosting
+    if want('lboost'):
+        t0 = time.time()
+        lboost = JPTLikelihoodBoost(
+            n_rounds=LB_ROUNDS, min_samples_leaf=MSL,
+            prior_alpha=prior_alpha, random_state=SEED
+        ).learn(train)
+        t_lb = time.time() - t0
+        out['lboost'] = {
+            'll': mixture_ll(
+                list(zip(lboost.weights, lboost.members)), test, uniforms
+            ),
+            'time': t_lb,
+            'rounds': len(lboost.members)
+        }
+        if task == 'clf':
+            pred = np.asarray(classes)[
+                mixture_class_scores(lboost, test, target, classes,
+                                     uniforms).argmax(axis=1)
+            ]
+        else:
+            pred = mixture_posterior_mean(lboost, test, target, uniforms)
+        score_pred('lboost', pred)
+
+    # --- discriminative JPTBoost
+    if want('jptboost'):
+        t0 = time.time()
+        if task == 'clf':
+            boost = JPTBoost(
+                target=target, n_rounds=25, learning_rate=.3,
+                min_samples_leaf=.1
+            ).learn(train)
+        else:
+            boost = JPTBoost(
+                target=target, n_rounds=40, learning_rate=.1,
+                min_samples_leaf=MSL
+            ).learn(train)
+        t_boost = time.time() - t0
+        score_pred('jptboost', boost.predict(test[boost.feature_names]),
+                   t_boost)
+
+    # --- discriminative baselines (one-hot for categoricals)
     if task == 'clf':
-        models = [
+        baselines = [
             ('rf', RandomForestClassifier(n_estimators=100,
                                           random_state=SEED)),
             ('histgb', HistGradientBoostingClassifier(random_state=SEED)),
+            ('lgbm', LGBMClassifier(random_state=SEED, verbose=-1)),
         ]
     else:
-        models = [
+        baselines = [
             ('rf', RandomForestRegressor(n_estimators=100,
                                          random_state=SEED)),
             ('histgb', HistGradientBoostingRegressor(random_state=SEED)),
+            ('lgbm', LGBMRegressor(random_state=SEED, verbose=-1)),
         ]
-    for name, model in models:
-        t0 = time.time()
-        model.fit(X_train, train[target])
-        score_pred(name, model.predict(X_test), time.time() - t0)
+    baselines = [(n, m) for n, m in baselines if want(n)]
+    if baselines:
+        X_train = pd.get_dummies(train.drop(columns=[target]))
+        X_test = pd.get_dummies(test.drop(columns=[target]))
+        X_test = X_test.reindex(columns=X_train.columns, fill_value=0)
+        for name, model in baselines:
+            t0 = time.time()
+            model.fit(X_train, train[target])
+            score_pred(name, model.predict(X_test), time.time() - t0)
     return out
 
 
@@ -392,24 +434,28 @@ def aggregate(fold_results: list) -> dict:
 def e1(results: dict, datasets: dict, only: set | None = None) -> None:
     exp = results.setdefault('E1', {})
     for name, (task, df) in datasets.items():
-        if name in exp or (only and name not in only):
+        if only and name not in only:
             continue
-        print('[E1] %s (%s, %d rows) ...' % (name, task, len(df)),
+        missing = {m for m in E1_MODELS if m not in exp.get(name, {})}
+        if not missing:
+            continue
+        print('[E1] %s (%s, %d rows; models: %s) ...'
+              % (name, task, len(df), ', '.join(sorted(missing))),
               flush=True)
         t0 = time.time()
-        if name == 'digits':
+        if name in SINGLE_SPLIT:
             train, test = train_test_split(
                 df, test_size=.25, random_state=SEED,
-                stratify=df['target']
+                stratify=df['target'] if task == 'clf' else None
             )
-            fold_results = [run_split(task,
-                                      train.reset_index(drop=True),
-                                      test.reset_index(drop=True))]
+            splits = [(train.reset_index(drop=True),
+                       test.reset_index(drop=True))]
         else:
-            fold_results = [
-                run_split(task, tr, te) for tr, te in folds(task, df)
-            ]
-        exp[name] = aggregate(fold_results)
+            splits = folds(task, df)
+        fold_results = [
+            run_split(task, tr, te, models=missing) for tr, te in splits
+        ]
+        exp.setdefault(name, {}).update(aggregate(fold_results))
         save(results)
         print('[E1] %s done in %.1fs' % (name, time.time() - t0),
               flush=True)
