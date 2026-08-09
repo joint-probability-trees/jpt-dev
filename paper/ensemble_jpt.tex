@@ -753,16 +753,20 @@ produced by the public API of the published implementation; the driver
 script (\texttt{paper/evaluation.py}) and the raw results
 (\texttt{paper/results\_*.json}) ship with the paper.
 
-\paragraph{Datasets and protocol.} Six standard datasets:
+\paragraph{Datasets and protocol.} Eight standard datasets:
 \texttt{iris} ($150\times4$, $3$ classes), \texttt{wine}
 ($178\times13$, $3$ classes), \texttt{breast\_cancer} ($569\times30$,
 $2$ classes), \texttt{digits} ($1{,}797$ rows, the non-constant
-pixels of $8\times8$ images, $10$ classes), and the regression sets
-\texttt{diabetes} ($442\times10$) and \texttt{abalone} (a
-$2{,}000$-row subsample, $8$ mixed categorical/numeric features). All
-results are $5$-fold cross-validated (stratified for classification)
-and reported as mean~$\pm$~std over folds, except \texttt{digits},
-which uses a single stratified $75/25$ split for runtime reasons.
+pixels of $8\times8$ images, $10$ classes), \texttt{adult}
+(a $10{,}000$-row subsample of the UCI census dataset, $12$ mixed
+categorical/numeric features, $2$ classes), and the regression sets
+\texttt{diabetes} ($442\times10$), \texttt{abalone} (a $2{,}000$-row
+subsample, $8$ mixed categorical/numeric features) and
+\texttt{california} (a $10{,}000$-row subsample of California housing,
+$8$ numeric features). All results are $5$-fold cross-validated
+(stratified for classification) and reported as mean~$\pm$~std over
+folds, except \texttt{digits}, \texttt{california} and \texttt{adult},
+which use a single (stratified) $75/25$ split for runtime reasons.
 
 \paragraph{Models.} All generative models share
 \texttt{min\_samples\_leaf}${}=5\%$: the single \jpt{}, the \jptforest{}
@@ -775,7 +779,8 @@ boosting, \S\ref{sec:gbm}) and $40$ rounds, $\nu{=}.1$,
 \texttt{min\_samples\_leaf}${}=5\%$ for regression. As external
 discriminative baselines we use scikit-learn's
 \textsc{RandomForest} ($100$ trees) and
-\textsc{HistGradientBoosting} with default settings.
+\textsc{HistGradientBoosting}, and \textsc{LightGBM}, all with default
+settings; categorical features are one-hot encoded for the baselines.
 
 \paragraph{Metrics.} Generative quality is the mean held-out joint
 log-likelihood $\frac1n\sum_i\log \bar P(\mathbf z_i)$ over \emph{all}

@@ -113,6 +113,14 @@ def load_datasets() -> dict:
             adult[col] = adult[col].astype(str)
     adult = adult.rename(columns={'class': 'target'}) \
         .sample(N_BIG, random_state=SEED).reset_index(drop=True)
+    # lump categories rarer than 1% into 'Other': JPT domains are inferred
+    # from the train split, so ultra-rare levels would show up unseen at
+    # test time and receive undefined likelihood
+    for col in adult.columns:
+        if col != 'target' and adult[col].dtype == object:
+            counts = adult[col].value_counts()
+            rare = counts[counts < .01 * len(adult)].index
+            adult.loc[adult[col].isin(rare), col] = 'Other'
 
     return {
         'iris': ('clf', _sk_frame(load_iris())),
@@ -443,20 +451,30 @@ def e1(results: dict, datasets: dict, only: set | None = None) -> None:
               % (name, task, len(df), ', '.join(sorted(missing))),
               flush=True)
         t0 = time.time()
-        if name in SINGLE_SPLIT:
-            train, test = train_test_split(
-                df, test_size=.25, random_state=SEED,
-                stratify=df['target'] if task == 'clf' else None
-            )
-            splits = [(train.reset_index(drop=True),
-                       test.reset_index(drop=True))]
-        else:
-            splits = folds(task, df)
-        fold_results = [
-            run_split(task, tr, te, models=missing) for tr, te in splits
-        ]
-        exp.setdefault(name, {}).update(aggregate(fold_results))
-        save(results)
+
+        def splits():
+            if name in SINGLE_SPLIT:
+                train, test = train_test_split(
+                    df, test_size=.25, random_state=SEED,
+                    stratify=df['target'] if task == 'clf' else None
+                )
+                yield (train.reset_index(drop=True),
+                       test.reset_index(drop=True))
+            else:
+                yield from folds(task, df)
+
+        # one model at a time, saving after each, so an interrupted run
+        # never loses a completed model
+        for model in [m for m in E1_MODELS if m in missing]:
+            t1 = time.time()
+            fold_results = [
+                run_split(task, tr, te, models={model})
+                for tr, te in splits()
+            ]
+            exp.setdefault(name, {}).update(aggregate(fold_results))
+            save(results)
+            print('[E1] %s/%s done in %.1fs'
+                  % (name, model, time.time() - t1), flush=True)
         print('[E1] %s done in %.1fs' % (name, time.time() - t0),
               flush=True)
 
