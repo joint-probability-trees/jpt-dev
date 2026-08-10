@@ -58,6 +58,14 @@ RESULTS = os.environ.get(
 )
 EPS = 1e-12
 
+# jpt sizes all worker pools via os.cpu_count()/mp.cpu_count(); EVAL_CORES
+# caps the fan-out so runs stay within a memory/core budget
+if os.environ.get('EVAL_CORES'):
+    import multiprocessing as _mp
+    _cores = int(os.environ['EVAL_CORES'])
+    os.cpu_count = lambda: _cores
+    _mp.cpu_count = lambda: _cores
+
 MSL = .05          # min_samples_leaf of all generative JPT models
 M_FOREST = 10      # forest size
 LB_ROUNDS = 8      # likelihood-boost rounds

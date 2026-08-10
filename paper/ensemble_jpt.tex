@@ -814,23 +814,30 @@ iris & $-5.63 \pm 1.22$ & $\mathbf{-3.53 \pm 0.69}$ & $-4.04 \pm 0.66$ \\
 wine & $-25.80 \pm 0.53$ & $-25.21 \pm 0.61$ & $\mathbf{-24.93 \pm 0.54}$ \\
 breast\_cancer & $-0.32 \pm 0.89$ & $\mathbf{5.34 \pm 1.59}$ & $5.08 \pm 1.49$ \\
 digits & $-27.63$ & $-27.63$ & $-27.63$ \\
+adult & $-15.68$ & $-15.56$ & $\mathbf{-15.53}$ \\
 diabetes & $6.55 \pm 0.83$ & $\mathbf{9.64 \pm 1.02}$ & $9.05 \pm 0.69$ \\
 abalone & $7.94 \pm 0.26$ & $\mathbf{8.76 \pm 0.19}$ & $8.56 \pm 0.20$ \\
+california & $-17.92$ & $\mathbf{-17.47}$ & $-17.66$ \\
 \bottomrule
 \end{tabular}
 \caption{Held-out mean joint log-likelihood (higher is better,
-mean~$\pm$~std over $5$ folds; \texttt{digits}: single split). Both
+mean~$\pm$~std over $5$ folds; \texttt{digits}, \texttt{adult},
+\texttt{california}: single split). Both
 ensembles are valid joints (Props.~\ref{prop:mixture-closed},
 \ref{prop:boost-valid}); both consistently improve on the single tree.}
 \label{tab:ll}
 \end{table}
 
 Table~\ref{tab:ll} reports the held-out joint log-likelihood.
-On the five
+On the seven
 datasets where the metric is informative, \emph{both} ensembles improve
 on the single tree, on every dataset: from ${+}0.6$ nats per instance on
 \texttt{wine} up to ${+}5.7$ on \texttt{breast\_cancer}, where single
-trees vary strongly across folds and averaging pays most. Forest and
+trees vary strongly across folds and averaging pays most. On the two
+$10{,}000$-row benchmarks the gains persist but shrink
+(\texttt{adult} ${+}0.15$, \texttt{california} ${+}0.45$ nats): with
+more samples per leaf a single tree is already a strong density
+estimator. Forest and
 likelihood boost land close to each other, with the boost reaching
 forest-level quality from at most $8$ accepted components against the
 forest's fixed $M{=}10$. \texttt{digits} exhibits the announced failure
@@ -941,45 +948,52 @@ itself, not to any downstream decision rule.
 \centering
 \footnotesize
 \setlength{\tabcolsep}{2.5pt}
-\begin{tabular}{lrrrrrr}
+\begin{tabular}{lrrrrrrr}
 \toprule
  & \multicolumn{3}{c}{generative (Bayes rule / posterior mean)} &
-   \multicolumn{3}{c}{discriminative}\\
-\cmidrule(lr){2-4}\cmidrule(lr){5-7}
-dataset & \jpt & \jptforest & \likeboost & \jptboost & RF & HistGB\\
+   \multicolumn{4}{c}{discriminative}\\
+\cmidrule(lr){2-4}\cmidrule(lr){5-8}
+dataset & \jpt & \jptforest & \likeboost & \jptboost & RF & HistGB & LGBM\\
 \midrule
-\multicolumn{7}{l}{\emph{classification (accuracy)}}\\
-iris & $0.940 \pm 0.039$ & $0.933 \pm 0.042$ & $0.947 \pm 0.016$ & $0.927 \pm 0.039$ & $0.940 \pm 0.025$ & $0.947 \pm 0.016$ \\
-wine & $0.933 \pm 0.057$ & $0.916 \pm 0.055$ & $0.938 \pm 0.048$ & $0.938 \pm 0.020$ & $0.972 \pm 0.018$ & $0.972 \pm 0.018$ \\
-breast\_cancer & $0.926 \pm 0.013$ & $0.931 \pm 0.006$ & $0.930 \pm 0.008$ & $0.951 \pm 0.016$ & $0.965 \pm 0.015$ & $0.970 \pm 0.012$ \\
-digits & $0.751$ & $0.867$ & $0.751$ & $0.816$ & $0.971$ & $0.971$ \\
+\multicolumn{8}{l}{\emph{classification (accuracy)}}\\
+iris & $0.940 \pm 0.039$ & $0.933 \pm 0.042$ & $0.947 \pm 0.016$ & $0.927 \pm 0.039$ & $0.940 \pm 0.025$ & $0.947 \pm 0.016$ & $0.933 \pm 0.030$ \\
+wine & $0.933 \pm 0.057$ & $0.916 \pm 0.055$ & $0.938 \pm 0.048$ & $0.938 \pm 0.020$ & $0.972 \pm 0.018$ & $0.972 \pm 0.018$ & $0.972 \pm 0.025$ \\
+breast\_cancer & $0.926 \pm 0.013$ & $0.931 \pm 0.006$ & $0.930 \pm 0.008$ & $0.951 \pm 0.016$ & $0.965 \pm 0.015$ & $0.970 \pm 0.012$ & $0.972 \pm 0.009$ \\
+digits & $0.751$ & $0.867$ & $0.751$ & $0.816$ & $0.971$ & $0.971$ & $0.980$ \\
+adult & $0.836$ & $0.836$ & $0.845$ & $0.740$ & $0.831$ & $0.852$ & $0.852$ \\
 \midrule
-\multicolumn{7}{l}{\emph{regression ($R^2$)}}\\
-diabetes & $0.182 \pm 0.121$ & $0.241 \pm 0.105$ & $0.272 \pm 0.119$ & $0.445 \pm 0.132$ & $0.419 \pm 0.098$ & $0.398 \pm 0.141$ \\
-abalone & $0.310 \pm 0.038$ & $0.342 \pm 0.040$ & $0.409 \pm 0.026$ & $0.541 \pm 0.030$ & $0.557 \pm 0.040$ & $0.531 \pm 0.030$ \\
+\multicolumn{8}{l}{\emph{regression ($R^2$)}}\\
+diabetes & $0.182 \pm 0.121$ & $0.241 \pm 0.105$ & $0.272 \pm 0.119$ & $0.445 \pm 0.132$ & $0.419 \pm 0.098$ & $0.398 \pm 0.141$ & $0.422 \pm 0.148$ \\
+abalone & $0.310 \pm 0.038$ & $0.342 \pm 0.040$ & $0.409 \pm 0.026$ & $0.541 \pm 0.030$ & $0.557 \pm 0.040$ & $0.531 \pm 0.030$ & $0.525 \pm 0.033$ \\
+california & $0.465$ & $0.540$ & $0.550$ & $0.751$ & $0.786$ & $0.825$ & $0.821$ \\
 \bottomrule
 \end{tabular}
 \caption{Predictive quality ($5$-fold CV mean~$\pm$~std;
-\texttt{digits}: single split). The generative columns answer the
+\texttt{digits}, \texttt{adult}, \texttt{california}: single split).
+The generative columns answer the
 prediction as \emph{one} of many queries of a full joint; the
 discriminative columns model only $P(y\mid\mathbf x)$.}
 \label{tab:pred}
 \end{table}
 
-Table~\ref{tab:pred} places all six models side by side. Three
+Table~\ref{tab:pred} places all seven models side by side. Three
 observations. First, the generative models---which answer the
 prediction as one query among many of a full joint and never see a
 discriminative objective---stay within a few points of the dedicated
-discriminative models on the low-dimensional datasets. Second,
-\jptboost{} behaves exactly as designed (\emph{P2}): it is the
-strongest JPT-family predictor on both regression datasets ($0.445$ and
-$0.541$ vs.\ $0.272$ and $0.409$ for the best generative variant) and
-on \texttt{breast\_cancer}, and on \texttt{diabetes} it edges out
-RandomForest---at the price of not being a joint. Third, the remaining
-gap to RF/HistGB concentrates on \texttt{digits} and \texttt{wine},
-where many weakly informative dimensions must be combined: the regime
-where modelling the full joint is hardest and a purely conditional
-model has the easier task.
+discriminative models on the low-dimensional datasets; on
+\texttt{adult}, \likeboost{} ($0.845$) comes within $0.7$ points of
+the tuned gradient boosters ($0.852$). Second, \jptboost{} behaves as
+designed (\emph{P2}) on regression: it is the strongest JPT-family
+predictor on all three regression datasets ($0.445$, $0.541$, $0.751$
+vs.\ $0.272$, $0.409$, $0.550$ for the best generative variant), and
+on \texttt{diabetes} it edges out RandomForest---at the price of not
+being a joint. Its shallow softmax boost is weaker on the
+mixed-categorical \texttt{adult} ($0.740$), where the generative
+models handle the symbolic features natively. Third, the remaining
+gap to RF/HistGB/LGBM concentrates on \texttt{digits}, \texttt{wine},
+and \texttt{california}, where many weakly informative numeric
+dimensions must be combined: the regime where modelling the full
+joint is hardest and a purely conditional model has the easier task.
 
 % ---------------------------------------------------------------------------
 \subsection{Ablation: Dirichlet-smoothed leaves}
