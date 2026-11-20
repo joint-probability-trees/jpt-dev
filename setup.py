@@ -27,13 +27,16 @@ if not os.environ.get('JPT_NO_CYTHON'):
         "jpt/learning/impurity/impurity.pyx",
     ]
 
-    os.environ['CPATH'] = numpy.get_include()
-
     ext_modules = cythonize(
         [os.path.join(basedir, f) for f in pyxfiles],
         language='c++',
         include_path=[numpy.get_include()]
     )
+
+    # Pass the numpy headers to the C++ compiler explicitly. The CPATH environment
+    # variable is only honored by GCC/Clang, not by MSVC on Windows.
+    for ext in ext_modules:
+        ext.include_dirs.append(numpy.get_include())
 else:
     ext_modules = []
 
