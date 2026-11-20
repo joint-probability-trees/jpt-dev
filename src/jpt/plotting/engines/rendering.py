@@ -1,3 +1,4 @@
+import tempfile
 from typing import Any, Union
 
 # engines
@@ -31,7 +32,7 @@ class DistributionRendering:
             dist: Any,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             **kwargs
     ):
@@ -43,7 +44,7 @@ class DistributionRendering:
             title: Union[str, bool] = None,
             fname: str = None,
             xlabel: str = 'value',
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             **kwargs
     ):
@@ -54,7 +55,7 @@ class DistributionRendering:
             dist: Any,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             **kwargs
     ):
@@ -65,7 +66,7 @@ class DistributionRendering:
             dist: Any,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             pdf: bool = False,
             view: bool = False,
             **kwargs
@@ -77,7 +78,7 @@ class DistributionRendering:
             dist: Any,
             title: Union[str, bool] = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             **kwargs
     ):

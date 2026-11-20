@@ -277,7 +277,7 @@ cdef class IntSet(Interval):
         )
 
     @staticmethod
-    def from_list(list l: List[int]) -> IntSet:
+    def from_list(l: list) -> IntSet:
         if len(l) != 2:
             raise ValueError(
                 'List must contain exactly two values (or ellipses "...") that specify the interval bounds'
@@ -289,7 +289,7 @@ cdef class IntSet(Interval):
 
     # noinspection PyTypeChecker
     @staticmethod
-    def from_set(set numbers: Set[int]) -> NumberSet:
+    def from_set(numbers: set) -> NumberSet:
         return UnionSet([
             IntSet(n, n) for n in numbers
         ]).simplify(keep_type=False)

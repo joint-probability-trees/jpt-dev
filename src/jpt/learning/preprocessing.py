@@ -11,7 +11,7 @@ import pandas as pd
 from dnutils import mapstr, ifnone
 from tqdm import tqdm
 
-from ..base.utils.multicore import Pool, DummyPool
+from ..base.utils.multicore import Pool, DummyPool, workers_inherit_state
 from ..trees import JPT
 
 _locals = threading.local()
@@ -185,7 +185,8 @@ def preprocess_data(
 
         n_processes = ifnone(multicore, os.cpu_count())
 
-        if multicore == 0:
+        # Workers read the data frame from the module-level ``_locals`` (inherited with fork only).
+        if multicore == 0 or not workers_inherit_state():
             PoolCls = DummyPool
         else:
             PoolCls = Pool

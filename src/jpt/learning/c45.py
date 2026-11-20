@@ -20,7 +20,7 @@ from .impurity import Impurity
 from .preprocessing import preprocess_data
 from ..base.functions import PiecewiseFunction
 from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
-from ..base.utils.multicore import DummyPool
+from ..base.utils.multicore import DummyPool, workers_inherit_state
 from ..base.utils import _write_error
 from ..distributions import Distribution
 from ..distributions.qpd import QuantileDistribution
@@ -434,8 +434,13 @@ class C45Algorithm:
         indices[0] = 0
         np.cumsum(indices, out=indices)
 
-        _locals.data = np.ascontiguousarray(_data.values)
-        _locals.indices = Array(c.c_long, indices.shape[0])
+        # The Cython impurity code needs a writable, C-contiguous buffer. Since pandas 3
+        # (copy-on-write), ``DataFrame.values`` may be read-only, which ``ascontiguousarray``
+        # would pass through unchanged; ``np.require`` copies only when needed.
+        _locals.data = np.require(_data.values, requirements=['C_CONTIGUOUS', 'WRITEABLE'])
+        # Use a fixed 64-bit type: the buffer is read back as ``np.int64`` in ``c45split``,
+        # while ``c_long`` is only 32 bits wide on Windows.
+        _locals.indices = Array(c.c_int64, indices.shape[0])
         _locals.indices[:] = indices
 
         # ---- Split validation mask ----
@@ -479,7 +484,9 @@ class C45Algorithm:
                 file=sys.stderr
             )
 
-        if multicore == 0:
+        # The workers read the training data and the tree from the module-level ``_locals``,
+        # which only fork-started processes inherit. Elsewhere (Windows, macOS) learn in-process.
+        if multicore == 0 or not workers_inherit_state():
             PoolCls = DummyPool
         else:
             PoolCls = Pool

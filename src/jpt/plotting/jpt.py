@@ -18,6 +18,7 @@ from tqdm import tqdm
 from .engines.rendering import MATPLOTLIB, PLOTLY, DistributionRendering
 from ..trees import JPT
 from ..base.constants import green, orange
+from ..base.utils.multicore import DummyPool, workers_inherit_state
 from ..trees import DecisionNode
 from ..variables import Variable
 
@@ -264,8 +265,8 @@ class JPTPlotter:
 
         _locals.jpt = self.jpt
 
-        # create nodes
-        pool = Pool()
+        # create nodes; the workers read ``_locals.jpt``, which only fork-started processes inherit
+        pool = Pool() if workers_inherit_state() else DummyPool()
         if self.verbose:
             progress = tqdm(total=len(self.jpt.leaves))
 

@@ -5,6 +5,8 @@ on:
     branches:
       - main
 
+  pull_request:
+
   # ------------------------------------------------------------------------------------------------------------------
 
   workflow_call:
@@ -28,14 +30,14 @@ defaults:
 # --------------------------------------------------------------------------------------------------------------------
 
 concurrency:
-  group: 'jpt-building-and-deployment'
+  group: 'jpt-building-and-deployment-${{ github.ref }}'
   cancel-in-progress: true
 
 # --------------------------------------------------------------------------------------------------------------------
 
 jobs:
   test-and-build:
-    name: Build and Test the Python distribution
+    name: Build and Test the Python distribution (Linux)
     runs-on: ubuntu-22.04
 
     steps:
@@ -61,7 +63,9 @@ jobs:
       # ----------------------------------------------------------------------------------------------------------------
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # CI-only constraints until the code base supports them: pandas 3 (str dtype /
+        # copy-on-write) and plotly >= 6.1 (needs kaleido >= 1, while kaleido < 1 is pinned).
+        run: pip install -e ".[dev]" "pandas<3" "plotly<6.1"
 
       # ----------------------------------------------------------------------------------------------------------------
 
@@ -103,5 +107,80 @@ jobs:
         id: wheel_url
         uses: actions/upload-artifact@v4
         with:
-          name: pyjpt-wheel
+          name: pyjpt-wheel-linux
           path: dist-raw/*manylinux*.whl
+
+  # --------------------------------------------------------------------------------------------------------------------
+
+  test-and-build-windows:
+    name: Build and Test the Python distribution (Windows)
+    runs-on: windows-latest
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ----------------------------------------------------------------------------------------------------------------
+
+      - name: Setup python
+        uses: actions/setup-python@v5
+        with:
+            python-version: "3.11"
+            cache: pip
+
+      # ----------------------------------------------------------------------------------------------------------------
+
+      - name: Setup Graphviz
+        uses: ts-graphviz/setup-graphviz@v2
+
+      # ----------------------------------------------------------------------------------------------------------------
+
+      # Compiles the Cython extensions with MSVC.
+      - name: Install dependencies
+        # CI-only constraints until the code base supports them: pandas 3 (str dtype /
+        # copy-on-write) and plotly >= 6.1 (needs kaleido >= 1, while kaleido < 1 is pinned).
+        run: pip install -e ".[dev]" "pandas<3" "plotly<6.1"
+
+      # ----------------------------------------------------------------------------------------------------------------
+
+      # Verbose output and a faulthandler watchdog: if the suite hangs, dump the stacks of all
+      # threads after 20 minutes and exit, instead of blocking until the 6 hour job limit.
+      - name: Run Tests
+        working-directory: tests
+        timeout-minutes: 30
+        env:
+          MPLBACKEND: Agg
+        run: >-
+          python -c "import faulthandler, unittest;
+          faulthandler.dump_traceback_later(1200, exit=True);
+          unittest.main(module=None, argv=['unittest', 'discover', '-v', '-s', 'test', '-t', '.'])"
+
+      # ----------------------------------------------------------------------------------------------------------------
+
+      # cibuildwheel expects build selectors such as "cp311-*" instead of the "cp311-cp311"
+      # tags used by the manylinux build above.
+      - name: Translate Python versions for cibuildwheel
+        run: |
+          versions="${{ inputs.python-versions || 'cp311-cp311' }}"
+          echo "CIBW_BUILD=$(echo "$versions" | sed -E 's/(cp[0-9]+)-cp[0-9]+/\1-*/g')" >> "$GITHUB_ENV"
+
+      - name: Build binary wheels
+        uses: pypa/cibuildwheel@v3.4.1
+        with:
+          output-dir: dist-raw
+        env:
+          CIBW_ARCHS_WINDOWS: AMD64
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_TEST_COMMAND: >-
+            python -c "import jpt, jpt.trees, jpt.learning.impurity; print(jpt.__version__)"
+
+      # ----------------------------------------------------------------------------------------------------------------
+
+      - name: Make wheel available
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyjpt-wheel-windows
+          path: dist-raw/*.whl

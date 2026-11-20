@@ -39,7 +39,8 @@ jobs:
       - name: Get wheel artifacts
         uses: actions/download-artifact@v4
         with:
-          name: pyjpt-wheel
+          pattern: pyjpt-wheel-*
+          merge-multiple: true
           path: dist/
 
       # ----------------------------------------------------------------------------------------------------------------

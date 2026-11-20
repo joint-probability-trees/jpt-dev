@@ -15,7 +15,7 @@ import logging
 from tqdm import tqdm
 
 from jpt.trees import JPT
-from jpt.base.utils.multicore import Pool, DummyPool
+from jpt.base.utils.multicore import Pool, DummyPool, workers_inherit_state
 from jpt.variables import ValueAssignment, Variable
 
 
@@ -152,7 +152,8 @@ def parallel_likelihood(
         n_processes = ifnone(multicore, mp.cpu_count())
         chunksize = max(1, int(data.shape[0] / n_processes / 2))
 
-        if multicore == 0:
+        # Workers rely on state inherited from the parent via ``_locals`` (fork only).
+        if multicore == 0 or not workers_inherit_state():
             PoolCls = DummyPool
         else:
             PoolCls = Pool
