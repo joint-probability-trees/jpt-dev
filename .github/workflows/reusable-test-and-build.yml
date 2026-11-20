@@ -63,7 +63,9 @@ jobs:
       # ----------------------------------------------------------------------------------------------------------------
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # CI-only constraints until the code base supports them: pandas 3 (str dtype /
+        # copy-on-write) and plotly >= 6.1 (needs kaleido >= 1, while kaleido < 1 is pinned).
+        run: pip install -e ".[dev]" "pandas<3" "plotly<6.1"
 
       # ----------------------------------------------------------------------------------------------------------------
 
@@ -138,7 +140,9 @@ jobs:
 
       # Compiles the Cython extensions with MSVC.
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        # CI-only constraints until the code base supports them: pandas 3 (str dtype /
+        # copy-on-write) and plotly >= 6.1 (needs kaleido >= 1, while kaleido < 1 is pinned).
+        run: pip install -e ".[dev]" "pandas<3" "plotly<6.1"
 
       # ----------------------------------------------------------------------------------------------------------------
 

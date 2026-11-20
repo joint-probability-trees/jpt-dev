@@ -434,8 +434,13 @@ class C45Algorithm:
         indices[0] = 0
         np.cumsum(indices, out=indices)
 
-        _locals.data = np.ascontiguousarray(_data.values)
-        _locals.indices = Array(c.c_long, indices.shape[0])
+        # The Cython impurity code needs a writable, C-contiguous buffer. Since pandas 3
+        # (copy-on-write), ``DataFrame.values`` may be read-only, which ``ascontiguousarray``
+        # would pass through unchanged; ``np.require`` copies only when needed.
+        _locals.data = np.require(_data.values, requirements=['C_CONTIGUOUS', 'WRITEABLE'])
+        # Use a fixed 64-bit type: the buffer is read back as ``np.int64`` in ``c45split``,
+        # while ``c_long`` is only 32 bits wide on Windows.
+        _locals.indices = Array(c.c_int64, indices.shape[0])
         _locals.indices[:] = indices
 
         # ---- Split validation mask ----
