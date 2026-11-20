@@ -146,9 +146,17 @@ jobs:
 
       # ----------------------------------------------------------------------------------------------------------------
 
+      # Verbose output and a faulthandler watchdog: if the suite hangs, dump the stacks of all
+      # threads after 20 minutes and exit, instead of blocking until the 6 hour job limit.
       - name: Run Tests
         working-directory: tests
-        run: python -m unittest discover -s test -t .
+        timeout-minutes: 30
+        env:
+          MPLBACKEND: Agg
+        run: >-
+          python -c "import faulthandler, unittest;
+          faulthandler.dump_traceback_later(1200, exit=True);
+          unittest.main(module=None, argv=['unittest', 'discover', '-v', '-s', 'test', '-t', '.'])"
 
       # ----------------------------------------------------------------------------------------------------------------
 
