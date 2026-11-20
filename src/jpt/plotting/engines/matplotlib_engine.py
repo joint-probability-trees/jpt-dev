@@ -1,3 +1,4 @@
+import tempfile
 import os
 import re
 from pathlib import Path
@@ -66,7 +67,7 @@ class MatplotlibRendering(DistributionRendering):
             dist: Any,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             pdf: bool = False,
             view: bool = False,
             horizontal: bool = False,
@@ -161,7 +162,7 @@ class MatplotlibRendering(DistributionRendering):
             title: Union[str, bool] = None,
             fname: str = None,
             xlabel: str = 'value',
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             pdf: bool = False,
             **kwargs
@@ -254,7 +255,7 @@ class MatplotlibRendering(DistributionRendering):
             dist: Any,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             pdf: bool = False,
             view: bool = False,
             horizontal: bool = False,
@@ -343,7 +344,7 @@ class MatplotlibRendering(DistributionRendering):
             dist: Any,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             pdf: bool = False,
             view: bool = False,
             **kwargs
@@ -407,7 +408,7 @@ class MatplotlibRendering(DistributionRendering):
             xlabel: str = '$x$',
             ylabel: str = r'$p(x|\mu,\sigma)$',
             dim: int = 3,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             pdf: bool = False,
             **kwargs

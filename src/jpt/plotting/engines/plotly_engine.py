@@ -1,3 +1,4 @@
+import tempfile
 import os
 from typing import Any, Union
 
@@ -19,7 +20,7 @@ class PlotlyRendering(DistributionRendering):
             dist: Any,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             horizontal: bool = False,
             max_values: int = None,
@@ -151,7 +152,7 @@ class PlotlyRendering(DistributionRendering):
             title: Union[str, bool] = None,
             fname: str = None,
             xlabel: str = 'value',
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             color: str = 'rgb(15,21,110)',
             fill: str = None,
@@ -304,7 +305,7 @@ class PlotlyRendering(DistributionRendering):
             dist: Any,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             horizontal: bool = False,
             max_values: int = None,
@@ -423,7 +424,7 @@ class PlotlyRendering(DistributionRendering):
                 dist: Any,
                 title: str = None,
                 fname: str = None,
-                directory: str = '/tmp',
+                directory: str = tempfile.gettempdir(),
                 pdf: bool = False,
                 view: bool = False,
                 **kwargs
@@ -471,7 +472,7 @@ class PlotlyRendering(DistributionRendering):
             ylabel: str = None,
             dim: int = 3,
             precision: int = 2,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             color: str = 'rgb(15,21,110)',
             fill: str = None,

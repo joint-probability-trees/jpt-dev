@@ -1,4 +1,5 @@
 '''© Copyright 2021, Mareike Picklum, Daniel Nyga.'''
+import tempfile
 import numbers
 from collections.abc import Hashable
 from typing import Set, Iterable, Type, Any, Dict, Union
@@ -213,7 +214,7 @@ class Distribution:
             engine: str,
             title: str = None,
             fname: str = None,
-            directory: str = '/tmp',
+            directory: str = tempfile.gettempdir(),
             view: bool = False,
             **kwargs
     ) -> Any:
