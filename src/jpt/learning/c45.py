@@ -20,7 +20,7 @@ from .impurity import Impurity
 from .preprocessing import preprocess_data
 from ..base.functions import PiecewiseFunction
 from ..base.intervals import ContinuousSet, INC, EXC, IntSet, Interval
-from ..base.utils.multicore import DummyPool
+from ..base.utils.multicore import DummyPool, workers_inherit_state
 from ..base.utils import _write_error
 from ..distributions import Distribution
 from ..distributions.qpd import QuantileDistribution
@@ -484,7 +484,9 @@ class C45Algorithm:
                 file=sys.stderr
             )
 
-        if multicore == 0:
+        # The workers read the training data and the tree from the module-level ``_locals``,
+        # which only fork-started processes inherit. Elsewhere (Windows, macOS) learn in-process.
+        if multicore == 0 or not workers_inherit_state():
             PoolCls = DummyPool
         else:
             PoolCls = Pool

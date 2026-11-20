@@ -107,6 +107,21 @@ def worker(
 # ----------------------------------------------------------------------------------------------------------------------
 
 
+def workers_inherit_state() -> bool:
+    """
+    Whether worker processes inherit the parent's module state, such as the ``threading.local``
+    objects that the learning and inference code fills in before creating a pool.
+
+    This only holds for the ``fork`` start method. With ``spawn`` (the only method on Windows,
+    and the default on macOS), workers start with fresh modules, so pools that rely on inherited
+    state must fall back to :class:`DummyPool`.
+    """
+    return mp.get_context().get_start_method() == 'fork'
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+
 class DummyPool:
 
     def __init__(
